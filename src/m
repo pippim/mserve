@@ -1,0 +1,155 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+# ==============================================================================
+#
+#       m - Wrapper for mserve.py
+#
+# ==============================================================================
+
+"""
+        TODO: Spin "M"
+              Check dependencies
+
+        Splash screen for mserve.
+        mserve has it's own list of required modules but this wrapper requires:
+        
+            Gnome Desktop Toolkit (Gdk)
+"""
+
+from __future__ import print_function
+
+try:                        # Python 3
+    import tkinter as tk
+    PYTHON_VER = "3"
+
+except ImportError:         # Python 2
+    import Tkinter as tk
+    PYTHON_VER = "2"
+
+import time
+M_START_TIME = time.time()
+import image as img         # Routines for tk & photo images
+import sql                  # SQLite3 functions
+import monitor              # Display, Screen, Monitor and Window functions
+import mserve               # Script loaded as module for .pyc
+
+''' Logging is duplicated in monitor.py module. Not sure how to apply yet? '''
+# https://stackoverflow.com/a/36419702/6929343
+import logging
+
+# https://stackoverflow.com/a/67352300/6929343
+logging.getLogger('PIL').setLevel(logging.WARNING)
+import sys
+
+# noinspection SpellCheckingInspection
+# noinspection SpellCheckingInspection
+logging.basicConfig(format='%(asctime)s %(levelname)s %(message)s',
+                    level=logging.DEBUG,
+                    stream=sys.stdout)
+# inspection SpellCheckingInspection
+
+# Values from gnome-terminal to prevent window shrinking too small
+import global_variables as g
+g.init()
+
+WIN_MIN_WIDTH = 142
+WIN_MIN_HEIGHT = 63
+
+
+def main():
+    """
+    Create splash screen and invoke mserve.py which takes a second or more
+    """
+
+    splash = tk.Tk()  # "very top" toplevel
+    splash.title("Music Server - mserve")
+    splash.minsize(WIN_MIN_WIDTH, WIN_MIN_HEIGHT)
+
+    ''' Set font style for all fonts including tkSimpleDialog.py '''
+    img.set_font_style()  # Make messagebox text larger for HDPI monitors
+
+    ''' Set program icon in taskbar '''
+    # Waste of time for splash screen.
+    # img.taskbar_icon(splash, 64, 'white', 'lightskyblue', 'black')
+
+    ''' Get splash image '''
+    splash_image = img.m_splash_image(300, 'white', 'lightskyblue', 'black')
+
+    # create and pack the canvas. Then load image file
+    canvas = tk.Canvas(width=300, height=300, bg='black')
+    canvas.pack(expand=tk.YES, fill=tk.BOTH)
+    canvas.create_image(0, 0, image=splash_image, anchor=tk.NW)
+    #splash.update_idletasks()  # This is required for visibility
+
+    # Center splash screen on monitor and get monitors geometry
+    mon_dict = monitor.center(splash)
+    #splash.wm_overrideredirect(1)  # June 13/20201 debug long press, move this to top.
+    splash.update()  # This is required for visibility
+
+    # At this point make window undecorated, don't do it sooner!
+    # From: https://stackoverflow.com/a/37199655/6929343
+    splash.overrideredirect(True)  # Remove splash window close button
+
+    # Call mserve module about 10k lines of code
+    mserve.main(toplevel=splash, mon_geom=mon_dict)
+    exit()  # Required to close mserve.py ending comes back here!
+    splash.mainloop()
+
+
+def main_c():
+    """
+    Attempt at circle with no window decorations.
+    """
+    splash = tk.Tk()  # "very top" toplevel
+    splash.wm_overrideredirect(1)  # June 13/20201 debug long press, move this to top.
+    splash.wm_overrideredirect(0)  # June 13/20201 debug long press, move this to top.
+    splash.wm_attributes('-type', 'splash')  # only works X11 and not all distros
+    splash.wait_visibility()
+    splash.wm_overrideredirect(1)  # June 13/20201 debug long press, move this to top.
+    splash.attributes("-alpha", 0)  # Make invisible
+    splash.withdraw()  # Reverse with deiconify
+    splash.attributes("-alpha", 0)  # Make invisible
+    splash.wm_attributes("-alpha", 0)  # Make invisible
+    #splash.overrideredirect(True)
+
+    ''' Set font style for all fonts including tkSimpleDialog.py '''
+    img.set_font_style()  # Make messagebox text larger for HDPI monitors
+
+    ''' Set program icon in taskbar '''
+    # Waste of time for splash screen.
+    # img.taskbar_icon(splash, 64, 'white', 'lightskyblue', 'black')
+
+    ''' Get splash image '''
+    splash_image = img.m_circle_splash_image(300, 'white', 'lightskyblue', 'black')
+
+    # create and pack the canvas. Then load image file
+    canvas = tk.Canvas(width=300, height=300, bg='black')
+    canvas.pack(expand=tk.YES, fill=tk.BOTH)
+    canvas.create_image(0, 0, image=splash_image, anchor=tk.NW)
+
+    splash.deiconify()
+    splash.update_idletasks()  # This is required for visibility
+
+    # Center splash screen on monitor and get monitors geometry
+    #mon_geom = monitor.center(splash)
+    mon_dict = monitor.center(splash)
+    splash.deiconify()
+    splash.update()  # This is required for visibility
+
+    print('sleeping 4 seconds on splash screen')
+    splash.after(4000)
+    # At this point make window undecorated, don't do it sooner!
+    # From: https://stackoverflow.com/a/37199655/6929343
+    splash.overrideredirect(True)  # Remove splash window close button
+
+    # Call mserve module about 10k lines of code
+    mserve.main(toplevel=splash, mon_geom=mon_dict)
+    exit()  # Required to close mserve.py ending comes back here!
+    splash.mainloop()
+
+
+if __name__ == "__main__":
+    main()
+
+# End of m
