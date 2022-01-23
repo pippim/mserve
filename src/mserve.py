@@ -16,11 +16,12 @@
 #       Feb. 07 2021 - Add webscrape.py as separate program
 #       Mar. 05 2021 - Fine-tune time index (Lyrics Synchronization)
 #       Mar. 13 2021 - Use ffplay output for current seconds
-#       May  02 2021 - Now called by m wrapper splash screen
-#       May  18 2021 - createToolTip() - Hover balloon
-#       June 14 2021 - Rounded Rectangle Canvas widget
+#       May. 02 2021 - Now called by m wrapper splash screen
+#       May. 18 2021 - createToolTip() - Hover balloon
+#       Jun. 14 2021 - Rounded Rectangle Canvas widget
 #       Aug. 08 2021 - New webscrape.py parameters/results via SQL History
 #       Aug. 21 2021 - Revamp tooltips with toolkit.ToolTips
+#       Jan. 18 2022 - Set tooltip location SW, SE, NW or NE of parent widget.
 #
 # ==============================================================================
 
@@ -191,7 +192,7 @@ from PIL import Image, ImageTk, ImageDraw, ImageFont
 from ttkwidgets import CheckboxTreeview
 import pickle
 from random import shuffle
-import getpass              # Get user name for file storage
+import getpass              # Get username for file storage
 import notify2              # send inotify over python-dbus
 
 import locale               # To set thousands separator as , or .
@@ -213,28 +214,31 @@ import toolkit              # Functions for tkinter-tool kit interface
 import timefmt as tmf       # Format date and time
 import webscrape            # Get song lyrics via web scrape
 
+# Subdirectory in ~/python
+from pulsectl import pulsectl
+
 # sql.sample()
 
-CFG_THOUSAND_SEP = ","  # English "," to for thousands separator
-CFG_DECIMAL_SEP = "."  # English "." for fractional amount
-CFG_DECIMAL_PLACES = 1  # 1 decimal place, eg "38.5 MB"
-CFG_DIVISOR_AMT = 1000000  # Divide by million
-CFG_DIVISOR_UOM = "MB"  # Unit of Measure becomes Megabyte
+CFG_THOUSAND_SEP = ","      # English "," to for thousands separator
+CFG_DECIMAL_SEP = "."       # English "." for fractional amount
+CFG_DECIMAL_PLACES = 1      # 1 decimal place, eg "38.5 MB"
+CFG_DIVISOR_AMT = 1000000   # Divide by million
+CFG_DIVISOR_UOM = "MB"      # Unit of Measure becomes Megabyte
 
 # Global variables
-RESTART_SLEEP = .3  # Delay for mserve close down
-KEEP_AWAKE_MS = 250  # Milliseconds between time checks
-MON_FONTSIZE = 12  # Font size for monitor name
-WIN_FONTSIZE = 11  # Font size for Window name
-BIG_FONT = 18  # Font size not used
-LARGE_FONT = 14  # Font size not used
-MED_FONT = 10  # Medium Font size
-BTN_WID = 17  # Width for buttons on main window
-BTN_WID2 = 15  # Width for buttons on play window
-BTN_BRD_WID = 3  # Width for button border
-FRM_BRD_WID = 2  # Width for frame border
-PANEL_HGT = 24  # Height of Unity panel
-MAX_DEPTH = 3  # Sanity check if starting at c:\ or /
+RESTART_SLEEP = .3          # Delay for mserve close down
+KEEP_AWAKE_MS = 250         # Milliseconds between time checks
+MON_FONTSIZE = 12           # Font size for monitor name
+WIN_FONTSIZE = 11           # Font size for Window name
+BIG_FONT = 18               # Font size not used
+LARGE_FONT = 14             # Font size not used
+MED_FONT = 10               # Medium Font size
+BTN_WID = 17                # Width for buttons on main window
+BTN_WID2 = 15               # Width for buttons on play window
+BTN_BRD_WID = 3             # Width for button border
+FRM_BRD_WID = 2             # Width for frame border
+PANEL_HGT = 24              # Height of Unity panel
+MAX_DEPTH = 3               # Sanity check if starting at c:\ or /
 # If MAX_DEPTH changes you must update 'depth_count = [ 0, 0, 0 ]' below.
 
 # Temporary directory currently_playing filename
@@ -247,6 +251,9 @@ TMP_FFMPEG = "/run/user/" + g.USER_ID + "/mserve.ffmpeg.jpg"
 VU_METER_FNAME = "/run/user/" + g.USER_ID + "/mserve.vu-meter-mono.txt"
 VU_METER_LEFT_FNAME = "/run/user/" + g.USER_ID + "/mserve.vu-meter-left.txt"
 VU_METER_RIGHT_FNAME = "/run/user/" + g.USER_ID + "/mserve.vu-meter-right.txt"
+
+# Firefox name which is really the sound source for big screen TV
+FIREFOX = "Firefox"
 
 # Values from gnome-terminal to prevent window shrinking too small
 #WIN_MIN_WIDTH = 142
@@ -262,7 +269,7 @@ FM_PROGRAM = "nautilus"
 GRID_REMOVE_SUPPORTED = True
 # When unselecting song in library, end song (if playing) and remove in list
 # TODO: clicking in library to remove song from playlist leaves music player
-# silent. Must click song in chron tree to start new new song.
+# silent. Must click song in chron tree to start new song.
 LIBRARY_UNSELECT_REMOVE_PLAYING = True
 # When selecting song in library, how does it go into currently playing list?
 LIBRARY_SELECT_INSERT_PLAY_HERE = True
@@ -285,12 +292,12 @@ first song inserted when the default would be the last song inserted.
 # TODO: Make user definable and much larger list
 #       Deep scan with python-magic to read each file for song type
 FILE_TYPES = [".mp3", ".m4a", ".mp4", ".wma", ".oga", ".ogg", ".flac", ".wav", ".PCM"]
-NO_ARTIST_STR = "(No Artist)"  # global User defined labels
+NO_ARTIST_STR = "(No Artist)"   # global User defined labels
 NO_ALBUM_STR = "(No Album)"
 NO_ART_STR = "No Artwork"
 PAUSED_STR = "|| Paused"
-NUMBER_PREFIX = "№ "  # UTF-8 (2116) + normal space
-DIGIT_SPACE = " "  # UTF-8 (2007)
+NUMBER_PREFIX = "№ "            # UTF-8 (2116) + normal space
+DIGIT_SPACE = " "             # UTF-8 (2007)
 
 ''' Music Library's top directory '''
 START_DIR = ""
@@ -315,7 +322,7 @@ PRUNED_SUBDIRS = 0  # sys arg topdir = 0, artist = 1, album = 2
 def make_sorted_list(start_dir, toplevel=None, idle=None):
     """ Build list of songs
         Called at startup and by refresh_lib_tree()
-        Use DelayedTextBox for status updates on long running processes
+        Use DelayedTextBox for status updates on long-running processes
         which doesn't appear if process shorter than a second.
     """
 
@@ -475,7 +482,7 @@ class PlayCommonSelf:
     def __init__(self):
         #def __init__(self, toplevel, song_list, sbar_width=12, **kwargs):
 
-        self.killer = ext.GracefulKiller()  # Class to shutdown
+        self.killer = ext.GracefulKiller()  # Class to shut down
 
         self.play_on_top = None             # Is play frame overtop library?
         self.pause_t_start = None           # Time current song was paused
@@ -535,14 +542,14 @@ class PlayCommonSelf:
         # Play frame VU meters - columns 2 & 3
         self.play_vu_meter_style = None     # 'led' = Use LED rectangles
         self.vu_width = None                # VU Meters (Left & Right channel
-        self.vu_height = None               # ..width and height in pixels
+        self.vu_height = None               # width and height in pixels
         self.vu_meter_left = None           # tk.Canvas(self.play_frm...
         self.vu_meter_left_rectangle = None  # vu_meter_left.create_rectangle(
         self.vu_meter_right = None          # tk.Canvas(self.play_frm...
         self.vu_meter_right_rectangle = None  # vu_meter_right.create_r
         self.VU_HIST_SIZE = None            # History of six db levels
         self.vu_meter_left_hist = None      # Left & Right channel histories
-        self.vu_meter_right_hist = None     # ..can be zero on race condition
+        self.vu_meter_right_hist = None     # can be zero on race condition
 
         # Play frame # 3 (misleading frame number) - column 4
         self.play_F3 = None                 # tk.Frame(self.play_frm)
@@ -561,7 +568,7 @@ class PlayCommonSelf:
         self.lyrics_train_start_time = None  # When basic training started
         self.lyrics_score_box = None        # tk.Text(self.play_F3
 
-        # Four rounded rectangle buttons: Auto to Manual, Time to Manual
+        # Four rounded rectangle buttons: Auto to Manual, Time to Manual,
         # Manual to Auto and Manual to Time:
         self.lyrics_panel_scroll_a_m_grid = None
         self.lyrics_panel_scroll_t_m_grid = None
@@ -613,8 +620,8 @@ class PlayCommonSelf:
         self.sync_sample_buttons = None     # tk.Frame(self.syn_top, tk.GROOVE,
         self.sync_sample_pp_state = None    # 'Playing'
         self.sync_sample_pp_button = None   # text=self.pp_pause_text
-        self.sync_ffplay_is_running = None  # Currently playing and syncing?
-        self.sync_paused_music = None       # Did sync force play to paused?
+        self.sync_ffplay_is_running = None  # Already playing and syncing?
+        self.sync_paused_music = None       # Did sync force play to pause?
         self.sync_changed_score = None      # Was lyrics score changed?
         self.sync_changed_lyrics = None     # Lyrics score has changed DUPLICATE!
         self.sync_ffplay_pid = None         # ffplay linux process ID
@@ -651,7 +658,7 @@ class PlayCommonSelf:
         self.int_button = None              # tk.Button(text="🏒  Intermission"
 
         self.play_hockey_active = None      # TV turned down and music play?
-        self.play_firefox_indices = None    # sink_list("Firefox")
+        self.play_firefox_indices = None    # sink_list("Firefox") FIREFOX
         self.play_hockey_secs = None        # Commercial = TV_BREAK1 seconds
         self.play_hockey_remaining = None   # init to self.play_hockey_secs
         self.play_hockey_t_start = None     # time.time()
@@ -724,11 +731,11 @@ class PlayCommonSelf:
         # Compare common variables
         self.cmp_target_dir = None          # OS directory comparing to
         self.cmp_tree = None                # Treeview
-        self.cmp_close_btn = None           # Doesn't need to be instance
+        self.cmp_close_btn = None           # Doesn't need to be instanced
         self.update_differences_btn = None
         self.src_mt = None                  # Source modification time
         self.trg_mt = None                  # Target modification time
-        self.cmp_msg_gox = None              # message.Open()
+        self.cmp_msg_box = None             # message.Open()
 
         ''' Refresh items - inotify '''
         self.last_inotify_time = None       # now
@@ -848,12 +855,12 @@ class MusicTree(PlayCommonSelf):
 
         # Debugging columns display extra fields
         # In order to use .set method on columns they must be displayed. To
-        # make "invisible set width to 0 and stretch to tk.NO.
+        # make "invisible", set width to 0 and stretch to tk.NO.
 
         # Comment next two lines to show hidden columns
         w = 0
         s = tk.NO
-        # Comment next two lines to hide hidden columns
+        # Comment next two lines to hide the hidden columns
         # w=80
         # s=tk.YES
 
@@ -955,14 +962,14 @@ class MusicTree(PlayCommonSelf):
         #else:
         #    thread = None
         self.tt.add_tip(self.lib_tree_btn1,
-                        "Close mserve and any windows mserve opened.")
+                        "Close mserve and any windows mserve opened.", anchor="nw")
 
         ''' ▶  Play Button '''
         self.play_text = "▶  Play"  # play songs window is opened.
         self.lib_tree_btn2 = tk.Button(frame3, text=self.play_text,
                                        width=BTN_WID, command=self.play_items)
         self.lib_tree_btn2.grid(row=0, column=1, padx=2)
-        self.tt.add_tip(self.lib_tree_btn2, "Play selected songs.")
+        self.tt.add_tip(self.lib_tree_btn2, "Play selected songs.", anchor="nw")
 
         ''' Save button '''
         # Floppy Disk U+1F4BE 💾  Hard Disk U+1F5B4 🖄
@@ -971,23 +978,24 @@ class MusicTree(PlayCommonSelf):
                                        width=BTN_WID - 1, command=self.save_items)
         self.lib_tree_btn3.grid(row=0, column=2, padx=2)
         self.tt.add_tip(self.lib_tree_btn3,
-                        "Save playlist (selected songs in sorted order).")
-
+                        "Save playlist (selected songs in sorted order).",
+                        anchor="nw")
         ''' Load button '''
         self.load_text = "💾  Load playlist"  # Load songs window is opened.
         self.lib_tree_btn4 = tk.Button(frame3, text=self.load_text,
                                        width=BTN_WID - 1, command=self.load_items)
         self.lib_tree_btn4.grid(row=0, column=3, padx=2)
         self.tt.add_tip(self.lib_tree_btn4,
-                        "Load new playlist (changes selections and sort order).")
-
+                        "Load new playlist (changes selections and sort order).",
+                        anchor="nw")
         ''' Refresh Treeview Button u  1f5c0 🗀 '''
         ''' 🗘  Update differences Button u1f5d8 🗘'''
         self.rebuild_text = "🗘 Refresh library"  # Rebuild MusicTree
         self.lib_tree_btn5 = tk.Button(frame3, text=self.rebuild_text,
                                        width=BTN_WID - 1, command=self.rebuild_lib_tree)
         self.lib_tree_btn5.grid(row=0, column=4, padx=2)
-        self.tt.add_tip(self.lib_tree_btn5, "Scan disk for songs added and removed.")
+        self.tt.add_tip(self.lib_tree_btn5, "Scan disk for songs added and removed.",
+                        anchor="ne")
 
         ''' Rip CD Button 🖸 (1f5b8) '''
         self.import_text = "🖸  Rip CD"
@@ -995,7 +1003,7 @@ class MusicTree(PlayCommonSelf):
                                        width=BTN_WID - 2, command=self.rip_cd)
         self.lib_tree_btn6.grid(row=0, column=5, padx=2)
         self.tt.add_tip(self.lib_tree_btn6,
-                        "Convert songs from Audio CD to music files.")
+                        "Convert songs from Audio CD to music files.", anchor="ne")
 
         ''' Colors for tags '''
         self.ignore_item = None
@@ -1072,7 +1080,7 @@ class MusicTree(PlayCommonSelf):
         while self.lib_top:
             # self.lib_top.update_idletasks()  # doesn't allow tree to scroll
             if self.killer.kill_now:
-                # SIGTERM to shutdown / reboot was received
+                # SIGTERM to shut down / reboot was received
                 self.close()
             self.lib_top.update()  # process events in queue
             # What happens when Play is clicked and play_items() starts?
@@ -1140,7 +1148,7 @@ class MusicTree(PlayCommonSelf):
                                             [0, 0, 0, 0, 0, 0])
 
                 LastArtist = Artist
-                LastAlbum = ""  # Force sub-total break for Album
+                LastAlbum = ""  # Force subtotal break for Album
 
             if Album != LastAlbum:
                 CurrAlbumId = self.lib_tree.insert(CurrArtistId, "end",
@@ -1339,7 +1347,7 @@ class MusicTree(PlayCommonSelf):
         song_count = self.lib_top_totals[6]
         selected_count = self.lib_top_totals[9]
 
-        # Human readable size 12345678 becomes 12.3 MB
+        # Human-readable size 12345678 becomes 12.3 MB
         size = self.lib_top_totals[5]
         converted = float(size) / float(CFG_DIVISOR_AMT)
         all_sizes = round(converted, CFG_DECIMAL_PLACES)
@@ -2050,7 +2058,7 @@ class MusicTree(PlayCommonSelf):
             #       directory in ~/.config/mserve will have to be renamed.
             self.state = 'normal'  # Allow data entry
 
-        # Button text for the submit button
+        # The button text for the submit button
         if self.loc_mode is 'Edit':
             sub_text = 'Save'
         elif self.loc_mode is 'Show':
@@ -2080,7 +2088,7 @@ class MusicTree(PlayCommonSelf):
     def loc_submit(self):
         """ Add, Update or Forget location on disk
             self.loc_mode is set to 'Add', 'Edit', 'Show' or 'Forget'
-            self.loc_iid is set to string index within location.LIST[]
+            self.loc_iid is set to string index within location LIST[]
         """
         if self.loc_mode is 'Show':
             # Submit button text is "Done".
@@ -2254,7 +2262,7 @@ class MusicTree(PlayCommonSelf):
 
             Source is current LODICT, Target it selected by user here
 
-            After comparison we can:
+            After comparison, we can:
                 - Set modification time (mtime) of target to match source
                 - Set modification time (mtime) of source to match target
                 - Copy files from source to target maintaining mtime
@@ -2268,7 +2276,7 @@ class MusicTree(PlayCommonSelf):
 
 
             Compare locations can be setup like RipCD () class where generating
-            list is done in background and it generates a pickle while ps_active
+            list is done in background, and it generates a pickle while ps_active
             is polled. Button to cancel is active with status message in
             ScrolledText stating work in progress.
 
@@ -2406,7 +2414,7 @@ class MusicTree(PlayCommonSelf):
                   called compare.py imported as cmp
 
             It takes 1.5 hour to stat 4,000 songs on phone mounted on sshfs
-            over WiFi. Speed up with: https://superuser.com/questions/344255/
+            over Wi-Fi. Speed up with: https://superuser.com/questions/344255/
             faster-way-to-mount-a-remote-file-system-than-sshfs
 
             -o auto_cache,reconnect,defer_permissions
@@ -2449,7 +2457,7 @@ class MusicTree(PlayCommonSelf):
                 CurrArtistId = self.cmp_tree.insert("", "end", text=Artist,
                                                     tags=("Artist",), open=True)
                 LastArtist = Artist
-                LastAlbum = ""  # Force sub-total break for Album
+                LastAlbum = ""  # Force subtotal break for Album
 
             if Album != LastAlbum:
                 CurrAlbumId = self.cmp_tree.insert(CurrArtistId, "end",
@@ -2478,7 +2486,7 @@ class MusicTree(PlayCommonSelf):
             trg_stat = os.stat(trg_path)
             trg_size = trg_stat.st_size
             trg_mtime = float(trg_stat.st_mtime)
-            # Android not updating modification time, keep track ourself
+            # Android not updating modification time, keep track ourselves
             # print('mserve before src:',t(src_mtime),' trg:',t(trg_mtime))
             src_mtime = self.src_mt.get(src_path, src_mtime)
             trg_mtime = self.trg_mt.get(trg_path, trg_mtime)
@@ -2493,7 +2501,7 @@ class MusicTree(PlayCommonSelf):
             else:
                 diff = trg_mtime - src_mtime
             if diff == 1:
-                src_mtime = trg_mtime  # override 1 second difference
+                src_mtime = trg_mtime  # override 1-second difference
             # End of patch FUDGE
 
             if src_size == trg_size and src_mtime == trg_mtime:
@@ -2549,7 +2557,7 @@ class MusicTree(PlayCommonSelf):
 
             ''' Add the song '''
             # NOTE: Numeric 0 allowed for index except for 0 which is converted
-            #       to a parent ID, eg I003. Convert to string to fix bug.
+            #       to a parent ID, EG I003. Convert to string to fix bug.
             self.cmp_tree.insert(CurrAlbumId, "end", iid=str(i), text=Song,
                                  values=(src_ftime, trg_ftime, src_fsize, trg_fsize, action,
                                          float(src_stat.st_mtime), float(trg_stat.st_mtime)),
@@ -2600,7 +2608,7 @@ class MusicTree(PlayCommonSelf):
         title = "Updating files"
         self.update_differences_btn.grid_forget()  # Can't click again
         # Display status messages in window 800 wide x 260 high
-        self.cmp_msg_gox = message.Open(title, self.cmp_top, 800, 260)
+        self.cmp_msg_box = message.Open(title, self.cmp_top, 800, 260)
         for artist in self.cmp_tree.get_children():
             for album in self.cmp_tree.get_children(artist):
                 for song in self.cmp_tree.get_children(album):
@@ -2611,7 +2619,7 @@ class MusicTree(PlayCommonSelf):
                         # TODO: Move duplicated code into common ...close()
                         self.src_mt.close()  # Save modification_time to disk
                         self.trg_mt.close()  # If no changes then simply exit
-                        self.cmp_msg_gox.close()
+                        self.cmp_msg_box.close()
                         return  # Closing down
                     if not return_code == 0:
                         break
@@ -2622,7 +2630,7 @@ class MusicTree(PlayCommonSelf):
 
         self.src_mt.close()  # Save modification_time to disk
         self.trg_mt.close()  # If no changes then simply exit
-        self.cmp_msg_gox.close()
+        self.cmp_msg_box.close()
 
         if not return_code == 0:
             print('cmp_update_files() received non-zero return_code:', return_code)
@@ -2642,7 +2650,7 @@ class MusicTree(PlayCommonSelf):
         action = self.cmp_tree.item(iid)['values'][4]  # 6th treeview column
         src_mtime = self.cmp_tree.item(iid)['values'][5]
         trg_mtime = self.cmp_tree.item(iid)['values'][6]
-        # Extract real source path from treeview display eg strip (No Album)
+        # Extract real source path from treeview display e.g. strip (No Album)
         src_path = self.real_path(int(iid))
         # replace source topdir with target topdir for target full path
         trg_path = src_path.replace(START_DIR, self.cmp_target_dir)
@@ -2671,7 +2679,7 @@ class MusicTree(PlayCommonSelf):
         command_line_list.append(trg)
 
         command_str = " ".join(command_line_list)  # list to printable string
-        self.cmp_msg_gox.update(command_str)  # Display status line
+        self.cmp_msg_box.update(command_str)  # Display status line
         pipe = sp.Popen(command_line_list, stdout=sp.PIPE, stderr=sp.PIPE)
         text, err = pipe.communicate()  # This performs .wait() too
 
@@ -2680,11 +2688,11 @@ class MusicTree(PlayCommonSelf):
         if text:
             print("standard output of subprocess:")
             print(text)
-            self.cmp_msg_gox.update(text)
+            self.cmp_msg_box.update(text)
         if err:
             print("standard error of subprocess:")
             print(err)
-            self.cmp_msg_gox.update(err)
+            self.cmp_msg_box.update(err)
 
         if pipe.return_code == 0:
             if src == src_path:  # Action is from Src -> Trg
@@ -2724,7 +2732,7 @@ class MusicTree(PlayCommonSelf):
             Before calling issue warning if it will change tri-state.
             When it finishes call set_all_parents() to update selection column
             for Artist or Album. Call reverse() to update just one song.
-            Both will totals rolled up into parents.
+            Both will roll up the totals into parents.
         """
 
         # Mimic CheckboxTreeview self._box_click() code
@@ -2778,7 +2786,7 @@ class MusicTree(PlayCommonSelf):
         """ We just unchecked the item, update totals
 
             TODO: Removing from playlist artwork keeps spinning but playing
-                  stops. Instead next song should start playing.
+                  stops. Instead, next song should start playing.
         """
         tags = self.lib_tree.item(item)['tags']
         if 'Artist' in tags or 'Album' in tags:
@@ -2806,7 +2814,7 @@ class MusicTree(PlayCommonSelf):
         self.manually_checked = False
 
     def set_all_parent(self, Id, action):
-        """Id can be an Artist or Album. action can be "Add" or "Del"
+        """ ID can be an Artist or Album. action can be "Add" or "Del"
                 Are we processing an albums for artist or single album?
                 Are we turning selection on or off? (action passed)
         """
@@ -2962,7 +2970,7 @@ class MusicTree(PlayCommonSelf):
         """
         #        self.remove_popup_sel()              # Return normal highlighting
         # TODO: Get first song to serve as Artist/Album subdirectory
-        #       Append sub-directory to topdir
+        #       Append subdirectory to topdir
         if Id.startswith("I"):
             return  # Parents are a no-go
         full_path = self.real_path(int(Id))
@@ -3075,7 +3083,7 @@ $ wmctrl -l -p
         # Kid3 or one of his children must be active to return True
 
         # 0x0480043a  0 0        N/A Playing Selected Songs
-        # 0x05200004  0 6683     N/A A Momentary Lapse Of Reason — Kid3
+        # 0x05200004  0 6683     N/A Momentary Lapse Of Reason — Kid3
         # 0x05200037  0 6683     N/A Add Frame — Kid3
         for line in all_windows:
             if "Kid3" in line:
@@ -3122,7 +3130,7 @@ $ wmctrl -l -p
         os.execl(sys.executable, sys.executable, *sys.argv)
 
     def close_sleepers(self):
-        # Close loc_keep_awake() first as it has .25 second sleep cycle
+        # Close loc_keep_awake() first as it has .25-second sleep cycle
         # COMMON CODE for restart and quit
         self.loc_keep_awake_is_active = False
         self.lib_top_is_active = False      # Tell refresh_items() to bail out
@@ -3427,12 +3435,12 @@ TODO: Convert playlist from one location to another (Import Playlist?)
     $ head Big_List.pkl
     (lp0
     S'/mnt/music/Compilations/Atomic Blonde Soundtrack/01 Cat People (Putting Out The Fire).m4a'
-    p1
+    p1)
 
     $ head last_playlist
     (lp0
     S'/home/rick/Music/Compilations/White Heat_ 30 Hits [Disc 1]/1-04 Icehouse.m4a'
-    p1
+    p1)
 
 BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
 
@@ -3452,7 +3460,7 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
       File "./mserve", line 3272, in song_set_ndx
         self.wrap_up_song()                          # Close currently playing
       File "./mserve", line 3297, in wrap_up_song
-        Id = self.saved_selections[self.ndx]        # Get treeview song ID
+        ID = self.saved_selections[self.ndx]        # Get treeview song ID
     IndexError: tuple index out of range
 
         """
@@ -3710,12 +3718,12 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
             save_playlist = pickle.load(f)
             #print('len(save_playlist):', len(save_playlist))
             #print(save_playlist[:10])  # DEBUG
-            # [u'/media/rick/SANDISK128/Music/April Wine/Greatest Hits Live 2003/Just between you and me.mp3',
+            # [u'/media/rick/SANDISK128/Music/April\ Wine/Greatest Hits Live 2003/Just between you and me.mp3',
 
         song_count = len(save_playlist)
         number_digits = len(str(song_count))
 
-        self.ndx = 0  # Currently playing song
+        self.ndx = 0  # Already playing song
         with open(lc.FNAME_LAST_SONG_NDX, 'rb') as f:
             self.ndx = pickle.load(f)
             #print('current index:', self.ndx)
@@ -3762,7 +3770,7 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
         if LODICT.get('activecmd', "") is not "":
             self.loc_keep_awake_is_active = True
 
-            # May been restarting music player so keep awake immediately
+            # May be restarting music player so keep awake immediately
             self.next_active_cmd_time = time.time()
             self.loc_keep_awake()
 
@@ -3799,7 +3807,7 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
 
         if self.play_top_is_active:  # Are we already playing songs?
             if self.play_on_top:
-                # If we had focus, give it up
+                # If we had the focus, give it up
                 self.play_on_top = False
                 self.lib_tree_btn2["text"] = "🎵  Show playing"
                 self.lib_top.focus_force()  # Get focus
@@ -3815,10 +3823,10 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
             return  # Don't start playing again
 
         ''' Count number of songs selected. '''
-        self.play_song_count = 0  # How many songs selected for playing
-        self.pause_t_start = 0  # How much time was spent paused
-        self.play_t_start = 0  # Hom much time was spent playing
-        self.play_top_sink = ""  # Fix error if self.play_top_sink is not ""
+        self.play_song_count = 0    # How many songs selected for playing
+        self.pause_t_start = 0      # How much time was spent paused
+        self.play_t_start = 0       # Hom much time was spent playing
+        self.play_top_sink = ""     # Fix error if self.play_top_sink is not ""
 
         if self.play_from_start:
             ''' Get list of items tagged for playing in Artist order '''
@@ -3844,23 +3852,23 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
         ''' Make parent buttons invisible so user doesn't try to click '''
         self.clear_buttons()
         # Option 2 instead of self.clear_buttons()
-        # self.lib_top.withdraw()    # Make invisible but still active
+        # self.lib_top.withdraw()               # Make invisible but still active
         self.play_top = tk.Toplevel()
         self.play_top.minsize(g.WIN_MIN_WIDTH, g.WIN_MIN_HEIGHT)
         self.play_top_is_active = True
 
         # Set flags for child processes running
-        self.sam_top_is_active = False  # Sample middle 10 seconds
-        self.syn_top_is_active = False  # Fine-tune time index running?
-        self.sync_ffplay_is_running = False  # Currently playing and syncing?
-        self.sync_paused_music = False  # Important this is False now
-        self.sync_changed_score = False  # For warning messages
+        self.sam_top_is_active = False          # Sample middle 10 seconds
+        self.syn_top_is_active = False          # Fine-tune time index running?
+        self.sync_ffplay_is_running = False     # Playing and syncing?
+        self.sync_paused_music = False          # Important this is False now
+        self.sync_changed_score = False         # For warning messages
 
         ''' Gather data to paint VU Meter
             TODO: When pausing vu_meter fill black space with background color. 
         '''
         # /dev/hull prevents ALSA errors from clearing screen with errors:
-        #   ALSA lib pcm.c:(snd_pcm_open_no update) Unknown PCM cards.pcm.rear
+        #   ALSA lib pcm.c: (snd_pcm_open_no update) Unknown PCM cards.pcm.rear
         #   ALSA lib pcm_route.c: Found no matching channel map
         # If this isn't done real error messages from mserve could be wiped out
         ext_name = "python vu_meter.py stereo 2>/dev/null"
@@ -4043,8 +4051,8 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
             self.create_scroll_button_and_tooltip(
                 rounded_text, tt_text, ms_font=ms_font)
 
-        # Set four rounded rectangles to width of longest rectangle to
-        # prevent longest rectangle right side showing under shorter ones
+        # Set four rounded rectangles to width of the longest rectangle to
+        # prevent the longest rectangle right side showing under shorter ones
         self.set_max_dimensions()
 
         # U+2630 in unicode and then U+22EE
@@ -4059,14 +4067,14 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
         #self.lyrics_panel_label.grid(row=0, column=2, sticky=tk.NSEW)
         #self.lyrics_panel_label.grid_rowconfigure(0, weight=0)
         #self.lyrics_panel_label.grid_columnconfigure(0, weight=1)  # Note weight to stretch
-        # Center label in panel
+        # Center labels in panel
         self.play_F3_panel.update()
         self.lyrics_panel_label.place(relx=.6, rely=.5, anchor="center")
 
         self.lyrics_panel_last_line = 1                 # Appears in title string
 
         self.tt.add_tip(self.lyrics_panel_label, tool_type='label',
-                        text="Replace me!")
+                        text="Replace me!", anchor="se")
 
         # Hamburger menu. Do we want to use: ☰ or ⋮ ?
         rounded_text = u"☰"
@@ -4086,7 +4094,7 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
         self.lyrics_panel_hamburger.grid(row=0, column=1, sticky=tk.E)
 
         self.tt.add_tip(self.lyrics_panel_hamburger, text=tt_text,
-                        tool_type='canvas_button')
+                        tool_type='canvas_button', anchor="se")
 
         # We give extra padding around label so RoundedRectangle hsa enough
         # space. dummy is required because panel_label uses place to center
@@ -4131,14 +4139,16 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
         self.close_button.grid(row=0, column=0, padx=2, sticky=tk.W)
         self.play_top.bind("<Escape>", self.play_close)
         self.play_top.protocol("WM_DELETE_WINDOW", self.play_close)
-        self.tt.add_tip(self.close_button, "Close playlist but mserve stays open.")
+        self.tt.add_tip(self.close_button, "Close playlist but mserve stays open.",
+                        anchor="sw")
 
         ''' Shuffle Button Em space + u 1f500 = 🔀 '''
         # BIG_SPACE = " "         # UTF-8 (2003) aka Em Space
         self.shuffle_button = tk.Button(self.play_btn, text=" 🔀 Shuffle",
                                         width=BTN_WID2 - 6, command=self.play_shuffle)
         self.shuffle_button.grid(row=0, column=1, padx=2, sticky=tk.W)
-        self.tt.add_tip(self.shuffle_button, "Shuffle songs into random order.")
+        self.tt.add_tip(self.shuffle_button, "Shuffle songs into random order.",
+                        anchor="sw")
 
         ''' Pause/Play Button '''
         self.pp_state = "Playing"           # This and next two lines in init
@@ -4148,7 +4158,7 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
                                    width=BTN_WID2 - 5, command=self.pp_toggle)
         self.pp_button.grid(row=0, column=2, padx=2)
         text = "Pause music, pause artwork and\nallow manual lyrics scrolling."
-        self.tt.add_tip(self.pp_button, text)
+        self.tt.add_tip(self.pp_button, text, anchor="sw")
         self.pp_toggle_time = 0.0
 
         ''' Prev and Next Buttons '''
@@ -4157,13 +4167,15 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
             tk.Button(self.play_btn, text="🠈  Previous", width=BTN_WID2 - 4,
                       command=lambda s=self: s.song_set_ndx('prev'))
         self.prev_button.grid(row=0, column=3, padx=2, sticky=tk.W)
-        self.tt.add_tip(self.prev_button, "Play previous song in playlist.")
+        self.tt.add_tip(self.prev_button, "Play previous song in playlist.",
+                        anchor="sw")
         # BIG_SPACE = " "         # UTF-8 (2003) aka Em Space
         self.next_button = \
             tk.Button(self.play_btn, text=" Next 🠊 ", width=BTN_WID2 - 6,
                       command=lambda s=self: s.song_set_ndx('next'))
         self.next_button.grid(row=0, column=4, padx=2, sticky=tk.W)
-        self.tt.add_tip(self.next_button, "Play next song in playlist.")
+        self.tt.add_tip(self.next_button, "Play next song in playlist.",
+                        anchor="sw")
 
         ''' Hockey Commercial and Intermission Buttons '''
         # 📺 | television (U+1F4FA) @ Graphic
@@ -4173,13 +4185,13 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
                                     s=self: s.start_hockey(TV_BREAK1))
         self.com_button.grid(row=0, column=5, padx=2, sticky=tk.W)
         self.tt.add_tip(self.com_button, "Play music for 90 seconds.\n" +
-                        "Turn down TV volume whilst playing.")
+                        "Turn down TV volume whilst playing.", anchor="sw")
         self.int_button = tk.Button(self.play_btn, text="🏒  Intermission",
                                     width=BTN_WID2 - 3, command=lambda
                                     s=self: s.start_hockey(TV_BREAK2))
         self.int_button.grid(row=0, column=6, padx=2, sticky=tk.W)
         self.tt.add_tip(self.int_button, "Play music for 18 minutes.\n" +
-                        "Turn down TV volume whilst playing.")
+                        "Turn down TV volume whilst playing.", anchor="se")
         ''' Show/Hide Playlist Chronology button (Frame 4) '''
         self.play_list_hide = False
         self.chron_button = tk.Button(
@@ -4190,7 +4202,7 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
         # TODO: This text is duplicated in show/hide function
         text = "Hide the scrollable playlist below and\n" + \
                "double the size of spinning artwork."
-        self.tt.add_tip(self.chron_button, text)
+        self.tt.add_tip(self.chron_button, text, anchor="se")
 
         ''' Frame for Playlist Chronology '''
         self.F4 = tk.Frame(self.play_top, bg="Black", borderwidth=BTN_BRD_WID,
@@ -4283,7 +4295,7 @@ TypeError: 'NoneType' object is not iterable
                 (self.art_width, self.art_height), Image.ANTIALIAS)
         self.play_current_song_art = ImageTk.PhotoImage(self.play_resized_art)
 
-        # Sometimes attribute isn't defined yet, eg during init
+        # Sometimes attribute isn't defined yet, e.g. during init
         if hasattr(self, 'pp_state'):
             if self.pp_state is "Paused":
                 # Recreate image to new size (doesn't resize in above line).
@@ -4441,7 +4453,7 @@ TypeError: 'NoneType' object is not iterable
         self.current_song_path = ""  # signal not increment song
         if self.pp_state is "Paused":  # Button reflects paused?
             self.pp_toggle_button()  # Button reflects playing
-            # No song loaded so we don't need to actually unpause. New plays.
+            # No song loaded so, we don't need to actually unpause. New plays.
 
     def wrap_up_song(self):
         if len(self.saved_selections) == 0:
@@ -4524,7 +4536,7 @@ TypeError: 'NoneType' object is not iterable
             Set Firefox volume to 25%
         """
         # Firefox may have multiple entries
-        self.play_firefox_indices = sink_list("Firefox")
+        self.play_firefox_indices = sink_list(FIREFOX)
         for index in self.play_firefox_indices:
             os.popen('pactl set-sink-input-volume ' + index + ' 25%') \
                      .read().strip().splitlines()
@@ -4536,7 +4548,7 @@ TypeError: 'NoneType' object is not iterable
         """
         # rebuild to prevent 17 errors if paused when countdown ends:
         #   Failed to get sink input information: No such entity
-        self.play_firefox_indices = sink_list("Firefox")
+        self.play_firefox_indices = sink_list(FIREFOX)
 
         for index in self.play_firefox_indices:
             os.popen('pactl set-sink-input-volume ' + index + ' 100%') \
@@ -4634,7 +4646,7 @@ ValueError: invalid literal for int() with base 10: 'I191'
                                      str(self.play_song_count))
 
         ''' Build full song path from song_list[] '''
-        # TODO: Get SQLite3 row which may have originally be recorded with
+        # TODO: Get SQLite3 row which may have originally been recorded with
         #       different OS directory name or song name which was later
         #       changed.
         self.current_song_path = self.real_path(list_index)
@@ -4703,8 +4715,8 @@ ValueError: invalid literal for int() with base 10: 'I191'
 
     @staticmethod
     def ellipsis(string, cutoff):
-        """ Format "Very long long long long long long string" as
-                   "very long long long lon..."
+        """ Format "Very long string" as
+                   "long string..."
         """
         if len(string) > cutoff:
             return string[:cutoff - 3] + "..."
@@ -4764,7 +4776,7 @@ ValueError: invalid literal for int() with base 10: 'I191'
 
         # TODO: tool.thread() needs update to check if called from
         #       multiple places there is no need to repeat what was
-        #       just done < 20 ms ago (or whatever shortest run
+        #       just done < 20 ms ago (or whatever the shortest run
         #       time happens to be).
 
         # DEBUG LOST TIME of .25 seconds or so
@@ -4780,7 +4792,7 @@ ValueError: invalid literal for int() with base 10: 'I191'
 
         ''' May be called from Library with no music playing (tooltip)  '''
         if not self.play_top_is_active:
-            return  # Used to be continue
+            return  # Used to be a "continue" statement
 
         if self.pp_toggle_time != 0.0:
             # prev_song_sec
@@ -4788,18 +4800,20 @@ ValueError: invalid literal for int() with base 10: 'I191'
 
         ''' Synchronizing lyrics to time index controls music '''
         if self.syn_top_is_active:
-            self.syn_top.update()  # Is this needed? YES!
-            self.syn_top.after(50)  # Wait until lyric sync
-            return  # Used to be continue
+            self.syn_top.update()               # Is this needed? YES!
+            sleep = 50 - (int(time.time() - now))
+            sleep = 1 if sleep < 1 else sleep
+            self.syn_top.after(sleep)              # Wait until lyric sync
+            return  # Used to be a "continue" statement
 
         if self.play_hockey_active:  # Is hockey active?
             elapsed = int(time.time() -
                           self.play_hockey_t_start)  # Elapsed time Hockey
-            self.hockey_countdown(elapsed)  # Remaining in buttons
+            self.hockey_countdown(elapsed)      # Remaining in buttons
             if elapsed > self.play_hockey_secs:  # Has countdown ended?
                 self.play_hockey_active = False  # Turn off timer
                 if self.pp_state is "Playing":  # Is music playing?
-                    self.pp_toggle()  # Pause & watch TV
+                    self.pp_toggle()            # Pause & watch TV
 
         if self.pp_state is "Paused":
             self.play_top.update()  # Sept 20 2020
@@ -4815,6 +4829,8 @@ ValueError: invalid literal for int() with base 10: 'I191'
             time.time() - self.current_song_t_start + self.secs_before_pause
         self.current_song_mm_ss_d = tmf.mm_ss(self.current_song_secs, 
                                               trim=False, rem='d')
+        # TODO: Explain the rationale for below. Intent is probably future
+        #       option for user to select minutes:seconds or just seconds.
         if True is True:
             self.current_progress.set(self.current_song_mm_ss_d +
                                       " of: " + self.saved_DurationMin)
@@ -4822,13 +4838,13 @@ ValueError: invalid literal for int() with base 10: 'I191'
             self.current_progress.set(str('%.1f' % self.current_song_secs) +
                                       " seconds of: " + str(self.saved_DurationSecs))
 
-        self.play_spin_art()  # Rotate artwork 1°
-        self.play_vu_meter()  # Left & Right VU Meters
-        self.play_paint_lyrics()  # Uses lyrics time index
+        self.play_spin_art()                    # Rotate artwork 1°
+        self.play_vu_meter()                    # Left & Right VU Meters
+        self.play_paint_lyrics()                # Uses the lyrics time index
         if not self.play_top_is_active:
             return  # Play window closed?
         self.play_top.update()  # Update spinner & text
-        sleep = 33 - (int(time.time() - now))       # Strict 30 frames per second
+        sleep = 33 - (int(time.time() - now))   # Strict 30 frames per second
         sleep = 1 if sleep < 1 else sleep
         self.play_top.after(sleep)  # Wait until playing
 
@@ -5278,7 +5294,7 @@ ValueError: invalid literal for int() with base 10: 'I191'
                 y1 = 0
             y_list.append((y0, y1))
 
-        num_rect = len(y_list)  # We may end up with less rectangles
+        num_rect = len(y_list)  # We may end up with fewer rectangles
 
         # print('height:', height, 'number:', num_rect, 'r_hgt_pad:', r_hgt_pad, \
         #       'r_hgt:', r_hgt, 'pad:', pad, 'y_list', y_list)
@@ -5458,7 +5474,7 @@ ValueError: invalid literal for int() with base 10: 'I191'
             toolkit.config_all_labels(self.play_F3_panel, fg=self.background,
                                       bg=self.foreground)
             # Unfortunately can't change canvas color or text color, just the
-            # outline background color. So tags are setup for rounded rectangle
+            # outline background color. So tags are set up for rounded rectangle
             # and text within it. Below sets background around rounded corners.
             toolkit.config_all_canvas(self.play_F3_panel,
                                       bg=self.foreground)
@@ -5532,7 +5548,7 @@ ValueError: invalid literal for int() with base 10: 'I191'
 
     def play_lyrics_from_library(self):
         """ turn on auto scrolling, it can be overridden from saved steps or
-            if left clicking on lyrics to set lyrics line to seconds link.
+            if left-clicking on lyrics to set lyrics line to time index.
             self.lyrics_score, self.lyrics_time_list = sql.get_lyrics(key)
         """
         self.play_lyrics_populate_score_box()
@@ -5566,7 +5582,7 @@ ValueError: invalid literal for int() with base 10: 'I191'
 
     def play_lyrics_from_web(self):
         """ turn on auto scrolling, it can be overridden from saved steps or
-            if left clicking on lyrics to set lyrics line to seconds link.
+            if left-clicking on lyrics to set lyrics line to time index.
         """
         webscrape.delete_files()  # Cleanup last run
         self.lyrics_line_count = 1  # Average about 45 lines
@@ -5693,7 +5709,7 @@ ValueError: invalid literal for int() with base 10: 'I191'
 
     def play_lyrics_auto_scroll(self):
         """ Automatically update cursor position in text box.
-            Based on percentage of time, not synchronized to lyrics.
+            Based on percentage of time, not synchronized to the lyrics.
             NO highlight bar
         """
         if not self.play_top_is_active or self.lyrics_edit_is_active:
@@ -5733,7 +5749,7 @@ ValueError: invalid literal for int() with base 10: 'I191'
             # Note if we just added line, it could be exactly same seconds
             if seconds > self.current_song_secs:
                 # print('Found greater seconds:', seconds, 'at index i:', i)
-                self.lyrics_curr_line = i  # Previous line number is i index
+                self.lyrics_curr_line = i  # Previous line number is the current index
                 line_found = True
                 break
 
@@ -5765,7 +5781,7 @@ ValueError: invalid literal for int() with base 10: 'I191'
     # ==============================================================================
 
     def play_train_lyrics(self):
-        """ Train Lyrics was right clicked. Right click again to Save/Cancel.
+        """ Train Lyrics was right-clicked. Right click again to Save/Cancel.
 
             WARNING: work_time_list, new_time_list and lyrics_time_list are
                     used differently.
@@ -5834,9 +5850,9 @@ ValueError: invalid literal for int() with base 10: 'I191'
         self.play_lyrics_rebuild_title()
 
     def play_lyrics_left_click(self, event):
-        """ Left clicked lyric line. Scroll as needed to see next two lines.
-            Highlight line with reversed colors. Record time index - or in
-            other words cross reference between seconds and line number. Remove
+        """ Left-clicked lyric line. Scroll as needed to see next two lines.
+            Highlight line with reversed colors. Record time index (the 
+            cross-reference between seconds and line number). Remove
             highlight from previous line (unless zero). If you click the next
             line too soon simply re-click the current line again and the false
             click will be discarded. rename list_data to os_filenames
@@ -5905,7 +5921,7 @@ ValueError: invalid literal for int() with base 10: 'I191'
         line, char = index.split(".")
         self.lyrics_curr_line = int(line)  # Line # just clicked
         self.play_highlight(self.lyrics_curr_line)  # Position highlight bar
-        # We probably don't need separate function anymore
+        # We probably don't need a separate function anymore
         # if self.lyrics_time_scroll == True:
         #     self.play_lyrics_replace_time()
         #     return
@@ -6058,7 +6074,7 @@ ValueError: invalid literal for int() with base 10: 'I191'
     def play_lyrics_create_skipped(self, first, last):
         """
 
-            TODO: Pause music and display what will happened in Yes/No Message
+            TODO: Pause music and display what will happen in Yes/No Message
 
             Clicking many lines ahead to make up for missed lines.
             To compensate add dummy lines from last know index (or zero if none)
@@ -6132,7 +6148,7 @@ ValueError: invalid literal for int() with base 10: 'I191'
 
             TODO: This is broken May 13, 2021. Doesn't turn off time scroll
                   Create button in lyrics title bar showing scrolling state
-                    left clicking button will toggle the state, right clicking
+                    left-clicking button will toggle the state, right-clicking
                     will bring up menu to select states - timed, auto, manual
         """
 
@@ -6176,7 +6192,7 @@ ValueError: invalid literal for int() with base 10: 'I191'
 
 
     def play_lyrics_right_click(self, event):
-        """ Right clicked lyric line. Popup menu with options:
+        """ Right-clicked lyric line. Popup menu with options:
 
             - Webscrape lyrics (from genius.com. FUTURE option pick website)
             - Clipboard paste lyrics (erases current lyrics first)
@@ -6248,8 +6264,8 @@ ValueError: invalid literal for int() with base 10: 'I191'
             Deactivate item:   https://bytes.com/topic/python/answers/
                                27013-tkinter-disable-menu-items-while-running
 
-            :param menu: Menu widget passed from parent
-            :param txt: Convenient short hand for self.lyrics_score_box
+            param menu: Menu widget passed from parent
+            param txt: Convenient shorthand for self.lyrics_score_box
         """
 
         # Has text been edited?
@@ -6338,7 +6354,7 @@ ValueError: invalid literal for int() with base 10: 'I191'
             edit_state = tk.DISABLED
             no_edit_state = tk.NORMAL
 
-        # Is text selected? (Allows copy, cut and delete options
+        # Is text selected? (Allows copy, cut and delete options)
         # August 2, 2021 comment out below - it's not used???
         #if txt.tag_ranges("sel"):
         #    sel_state = tk.NORMAL
@@ -6462,11 +6478,11 @@ ValueError: invalid literal for int() with base 10: 'I191'
     # ==============================================================================
 
     def play_edit_lyrics(self):
-        """ Edit Lyrics was right clicked. Right click again to Save/Cancel.
+        """ Edit Lyrics was right-clicked. Right click again to Save/Cancel.
             Typical usage:
                 A. Copy [chorus] block and paste at next [chorus] tag.
                 B. Correct works like "have" to "got" and vice versa.
-                C. Remove line break before single comma on it's own line.
+                C. Remove line break before single comma on its own line.
         """
         if not self.lyrics_pid == 0:
             print('lyrics are being web scraped. Please wait a second.')
@@ -6658,6 +6674,12 @@ ValueError: invalid literal for int() with base 10: 'I191'
 
             TODO:
 
+            FIX BROKEN TOOLTIPS !!!
+            When clicking "Sample All" the new tooltips do not display on hover and
+                the old tooltip remains with focus forever it needs to be closed at
+                same time as grid forget command.
+            tt.close(widget) when closing window
+
             Buttons Tag group, Copy
             When clicking Tag, prompt for first line and last line to index
             When clicking Begin, prompt for pre-tag lead in and mount:
@@ -6681,16 +6703,16 @@ ValueError: invalid literal for int() with base 10: 'I191'
 
         # Set flags for child processes running
         self.syn_top_is_active = False          # Synchronizing Time Indices?
-        self.sync_ffplay_is_running = False     # Currently playing and syncing?
-        self.sync_paused_music = False  # Important this is False now
-        self.sync_changed_score = False  # For warning messages
-        self.sync_changed_lyrics = True  # Lyrics score has been changed
+        self.sync_ffplay_is_running = False     # Currently, playing and syncing?
+        self.sync_paused_music = False          # Important this is False now
+        self.sync_changed_score = False         # For warning messages
+        self.sync_changed_lyrics = True         # Lyrics score has been changed
 
-        self.sync_ffplay_pid = 0  # ffplay linux process ID
-        self.sync_ffplay_sink = ""  # pulseaudio sink number
-        if self.pp_state is "Playing":  # Is music playing?
-            self.pp_toggle()  # Pause to synchronize lyrics
-            self.sync_paused_music = True  # So we can resume play later
+        self.sync_ffplay_pid = 0                # ffplay linux process ID
+        self.sync_ffplay_sink = ""              # pulseaudio sink number
+        if self.pp_state is "Playing":          # Is music playing?
+            self.pp_toggle()                    # Pause to synchronize lyrics
+            self.sync_paused_music = True       # So we can resume play later
 
         ''' Create window '''
         self.syn_top = tk.Toplevel()
@@ -6705,14 +6727,14 @@ ValueError: invalid literal for int() with base 10: 'I191'
 
         # self.sync_start = time.time()
         '''
-Traceback (most recent call last):
-  File "/usr/lib/python2.7/lib-tk/Tkinter.py", line 1540, in __call__
-    return self.func(*args)
-  File "./mserve", line 5058, in <lambda>
-    self.play_sync_time_index(), font=(None, MED_FONT))
-  File "./mserve", line 5300, in play_sync_time_index
-    self.sync_start = time.time()
-UnboundLocalError: local variable 'time' referenced before assignment
+            Traceback (most recent call last):
+              File "/usr/lib/python2.7/lib-tk/Tkinter.py", line 1540, in __call__
+                return self.func(*args)
+              File "./mserve", line 5058, in <lambda>
+                self.play_sync_time_index(), font=(None, MED_FONT))
+              File "./mserve", line 5300, in play_sync_time_index
+                self.sync_start = time.time()
+            UnboundLocalError: local variable 'time' referenced before assignment
         '''
 
         ''' Place Window top-left of play list window '''
@@ -6830,7 +6852,7 @@ UnboundLocalError: local variable 'time' referenced before assignment
         close = tk.Button(self.syn_top_buttons, text="✘ Close",
                           width=BTN_WID2 - 6, command=self.sync_close)
         close.grid(row=0, column=0, padx=2, sticky=tk.W)
-        self.tt.add_tip(close, "Close this fine-tune index window.")
+        self.tt.add_tip(close, "Close this fine-tune index window.", anchor="nw")
         # Disable for now because Child process like "self.sync_begin()" should
         # be trapping ESCAPE
         # self.syn_top.bind("<Escape>", self.sync_close)
@@ -6842,7 +6864,8 @@ UnboundLocalError: local variable 'time' referenced before assignment
         begin.grid(row=0, column=1, padx=2)
         self.tt.add_tip(
             begin, "First check boxes for first and last line.\n" +
-            "Then click this button to synchronize.")
+            "Then click this button to synchronize.",
+            anchor="nw")
 
         ''' 😒 Delete - 😒 (u+1f612) - Delete all '''
         delete = tk.Button(self.syn_top_buttons, text="😒 Delete all",
@@ -6850,14 +6873,15 @@ UnboundLocalError: local variable 'time' referenced before assignment
         delete.grid(row=0, column=2, padx=2)
         self.tt.add_tip(
             delete, "When time indices are hopelessly wrong,\n" +
-            "click this button to delete them all.")
+            "click this button to delete them all.", anchor="nw")
 
         ''' 🎵  Sample all - Sample all show library '''
         sample = tk.Button(self.syn_top_buttons, text="🎵  Sample all",
                            width=BTN_WID2 - 4, command=self.sync_sample_all)
         sample.grid(row=0, column=3, padx=2)
         self.tt.add_tip(
-            sample, "Click to sample the first second of every line.")
+            sample, "Click to sample the first second of every line.",
+            anchor="nw")
 
         ''' - Merge lines - Merge two lines together '''
         merge = tk.Button(self.syn_top_buttons, text="- Merge lines",
@@ -6865,7 +6889,7 @@ UnboundLocalError: local variable 'time' referenced before assignment
         merge.grid(row=0, column=4, padx=2)
         self.tt.add_tip(
             merge, "First check two or more lines. Then\n" +
-            "click this button to merge together.")
+            "click this button to merge together.", anchor="nw")
 
         ''' + Insert line - Insert line line eg [chorus] or [bridge] '''
         insert = tk.Button(self.syn_top_buttons, text="+ Insert line",
@@ -6873,7 +6897,7 @@ UnboundLocalError: local variable 'time' referenced before assignment
         insert.grid(row=0, column=5, padx=2)
         self.tt.add_tip(
             insert, "First check line to insert before. Then\n" +
-            "click this button to insert a new line.")
+            "click this button to insert a new line.", anchor="ne")
 
         ''' 💾  Save - Save lyrics (may be merged) and time indices '''
         save = tk.Button(self.syn_top_buttons, text="💾  Save",
@@ -6881,7 +6905,7 @@ UnboundLocalError: local variable 'time' referenced before assignment
         save.grid(row=0, column=6, padx=2)
         self.tt.add_tip(
             save, "Save time indices and close\n" +
-            "this fine-tune index window.")
+            "this fine-tune index window.", anchor="ne")
 
         ''' Create & remove child buttons for sync_begin '''
         self.syn_top_buttons.grid_remove()  # Remove syn_top buttons grid
@@ -6901,7 +6925,7 @@ UnboundLocalError: local variable 'time' referenced before assignment
         begin_done.grid(row=0, column=1, padx=2, sticky=tk.W)
         self.tt.add_tip(
             begin_done, "Click this button to skip\n" +
-            "synchronizing remaining lines.")
+            "synchronizing remaining lines.", anchor="nw")
 
         ''' "Rewind 5 seconds" Button - Synchronize selected lines '''
         begin_rewind = tk.Button(self.sync_begin_buttons, text="Rewind 5 seconds",
@@ -6909,14 +6933,14 @@ UnboundLocalError: local variable 'time' referenced before assignment
         begin_rewind.grid(row=0, column=2, padx=2)
         self.tt.add_tip(
             begin_rewind, "Click this button to stop play,\n" +
-            "go back 5 seconds and resume play.")
+            "go back 5 seconds and resume play.", anchor="nw")
 
         ''' Restore main button grid '''
-        self.sync_begin_buttons.grid_remove()  # Remove sync_begin buttons grid
-        self.syn_top_buttons.grid()  # Restore syn_top buttons grid
+        self.sync_begin_buttons.grid_remove()   # Remove sync_begin buttons grid
+        self.syn_top_buttons.grid()             # Restore syn_top buttons grid
 
         ''' Create & remove child buttons for sync_sample '''
-        self.syn_top_buttons.grid_remove()  # Remove syn_top buttons grid
+        self.syn_top_buttons.grid_remove()      # Remove syn_top buttons grid
         self.sync_sample_buttons = tk.Frame(self.syn_top, relief=tk.GROOVE,
                                             background=self.background,
                                             borderwidth=BTN_BRD_WID)
@@ -6934,16 +6958,17 @@ UnboundLocalError: local variable 'time' referenced before assignment
         sample_done.grid(row=0, column=1, padx=2, sticky=tk.W)
         self.tt.add_tip(
             sample_done, "Click this button to skip\n" +
-            "sampling remaining lines.")
+            "sampling remaining lines.", anchor="nw")
         ''' Pause/Play Button - Toggles state '''
         self.sync_sample_pp_state = 'Playing'
         self.sync_sample_pp_button = \
             tk.Button(self.sync_sample_buttons, text=self.pp_pause_text,
                       width=BTN_WID2 - 4, command=self.sync_sample_toggle_play)
         self.sync_sample_pp_button.grid(row=0, column=2, padx=2, sticky=tk.W)
+        ''' TODO: Tooltip remains ghosted when moving off button focus '''
         self.tt.add_tip(
             self.sync_sample_pp_button, "Click this button to toggle\n" +
-            "pause / playing of music.")
+            "pause / playing of music.", anchor="nw")
 
         ''' "Rewind 5 seconds" Button '''
         sample_rewind = tk.Button(self.sync_sample_buttons, text="Rewind 5 seconds",
@@ -6951,11 +6976,11 @@ UnboundLocalError: local variable 'time' referenced before assignment
         sample_rewind.grid(row=0, column=3, padx=2)
         self.tt.add_tip(
             sample_rewind, "Click this button to stop play,\n" +
-            "go back 5 seconds and resume play.")
+            "go back 5 seconds and resume play.", anchor="nw")
 
         ''' Restore main button grid '''
         self.sync_sample_buttons.grid_remove()  # Remove sync_sample buttons
-        self.syn_top_buttons.grid()  # Restore syn_top buttons grid
+        self.syn_top_buttons.grid()             # Restore syn_top buttons grid
 
         ''' Setup label & buttons sizes and styles '''
         # Apply color codes to buttons - See play_ffmpeg_artwork()
@@ -7056,7 +7081,7 @@ UnboundLocalError: local variable 'time' referenced before assignment
         """ Play music and synchronize time for checked treeview lines.
         
             Fill in all blank check boxes between first and last checked.
-            If nothing was checked error is displayed and we return.
+            If nothing was checked error is displayed, and we return.
             Set start time 4 seconds before first checked.
             Set end time to start of line following last checked.
 
@@ -7079,7 +7104,8 @@ Failed to get sink input information: No such entity
             programming using "pactl" external command
         """
         if self.sync_ffplay_is_running:
-            return  # Currently playing?
+            print('self.sync_ffplay_is_running:')
+            return  # Already playing
 
         # Fill first and last checked boxes. At least one line must be checked.
         self.sync_first, self.sync_last = self.sync_fill_checkboxes()
@@ -7096,6 +7122,7 @@ Failed to get sink input information: No such entity
         self.sync_curr_highlight = 0  # When changes move bar
         self.sync_ffplay_is_running = True  # We are now playing
         self.sync_start_ffplay()  # Sets variables;
+        # QUESTION? Is below calling poll_tips?
         self.sync_watch_ffplay()  # self.old_sinks
         self.sync_clean_ffplay()  # self.active_sink
         self.sync_ffplay_is_running = False  # No longer playing
@@ -7112,7 +7139,7 @@ Failed to get sink input information: No such entity
 
     def sync_begin_rewind(self):
         """ Rewind 5 seconds.
-            Temporarily hide buttons so they can't be clicked for 2 seconds
+            Temporarily hide buttons so, they can't be clicked for 2 seconds
             Ramp down our currently playing volume only (don't ramp up others)
             Kill currently playing
             Rewind 4 seconds from current spot, calculate new duration
@@ -7126,14 +7153,14 @@ Failed to get sink input information: No such entity
             # Window closed or song finished playing already
             return
 
-        # Pause the music so it can't end while we ramp up next ffplay sink
+        # Pause the music so, it can't end while we ramp up next ffplay sink
         ext.stop_pid_running(self.sync_ffplay_pid)  # Pause the music
 
         # Calculate new start index and duration
         old_pid = self.sync_ffplay_pid  # The PID to kill later
         curr_start = self.sync_start + self.sync_elapsed - 5
         if curr_start > self.sync_start:
-            # New star time later than previous start time, good to override
+            # New start time later than previous start time, good to override
             start_diff = curr_start - self.sync_start
             self.sync_start = curr_start
             self.sync_duration -= start_diff
@@ -7165,7 +7192,7 @@ Traceback (most recent call last):
 IndexError: list index out of range
         """
 
-        # Give 2.5 second playing countdown before line to sync
+        # Give 2.5-second playing countdown before line to sync
         if calculate:
             self.sync_start = self.new_time_list[self.sync_first - 1] - 2.5
             if self.sync_start < 0.0:
@@ -7173,9 +7200,9 @@ IndexError: list index out of range
 
         # Duration after last checkbox line + 2 seconds.
         # TODO: work_line_count (based on lyrics) can be greater than time_list
-        sync_start = time.time()
-        print('\nsync_start_ffplay() count:', self.work_line_count,
-              'first:', self.sync_first, 'last:', self.sync_last)
+        #sync_start = time.time()
+        #print('\n sync_start_ffplay() count:', self.work_line_count,
+        #      'first:', self.sync_first, 'last:', self.sync_last)
         if calculate:
             if self.sync_last + 1 < self.work_line_count:
                 # Grab start time of line after last line to set duration+2 secs
@@ -7206,7 +7233,7 @@ IndexError: list index out of range
             s_time = set_volume(self.sync_ffplay_sink, int(i * 10))
             for app_sink, app_vol, app_name in self.old_sinks:
                 if not others:
-                    break  # Only doing ourself
+                    break  # Only doing ourselves
                 if app_sink == self.sync_ffplay_sink:
                     continue  # Skip our sink!
                 percent = int(app_vol - int(app_vol * i / 10))  # Reduce by 10%
@@ -7215,13 +7242,13 @@ IndexError: list index out of range
             if s_time < .07:
                 root.after(int((.07 - s_time) * 1000))  # Sleep .07 per step
 
-        sync_end = time.time()
-        print('sync_start_ffplay() start: %.2f' % sync_start,
-              'end: %.2f' % sync_end,
-              'diff: %.2f' % (sync_end - sync_start))
-        print('self.sync_music_start_time: %.2f' % self.sync_music_start_time,
-              'start diff: %.2f' % (self.sync_music_start_time - sync_start),
-              'end diff: %.2f' % (sync_end - self.sync_music_start_time))
+        #sync_end = time.time()
+        #print('sync_start_ffplay() start: %.2f' % sync_start,
+        #      'end: %.2f' % sync_end,
+        #      'diff: %.2f' % (sync_end - sync_start))
+        #print('self.sync_music_start_time: %.2f' % self.sync_music_start_time,
+        #      'start diff: %.2f' % (self.sync_music_start_time - sync_start),
+        #      'end diff: %.2f' % (sync_end - self.sync_music_start_time))
         # Final verdict: We are burning up .75 seconds before watch starts
 
     def sync_watch_ffplay(self):
@@ -7234,19 +7261,18 @@ IndexError: list index out of range
         self.sync_elapsed = 0.0
         self.sync_curr_highlight = ""
         self.syn_tree.bind("<ButtonRelease-1>", self.sync_select)
-        # self.printed=False                             # DEBUGGING stuff
+        # self.printed=False                    # DEBUGGING stuff
         # Run until ffplay ends prematurely, or 1 second before it ends.
         while ext.check_pid_running(self.sync_ffplay_pid):
             if not self.syn_top_is_active:
-                return  # Window closed?
+                return                          # Window closed?
             self.sync_elapsed = time.time() - self.sync_music_start_time
             #            if self.sync_elapsed + 2.6 > self.sync_duration:
             if self.sync_elapsed + 1.0 > self.sync_duration:
                 # Leave 1 second early so there is time to ramp down/up volume
                 break
-            self.sync_check_highlight()  # Check highlight pos.
-            self.syn_top.update()  # Get button clicks
-            self.syn_top.after(50)  # Pseudo-sleep .05 sec
+            self.sync_check_highlight()         # Check highlight pos.
+            self.refresh_play_top()
 
         # Restore treeview button settings
         if not self.syn_top_is_active:
@@ -7269,14 +7295,14 @@ IndexError: list index out of range
             if sleep < 20:
         """
         # Only restore active_sinks, using self.old_sinks volume
-        # self.syn_top_active maybe False but we still have to restore volume
+        # self.syn_top_active maybe False but, we still have to restore volume
         active_sinks = sink_master()  # list of sinks now
 
-        print('\nsync_clean_ffplay() sink:', self.sync_ffplay_sink,
-              'duration: %.2f' % self.sync_duration,
-              'elapsed: %.2f' % self.sync_elapsed,
-              'diff: %.2f' % (self.sync_duration - self.sync_elapsed), '\n')
-        loop_start = time.time()
+        #print('\n sync_clean_ffplay() sink:', self.sync_ffplay_sink,
+        #      'duration: %.2f' % self.sync_duration,
+        #      'elapsed: %.2f' % self.sync_elapsed,
+        #      'diff: %.2f' % (self.sync_duration - self.sync_elapsed), '\n')
+        #loop_start = time.time()
         # time_used = time.time() - loop_start
         err = False
         err_count = 0
@@ -7287,14 +7313,14 @@ IndexError: list index out of range
             for app_sink, app_vol, app_name in active_sinks:
                 # Is this our currently playing sink?
                 if app_sink == self.sync_ffplay_sink:  # This is our sink
-                    percent = 100 - (i * 10)  # Turn down volume 10%
-                    if err_count < 1:  # If no errors yet
+                    percent = 100 - (i * 10)    # Turn down volume 10%
+                    if err_count < 1:           # If no errors yet
                         app_time, err = set_volume(self.sync_ffplay_sink,
                                                    percent, return_err=True)
                     else:
-                        err_count += 1  # Would be another error
+                        err_count += 1          # Would be another error
                         app_time = 0
-                    s_time += app_time  # Total all system times
+                    s_time += app_time          # Total all system times
                     if app_time > .025:
                         print('sync_clean_ffplay(self): app_time too large:',
                               app_time, 'our sink:', app_sink, 'i', i)
@@ -7304,32 +7330,32 @@ IndexError: list index out of range
                 # Turn up sink for old applications if still active
                 for old_sink, old_vol, old_name in self.old_sinks:
                     if others is False:
-                        break  # Only doing ourself
+                        break                   # Only doing ourselves
                     if old_sink == self.sync_ffplay_sink:
-                        continue  # We are on our own sink already adjusted
+                        continue                # We are on our own sink already adjusted
                     if old_sink == app_sink:
                         percent = int(old_vol * i / 10)  # Old volume up 10%
                         app_time = set_volume(old_sink, percent)
-                        s_time += app_time  # Total all system times
+                        s_time += app_time      # Total all system times
                         if app_time > .025:
                             print('sync_clean_ffplay(self): app_time too large:',
                                   app_time, 'sink:', app_sink, 'i', i)
                     # Grab next o sink (old sink) for comparison
                 # Grab next a sink (active sink)
 
-            time_used = time.time() - loop_start
+            #time_used = time.time() - loop_start
             sleep = int((.06 - s_time) * 1000)  # .06 between steps
             if sleep < 1:
-                print('%.2f' % time_used, 'step number: %2d' % i,
-                      's time: %.2f' % s_time, 'cannot sleep < 1 ms:', sleep,
-                      'lost_ms:', lost_ms)
+                #print('%.2f' % time_used, 'step number: %2d' % i,
+                #      's time: %.2f' % s_time, 'cannot sleep < 1 ms:', sleep,
+                #      'lost_ms:', lost_ms)
                 # Lag if commands is like sleeping anyway.
                 lost_ms += sleep  # negative total
             else:
                 # Positive sleep value: either sleep or apply to lost sleep
-                print('%.2f' % time_used, 'step number: %2d' % i,
-                      's time: %.2f' % s_time, 'sleep milliseconds :', sleep,
-                      'lost_ms:', lost_ms)
+                #print('%.2f' % time_used, 'step number: %2d' % i,
+                #      's time: %.2f' % s_time, 'sleep milliseconds :', sleep,
+                #      'lost_ms:', lost_ms)
                 ext.t_init('root.after using: ' + str(sleep) + ' milliseconds')
                 # Do we have lost ms to make up for?
                 if lost_ms < 0:
@@ -7383,7 +7409,7 @@ IndexError: list index out of range
             # values[0] = new_time, values[1]=line text, values[2]=old duration
             # values[3] = new_duration
             if values[3] != "":
-                # A non-blank time was formatted so we overrode previously
+                # A non-blank time was formatted so, we overrode previously
                 # TODO: Recall create treeview routine
                 self.syn_tree.delete(*self.syn_tree.get_children())
                 self.sync_create_treeview_list()
@@ -7536,7 +7562,7 @@ IndexError: list index out of range
         """ Time Indices hopelessly out of sync so Delete them.
         """
         if self.sync_ffplay_is_running:
-            return  # Currently playing?
+            return  # Already playing?
 
         answer = message.AskQuestion(
             self.syn_top, thread=self.refresh_play_top,
@@ -7552,7 +7578,7 @@ IndexError: list index out of range
         self.new_time_list = []
         # Reset variables to reflect no time indices
         self.play_lyrics_remove_highlights()
-        # This is awkward because we aren't using work fields but it's not
+        # This is awkward because we aren't using work fields but, it's not
         # possible for next song to be playing anyway.
         self.lyrics_prev_line = 0
         self.lyrics_curr_line = 0
@@ -7578,7 +7604,7 @@ IndexError: list index out of range
         
         """
         if self.sync_ffplay_is_running:
-            return  # Currently playing?
+            return                              # Already playing
 
         # Check all boxes
         for line in range(1, self.work_line_count):
@@ -7593,48 +7619,31 @@ IndexError: list index out of range
         if not self.sync_first:  # Error message already
             return  # displayed so return.
 
-        self.sync_ffplay_is_running = True  # We are now playing
-        self.sync_sample_pp_state = 'Playing'  # Initial pause/play
-        self.syn_top_buttons.grid_remove()  # Hide syn_top buttons
-        self.sync_sample_buttons.grid()  # Display our buttons
-        self.sync_start_ffplay()  # Sets variables;
-        self.sync_watch_ffplay2()  # self.old_sinks
-        self.sync_clean_ffplay()  # self.active_sink
-        self.sync_ffplay_is_running = False  # No longer playing
+        self.sync_ffplay_is_running = True      # We are now playing
+        # TODO: May be paused from last sample all that was cancelled
+        self.sync_sample_pp_state = 'Playing'   # Initial pause/play
+        self.syn_top_buttons.grid_remove()      # Hide syn_top buttons
+        self.sync_sample_buttons.grid()         # Display our buttons
+        self.sync_start_ffplay()                # Sets variables;
+        self.sync_watch_ffplay2()               # self.old_sinks
+        self.sync_clean_ffplay()                # self.active_sink
+        self.sync_ffplay_is_running = False     # No longer playing
         self.sync_sample_buttons.grid_remove()  # Hide our buttons
-        self.syn_top_buttons.grid()  # Restore main buttons
+        self.syn_top_buttons.grid()             # Restore main buttons
 
     def sync_sample_done(self):
         """ Save changes and quit sync_sample_all() function
         """
-        self.sync_ffplay_pid = 0  # Force exit
-        self.sync_remove_all_checkboxes()  # Remove highlight done
+        self.sync_ffplay_pid = 0                # Force exit
+        self.sync_remove_all_checkboxes()       # Remove highlight done
+        self.sync_ffplay_is_running = False     # No longer playing "Playing"
+        # If clicked "Done" while music was paused, reset for next time
+        if self.sync_sample_pp_state is 'Paused':
+            self.sync_sample_pp_state = 'Playing'
+            self.sync_sample_pp_button['text'] = self.pp_pause_text
 
     def sync_sample_toggle_play(self):
-        """ Toggle pause/play
-        
-        if self.pp_state is "Playing":
-            # We were playing so now we will pause
-            self.pp_toggle_button()                 # Set button text
-            # Volume down in 10 steps of 5% with .025 sec in-between, end @ 50%
-            step_volume(self.play_top_sink, 100, 50, 10, .025)
-            ext.stop_pid_running(self.play_top_pid) # Pause the music
-            self.secs_before_pause = get_curr_ffplay_secs(TMP_CURR_SONG)
-            ext.stop_pid_running(self.vu_meter_pid) # Pause the VU Meters
-            self.show_paused_art()                  # Mount "Paused" artwork
-
-            for _ in range(self.VU_HIST_SIZE):      # Remove VU_meter rectangles
-                self.play_vu_meter(stop='yes')      # Gradually declines as
-                self.play_top.after(10)             # history list has more 0
-        else:
-            # We were paused so now we resume playing
-            self.pp_toggle_button()                 # Set button text
-            ext.continue_pid_running(self.play_top_pid)
-            # self.current_song_secs = get_curr_ffplay_secs(TMP_CURR_SONG)
-            self.current_song_t_start = time.time()
-            ext.continue_pid_running(self.vu_meter_pid)
-            # Volume up in 10 steps of 5% with .063 sec in-between, end @ 100%
-            step_volume(self.play_top_sink, 50, 100, 10, .063518)
+        """ Toggle pause/play during Fine-Tune Sample All
         """
         if self.sync_sample_pp_state is 'Playing':
             self.sync_sample_pp_state = 'Paused'
@@ -7655,25 +7664,25 @@ IndexError: list index out of range
 
     def sync_sample_rewind(self):
         """ Rewind 5 seconds.
-            Temporarily hide buttons so they can't be clicked for 2 seconds
+            Temporarily hide buttons so, they can't be clicked for 2 seconds
             Ramp down our currently playing volume only (don't ramp up others)
             Kill currently playing
             Rewind 4 seconds from current spot, calculate new duration
             Restart play and ramp up only our volume
         """
-        self.sync_begin_buttons.grid_remove()  # Remove our buttons
-        self.sync_clean_ffplay(others=False)  # Turn down our volume
+        self.sync_begin_buttons.grid_remove()   # Remove our buttons
+        self.sync_clean_ffplay(others=False)    # Turn down our volume
 
         if not self.syn_top_is_active or \
                 not ext.check_pid_running(self.sync_ffplay_pid):
             # Window closed or song finished playing already
             return
 
-        # Pause the music so it can't end while we ramp up next ffplay sink
+        # Pause the music so, it can't end while we ramp up next ffplay sink
         ext.stop_pid_running(self.sync_ffplay_pid)  # Pause the music
 
         # Calculate new start index and duration
-        old_pid = self.sync_ffplay_pid  # The PID to kill later
+        old_pid = self.sync_ffplay_pid          # The PID to kill later
         curr_start = self.sync_start + self.sync_elapsed - 5
         if curr_start > self.sync_start:
             # New star time later than previous start time, good to override
@@ -7686,21 +7695,21 @@ IndexError: list index out of range
         # Start playing: others=Don't turn down other applications,
         #                calculate=use existing self.sync_xxx values
         self.sync_start_ffplay(others=False, calculate=False)
-        ext.kill_pid_running(old_pid)  # Kill the last ffplay
-        self.sync_begin_buttons.grid()  # Display our buttons
+        ext.kill_pid_running(old_pid)           # Kill the last ffplay
+        self.sync_begin_buttons.grid()          # Display our buttons
 
     def sync_watch_ffplay2(self):
         """
             Play line for 1 second then skip to next.
-            When we first startup music already playing for length of song.
+            When we first start up music already playing for length of song.
             Allow two seconds first time before killing.
-            Thereafter kill each line after 1 second of play
+            After that, kill each line after 1 second of play
         """
         self.sync_elapsed = 0.0
         self.sync_curr_highlight = ""
 
         # self.printed=False                             # DEBUGGING stuff
-        # First time ffplay with 2 second delay for ramping up.
+        # First time ffplay with 2-second delay for ramping up.
         play_seconds = 2.0
         line_no = 1
         while ext.check_pid_running(self.sync_ffplay_pid):
@@ -7723,10 +7732,10 @@ IndexError: list index out of range
                     self.syn_tree.see(str(line_no))
                     self.sync_restart_ffplay(line_no)
 
-            self.sync_check_highlight()  # Check highlight pos.
-            self.syn_top.update()  # Get button clicks
-            self.syn_top.after(50)  # Pseudo-sleep .05 sec
-            # Remaining loops ffplay with 1 second delay.
+            self.sync_check_highlight()         # Check highlight pos.
+            self.refresh_play_top()
+
+            # Remaining loops ffplay with 1-second delay.
             play_seconds = 1.0
 
         # Clear highlights
@@ -7746,14 +7755,14 @@ IndexError: list index out of range
         if self.sync_start < 0.0:
             self.sync_start = 0.0
 
-        # Launch ffplay at start second for 2 seconds but it is killed after 1
+        # Launch ffplay at start second for 2 seconds but, it is killed after 1
         # print('Relaunch ffplay at:', self.sync_start, 'line:', line_no, \
         #       'time_list:', self.new_time_list[line_no -1])
         extra_opt = ' -ss ' + str(self.sync_start) + ' -t 2'
         self.sync_ffplay_pid, self.sync_ffplay_sink = \
             start_ffplay(self.work_song_path, TMP_CURR_SAMPLE, extra_opt)
         set_volume(self.sync_ffplay_sink, 100)  # TODO: Why is volume
-        # at 0% after first line so we have to force 100% volume now?
+        # at 0% after first line so, we have to force 100% volume now?
 
         self.sync_music_start_time = time.time()  # Music is playing now
         # print('playing: ffplay "' + self.work_song_path +'"', extra_opt)
@@ -7963,7 +7972,7 @@ IndexError: list index out of range
             """
     def play_lyrics_from_library(self):
         ''' turn on auto scrolling, it can be overridden from saved steps or
-            if left clicking on lyrics to set lyrics line to seconds link.
+            if left-clicking on lyrics to set lyrics line to seconds link.
             self.lyrics_score, self.lyrics_time_list = sql.get_lyrics(key)
         '''
         self.lyrics_score_box.configure(state="normal")
@@ -7987,7 +7996,7 @@ IndexError: list index out of range
 
     def play_sync_startup_check(self):
         """ Check if fine-tuning time indices is appropriate.
-            Use 80% threshold. Give advise on how to manually click each
+            Use 80% threshold. Give advice on how to manually click each
             lyrics score line in song as it is being sung by the singer.
         """
         time_count = len(self.work_time_list)
@@ -8020,7 +8029,7 @@ IndexError: list index out of range
                  "5. If you fall behind on clicking, click the correct line.\n\t" +
                  "6. When song ends, click 'Previous' button to replay it.\n\t" +
                  "7. Now as song plays, lines will highlight automatically.\n\t" +
-                 "8. Mistakes can be fixed by left clicking at correct time.\n\t" +
+                 "8. Mistakes can be fixed by left-clicking at correct time.\n\t" +
                  "9. If lines still need fine-tuning then use this function.\n\n" +
 
                  'NOTE: If lyrics contain errors, fix them before using this function.')
@@ -8053,32 +8062,24 @@ IndexError: list index out of range
             # still ends and changes are lost. So we need to find if 'Restart'
             # is calling us and provide "Last chance to save" option.
 
-        self.sync_ffplay_is_running = False  # Currently playing and syncing?
-        self.syn_top_is_active = False      # Lyrics Time Index window open?
-        self.tt.close(self.syn_top_buttons)  # Delete tooltips
+        self.sync_ffplay_is_running = False     # Playing and syncing?
+        self.syn_top_is_active = False          # Lyrics Time Index window open?
+        self.tt.close(self.syn_top_buttons)     # Delete tooltips
+        self.tt.close(self.sync_begin_buttons)
+        self.tt.close(self.sync_sample_buttons)
         if not self.sync_ffplay_sink == "":
             # Restore volume to other applications
-            self.sync_clean_ffplay()  # Note this takes a second!
-        self.sync_ffplay_pid = 0  # ffplay linux process ID
-        self.sync_ffplay_sink = ""  # pulseaudio sink number
-        self.syn_top.destroy()  # Close the window
-        if self.sync_paused_music:  # Did we pause music player?
-            self.pp_toggle()  # Resume playing
+            self.sync_clean_ffplay()            # Note this takes a second!
+        self.sync_ffplay_pid = 0                # ffplay linux process ID
+        self.sync_ffplay_sink = ""              # pulseaudio sink number
+        self.syn_top.destroy()                  # Close the window
+        if self.sync_paused_music:              # Did we pause music player?
+            self.pp_toggle()                    # Resume playing
         if os.path.isfile(TMP_CURR_SAMPLE):
-            os.remove(TMP_CURR_SAMPLE)  # Clean up /tmp directory
+            os.remove(TMP_CURR_SAMPLE)          # Clean up /tmp directory
 
         # Refresh title to reflect edit mode is in progress
         self.play_lyrics_rebuild_title()
-
-    # SEARCH and REPLACE
-    # sql.make_key()            to: self.work_sql_key
-    # self.current_song_path    to: self.work_song_path
-    # self.current_song_secs    to: self.work_song_secs
-    # self.DurationSecs         to: self.work_DurationSecs
-    # self.Title                to: self.work_Title
-    # self.lyrics_score         to: self.work_lyrics_score
-    # self.lyrics_line_count    to: self.work_line_count
-    # self.lyrics_time_list     to: self.work_time_list
 
     # ==============================================================================
     #
@@ -8185,7 +8186,7 @@ IndexError: list index out of range
             self.ndx = 0
             print('play_remove(): Unplanned resetting self.ndx = 0')
 
-        curr_play_id = self.saved_selections[self.ndx]  # Get current song Id
+        curr_play_id = self.saved_selections[self.ndx]  # Get current song ID
         L = list(self.saved_selections)  # convert tkinter tuple to list
         # noinspection PyBroadException
         try:
@@ -8259,9 +8260,9 @@ IndexError: list index out of range
             print('play_insert(): Unplanned resetting self.ndx = 0')
 
         # print ('Inserting song iid:',iid, 'at:',self.ndx)
-        curr_play_id = self.saved_selections[self.ndx]  # Get current song Id
+        curr_play_id = self.saved_selections[self.ndx]  # Get current song ID
         L = list(self.saved_selections)  # convert tkinter tuple to list
-        L[self.ndx:self.ndx] = [iid]  # Insert song new Id here
+        L[self.ndx:self.ndx] = [iid]  # Insert song new ID here
         self.saved_selections = tuple(L)  # convert list back into tuple
         self.play_song_count = len(self.saved_selections)
 
@@ -8332,7 +8333,7 @@ IndexError: list index out of range
         self.restore_buttons()  # Restore Library buttons to default
 
         self.play_top.destroy()
-        #self.play_top = None  #Nonetype error, try reassign and destroy first
+        #self.play_top = None  #Nonetype error, try reassigning and destroy first
 
     # ==============================================================================
     #
@@ -8528,7 +8529,7 @@ IndexError: list index out of range
             return  # We are already closed
         self.sam_top_is_active = False
         root.update()
-        root.after(350)  # Give some volume ramp down time
+        root.after(350)  # Give some volume ramp-down time
 
         if not self.sam_top_pid == 0:
             # If music still playing kill it
@@ -8733,7 +8734,7 @@ IndexError: list index out of range
         root.update()
 
     def play_show_hide(self):
-        """ Drop down "now playing" list below playing buttons """
+        """ Toggles "now playing" list below playing buttons """
         if self.play_list_hide:
             self.F4.grid()  # Restore hidden grid
             self.play_list_hide = False
@@ -8751,6 +8752,16 @@ IndexError: list index out of range
 
         self.chron_button['text'] = text
         self.tt.set_text(self.chron_button, text2)
+        ''' Toggle position from above to below, or below to above '''
+        self.tt.toggle_position(self.close_button)
+        self.tt.toggle_position(self.shuffle_button)
+        self.tt.toggle_position(self.pp_button)
+        self.tt.toggle_position(self.prev_button)
+        self.tt.toggle_position(self.next_button)
+        self.tt.toggle_position(self.com_button)
+        self.tt.toggle_position(self.int_button)
+        self.tt.toggle_position(self.chron_button)
+
         self.play_chron_update(self.ndx, True)  # Required after shuffle songs
         #root.update()
         self.F4.update_idletasks()
@@ -8769,7 +8780,7 @@ def start_ffplay(song, tmp_name, extra_opt):
             tmp_name = /tmp/filename to send output of song name EG:
                 TMP_CURR_SONG="/tmp/mserve.currently_playing"
                 TMP_CURR_SAMPLE="/tmp/mserve.current_sample"
-            extra_opt can be blank or they can be:
+            extra_opt can be blank or, they can be:
                 -ss = start seconds offset within song, normal is 0
                 -t = how long to play song (duration in seconds)
 
@@ -8778,11 +8789,12 @@ def start_ffplay(song, tmp_name, extra_opt):
     ''' Get old Input Sinks before ffplay starts '''
     old_sink = sink_list("ffplay")
 
-    ''' Get old Input Sinks before ffplay starts '''
+    ''' ffplay start options to redirect output to temporary file '''
     # noinspection SpellCheckingInspection
     ext_name = 'ffplay -autoexit ' + '"' + song + '" ' + extra_opt + \
                ' -nodisp 2>' + tmp_name
     # inspection SpellCheckingInspection
+    ''' launch ffplay external command in background '''
     found_pid = ext.launch_command(ext_name, toplevel=None)
     if found_pid == 0:
         print('Waited 10 seconds, aborting start_ffplay() get PID')
@@ -8804,6 +8816,7 @@ def start_ffplay(song, tmp_name, extra_opt):
         if new_sink == old_sink:
             continue
         found_sink = list_diff(new_sink, old_sink, "start_ffplay()")
+        print('found sink:', found_sink)
         break
 
     return found_pid, found_sink
@@ -8863,24 +8876,62 @@ def sink_list(program):
         sink, vol, name = entry
         if program == name:
             indices.append(sink)
+            print('MATCHING sink entry found:', entry)
     return indices
 
 
+# After calling 11 times crashes so call outside of sink_master()
+pulse_working = True
+try:
+    pulse = pulsectl.Pulse()
+
+except Exception as p_err:  # CallError, socket.error, IOError (pidfile), OSError (os.kill)
+    pulse_working = False
+    raise PulseError('Failed to connect to pulse {} {}'.format(type(p_err), p_err))
+
+
 def sink_master():
+    """ Get PulseAudio list of all sinks
+        Return list of tuples with sink #, flat volume and application name
+    """
+
+    all_sinks = []                              # List of tuples
+
+    if pulse_working:
+        # WIP: Use existing tuple structure but convert to pulsectl volume
+        #      structure down the road.
+        for sink in pulse.sink_input_list():
+            #print("\n=======  ", sink.index, sink.volume, sink.name)
+            #print(sink.proplist['application.name'])
+            # sink.volume = channels = 2, volumes = [100 % 100 %]
+            this_volume = str(sink.volume)
+            this_volume = this_volume.split('[')[1]
+            this_volume = this_volume.split(' ')[0]
+            this_volume = this_volume.replace('%', '')
+            all_sinks.append(tuple((str(sink.index), this_volume,
+                                    str(sink.proplist['application.name']))))
+            #print(sink.proplist)
+            #pulse_dict = sink.proplist
+            #for i in pulse_dict:
+            #    print("key:", i, "value:", pulse_dict[i])
+        return all_sinks
+
+
     all_lines = os.popen('pactl list sink-inputs').read().splitlines()
 
-    all_sinks = []
     this_sink = ""
     in_sink = False
     this_volume = ""
     in_volume = False
     for line in all_lines:
         if in_sink is False and "Sink Input #" in line:
+            # Sink Input #725
             this_sink = line.split('#')[1]
             in_sink = True
             continue
         if in_sink is True and in_volume is False and "Volume:" in line:
-            this_volume = line.split(os.sep)[1]
+            # Volume: front-left: 32768 /  50% / -18.06 dB,   front-right ...
+            this_volume = line.split('/')[1]  # Grab 50% or 100%, etc
             this_volume = this_volume.replace(' ', '')
             this_volume = int(this_volume.replace('%', ''))
             in_volume = True
@@ -8889,12 +8940,15 @@ def sink_master():
         # noinspection SpellCheckingInspection
         if in_sink is True and in_volume is True and "tion.name =" in line:
             # inspection SpellCheckingInspection
+            # application.name = "ffplay"
             this_name = line.split('=')[1]
             this_name = this_name.replace(' ', '')
             this_name = this_name.replace('"', '')
+            # Add tuple to the list
+            all_sinks.append(tuple((this_sink, this_volume, this_name)))
+            # Reset searching for first and second targets again
             in_sink = False
             in_volume = False
-            all_sinks.append(tuple((this_sink, this_volume, this_name)))
             continue
 
     ''' return list of tuples (sink#, volume percent, application name) '''
@@ -8930,6 +8984,9 @@ def set_volume(sink, percent, return_err=False):
     """ Set volume and return time required to do it
         Trap error messages with 2>&1
         subprocess
+
+        Long Term TODO: Use: https://github.com/mk-fg/python-pulse-control
+            this will be faster than call to `pactl`
     """
     # Build command line list for subprocess
     # noinspection PyListCreation
@@ -9138,7 +9195,7 @@ class ToolTip(object):
         tw.wm_geometry("+%d+%d" % (x, y))
 
         try:
-            # For Mac OS
+            # For macOS
             # noinspection PyProtectedMember
             tw.tk.call("::tk::unsupported::MacWindowStyle",
                        "style", tw._w,
