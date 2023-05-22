@@ -3,6 +3,13 @@
 #
 #       toolkit.py - tkinter (took kit interface) functions
 #
+#       Jan. 18 2022 - Set tooltip location SW, SE, NW or NE of parent widget.
+#       Feb. 26 2022 - Add border to tooltip, don't vary y-axis mouse movement.
+#       Jul. 17 2022 - Error in bserve when bup_view close button clicked.
+#       Jul. 25 2022 - Begin systray development - GNOME cross platform.
+#       Jul. 30 2022 - Expand find_column() with:  elif self.find_op == '>=':
+#       Apr. 15 2023 - Move in normalize_tcl() from bserve.py for mserve.py.
+#
 #==============================================================================
 
 # identical imports in mserve
@@ -32,6 +39,10 @@ except ImportError:  # Python 2
     PYTHON_VER = "2"
 # print ("Python version: ", PYTHON_VER)
 
+# For MoveTreeviewColumn
+from collections import namedtuple
+from os import popen
+
 import time
 from datetime import datetime
 from ttkwidgets import CheckboxTreeview
@@ -40,22 +51,35 @@ from collections import OrderedDict, namedtuple
 import global_variables as g
 import external as ext      # Time formatting routines
 import image as img
+import re                   # w, h, old_x, old_y = re.split(r'\D+', geom)
+import traceback            # To display call stack (functions that got us here)
+
+
+def print_trace():
+    for line in traceback.format_stack():
+        print(line.strip())
+
 
 '''
 List all objects in play next song
 https://stackoverflow.com/questions/60978666/get-list-of-toplevels-on-tkinter
 '''
 LAST_TIME = 0.0             # So headings only appear once during recursion
-WIDGET_COUNT = 0             # Last call's subtotal
-#import pprint
+WIDGET_COUNT = 0            # Last call's subtotal
 
 
 def list_widgets(level, scan="All"):
     """
-    List all widgets of a certain type (or "All") for object
+    List all widgets of a certain type (or "All") for object.
+
+    Scan options are: "All", "Toplevel", "Frame", "Label",  
+    "Button", "Treeview", "Scrollbar", "Menu", "Canvas" & "Other" 
 
     widget_list: [<Tkinter.Label instance at 0x7f16387b63f8>]
                                instance_hex: 0x7f16387b63f8
+
+    TODO: Make into a class so global variable name space is reduced
+
     """
     global LAST_TIME, WIDGET_COUNT
     now = time.time()
@@ -64,16 +88,23 @@ def list_widgets(level, scan="All"):
             # Print total from last run
             print('Number of widgets:', WIDGET_COUNT)
             WIDGET_COUNT = 0
-        print('\n============= list_widgets() called at:', ext.t(now), '=============')
+        print('\n============= list_widgets() called at:', ext.t(now),
+              "'scan=" + scan + "' =============")
+        print("Parent Widget:", level)
         LAST_TIME = now
 
     for k, v in level.children.items():
 
+        error_found = False
+        print_it = False
+
         if isinstance(v, tk.Toplevel) and (scan == "All" or scan == "Toplevel"):
             print('Toplevel :', 'key;', k, 'value:', v)
+            print_it = True
 
         elif isinstance(v, tk.Frame) and (scan == "All" or scan == "Frame"):
             print('Frame    :', k, v)
+            print_it = True
             if not isinstance(v, tk.Frame):
                 print("ERROR: Not a tkinter Frame !!!!!!!")
 
@@ -82,6 +113,7 @@ def list_widgets(level, scan="All"):
             # elif isinstance(v, tk.Label) and (scan=="Label"):
             # elif isinstance(v, tk.Label):  all were BROKEN but now work???
             print('Label    :', k, v)
+            print_it = True
             instance_hex = hex(int(k))
             tkinter_label = '<Tkinter.Label instance at ' + \
                             instance_hex + '>'
@@ -91,28 +123,39 @@ def list_widgets(level, scan="All"):
             
         elif isinstance(v, tk.Button) and (scan == "All" or scan == "Button"):
             print('Button   :', k, v)
+            print_it = True
 
         elif isinstance(v, ttk.Treeview) and (scan == "All" or scan == "Treeview"):
             print('Treeview :', k, v)
+            print_it = True
 
         elif isinstance(v, tk.Scrollbar) and (scan == "All" or scan == "Scrollbar"):
             print('Scrollbar:', k, v)
+            print_it = True
 
         elif isinstance(v, tk.Menu) and (scan == "All" or scan == "Menu"):
             print('Menu     :', k, v)
+            print_it = True
 
         elif isinstance(v, tk.Canvas) and (scan == "All" or scan == "Canvas"):
             print('Canvas   :', k, v)
+            print_it = True
 
         elif scan == "All" or scan == "Other":
             print('Other    :', k, v)
+            print_it = True
 
         else:
             # This instance doesn't match but drill down and return
-            print("No match scanning for:", scan)
-            toplevels(v, scan=scan)
+            print("\t No match scanning for:", scan, k, v)
+            # toplevels(v, scan=scan)
+            list_widgets(v, scan=scan)
             WIDGET_COUNT += 1
-            return
+            error_found = True
+            print_it = True
+
+        if not print_it:
+            continue
 
         print('\t Geometry  :', v.winfo_geometry(),
               "x-offset:", v.winfo_x(), "y-offset:", v.winfo_y())
@@ -133,7 +176,7 @@ def list_widgets(level, scan="All"):
                 # Maybe try something like this instead:
                 #         # Creating a Font object of "TkDefaultFont"
                 #         self.defaultFont = font.nametofont("TkDefaultFont")
-                print("tt_font = font.Font(font=label['font']): 'label' is undefined???")
+                print("\t tt_font = font.Font(font=label['font']): 'label' is undefined???")
         except tk.TclError:
             pass
 
@@ -231,6 +274,84 @@ def config_all_canvas(level, **kwargs):
         config_all_canvas(v, **kwargs)
 
 
+def normalize_tcl(s):
+    """
+
+        Used by bserve.py and maybe mserve.py in future.
+
+        Fixes error:
+
+          File "/usr/lib/python2.7/lib-tk/ttk.py", line 1339, in insert
+            res = self.tk.call(self._w, "insert", parent, index, *opts)
+        _tkinter.TclError: character U+1f3d2 is above the 
+            range (U+0000-U+FF FF) allowed by Tcl
+
+        From: https://bugs.python.org/issue21084
+
+    """
+    astral = re.compile(r'([^\x00-\uffff])')
+    new_s = ""
+    for i, ss in enumerate(re.split(astral, s)):
+        if not i % 2:
+            new_s += ss
+        else:
+            new_s += '?'
+
+    return new_s
+
+
+def unique_key(key, dictionary):
+    new_key = key
+    for i in range(1, 100):
+        existing = dictionary.get(new_key)
+        if existing is None:
+            return new_key
+        new_key = key + "(" + str(i) + ")"
+
+    print("toolkit.py - unique_key() has 99 keys")
+    return "ERROR: ???"
+
+
+def tv_tag_add(tv, line, new):
+    tags = tv.item(line)['tags']
+    if new not in tags:
+        tags.append(new)
+        tv.item(line, tags=tags)
+        return True
+    else:
+        print("'new':", new, "already in treeview 'tags' list:", tags)
+        print_trace()
+        return False
+
+
+def tv_tag_replace(tv, line, old, new):
+    tags = tv.item(line)['tags']
+    if old in tags:
+        if new in tags:
+            print("'new':", new, "already in treeview 'tags' list:", tags)
+            print_trace()
+            return False
+        else:
+            tags.remove(old)
+            tags.append(new)
+            tv.item(line, tags=tags)
+            return True
+    else:
+        print("'old':", old, "NOT in treeview 'tags' list:", tags)
+        print_trace()
+        return False
+
+
+def tv_tag_remove(tv, line, old):
+    tags = tv.item(line)['tags']
+    if old in tags:
+        tags.remove(old)
+        tv.item(line, tags=tags)
+        return True
+    else:
+        return False
+
+
 # ==============================================================================
 #
 #       CustomScrolledText class - scrollable text with tag highlighting
@@ -266,7 +387,7 @@ class CustomScrolledText(scrolledtext.ScrolledText):
         """Apply the given tag to all text that matches the given pattern
 
         If 'regexp' is set to True, pattern will be treated as a regular
-        expression according to Tcl's regular expression syntax.
+        expression according to Tcl regular expression syntax.
         """
 
         start = self.index(start)
@@ -398,7 +519,8 @@ class DictTreeview:
         #    print(self.tree.heading(col))
 
         style = ttk.Style()
-        print('style.theme_names():', style.theme_names())
+        # print('style.theme_names():', style.theme_names())
+        # OUTPUT: style.theme_names(): ('clam', 'alt', 'default', 'classic')
         style.configure("Treeview.Heading", font=(None, g.MED_FONT),
                         rowheight=int(g.MED_FONT * 2.2))
         row_height = int(g.MON_FONTSIZE * 2.2)
@@ -440,11 +562,15 @@ class DictTreeview:
                                 command=self.tree.xview)
         h_scroll.grid(row=1, column=0, sticky=tk.EW)
         self.tree.configure(xscrollcommand=h_scroll.set)
-        self.col_count = 0
-        # print('columns:', self.columns)
+        self.col_count = 20  # Change to zero for debug, 20 for no debug
+        # DEBUGGING - Print first 20 encounters
+        if self.col_count < 20:
+            print('columns:', self.columns)
 
     def insert(self, parent_iid="", row=None, iid="", tags="unchecked"):
-        """ Insert new row into treeview. """
+        """ Insert new row into treeview.
+            NOTE: Formatting integers "{:,}" and floats "{0:,.0f}"
+        """
         if row is None:
             print('toolkit.py - dict_tree.insert() - row is required parameter')
             return
@@ -452,29 +578,47 @@ class DictTreeview:
         values = []
         for col in self.columns:
             data_dict = get_dict_column(col, self.tree_dict)
-
-            # DEBUGGING - Print first 10 encounters
-            #self.col_count += 1
-            #if self.col_count < 10:
-            #    print(data_dict)
-            #    print(row)
-            #elif self.col_count == 10:
-            #    print('column count reached:', self.col_count)
-
             unmasked_value = row[data_dict['var_name']]
-            if data_dict['format'] is not None:
+
+            # DEBUGGING - Print first 20 columns and first Table row
+            self.col_count += 1
+            if self.col_count < 20:
+                if self.col_count == 1:
+                    print('============ row ============')
+                    print(row)
+                print(self.col_count, '========= data_dict =========')
+                print(data_dict)
+            elif self.col_count == 20:
+                print('column count reached:', self.col_count)
+
+            if data_dict['format'] == "date":
+                # times are stored in epoch (seconds since January 1, 1970)
+                # Tue Jun 25 10:09:52 2019
+                #values.append(time.asctime(time.localtime(unmasked_value)))
+
+                # s = strftime("%a, %d %b %Y %H:%M:%S + 1010", gmtime())
+                # Tue, 25 Jun 2019 10:09:52 + 1010
+                values.append(time.strftime("%a, %b %d %Y - %H:%M:%S",
+                                            time.localtime(unmasked_value)))
+            elif data_dict['format'] is not None:
                 mask = data_dict['format']
                 try:
                     values.append(mask.format(unmasked_value))
                 except ValueError:
                     print('Invalid format:', data_dict['format'],
                           'var_name:', data_dict['var_name'],
-                          'rwo_id:', row['Id'],)
-                    values.append("KeyError:" + str(unmasked_value))
+                          'row_id:', row['Id'],)
+                    values.append("ValueError:" + str(unmasked_value))
                 except KeyError:
+                    #values.append(unmasked_value)
+                    # April 14, 2023 - All values are already string???
                     values.append("KeyError:" + str(unmasked_value))
+                    # DEBUGGING - Print first 20 encounters
+                    if self.col_count < 20:
+                        print('========= KEY ERROR =========')
+                        print('mask:', mask, 'unmasked_value:', unmasked_value)
             else:
-                values.append(unmasked_value)
+                values.append(unmasked_value)  # String with no formatting
 
         self.tree.insert(parent_iid, tk.END, iid=iid, values=values, tags=tags)
         self.tree.tag_bind(iid, '<Motion>', self.highlight_row)
@@ -644,10 +788,12 @@ def unselect_dict_all(dict_list):
 
 def select_dict_columns(columns, dict_list):
     """ Select columns in order.
-        Returns nothing because list is changed in place.
+        Returns nothing because dict_list is changed in place.
 
-        :param  columns list or tuple of column names in gmail message header
-        :param  dict_list is list of dictionaries
+        :param  columns list in order of display. 
+                It may be a tuple of column names for gmail message header.
+        :param  dict_list is mutable list of dictionary fields. The
+                "("select_order", 0)" field is changed from 0 to number 1 to last.
 
     """
     unselect_dict_all(dict_list)
@@ -664,7 +810,7 @@ def select_dict_columns(columns, dict_list):
 
 def unselect_dict_columns(columns, dict_list):
     """ Unselect columns.
-        Returns nothing because list is changed in place.
+        Returns nothing because dict_list is changed in place.
 
         :param  columns list or tuple of column names in gmail message header
         :param  dict_list is list of dictionaries
@@ -698,6 +844,13 @@ def print_dict_columns(dict_list):
           "anchor": "wrap", "instance": str, "format": None, "display_width": 60,
           "display_min_width": 10, "display_long": 100, "stretch": 1}
 
+      OrderedDict([
+        ("column", "row_id"), ("heading", "Row ID"), ("sql_table", "Music"),
+        ("var_name", "Id"), ("select_order", 0), ("unselect_order", 1),
+        ("key", False), ("anchor", "e"), ("instance", int), ("format", "{,,}"),
+        ("display_width", 150), ("display_min_width", 80),
+        ("display_long", None), ("stretch", 0)]),  # 0=NO, 1=YES
+
     """
     print('\nDATA DICTIONARY\n==============================')
     ''' TODO: Print in selected order first, then unselected order '''
@@ -719,7 +872,8 @@ class SearchText:
     """ Search for string in text and highlight it from:
     https://www.geeksforgeeks.org/search-string-in-text-using-python-tkinter/
     """
-    def __init__(self, view, column=None, find_str=None, find_op='in'):
+    def __init__(self, view, column=None, find_str=None, find_op='in', callback=None,
+                 tt=None):
         # root window is the parent window
         self.view = view
         self.toplevel = view.toplevel
@@ -729,7 +883,13 @@ class SearchText:
         self.column = column
         self.find_str = find_str
         self.find_op = find_op
+        self.callback = callback
+        self.tt = tt
         # print('column:', column, 'find_str:', find_str)
+
+        self.frame = None  # frame for input
+        # adding of single line text box
+        self.edit = None  # input field for search string
 
         if self.find_str is not None:
             return  # search string passed, no need for frame
@@ -749,28 +909,32 @@ class SearchText:
         # setting focus
         self.edit.focus_set()
 
-        # adding of search button  TODO: Expand with tooltips
+        # adding of search button  TODO: Expand with tooltips self.tt not visible
+        butt = tk.Button(self.frame, text='🔍  Find')
+        butt.pack(side=tk.LEFT)
+        butt.config(command=self.find)
+        if self.tt is not None:
+            self.tt.add_tip(butt, "Type in text then click this button.", anchor="ne")
+
         but2 = tk.Button(self.frame, text='✘  Close')
         but2.pack(side=tk.RIGHT)
         but2.config(command=self.close)
-
-        butt = tk.Button(self.frame, text='🔍  Find')
-        butt.pack(side=tk.RIGHT)
-        butt.config(command=self.find)
+        if self.tt is not None:
+            self.tt.add_tip(but2, "Close search bar.", anchor="nw")
 
     def find(self):
-        """ Search treeview for string all string columns
+        """ Search treeview for string in all string columns
         """
         if self.find_str is not None:
-            print('toolkit.py.SearchText.find_one() should have been called.')
-            self.find_one()
+            print('toolkit.py.SearchText.find_column() should have been called.')
+            self.find_column()
             return
 
         # ext.t_init('reattach')
         self.reattach()         # Put back items excluded on last search
         # ext.t_end('no print')   # For 1200 messages 0.00529 seconds
 
-        # returns to widget currently in focus
+        # returns to widget currently in focus - NOT SURE WHY NEEDED???
         s = self.edit.get()
 
         if s:
@@ -787,7 +951,22 @@ class SearchText:
 
         self.edit.focus_set()
 
-    def find_one(self):
+    def find_callback(self):
+        """ Search treeview testing with callback function
+        """
+        self.reattach()         # Put back items excluded on last search
+        for iid in self.tree.get_children():
+            # Get all treeview values for testing via callback function
+            values = self.tree.item(iid)['values']
+
+            if self.callback(values):
+                # Searching all columns of basestring type
+                continue
+
+            self.tree.detach(iid)
+            self.attached[iid] = False
+
+    def find_column(self):
         """ Search treeview for single column of any type (not just strings)
             There is no GUI input for search text.
         """
@@ -798,6 +977,9 @@ class SearchText:
             # searches for desired string
             values = self.tree.item(iid)['values']
             one_value = self.view.column_value(values, self.column)
+            #if iid == "1":
+            #    print('iid:', iid, 'values:', values)
+            #    print('one_value:', one_value)
 
             if self.find_op == 'in':
                 if s.lower() in one_value.lower():
@@ -807,12 +989,24 @@ class SearchText:
                 if s > one_value:
                     #print('iid:', iid, 'values:', values)
                     continue
+            elif self.find_op == '>=':
+                if s < one_value:
+                    # print('iid:', iid, 'values:', values)
+                    continue
+            elif self.find_op == '==':
+                if s == '':
+                    # When find_str is '' it means we are looking for None
+                    if one_value == u'None':
+                        continue
+                if s == one_value:
+                    # print('iid:', iid, 'values:', values)
+                    continue
             else:
                 # Limited number of operations supported on Aug 2, 2021.
-                print('toolkit.py.SearchText.find_one() invalid find_op:',
+                print('toolkit.py.SearchText.find_column() invalid find_op:',
                       self.find_op)
 
-            self.tree.detach(iid)
+            self.tree.detach(iid)  # Remove non-matching treeview item from list
             self.attached[iid] = False
 
 
@@ -836,12 +1030,14 @@ class SearchText:
             self.frame.grid_remove()  # Next pack is faster this way?
 
 
-'''
+''' MoveTreeviewColumn class
+
 Publish to: https://stackoverflow.com/a/51425272/6929343
+
+May 5, 2023 - 'BUTTON_HEIGHT = 63' global constant is no longer used.
 
 TODO -  We are looping through all columns. We only want the ones
         in currently visible scrolled region.
-'''
 
 try:  # Python 3
     import tkinter as tk
@@ -850,7 +1046,7 @@ except ImportError:  # Python 2
 from PIL import Image, ImageTk
 from collections import namedtuple
 from os import popen
-BUTTON_HEIGHT = 63                  # Button region to black out during move
+'''
 
 
 class MoveTreeviewColumn:
@@ -893,10 +1089,12 @@ class MoveTreeviewColumn:
 
     def start(self, event):
         """
-            Button 1 was just pressed for library treeview or backups treeview
+            Button 1 was just pressed for library treeview or backups treeview in 
+                bserve.py (gmail API backup server). Or button 1 pressed for
+                mserve.py (Music Server) SQL Music treeview or SQL History Treeview
 
-        :param event: tkinter event
-        :return:
+            :param event: tkinter event
+            :return: None
         """
 
         #print('<ButtonPress-1>', event.x, event.y)
@@ -952,7 +1150,7 @@ class MoveTreeviewColumn:
 
     def motion(self, event):
         """
-        What if only 1 column?
+        TODO: What if treeview only has 1 column?
 
         What if horizontal scroll and non-displayed columns to left or right
         of displayed treeview columns? Need to compare 'displaycolumns' to
@@ -966,6 +1164,11 @@ class MoveTreeviewColumn:
 
         # Calculate delta - distance travelled since startup or snap to grid
         change = event.x - self.start_mouse_pos.x
+        # Aug 1/22 - self.start_mouse_pos.x or self.canvas_original_x is None Type?
+        if self.start_mouse_pos.x is None:
+            print("toolkit.py/motion() self.start_mouse_pos.x is none")
+        if self.canvas_original_x is None:
+            print("toolkit.py/motion() self.canvas_original_x is none")
 
         # Calculate new start, middle and ending x offsets for source object
         new_x = int(self.canvas_original_x + change)  # Sometimes we get float?
@@ -1248,19 +1451,25 @@ def gnome_screenshot(geom):
 
 # ==============================================================================
 #
-#   toolkit.py - ToolTipsPool, CreateToolTip
+#   toolkit.py - ToolTips(), .add_tip(), .set_text(), .toggle_position(),
+#                .close(), .reset_widget_colors() and .poll_tips()
 #
-#   Aug 16/2021 - Copied from message.py which will be remain intact for
+#   Aug 16/2021 - Copied from message.py which will be kept intact for
 #                 tool tips that do not fade in/out. Only it will be reverted
 #                 to former state.
 #
 # ==============================================================================
 
+""" TODO:
+    Border around tooltip using foreground color to contrast background color:
+    https://www.geeksforgeeks.org/how-to-change-border-color-in-tkinter-widget/
+"""
+
 tt_DEBUG = False        # Print debug events
 
 VISIBLE_DELAY = 750     # ms pause until balloon tip appears (1/2 sec)
-VISIBLE_SPAN = 5000     # ms balloon tip remains on screen (3 sec/line)
-EXTRA_LINE_SPAN = 3000  # More than 1 line is 3 seconds/line
+VISIBLE_SPAN = 5000     # ms balloon tip remains on screen (5 sec/line)
+EXTRA_WORD_SPAN = 500   # 1/2 second per word if > VISIBLE_SPAN
 FADE_IN_SPAN = 500      # 1/4 second to fade in
 FADE_OUT_SPAN = 400     # 1/5 second to fade out
 
@@ -1290,7 +1499,7 @@ class CommonTip:
         self.release_time = 0.0         # time button was released          9
         self.visible_delay = 0          # milliseconds before visible       10
         self.visible_span = 0           # milliseconds to keep visible      11
-        self.extra_line_span = 0        # milliseconds for extra lines      12
+        self.extra_word_span = 0        # milliseconds for extra lines      12
         self.fade_in_span = 0           # milliseconds for fading in        13
         self.fade_out_span = 0          # milliseconds for fading out       14
 
@@ -1316,7 +1525,7 @@ class CommonTip:
         self.bg = None                  # Background color (buttons)      # 25
         self.normal_text_color = None   # self.widget.itemcget(...)       # 26
         self.normal_button_color = None  # .itemcget("button_color"...)   # 27
-
+        self.anchor = None              # tooltip anchor point on widget  # 28
 
 
 class ToolTips(CommonTip):
@@ -1329,22 +1538,22 @@ class ToolTips(CommonTip):
 
         USAGE:
 
-        From Master Toplevel initialize:
+            From Master Toplevel initialize:
 
-            self.tt = ToolTips()
+                self.tt = ToolTips()
 
-        During screen creation Add tooltip (defaults to type='button'):
+            During screen creation Add tooltip (defaults to type='button'):
 
-            self.tt.add_tip(widget_name, type='canvas_button',
-                            text="This button\nDoes that.")
+                self.tt.add_tip(widget_name, type='canvas_button',
+                                text="This button\nDoes that.")
 
-        In future:
+            When screen is closed:
 
-            self.tt_remove_tips(widget_toplevel)
+                self.tt.close(widget_toplevel)
 
-        Parent must poll the tooltips every 33 ms or so with:
+            Parent must poll the tooltips every 33 ms or so with:
 
-            self.tt.poll_tips()
+                self.tt.poll_tips()
 
         When polling is impractical, fade in and fade out are disabled by:
 
@@ -1361,6 +1570,8 @@ class ToolTips(CommonTip):
               The error message is usually displayed: "ToolTipsPool.showtip():
               Previous tooltip should not be waiting to be visible".
 
+              If window doesn't have focus, don't display tips.
+              If window loses focus, close balloons.
     """
 
     def __init__(self):
@@ -1370,7 +1581,7 @@ class ToolTips(CommonTip):
 
         self.log_nt = None              # namedtuple time, action, widget, x, y
         self.log_list = []              # list of log dictionaries
-        self.deleted_str = "0.0.0"      # flag log entry as deleted
+        self.deleted_str = "0.0.0"      # flag log entry as deleted (zero time)
         self.now = time.time()          # Current time
 
         self.dict = {}                  # Tip dictionary
@@ -1391,7 +1602,7 @@ class ToolTips(CommonTip):
         self.release_time = self.dict['release_time']               # 09
         self.visible_delay = self.dict['visible_delay']             # 10
         self.visible_span = self.dict['visible_span']               # 11
-        self.extra_line_span = self.dict['extra_line_span']         # 12
+        self.extra_word_span = self.dict['extra_word_span']         # 12
         self.fade_in_span = self.dict['fade_in_span']               # 13
         self.fade_out_span = self.dict['fade_out_span']             # 14
         self.tip_window = self.dict['tip_window']                   # 15
@@ -1407,6 +1618,7 @@ class ToolTips(CommonTip):
         self.bg = self.dict['bg']                                   # 25
         self.normal_text_color = self.dict['normal_text_color']     # 26
         self.normal_button_color = self.dict['normal_button_color']  # 27
+        self.anchor = self.dict['anchor']                           # 28
 
 
     def fields_to_dict(self):
@@ -1422,7 +1634,7 @@ class ToolTips(CommonTip):
         self.dict['release_time'] = self.release_time               # 09
         self.dict['visible_delay'] = self.visible_delay             # 10
         self.dict['visible_span'] = self.visible_span               # 11
-        self.dict['extra_line_span'] = self.extra_line_span         # 12
+        self.dict['extra_word_span'] = self.extra_word_span         # 12
         self.dict['fade_in_span'] = self.fade_in_span               # 13
         self.dict['fade_out_span'] = self.fade_out_span             # 14
         self.dict['tip_window'] = self.tip_window                   # 15
@@ -1438,6 +1650,7 @@ class ToolTips(CommonTip):
         self.dict['bg'] = self.bg                                   # 25
         self.dict['normal_text_color'] = self.normal_text_color     # 26
         self.dict['normal_button_color'] = self.normal_button_color  # 27
+        self.dict['anchor'] = self.anchor                           # 28
 
 
     def log_event(self, action, widget, x, y):
@@ -1487,7 +1700,7 @@ class ToolTips(CommonTip):
                 return  # Don't want to delete the last one
             if nt.widget == search_widget:
                 # Widget matches so flag as deleted
-                print('deleting:', self.log_nt)
+                print('toolkit.py delete_older_for_widget():', self.log_nt)
                 # TODO: What if entering canvas is deleted and colors not changed?
                 Event = namedtuple('Event', 'time, action, widget, x, y')
                 # noinspection PyArgumentList
@@ -1496,7 +1709,7 @@ class ToolTips(CommonTip):
                                          self.log_nt.x, self.log_nt.y)
 
     def set_tip_plan(self):
-        """ Called to process  event from self.log_nt """
+        """ Called to process event from self.log_nt """
         # Find event log's widget in list of tooltips
         search_widget = self.widget_map(self.log_nt.widget)
         # print('self.log_nt:', self.log_nt)
@@ -1532,7 +1745,7 @@ class ToolTips(CommonTip):
 
             if self.window_fading_out:
                 # If already fading out, continue the process
-                pass  # Can't return now, need to drop down for save
+                pass  # Can't return now, need to go down for save
 
             elif self.window_fading_in:
                 # We were in the middle of fading in, so force fade out from
@@ -1556,9 +1769,10 @@ class ToolTips(CommonTip):
             d_print(prt_time, 'entering widget:', str(self.widget)[-4:])
             self.enter_time = self.log_nt.time
             if self.window_visible is True:
-                # At this point window visible, so start fade out early.
-                print('ERROR: Should not be visible already. If persistent, then')
-                print("activate 'tt_DEBUG = True' and check for two 'ENTER:' in a row.")
+                # Same widget was entered again before fade out completed.
+                pass
+                # print('ERROR: Should not be visible already. If persistent, then')
+                # print("activate 'tt_DEBUG = True' and check for two 'ENTER:' in a row.")
 
             if self.tool_type is 'canvas_button' and self.widget.state is 'normal':
                 self.set_widget_colors()
@@ -1570,11 +1784,11 @@ class ToolTips(CommonTip):
                 self.move_window()
 
         elif self.log_nt.action == 'press':
-            # Button press in widget
+            # Button pressed in widget
             self.press_time = self.log_nt.time
 
         elif self.log_nt.action == 'release':
-            # Button release after press in widget
+            # Button released after press in widget
             self.release_time = self.log_nt.time
 
         else:
@@ -1599,7 +1813,9 @@ class ToolTips(CommonTip):
         smx, smy = self.window_mouse_xy[0:2]
         cmx, cmy = self.current_mouse_xy[0:2]
         smx_diff = int(cmx) - int(smx)  # How has mouse changed since start?
-        smy_diff = int(cmy) - int(smy)
+        # smy_diff = int(cmy) - int(smy)
+        # Override y so it stays on same access
+        smy_diff = 0
         # New geometry = start geometry + mouse change since start
         x = int(sgx) + smx_diff
         y = int(sgy) + smy_diff
@@ -1628,40 +1844,45 @@ class ToolTips(CommonTip):
 
     def calc_fade_in_out(self):
         fade_in_time = self.enter_time + float(self.visible_delay) / 1000
-        extra_time = self.visible_span + \
-            self.extra_line_span * self.text.count('\n')
+        # Calculate visible duration based on word count. Empty line
+        # or new line count as one word.
+        words = self.text.replace('\n', ' ')
+        word_count = len(words.split())
+        extra_time = float(word_count) * self.extra_word_span
+        # If minimal visible time is larger use that
+        if extra_time < self.visible_span:
+            extra_time = self.visible_span 
         fade_out_time = fade_in_time + float(extra_time) / 1000
         return fade_in_time, fade_out_time
 
     def add_tip(self, widget, text='Pass text here', tool_type='button',
                 visible_delay=VISIBLE_DELAY, visible_span=VISIBLE_SPAN,
-                extra_line_span=EXTRA_LINE_SPAN, fade_in_span=FADE_IN_SPAN,
-                fade_out_span=FADE_OUT_SPAN):
+                extra_word_span=EXTRA_WORD_SPAN, fade_in_span=FADE_IN_SPAN,
+                fade_out_span=FADE_OUT_SPAN, anchor="sw"):
 
         CommonTip.__init__(self)            # Initialize all tip instances
 
-        self.widget = widget                # "999.999.999"
+        self.widget = widget                # .140599674917592.140599679077192.140599679077336
         self.text = text                    # "This button \n does that."
-        self.tool_type = tool_type
+        self.tool_type = tool_type          # 'button' or 'canvas_button' or 'menu'
 
         self.visible_delay = visible_delay
         self.visible_span = visible_span
-        self.extra_line_span = extra_line_span
+        self.extra_word_span = extra_word_span
         self.fade_in_span = fade_in_span
         self.fade_out_span = fade_out_span
+        self.anchor = anchor
 
-        try:
-            self.name = self.widget['text']         # For display during debugging
-        except tk.TclError:
-            self.name = "Unknown"
-
-        # All widget bound to same four functions
+        # All widget bound to same three functions
         self.widget.bind('<Enter>', self.enter)
         self.widget.bind('<Leave>', self.leave)
         self.widget.bind('<Motion>', self.motion)
-        if tool_type is 'button':
+        if self.tool_type is 'button':
             self.widget.bind("<ButtonPress-1>", self.on_press)
             self.widget.bind("<ButtonRelease-1>", self.on_release)
+            self.name = self.widget['text']  # Button text
+        else:
+            self.name = self.tool_type  # No Button text so use type
 
         # Add tip dictionary to tips list
         self.fields_to_dict()
@@ -1671,9 +1892,10 @@ class ToolTips(CommonTip):
         """ After cycle is finished reset selected widget values """
         self.enter_time = self.leave_time = self.press_time = \
             self.release_time = self.current_alpha = 0.0
+
         self.tip_window = self.window_geom = None
-        self.window_visible = self.window_fading_in = \
-            self.window_fading_out = False
+        self.window_visible = self.window_fading_in = False
+        self.window_fading_out = False
 
     def set_widget_colors(self):
         """ Set the colors for canvas object focus """
@@ -1691,7 +1913,7 @@ class ToolTips(CommonTip):
             new_button_color_hex = img.rgb_to_hex(img.lighten_rgb(
                 img.hex_to_rgb(self.normal_button_color)))
         else:
-            # Button color is white so darken all 25$
+            # Button color is white so darken all 25%
             new_text_color_hex = img.rgb_to_hex(img.darken_rgb(
                 img.hex_to_rgb(self.normal_text_color)))
             new_button_color_hex = img.rgb_to_hex(img.darken_rgb(
@@ -1733,6 +1955,10 @@ class ToolTips(CommonTip):
         """ Check if window should be created or destroyed.
             Check if we are fading in or fading out and set alpha.
         """
+        if not self.widget.winfo_exists():
+            # If parent closed, tool tip is irrelevant. bserve bup_view close
+            self.reset_tip()
+            return
 
         # Was window destroyed? eg by toplevel closing.
         if self.tip_window:
@@ -1834,7 +2060,13 @@ class ToolTips(CommonTip):
 
     def create_tip_window(self):
 
-        # Screen coordinates for tooltip balloon (window)
+        # Screen coordinates of parent widget
+        widget_nw = (self.widget.winfo_rootx(), self.widget.winfo_rooty())
+        widget_ne = (self.widget.winfo_rootx() + self.widget.winfo_width(),
+                     widget_nw[1])
+        widget_sw = (widget_nw[0], widget_nw[1] + self.widget.winfo_height())
+        widget_se = (widget_ne[0], widget_sw[1])
+
         x = self.widget.winfo_rootx() + 20
         y = self.widget.winfo_rooty() + self.widget.winfo_height() + 10
         if self.tool_type == 'menu':
@@ -1858,7 +2090,8 @@ class ToolTips(CommonTip):
             self.fg = None
             self.bg = None
 
-        self.tip_window = tw = tk.Toplevel(self.widget)
+        #self.tip_window = tw = tk.Toplevel(self.widget)
+        self.tip_window = tk.Toplevel(self.widget)
         self.tip_window.wm_overrideredirect(1)   # Undecorated
         self.tip_window.wm_geometry("+%d+%d" % (x, y))
 
@@ -1871,7 +2104,7 @@ class ToolTips(CommonTip):
         #print('created self.tip_window:', self.tip_window)
         #print('w.wm_geometry("+%d+%d" % (x, y)):', "+%d+%d" % (x, y))
 
-        ''' Throws py charm error: access to protected 'tw._w'
+        ''' Below MAC code Throws py charm error: access to protected 'tw._w'
         try:
             # For Mac OS
             tw.tk.call("::tk::unsupported::MacWindowStyle",
@@ -1880,19 +2113,57 @@ class ToolTips(CommonTip):
         except tk.TclError:
             pass
         '''
-        #        label = tk.Label(tw, text=self.text, justify=tk.LEFT,
-        label = tk.Label(tw, text=self.text, justify=tk.LEFT,
+        # TODO: Create Frame for border color. Then place label into frame. See:
+        #       https://www.geeksforgeeks.org/how-to-change-border-color-in-tkinter-widget/
+        border_color = tk.Frame(self.tip_window, background=self.fg)
+        #label = tk.Label(tw, text=self.text, justify=tk.LEFT,
+        label = tk.Label(border_color, text=self.text, justify=tk.LEFT,
                          background=self.bg, foreground=self.fg, relief=tk.SOLID,
                          borderwidth=2, pady=10, padx=10, font=(None, g.MON_FONTSIZE))
-        label.pack(ipadx=2)
+        label.pack(padx=2, pady=2)
+        border_color.pack(padx=10, pady=10)
 
         self.tip_window.attributes("-alpha", 0)  # Start at 1%
         self.tip_window.update_idletasks()
         self.window_geom = self.tip_window.wm_geometry()
+        self.override_window_geom(widget_nw, widget_ne, widget_se, widget_sw)
+        # TODO: Adjust geometry based on SW, SE, NW or NE flag relation to parent widget.
         d_print('tip_window created at:', "+%d+%d" % (x, y), 'for:', self.widget)
 
+    def override_window_geom(self, nw, ne, se, sw):
+        """ Change self.window_geom wxh+x+y depending on anchor point to widget.
+            Requires that tooltip window has already been created such that
+            width and height are known.
+
+            Pass the widget's (parent's) nw, ne, se and sw coordinates
+
+            DISTANCE_FROM_WIDGET_X = 20 how far left when ne or se, else right
+            DISTANCE_FROM_WIDGET_Y = 10 how far down when sw or se, else up
+        """
+        w, h, old_x, old_y = re.split(r'\D+', self.window_geom)
+        # print('tip_window started at:', self.window_geom, 'w:', w, 'h:', h)
+        x = y = 0  # Bogus defaults to make pycharm error checker happy.
+
+        if self.anchor == "nw":
+            x = nw[0]
+            y = nw[1] - int(h) - 20  # 20 px gives distance from edge
+        elif self.anchor == "ne":
+            x = ne[0] - int(w)
+            y = nw[1] - int(h) - 20  # 20 px gives distance from edge
+        elif self.anchor == "se":
+            x = se[0] - int(w)
+            y = se[1] + 20   # 20 px gives distance from edge
+        elif self.anchor == "sw":
+            x = sw[0]
+            y = sw[1] + 20   # 20 px gives distance from edge 20
+        else:
+            print('Bad self.anchor value:', self.anchor)
+            exit()
+        self.tip_window.wm_geometry("+%d+%d" % (x, y))
+        self.window_geom = self.tip_window.wm_geometry()
+
     def set_text(self, widget, text, visible_delay=VISIBLE_DELAY,
-                 visible_span=VISIBLE_SPAN, extra_line_span=EXTRA_LINE_SPAN,
+                 visible_span=VISIBLE_SPAN, extra_word_span=EXTRA_WORD_SPAN,
                  fade_in_span=FADE_IN_SPAN, fade_out_span=FADE_OUT_SPAN):
 
         """ Text can be changed at any time externally """
@@ -1901,7 +2172,7 @@ class ToolTips(CommonTip):
                 self.dict['text'] = text
                 self.dict['visible_delay'] = visible_delay
                 self.dict['visible_span'] = visible_span
-                self.dict['extra_line_span'] = extra_line_span
+                self.dict['extra_word_span'] = extra_word_span
                 self.dict['fade_in_span'] = fade_in_span
                 self.dict['fade_out_span'] = fade_out_span
                 self.tips_list[self.tips_index] = self.dict
@@ -1910,6 +2181,26 @@ class ToolTips(CommonTip):
                 return
             
         print('ERROR: set_text(): tip not found')
+
+    def toggle_position(self, widget):
+        """ If tip window's position is below widget, set above. 
+            If above, then set below.
+        """
+        for self.tips_index, self.dict in enumerate(self.tips_list):
+            if self.dict['widget'] == widget:
+                if self.dict['anchor'] == "nw":
+                    self.dict['anchor'] = "sw"
+                elif self.dict['anchor'] == "ne":
+                    self.dict['anchor'] = "se"
+                elif self.dict['anchor'] == "se":
+                    self.dict['anchor'] = "ne"
+                elif self.dict['anchor'] == "sw":
+                    self.dict['anchor'] = "nw"
+                self.tips_list[self.tips_index] = self.dict
+                return
+
+        print('toolkit.py ERROR: toggle_position(): tip not found')
+        exit()
 
     def enter(self, _event):
         """
@@ -1952,16 +2243,50 @@ class ToolTips(CommonTip):
     def close(self, widget):
         """ When window closes all tooltips in it must be removed.
             :param widget either button or parent(s) of button.
+            TODO: What about unbinding button tooltips currently displayed?
         """
         new_list = []
         for self.dict in self.tips_list:
             if not str(self.dict['widget']).startswith(str(widget)):
                 new_list.append(self.dict)
-                
-        diff = len(self.tips_list) - len(new_list)
-        print(diff, 'Tooltips removed on close')
+
+        # diff = len(self.tips_list) - len(new_list)
+        # print(diff, 'Tooltips removed on close')
         self.tips_list = []
         self.tips_list = new_list
+        self.log_list = []      # Flush out log list for new events
+
+    def line_dump(self):
+        """ Dump out selected data from tooltips list in printed format.
+            self.dict['widget'] = self.widget                           # 01
+            self.dict['current_state'] = self.current_state             # 02
+            self.dict['tip_window'] = self.tip_window                   # 15
+            self.dict['text'] = self.text                               # 16
+            self.dict['window_geom'] = self.window_geom                 # 17
+        """
+
+        lines = list()  # PyCharm error of lines = []
+        lines.append('Tooltips Line Dump - ' +
+                     str(len(self.tips_list)) + ' Tip Dictionaries')
+        lines.append('Tip#  Suf.  Name - Text')
+        lines.append('====  ====  ' + '=' * 80)
+
+        for i, tips_dict in enumerate(self.tips_list):
+            line  = "#" + '{:3d}'.format(i + 1)
+            line += "  " + str(tips_dict['widget'])[-4:]  # Short name suffix
+            line += "  " + tips_dict['name']
+            line += "  -  " + tips_dict['text'].splitlines()[0]  # First line only
+            lines.append(line)
+            line = "            " + str(tips_dict['widget'])
+            lines.append(line)
+            # Following stuff is all Null so check before including
+            if tips_dict['tip_window'] is not None:
+                line  = "  tip_window: " + str(tips_dict['tip_window'])[-4:]
+                line += "  window_geom: " + str(tips_dict['window_geom'])[-4:]
+                line += "  current_state: " + str(tips_dict['current_state'])
+                lines.append(line)  # almost always null
+
+        return lines
 
 
 def d_print(*args):
@@ -1970,5 +2295,113 @@ def d_print(*args):
         prt_time = datetime.utcnow().strftime("%M:%S.%f")[:-3]
         print(prt_time, *args)
 
+
+class TrayIcon:
+    """ July 25 2022
+        https://stackoverflow.com/a/37983084/6929343
+    """
+
+    def __init__(self, appid, icon, menu):
+        self.menu = menu
+
+        APPIND_SUPPORT = 1
+        try:
+            from gi.repository import AppIndicator3
+        except:
+            APPIND_SUPPORT = 0
+
+        if APPIND_SUPPORT == 1:
+            self.ind = AppIndicator3.Indicator.new(
+                appid, icon, AppIndicator3.IndicatorCategory.APPLICATION_STATUS)
+            self.ind.set_status(AppIndicator3.IndicatorStatus.ACTIVE)
+            self.ind.set_menu(self.menu)
+        else:
+            self.ind = Gtk.StatusIcon()
+            self.ind.set_from_file(icon)
+            self.ind.connect('popup-menu', self.onPopupMenu)
+
+
+    def onPopupMenu(self, icon, button, ptime):
+        self.menu.popup(None, None, Gtk.StatusIcon.position_menu, icon, button, ptime)
+
+
+class TrayIcon2:
+    """ July 25 2022
+        https://stackoverflow.com/a/31820169/6929343
+
+        TODO: upgrade to Python3 / Gtk3: https://askubuntu.com/a/1289725/307523
+            gir1.2-appindicator
+            gir1.2-appindicator3
+            gir1.2-ayatanaappindicator
+            gir1.2-ayatanaappindicator3
+
+        April 9, 2023 - NOT USED.
+    """
+    def init(self):
+
+        iconPath = {"Windows": os.path.expandvars("%PROGRAMFILES%/MyProgram/icon.png"),
+                    "Linux": "/usr/share/icons/myprogramicon.png"}
+        if platform.system() == "Linux":
+            import gtk
+            import appindicator  # Ubuntu apt-get install python-appindicator
+
+        # Create an application indicator
+        try:
+            gtk.gdk.threads_init()
+            gtk.threads_enter()
+            icon = iconPath[platform.system()]
+            indicator = appindicator.Indicator("example-simple-client", "indicator-messages",
+                                               appindicator.CATEGORY_APPLICATION_STATUS)
+            indicator.set_icon(icon)
+            indicator.set_status(appindicator.STATUS_ACTIVE)
+            indicator.set_attention_icon("indicator-messages-new")
+            menu = gtk.Menu()
+
+            menuTitle = "Quit"
+            menu_items = gtk.MenuItem(menuTitle)
+            menu.append(menu_items)
+            menu_items.connect("activate", TrayIcon.QuitApp, menuTitle)
+            menu_items.show()
+
+            menuTitle = "About My Program"
+            menu_items = gtk.MenuItem(menuTitle)
+            menu.append(menu_items)
+            menu_items.connect("activate", TrayIcon.AboutApp, menuTitle)
+            menu_items.show()
+
+            indicator.set_menu(menu)
+        except:
+            pass
+
+        # Run the app indicator on the main thread.
+        try:
+
+            t = threading.Thread(target=gtk.main)
+            t.daemon = True  # this means it'll die when the program dies.
+            t.start()
+            # gtk.main()
+
+        except:
+            pass
+        finally:
+            gtk.threads_leave()
+
+
+    @staticmethod
+    def AboutApp(a1, a2):
+        gtk.threads_enter()
+        dialog = gtk.Dialog("About",
+                            None,
+                            gtk.DIALOG_MODAL | gtk.DIALOG_DESTROY_WITH_PARENT,
+                            (gtk.STOCK_OK, gtk.RESPONSE_ACCEPT))
+        label = gtk.Label("My Program v0.0.1, (C)opyright ME 2015. All rights reserved.")
+        dialog.vbox.pack_start(label)
+        label.show()
+        label2 = gtk.Label("example.com\n\nFor more support contact me@gmail.com")
+        label2.show()
+        dialog.action_area.pack_end(label2)
+        response = dialog.run()
+        dialog.destroy()
+        gtk.threads_leave()
 
 # End of: toolkit.py

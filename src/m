@@ -42,16 +42,12 @@ import logging
 logging.getLogger('PIL').setLevel(logging.WARNING)
 import sys
 
-# noinspection SpellCheckingInspection
-# noinspection SpellCheckingInspection
 logging.basicConfig(format='%(asctime)s %(levelname)s %(message)s',
                     level=logging.DEBUG,
                     stream=sys.stdout)
-# inspection SpellCheckingInspection
 
 # Values from gnome-terminal to prevent window shrinking too small
 import global_variables as g
-g.init()
 
 WIN_MIN_WIDTH = 142
 WIN_MIN_HEIGHT = 63
@@ -62,6 +58,7 @@ def main():
     Create splash screen and invoke mserve.py which takes a second or more
     """
 
+    g.init()  # Initialize user name
     splash = tk.Tk()  # "very top" toplevel
     splash.title("Music Server - mserve")
     splash.minsize(WIN_MIN_WIDTH, WIN_MIN_HEIGHT)
@@ -87,7 +84,7 @@ def main():
     #splash.wm_overrideredirect(1)  # June 13/20201 debug long press, move this to top.
     splash.update()  # This is required for visibility
 
-    # At this point make window undecorated, don't do it sooner!
+    # At this point make window undecorated
     # From: https://stackoverflow.com/a/37199655/6929343
     splash.overrideredirect(True)  # Remove splash window close button
 
@@ -139,7 +136,7 @@ def main_c():
 
     print('sleeping 4 seconds on splash screen')
     splash.after(4000)
-    # At this point make window undecorated, don't do it sooner!
+    # At this point make window undecorated
     # From: https://stackoverflow.com/a/37199655/6929343
     splash.overrideredirect(True)  # Remove splash window close button
 

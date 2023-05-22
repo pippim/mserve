@@ -9,7 +9,9 @@
 #           
 #           Music - Master table of songs in all locations
 #           History - History table of events and settings
+#           Location - Storage locations with host controls, last song, etc.
 #
+#       May. 07 2023 - Convert gmtime to localtime. Before today needs update.
 #==============================================================================
 
 from __future__ import print_function       # Must be first import
@@ -26,12 +28,17 @@ from collections import namedtuple, OrderedDict
 
 # local modules
 import global_variables as g        # should be self-explanatory
-import timefmt                      # Our custom time formatting functions
+if g.USER is None:
+    print('sql.py was forced to run g.init()')
+    # This is normal after 'm' runs mserve.py. When no sql.py, location.py shows.
+    g.init()
+import timefmt as tmf               # Our custom time formatting functions
 import external as ext
 
 try:
     from location import FNAME_LIBRARY  # SQL database name (SQLite3 format)
 except ImportError:
+    # TODO: Use ~/ conversion from /home/rick/
     FNAME_LIBRARY = "/home/rick/.config/mserve/library.db"
 
 CFG_THOUSAND_SEP = ","              # English "," to for thousands separator
@@ -88,7 +95,7 @@ def create_tables(SortedList, start_dir, pruned_subdirs, user, lodict):
 
     """
 
-    global con, cursor, hist_cursor
+    # global con, cursor, hist_cursor
     global START_DIR_SEP    # Count of / or \ separators in toplevel directory
     global MUSIC_ID         # primary key into Music table used by History table
 
@@ -99,10 +106,7 @@ def create_tables(SortedList, start_dir, pruned_subdirs, user, lodict):
 
     open_db()
 
-    last_time = hist_last_time('file', 'init')
-    print('last_time:', last_time)
-    # Fill the table
-    LastArtist = ""
+    LastArtist = ""         # For control breaks
     LastAlbum = ""
 
     START_DIR_SEP = start_dir.count(os.sep) - 1  # Number of / separators
@@ -147,7 +151,9 @@ def create_tables(SortedList, start_dir, pruned_subdirs, user, lodict):
         # converted = float(size) / float(CFG_DIVISOR_AMT)   # Not used
         # fsize = str(round(converted, CFG_DECIMAL_PLACES))  # Not used
 
-        ''' Add the song only if it doesn't exist (ie generates error) '''
+        ''' Add the song only if it doesn't exist (ie generates error) 
+            What is lastrowid? https://stackoverflow.com/a/6242813/6929343
+        '''
         sql = "INSERT OR IGNORE INTO Music (OsFileName, \
                OsAccessTime, OsModificationTime, OsCreationTime, OsFileSize) \
                VALUES (?, ?, ?, ?, ?)" 
@@ -169,7 +175,7 @@ def open_db():
     con = sqlite3.connect(FNAME_LIBRARY)
     # print('FNAME_LIBRARY:',FNAME_LIBRARY)
 
-    # MUSIC TABLE
+    # MUSIC TABLE - 'PlayCount' & 'Rating' not used
     
     # Create the table (key must be INTEGER not just INT !
     # See https://stackoverflow.com/a/7337945/6929343 for explanation
@@ -179,7 +185,7 @@ def open_db():
                 OsFileSize INT, MetaArtistName TEXT, MetaAlbumName TEXT, \
                 MetaSongName TEXT, ReleaseDate FLOAT, OriginalDate FLOAT, \
                 Genre TEXT, Seconds INT, Duration TEXT, PlayCount INT, \
-                TrackNumber INT, Rating TEXT, UnsynchronizedLyrics BLOB, \
+                TrackNumber TEXT, Rating TEXT, UnsynchronizedLyrics BLOB, \
                 LyricsTimeIndex TEXT)")
 
     con.execute("CREATE UNIQUE INDEX IF NOT EXISTS OsFileNameIndex ON \
@@ -187,10 +193,6 @@ def open_db():
 
 
     # HISTORY TABLE
-
-    # One time table drop to rebuild new history format
-    # con.execute("DROP TABLE IF EXISTS History")
-
     con.execute("create table IF NOT EXISTS History(Id INTEGER PRIMARY KEY, \
                 Time FLOAT, MusicId INTEGER, User TEXT, Type TEXT, \
                 Action TEXT, SourceMaster TEXT, SourceDetail TEXT, \
@@ -233,6 +235,13 @@ def open_db():
     cursor = con.cursor()
     hist_cursor = con.cursor()
 
+    # fd = FixData("Sun May 7 23:59:59 2023")
+    # Patch run May 15, 2023 with "update=True". 290 duplicate meta-edit deleted
+    # fd.fix_meta_edit(update=False)
+    # NEVER RUN fd.fix_utc_dates() AGAIN OR PERMANENT DAMAGE !!!!!!!!!!!!!!!
+    # Patch run May 12, 2023 with "update=True". Thousands converted utc to local
+    #fd.fix_utc_dates(update=False)
+
 
 def close_db():
     con.commit()
@@ -264,6 +273,9 @@ def update_lyrics(key, lyrics, time_index):
     """
         Apply Unsynchronized Lyrics and Lyrics Time Index.
         Should only be called when lyrics or time_index has changed.
+
+        NOTE: May 21, 2023 - This is where lyrics - init, lyrics - edit,
+        time - init and time - edit could be placed.
     """
 
     sql = "UPDATE Music SET UnsynchronizedLyrics=?, LyricsTimeIndex=? \
@@ -304,32 +316,33 @@ def get_lyrics(key):
         return d["UnsynchronizedLyrics"], None
 
 
+def music_get_row(key):
+    # Get row using the MusicID
+    cursor.execute("SELECT * FROM Music WHERE Id = ?", [key])
+    row = cursor.fetchone()
+    if row is None:
+        print('sql.py - music_get_row() not found:', key)
+        return None
+
+    return OrderedDict(row)
+
+
+update_print_count = 10  # Change this number to 0 to show first 10 songs
+
+
 def update_metadata(key, artist, album, song, genre, tracknumber, date, 
                     seconds, duration):
     """
         Update Music Table with metadata tags.
         Called from mserve.py and encoding.py
 
-        TODO: Check if history has a 'file' record first. If not then add it.
-              Add webscrape history record
-              Add lyrics 'init' record
-              Add time 'init' record
-              Add lyrics 'edit' record
-              Add time 'edit' record
-              Add History view functions with filters for done or none
-
-
-        First check if metadata has changed. If not then exit.
+        First check if metadata has changed. If not then return False.
 
         Update metadata in library and insert history record:
             'meta' 'init' for first time
             'meta' 'edit' for 2nd and subsequent changes
 
         Metadata tags passed from following mserve variables:
-
-        Id = self.saved_selections[self.ndx]
-        list_index = int(Id)
-        key = self.song_list[list_index]
 
         self.Artist=self.metadata.get('ARTIST', "None")
         self.Album=self.metadata.get('ALBUM', "None")
@@ -363,28 +376,33 @@ def update_metadata(key, artist, album, song, genre, tracknumber, date,
         if date != "None":      # Strange but true... See "She's No Angel" by April Wine.
             # Problem with date "1993-01-26"
             try:
-                date = float(date)
+                date = float(date)  # Dumb idea because it's year
             except ValueError:
                 pass  # Leave date as string
+
     if genre is not None:
         genre = genre.decode("utf8")
 
     #print('artist type:', type(artist), type(album), type(song))
+    # May 4, 2023 - Left over bug from when SQL 'TrackNumber' defined INT not TEXT
+    #if tracknumber == "00":
+    #    tracknumber = "0"
+    #if tracknumber == "04":
+    #    tracknumber = "4"
 
     cursor.execute("SELECT * FROM Music WHERE OsFileName = ?", [key])
     d = dict(cursor.fetchone())
     if d is None:
-        print('SQL update_metadata() error no music ID for:', key)
+        print('sql.py update_metadata() error no music ID for:', key)
         return
 
     # Debugging information to comment out later (or perhaps logging?)
     '''
     print('\nSQL updating metadata for:',key)
-    print('artist type :', type(artist), type(album), type(song), \
-                           type(genre))
-    print('library type:', type(d['MetaArtistName']), \
-                           type(d['MetaAlbumName']), \
-                           type(d['MetaSongName']), type(d['Genre']))
+    print('artist type :', type(artist), 'album type :', type(album), 
+          'song type :', type(song), 'genre type :', type(genre))
+    print('SQL type    :', type(d['MetaArtistName']), type(d['MetaAlbumName']),
+          type(d['MetaSongName']), type(d['Genre']))
     print(artist       , d['MetaArtistName'])
     print(album        , d['MetaAlbumName'])
     print(song         , d['MetaSongName'])
@@ -416,14 +434,15 @@ def update_metadata(key, artist, album, song, genre, tracknumber, date,
 
     # Are we adding a new 'init' or 'edit' history record?
     if d['MetaArtistName'] is None:
+        # This happens when song has never been played in mserve
         action = 'init'
-        # print('\nSQL adding metadata for:',key)
+        print('\nSQL adding metadata for:', key)
     elif \
         artist       != d['MetaArtistName'] or \
         album        != d['MetaAlbumName'] or \
         song         != d['MetaSongName'] or \
         genre        != d['Genre'] or \
-        tracknumber  != d['TrackNumber'] or \
+        str(tracknumber)  != str(d['TrackNumber']) or \
         date         != d['ReleaseDate'] or \
         seconds      != d['Seconds'] or \
             duration != d['Duration']:
@@ -433,7 +452,44 @@ def update_metadata(key, artist, album, song, genre, tracknumber, date,
         action = 'edit'
 
     else:
-        return                                  # Metadata same as library
+        return False                            # Metadata same as library
+
+    global update_print_count
+    if update_print_count < 10:
+        print('\nSQL updating metadata for:', key)
+        print('artist type :', type(artist), 'album type :', type(album),
+              'song type :', type(song), 'tracknumber type :', type(tracknumber))
+        print('SQL type    :', type(d['MetaArtistName']), 'album type :', type(d['MetaAlbumName']),
+              'song type :', type(d['MetaSongName']), 'tracknumber type :', type(d['TrackNumber']))
+        print(artist, d['MetaArtistName'])
+        print(album, d['MetaAlbumName'])
+        print(song, d['MetaSongName'])
+        print(genre, d['Genre'])
+        print(tracknumber, d['TrackNumber'])
+        print(date, d['ReleaseDate'])
+        print(seconds, d['Seconds'])
+        print(duration, d['Duration'])
+
+        if artist != d['MetaArtistName']:
+            print('artist:', artist, d['MetaArtistName'])
+        elif album != d['MetaAlbumName']:
+            print('album:', album, d['MetaAlbumName'])
+        elif song != d['MetaSongName']:
+            print('song:', song, d['MetaSongName'])
+        elif genre != d['Genre']:
+            print('genre:', genre, d['Genre'])
+        elif str(tracknumber)  != str(d['TrackNumber']):
+            print('tracknumber:', tracknumber, d['TrackNumber'])
+        elif date != d['ReleaseDate']:
+            print('date:', date, d['ReleaseDate'])
+        elif seconds != d['Seconds']:
+            print('seconds:', seconds, d['Seconds'])
+        elif duration != d['Duration']:
+            print('duration:', duration, d['Duration'])
+        else:
+            print('All things considered EQUAL')
+
+    update_print_count += 1
 
     # Update metadata for song into library Music Table
     sql = "UPDATE Music SET MetaArtistName=?, MetaAlbumName=?, MetaSongName=?, \
@@ -448,7 +504,7 @@ def update_metadata(key, artist, album, song, genre, tracknumber, date,
     # Time will be file's last modification time
     ''' Build full song path '''
     full_path = _START_DIR.encode("utf8") + key
-    # Below not needed because (No Xxx) stubs not in Music Table filenames
+    # Below not needed because "(No Album)" strings not in Music Table filenames
     full_path = full_path.replace(os.sep + NO_ARTIST_STR, '')
     full_path = full_path.replace(os.sep + NO_ALBUM_STR, '')
 
@@ -459,13 +515,13 @@ def update_metadata(key, artist, album, song, genre, tracknumber, date,
         for i in d:
             # Pad name with spaces for VALUE alignment
             print('COLUMN:', "{:<25}".format(i), 'VALUE:', d[i])
-        return
+        return False  # Misleading because SQL music table was updated
 
     Size = stat.st_size                     # File size in bytes
     Time = stat.st_mtime                    # File's current mod time
     SourceMaster = _LODICT['name']
-    SourceDetail = time.asctime(time.gmtime(Time))
-    Comments = "Found: " + time.asctime(time.gmtime(time.time()))
+    SourceDetail = time.asctime(time.localtime(Time))
+    Comments = "Found: " + time.asctime(time.localtime(time.time()))
     if seconds is not None:
         FloatSeconds = float(str(seconds))  # Convert from integer
     else:
@@ -492,6 +548,8 @@ def update_metadata(key, artist, album, song, genre, tracknumber, date,
 
     con.commit()
 
+    return True  # Metadata was changed
+
 
 #==============================================================================
 #
@@ -505,7 +563,7 @@ def hist_get_row(key):
     cursor.execute("SELECT * FROM History WHERE Id = ?", [key])
     row = cursor.fetchone()
     if row is None:
-        print('sql.py - row not found:', key)
+        print('sql.py - hist_get_row not found():', key)
         return None
 
     return OrderedDict(row)
@@ -560,7 +618,7 @@ def hist_add_time_index(key, time_list):
             return False
 
     d['Count'] = len(time_list)
-    Comments = Action + " time: " + time.asctime(time.gmtime(time.time()))
+    Comments = Action + " time: " + time.asctime(time.localtime(time.time()))
     hist_add(time.time(), d['Id'], _USER, 'time', Action, d['SourceMaster'],
              d['SourceDetail'], key, d['Size'], d['Count'], d['Seconds'], 
              Comments)
@@ -610,7 +668,7 @@ def hist_default_dict(key, time_type='access'):
         print('SQL hist_default_dict(key, time_type) invalid type:', time_type)
         return None
 
-    SourceDetail = time.asctime(time.gmtime(Time))
+    SourceDetail = time.asctime(time.localtime(Time))
     hist['SourceDetail'] = SourceDetail
     # Aug 10/2021 - Seconds always appears to be None
     if Seconds is not None:
@@ -635,10 +693,10 @@ def hist_delete_time_index(key):
         return False
 
     if not hist_check(MusicId, 'time', 'init'):
-        # We found a time initialization record to use as default
         print('sql.hist_delete_time_index(key) error no time, init:', key)
         return False
 
+    # We found a time initialization record to use as default
     print('sql.hist_delete_time_index(key) HISTORY_ID:', key, HISTORY_ID)
 
     hist_cursor.execute("SELECT * FROM History WHERE Id = ?", [HISTORY_ID])
@@ -648,7 +706,7 @@ def hist_delete_time_index(key):
               HISTORY_ID)
         return False
 
-    Comments = "Removed: " + time.asctime(time.gmtime(time.time()))
+    Comments = "Removed: " + time.asctime(time.localtime(time.time()))
     hist_add(time.time(), d['Id'], _USER, 'time', 'remove', d['SourceMaster'],
              d['SourceDetail'], key, d['Size'], d['Count'], d['Seconds'], 
              Comments)
@@ -731,7 +789,7 @@ def hist_init_lost_and_found(START_DIR, USER, LODICT):
 
         Size = stat.st_size                     # File size in bytes
         Time = stat.st_mtime                    # File's current mod time
-        SourceDetail = time.asctime(time.gmtime(Time))
+        SourceDetail = time.asctime(time.localtime(Time))
         if Seconds is not None:
             FloatSeconds = float(str(Seconds))  # Convert from integer
         else:
@@ -776,9 +834,9 @@ def hist_check(MusicId, check_type, check_action):
                         MusicId is set to 0.
         User            User name, User ID or GUID varies by platform.
         Type            'file', 'catalog', 'link', 'index', 'checkout', 'song'
-                        'lyrics', 'time', 'fine-tune', 'meta', 'playlist'
+                        'lyrics', 'time', 'fine-tune', 'meta', 'resume'
         Action          'copy', 'download', 'remove', 'burn', 'edit', 'play'
-                        'scrape', 'init', 'shuffle', 'save', 'load'
+                        'scrape', 'init', 'shuffle', 'save', 'load', 
         SourceMaster    'Genius', 'Metro Lyrics', etc.
                         Device name, Playlist
         SourceDetail    '//genius.com' or 'www.metrolyrics.com', etc.
@@ -794,6 +852,7 @@ def hist_check(MusicId, check_type, check_action):
     global HISTORY_ID
 
     for row in hist_cursor.execute("SELECT Id, Type, Action FROM History " +
+                                   "INDEXED BY MusicIdIndex " +  # Line added May 16 2023
                                    "WHERE MusicId = ?", [MusicId]):
         Id = row[0]
         Type = row[1]
@@ -809,9 +868,10 @@ def hist_check(MusicId, check_type, check_action):
 def hist_last_time(check_type, check_action):
     """ Get the last time the type + action occurred
 
-        Primarily used to get the last time a song was added / updated in
+        Primarily used to get the last time an action was added / updated in
         history. If this time is greater than time top directory was
         last changed then refresh not required.
+
     """
     global HISTORY_ID
 
@@ -852,8 +912,11 @@ def hist_add(Time, MusicId, User, Type, Action, SourceMaster, SourceDetail,
 def hist_delete_type_action(Type, Action):
     """ Delete History Rows for matching Type and Action.
         Created to get rid of thousands of 'meta' 'edit' errors
+        NOTE:   Don't use this anymore
+                Use sqlitebrowser instead
+                Keep this as boilerplate for next time
     """
-    # DEBUG:
+
     sql = "DELETE FROM History WHERE Type=? AND Action=?"
 
     hist_cursor.execute(sql, (Type, Action))
@@ -926,7 +989,7 @@ def hist_init_lyrics_and_time(START_DIR, USER, LODICT):
         # fsize = str(round(converted, CFG_DECIMAL_PLACES))
 
         Time = stat.st_atime                    # File's current access time
-        SourceDetail = time.asctime(time.gmtime(Time))
+        SourceDetail = time.asctime(time.localtime(Time))
         Size = len(UnsynchronizedLyrics)        # Can change after user edits
         Count = UnsynchronizedLyrics.count('\n')
         Target = 'https://genius.com/' + OsFileName
@@ -966,10 +1029,97 @@ def hist_init_lyrics_and_time(START_DIR, USER, LODICT):
     con.commit()
 
 
+# ===============================  AUTHENTICATION =============================
+
+class Authorization:
+    """ NOT USED YET - Initially designed for MusicBrainz authorization """
+    def __init__(self, toplevel, organization, http, message, tt=None, thread=None):
+        self.top_level = toplevel
+        self.organization = organization
+        self.http = http
+        self.message = message
+        self.tt = tt                        # Tooltips
+        self.thread = thread                # Thread run during idle loop (Tooltips)
+
+        # Retrieved from file and read from screen
+        self.user = None                    # Your name, company name or your website
+        self.email = None                   # Your email if throttling limit exceeded
+
+        # Columns in in SQL History Table Row
+        self.HistoryId = None               # Primary Key Row Number integer
+        self.MusicId = 0                    # Only song files have a Music ID.
+        self.User = g.USER                  # User name when mserve started up
+        self.Type = "User ID"
+        self.Action = organization          # MusicBrainz
+        self.SourceMaster = self.user       # User ID website knows you by
+        self.SourceDetail = self.email      # Your email if throttling limit exceeded
+        self.Target = http                  # https://musicbrainz.org
+        # Size, Count, Seconds & Comments are hard coded below
+
+    def Init(self):
+        """ Check history table Action: "User ID"
+                                Type:   self.organization
+
+            Return True if found, False if no record
+        """
+        if self.GetUser():
+            return True
+
+        # Need prompt for message.AskString() for self.user and self.email
+        # Neither can be blank
+        print("sql.py Authorization.Init(): No '" + self.Type +
+              "' for:", self.Action)
+        return False
+
+    def GetUser(self):
+        """ Get User ID
+        """
+        if hist_check(0, self.Type, self.Action):
+            # If record exists, we get HISTORY_ID set to row number primary key
+            hist_cursor.execute("SELECT * FROM History WHERE Id = ?",
+                                [HISTORY_ID])
+            d = dict(hist_cursor.fetchone())
+            if d is None:
+                # If we get here there is programmer error
+                print("sql.py Authorization.GetUser(): No '" + self.Type +
+                      "' for:", self.Action)
+                return False
+            self.HistoryId = HISTORY_ID
+            self.user  = self.SourceMaster = d['SourceMaster']
+            self.email = self.SourceDetail = d['SourceDetail']
+            return True
+        else:
+            # First time add the record
+            return False
+
+    def Save(self):
+        """ Check history table master code: "User ID"
+                                detail code: self.organization
+
+            Return True if found, False if no record
+        """
+        if self.SourceMaster is None:
+            # First time add the record
+            hist_add(time.time(), 0, _USER, self.Type, self.Action, self.user,
+                     self.email, self.Target, 0, 0, 0.0,
+                     "User Authorization record created")
+            con.commit()
+            return True
+
+        ''' We have the existing history record, simply replace the fields '''
+        sql = "UPDATE History SET Time=?, SourceMaster=?, SourceDetail=?, \
+              Comments=? WHERE Id = ?"
+
+        cursor.execute(sql, (time.time(), self.user, self.email,
+                       "User Authorization record updated", self.HistoryId))
+        con.commit()
+
+
 # =================================  WEBSCRAPE  ===============================
 
-class Webscrape:
 
+class Webscrape:
+    """ not used """
     def __init__(self, music_id):
         # All columns in history row, except primary ID auto assigned.
         self.MusicId = music_id
@@ -990,7 +1140,7 @@ class Webscrape:
             sql.hist_add(time.time(), MusicId, USER,
                          'scrape', 'parm', artist, song,
                          "", 0, 0, 0.0,
-                         time.asctime(time.gmtime(time.time())))
+                         time.asctime(time.localtime(time.time())))
             ext_name = 'python webscrape.py'
             self.lyrics_pid = ext.launch_command(ext_name,
                                                  toplevel=self.play_top)
@@ -1085,164 +1235,399 @@ def load_ctl():
 
 
 """
-        return
+        pass
 
 
 # ==============================================================================
 #
-#       PrettyHistory class - DIFFERENT than ~/bserve/sql.py
+#       PrettyMusic, PrettyHistory & PrettyTreeHeading classes
+#
+#       Headings and indented field key / values
 #
 # ==============================================================================
+
+
+class PrettyMusic:
+
+    def __init__(self, sql_row_id, calc=None):
+        """ 
+            Build a pretty dictionary with user friendly field names
+            Values are from current treeview row for SQL Row
+
+            The pretty dictionary is passed to mserve.py functions.
+
+        """
+
+        self.calc = calc  # Calculated fields callback function
+        self.dict = OrderedDict()  # Python 2.7 version not needed in 3.7
+        self.scrollbox = None  # custom scrollbox for display
+        self.search = None  # search text
+
+        # List of part section starting positions in field display
+        self.part_start = [0]  # First heading starts at field #0
+
+        # List of part section headings at part_start[] list above
+        self.part_names = ['Operating System Information',
+                           'Metadata (if song played)',
+                           'Webscrape lyric score retrieved',
+                           'History Time - Row Number      ' +
+                           ' | Type - Action - Master - Detail - Comments',
+                           'Metadata modified']
+        # List of part colors - applied to key names in that part
+        self.part_color = ['red',
+                           'blue',
+                           'green',
+                           'red',
+                           'blue']
+                            # Calculated fields are assigned green
+
+        # Get Music Table row, remove commas
+        key = sql_row_id.replace(',', '')
+        #print("sql_row_id:", sql_row_id, 'key:', key)
+        cursor.execute("SELECT * FROM Music WHERE Id = ?", [key])
+        d = dict(cursor.fetchone())
+        if d is None:
+            print('sql.py.PrettyMusic() - No SQL for Music Table Id:', key)
+            return  # Dictionary will be empty
+
+        self.dict['SQL Music Row Id'] = sql_format_value(d['Id'])
+        # 'SQL Music Row Id' is same name in PrettyHistory and is a lookup key
+        self.dict['OS Filename'] = sql_format_value(d['OsFileName'])
+        self.dict['File size'] = sql_format_int(d['OsFileSize'])
+        self.dict['Last Access time'] = sql_format_date(d['OsAccessTime'])
+        self.dict['Modification time'] = sql_format_date(d['OsModificationTime'])
+        self.dict['Creation time'] = sql_format_date(d['OsCreationTime'])
+        # Need modification to set creation time to last modified time if older
+        self.part_start.append(len(self.dict))
+        self.dict['Artist'] = sql_format_value(d['MetaArtistName'])
+        self.dict['Album'] = sql_format_value(d['MetaAlbumName'])
+        self.dict['Song Name'] = sql_format_value(d['MetaSongName'])
+        self.dict['Album Track'] = sql_format_value(d['TrackNumber'])
+
+        self.part_start.append(len(self.dict))
+        if d["LyricsTimeIndex"] is None:
+            time_index_list = ["No time index"]  # Nothing prints yet.
+        else:
+            time_index_list = json.loads(d["LyricsTimeIndex"])
+
+        if d["UnsynchronizedLyrics"] is None:
+            self.dict['Lyrics score'] = "Webscrape for lyrics not completed."
+        else:
+            lyrics = d["UnsynchronizedLyrics"]
+            for i, line in enumerate(lyrics.splitlines()):
+                # If time index exists, put value in front of lyric line
+                try:
+                    self.dict["{:.2f}".format(time_index_list[i])] = line
+                except (IndexError, ValueError):
+                    # IndexError: list index out of range
+                    # ValueError: Unknown format code 'f' for object of type 'unicode'
+                    self.dict['line # ' + str(i + 1)] = line
+
+        self.part_start.append(len(self.dict))
+
+        ''' SAMPLE FROM ABOVE sql = 
+        "INSERT INTO History (Time, MusicId, User, Type, Action, \
+           SourceMaster, SourceDetail, Target, Size, Count, Seconds, Comments) \
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+
+    hist_cursor.execute(sql, (Time, MusicId, User, Type, Action, SourceMaster,
+                              SourceDetail, Target, Size, Count, Seconds,
+                              Comments))
+        '''
+        hist_cursor.execute("SELECT * FROM History INDEXED BY MusicIdIndex \
+                            WHERE MusicId = ?", (d['Id'],))
+        rows = hist_cursor.fetchall()
+        for sql_row in rows:
+            row = dict(sql_row)
+            #print("TODO: finish populating song history into Pretty Music")
+            #print("Target:", type(row['Target']), row['Target'])
+            #print("Comments:", type(row['Comments']), row['Comments'])
+            self.dict[sql_format_date(row['Time']) + " - " + str(row['Id'])] = \
+                row['Type'] + " - " + row['Action'] + " - " + row['SourceMaster'] + " - " + \
+                row['SourceDetail'] + " - " + row['Target'] + " - " + row['Comments']
+
+        if self.calc is not None:
+            self.calc(self.dict)  # Call external function passing our dict
+            # print("self.calc(self.dict)  # Call external function passing our dict")
+
+        # print('\n======================  pretty  =====================\n')
+        # print(json.dumps(self.dict, indent=2))
 
 
 class PrettyHistory:
 
-    def __init__(self, history_dict, calc=None):
+    def __init__(self, sql_row_id, calc=None):
         """ 
-            Copied from bserve/gmail_api.py PrettyHistory
+            Build a pretty dictionary with user friendly field names
+            Values are from current treeview row for SQL Row
 
-                1) top level dictionary key/values like Id, size
-
-             After massaging, four sections are at single dictionary level
-             Dictionary keys can be walked and compared to count of keys at
-             each part for separating sections in display.
-
-            This class serves double duty (for now) to display treeview column
-            data dictionary for class view()) at column name.
-
-            calc is optional function to append calculated fields to the
-            pretty dictionary.
+            The pretty dictionary is passed to mserve.py functions.
 
         """
 
         self.calc = calc  # Calculated fields such as delete_on
         self.dict = OrderedDict()  # Python 2.7 version not needed in 3.7
         self.scrollbox = None  # custom scrollbox for display
+        self.search = None  # search text
 
-        # IF dictionary for treeview column, format is straight forward
-        self.part_start = [0]  # Only 1 part
-        self.part_names = ['Tkinter Treeview']
-        self.part_color = ['red']
-        for key, value in history_dict.iteritems():
-            self.dict[key] = self.format_value(value)
-
-        if calc is None:
-            # If no calc callback we are done.
-            return
+        # List of part section starting positions in field display
+        self.part_start = [0]  # First heading starts at field #0
 
         # List of part section headings at part_start[] list above
-        self.part_names = ['Google search results',
-                           'Webscrape results']
+        self.part_names = ['SQL Information',
+                           'Time',
+                           'History Category',
+                           'Source and Target Data',
+                           'Processing Details']
         # List of part colors - applied to key names in that part
         self.part_color = ['red',
+                           'blue',
+                           'green',
+                           'red',
                            'blue']
+                            # Calculated fields are assigned green
+
+        # Get Music Table row, remove commas
+        key = sql_row_id.replace(',', '')
+        #print("sql_row_id:", sql_row_id, 'key:', key)
+        cursor.execute("SELECT * FROM History WHERE Id = ?", [key])
+        d = dict(cursor.fetchone())
+        if d is None:
+            print('sql.py.PrettyHistory() - No SQL for History Table Id:', key)
+            return
+
+        self.dict['SQL History Row Id'] = sql_format_value(d['Id'])
+        self.dict['SQL Music Row Id'] = sql_format_value(d['MusicId'])
+        # 'SQL Music Row Id' is same name in PrettyMusic and is a lookup key
 
         self.part_start.append(len(self.dict))
+        self.dict['Human Time'] = sql_format_date(d['Time'])
+        self.dict['Time in seconds'] = sql_format_value(d['Time'])
+        fmt_time = datetime.datetime.fromtimestamp(d['Time'])
+        self.dict['System Time'] = fmt_time.strftime("%c")
 
-        self.calc(self.dict)  # Call external function passing our dict
-        # print("self.calc(self.dict)  # Call external function passing our dict")
+        self.part_start.append(len(self.dict))
+        self.dict['Record Type'] = sql_format_value(d['Type'])
+        self.dict['Action'] = sql_format_value(d['Action'])
+
+        self.part_start.append(len(self.dict))
+        self.dict['Master Source Code'] = sql_format_value(d['SourceMaster'])
+        self.dict['Detail Source Code'] = sql_format_value(d['SourceDetail'])
+        self.dict['Target'] = sql_format_value(d['Target'])
+
+        self.part_start.append(len(self.dict))
+        self.dict['Size'] = sql_format_int(d['Size'])
+        self.dict['Count'] = sql_format_int(d['Count'])
+        self.dict['Comments'] = sql_format_value(d['Comments'])
+        self.dict['Seconds'] = sql_format_value(d['Seconds'])
+
+        if self.calc is not None:
+            self.calc(self.dict)  # Call external function passing our dict
+            # print("self.calc(self.dict)  # Call external function passing our dict")
 
         # print('\n======================  pretty  =====================\n')
         # print(json.dumps(self.dict, indent=2))
 
-    @staticmethod
-    def format_value(value):
 
-        try:
-            formatted = str(value)  # Convert from int
-        except UnicodeEncodeError:
-            formatted = value
-        # return formatted.encode('utf8')
-        return formatted
+class PrettyTreeHeading:
 
-    def tkinter_display(self, scrollbox):
-        """ Popup display all values in pretty print format
-            Uses new tkinter window with single text entry field
-
-            Requires ordered dict and optional lists specifying sections
-            (parts) the part names and part colors for key names.
+    def __init__(self, column_dict):
+        """ 
+            Display data dictionary for selected heading.
+            Build a pretty dictionary with user friendly field names
+            Use column dictionary that was passed to Tkinter.
+            The pretty dictionary is passed to mserve.py functions.
         """
 
-        self.scrollbox = scrollbox  # Temporary until code craft
+        self.calc = None  # Calculated fields not for column data dictionary
+        self.dict = OrderedDict()  # Python 2.7 version not needed in 3.7
+        self.scrollbox = None  # scrollbox for display defined later
+        self.search = None  # Not used but needed for tkinter_display()
 
-        # Allow program changes to scrollable text widget
-        self.scrollbox.configure(state="normal")
-        self.scrollbox.delete('1.0', 'end')  # Delete previous entries
-
-        curr_key = 0  # Current key index
-        curr_level = 0  # Current dictionary part
-        curr_color = 'black'
-        # for key, value in self.dict.iteritems():    # Don't use iteritems
-        for key in self.dict:  # Don't need iteritems on ordered dict
-            if curr_key == self.part_start[curr_level]:
-                curr_level_name = self.part_names[curr_level]
-                curr_color = self.part_color[curr_level]
-                self.scrollbox.insert("end", curr_level_name + "\n")
-                # self.scrollbox.highlight_pattern(curr_level_name, 'yellow')
-                curr_level += 1
-
-                if curr_level >= len(self.part_start):
-                    curr_level = len(self.part_start) - 1
-                    # We are in last part so no next part to check
-                    # print('resetting curr_level at:', key)
-
-            # Insert current key and value into text widget
-            # TclError: character U+1f913 is above the range (U+0000-U+FFFF) allowed by Tcl
-            # noinspection PyBroadException
-            try:
-                self.scrollbox.insert("end", u"\t" + key + u":\t" +
-                                      self.dict[key] + u"\n", u"margin")
-            #                                  value + u"\n", "margin")
-            except:
-                normal = normalize_tcl(self.dict[key])
-                self.scrollbox.insert("end", u"\t" + key + u":\t" +
-                                      normal + u"\n", u"margin")
-
-            self.scrollbox.highlight_pattern(key + u':', curr_color)
-            curr_key += 1  # Current key index
-
-        # Override for auto trader that contains multiple keys within value
-        self.scrollbox.highlight_pattern(
-            "From:To:Subject:Date:List-Unsubscribe:List-Unsubscribe-Post:" +
-            "MIME-Version: Reply-To:List-ID:X-CSA-Complaints:Message-ID:" +
-            "Content-Type:", "black")
-
-        self.scrollbox.highlight_pattern(
-            "Date:Message-ID:Content-Type:Subject:To:", "black")
-
-        # Override for disqus that contains multiple keys within value
-        self.scrollbox.highlight_pattern(
-            "Subject:From:To:", "black")
-
-        # Don't allow changes to displayed selections (test copy clipboard)
-        self.scrollbox.configure(state="disabled")
+        # Data dictionary for treeview column format is simple
+        self.part_start = [0]  # Only 1 part
+        self.part_names = ['Tkinter Treeview - Column Data Dictionary']
+        self.part_color = ['red']
+        for key, value in column_dict.iteritems():
+            self.dict[key] = sql_format_value(value)
 
 
-def normalize_tcl(s):
+class PrettyMeta:
+
+    def __init__(self, meta_dict):
+        """ 
+            Display data dictionary for selected heading.
+            Build a pretty dictionary with user friendly field names
+            Use column dictionary that was passed to Tkinter.
+            RAW DATA:
+               Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Men At Work/Contraband -
+               The Best Of Men At Work/14 Man With Two Hearts.m4a':
+               Metadata:
+                 major_brand     : M4A
+                 minor_version   : 0
+                 compatible_brands: M4A mp42isom
+                 creation_time   : 2011-02-27 12:05:58
+                 title           : Man With Two Hearts
+                 artist          : Men At Work
+                 composer        : Colin Hay
+                 album           : Contraband - The Best Of Men At Work
+                 genre           : Pop
+                 track           : 14/16
+                 disc            : 1/1
+                 date            : 1984
+                 compilation     : 0
+                 gapless_playback: 0
+                 encoder         : iTunes 10.0.1.22, QuickTime 7.6.8
+                 iTunSMPB        :  00000000 00000840 000000E4 00000000009E06DC 00000000 00000000
+                 00000000 00000000 00000000 00000000 00000000 00000000
+                 Encoding Params : vers
+                 iTunNORM        :  00001110 000011B9 00009226 0000CBAB 0002B4B2 00035A23 00008000
+                 00007FFF 0000FC3E 00000929
+                 iTunes_CDDB_IDs : 16++
+                 UFIDhttp://www.cddb.com/id3/taginfo1.html: 3CD3N27S7396714U2686A83124FE1E51E62C229DF55B180DA9EP6
+               Duration: 00:03:54.89, start: 0.000000, bitrate: 265 kb/s
+                 Stream #0:0(und): Audio: aac (LC) (mp4a / 0x6134706D), 44100 Hz, stereo, fltp, 262 kb/s (default)
+                 Metadata:
+                   creation_time   : 2011-02-27 12:05:58
+                 Stream #0:1: Video: png, rgba(pc), 115x115, 90k tbr, 90k tbn, 90k tbc
+        """
+
+        self.calc = None  # Calculated fields not for column data dictionary
+        self.dict = OrderedDict()  # Python 2.7 version not needed in 3.7
+        self.scrollbox = None  # scrollbox for display defined later
+        self.search = None  # Not used but needed for tkinter_display()
+
+        # Data dictionary for treeview column format is simple
+        self.part_start = [0]
+        self.part_names = ['Source', 'Metadata', 'Encoding']
+        self.part_color = ['red', 'blue', 'green']
+        curr_line = 0
+        for key, value in meta_dict.iteritems():
+            curr_line += 1
+            self.dict[key] = sql_format_value(value)
+            if key.startswith("INPUT #"):
+                # Set next section start
+                if len(self.part_start) == 1:
+                    # Assume only 1 input source
+                    self.part_start.append(curr_line)
+                else:
+                    # Next section starts after last input.
+                    self.part_start[1] = curr_line
+            if key.startswith("DURATION"):
+                # Section starts at this index offset
+                self.part_start.append(curr_line - 1)
+
+
+def sql_format_value(value):
+
+    try:
+        formatted = str(value)  # Convert from int
+    except UnicodeEncodeError:
+        formatted = value  # Already string
+    # return formatted.encode('utf8')
+    # TypeError: coercing to Unicode: need string or buffer, int found
+    return formatted
+
+
+def sql_format_int(value):
+
+    if value is None:
+        return None  # Do we want to return empty string instead?
+
+    try:
+        formatted = format(value, ",")
+    except UnicodeEncodeError:
+        formatted = value  # Already string
+    except ValueError:
+        formatted = "sql.py.sql_format_int() Error: " + sql_format_value(value)
+
+    return formatted
+
+
+def sql_format_date(value):
+
+    if value is None:
+        return None  # Do we want to return empty string instead?
+
+    try:
+        formatted = tmf.ago(value)
+    except UnicodeEncodeError:
+        formatted = value  # Already string
+
+    return formatted
+
+
+def tkinter_display(pretty):
+    """ Popup display all values in pretty print format
+        Uses new tkinter window with single text entry field
+
+        Requires ordered dict and optional lists specifying sections
+        (parts) the part names and part colors for key names.
+
+        IDENTICAL function in ~/bserve/gmail_api.py
+
     """
-        Fixes error:
 
-          File "/usr/lib/python2.7/lib-tk/ttk.py", line 1339, in insert
-            res = self.tk.call(self._w, "insert", parent, index, *opts)
-        _tkinter.TclError: character U+1f3d2 is above the
-            range (U+0000-U+FF FF) allowed by Tcl
+    # Allow program changes to scrollable text widget
+    pretty.scrollbox.configure(state="normal")
+    pretty.scrollbox.delete('1.0', 'end')  # Delete previous entries
 
-        From: https://bugs.python.org/issue21084
-    """
+    curr_key = 0  # Current key index
+    curr_level = 0  # Current dictionary part
+    curr_color = 'black'
+    # for key, value in pretty.dict.iteritems():    # Don't use iteritems
+    for key in pretty.dict:  # Don't need iteritems on ordered dict
+        if curr_key == pretty.part_start[curr_level]:
+            curr_level_name = pretty.part_names[curr_level]
+            curr_color = pretty.part_color[curr_level]
+            pretty.scrollbox.insert("end", curr_level_name + "\n")
+            # pretty.scrollbox.highlight_pattern(curr_level_name, 'yellow')
+            curr_level += 1
 
-    astral = re.compile(r'([^\x00-\uffff])')
-    new_s = ""
-    for i, ss in enumerate(re.split(astral, s)):
-        if not i % 2:
-            new_s += ss
-        else:
-            new_s += '?'
+            if curr_level >= len(pretty.part_start):
+                curr_level = len(pretty.part_start) - 1
+                # We are in last part so no next part to check
+                # print('resetting curr_level at:', key)
 
-    return new_s
+        # Insert current key and value into text widget
+        # TclError: character U+1f913 is above the range (U+0000-U+FFFF) allowed by Tcl
+        pretty.scrollbox.insert("end", u"\t" + key + u":\t" +
+                                pretty.dict[key] + u"\n", u"margin")
+
+        pretty.scrollbox.highlight_pattern(key + u':', curr_color)
+        curr_key += 1  # Current key index
+
+    if pretty.search is not None:
+        # NOTE: yellow, cyan and magenta are defined to highlight background
+        pretty.scrollbox.highlight_pattern(pretty.search, "yellow")
+        print("background in yellow")
+
+    # Don't allow changes to displayed selections (test copy clipboard)
+    pretty.scrollbox.configure(state="disabled")
 
 
 def music_treeview():
-    """ Define Data Dictionary treeview columns for history table
+    """ Define Data Dictionary treeview columns for Music table
+        ("column", "row_id"), ("heading", "Row ID"), ("sql_table", "Music"),
+        ("column", "os_filename"), ("heading", "OS Filename"), ("sql_table", "Music"),
+        ("column", "os_atime"), ("heading", "Access Time"), ("sql_table", "Music"),
+        ("column", "os_mtime"), ("heading", "Mod Time"), ("sql_table", "Music"),
+        ("column", "os_ctime"), ("heading", "Create Time"), ("sql_table", "Music"),
+        ("column", "os_file_size"), ("heading", "File Size"), ("sql_table", "Music"),
+        ("column", "artist"), ("heading", "Artist"), ("sql_table", "Music"),
+        ("column", "album"), ("heading", "Album"), ("sql_table", "Music"),
+        ("column", "song_name"), ("heading", "Song Name"), ("sql_table", "Music"),
+        ("column", "release_date"), ("heading", "Release Date"), ("sql_table", "Music"),
+        ("column", "original_date"), ("heading", "Original Date"), ("sql_table", "Music"),
+        ("column", "genre"), ("heading", "Genre"), ("sql_table", "Music"),
+        ("column", "seconds"), ("heading", "Seconds"), ("sql_table", "Music"),
+        ("column", "duration"), ("heading", "Duration"), ("sql_table", "Music"),
+        ("column", "play_count"), ("heading", "Play Count"), ("sql_table", "Music"),
+        ("column", "track_number"), ("heading", "Track Number"), ("sql_table", "Music"),
+        ("column", "rating"), ("heading", "Rating"), ("sql_table", "Music"),
+        ("column", "lyrics"), ("heading", "Lyrics"), ("sql_table", "Music"),
+        ("column", "time_index"), ("heading", "Time Index"), ("sql_table", "Music"),
+
     """
 
     music_treeview_list = [
@@ -1250,37 +1635,37 @@ def music_treeview():
       OrderedDict([
         ("column", "row_id"), ("heading", "Row ID"), ("sql_table", "Music"),
         ("var_name", "Id"), ("select_order", 0), ("unselect_order", 1),
-        ("key", False), ("anchor", "e"), ("instance", int), ("format", "{,,}"),
-        ("display_width", 150), ("display_min_width", 80),
+        ("key", False), ("anchor", "e"), ("instance", int), ("format", "{:,}"),
+        ("display_width", 80), ("display_min_width", 60),
         ("display_long", None), ("stretch", 0)]),  # 0=NO, 1=YES
 
       OrderedDict([
         ("column", "os_filename"), ("heading", "OS Filename"), ("sql_table", "Music"),
         ("var_name", "OsFileName"), ("select_order", 0), ("unselect_order", 2),
         ("key", True), ("anchor", "w"), ("instance", str), ("format", None),
-        ("display_width", 200), ("display_min_width", 120),
+        ("display_width", 300), ("display_min_width", 200),
         ("display_long", None), ("stretch", 0)]),  # 0=NO, 1=YES
 
       OrderedDict([
         ("column", "os_atime"), ("heading", "Access Time"), ("sql_table", "Music"),
         ("var_name", "OsAccessTime"), ("select_order", 0), ("unselect_order", 3),
-        ("key", False), ("anchor", "w"), ("instance", float), ("format", "{0,,f}"),
-        ("display_width", 80), ("display_min_width", 80),
+        ("key", False), ("anchor", "w"), ("instance", float), ("format", "date"),
+        ("display_width", 300), ("display_min_width", 200),
         ("display_long", None), ("stretch", 0)]),  # 0=NO, 1=YES
 
       OrderedDict([
         ("column", "os_mtime"), ("heading", "Mod Time"), ("sql_table", "Music"),
         ("var_name", "OsModificationTime"), ("select_order", 0), ("unselect_order", 4),
-        ("key", False), ("anchor", "w"), ("instance", float), ("format", "{0,,f}"),
-        ("display_width", 80), ("display_min_width", 80),
+        ("key", False), ("anchor", "w"), ("instance", float), ("format", "{0:,.0f}"),
+        ("display_width", 180), ("display_min_width", 120),
         ("display_long", None), ("stretch", 0)]),
 
       OrderedDict([
         ("column", "os_ctime"), ("heading", "Create Time"), ("sql_table", "Music"),
         ("var_name", "OsCreationTime"), ("select_order", 0), ("unselect_order", 5),
         ("key", False), ("anchor", "e"), ("instance", float),
-        ("format", "{0,,f}"), ("display_width", 80),
-        ("display_min_width", 80), ("display_long", None), ("stretch", 0)]),
+        ("format", "{0:,.0f}"), ("display_width", 180),
+        ("display_min_width", 120), ("display_long", None), ("stretch", 0)]),
 
       OrderedDict([
         ("column", "os_file_size"), ("heading", "File Size"), ("sql_table", "Music"),
@@ -1293,35 +1678,35 @@ def music_treeview():
         ("column", "artist"), ("heading", "Artist"), ("sql_table", "Music"),
         ("var_name", "MetaArtistName"), ("select_order", 0), ("unselect_order", 7),
         ("key", False), ("anchor", "w"), ("instance", str), ("format", None),
-        ("display_width", 400), ("display_min_width", 140),
+        ("display_width", 200), ("display_min_width", 140),
         ("display_long", None), ("stretch", 1)]),  # 0=NO, 1=YES
 
       OrderedDict([
         ("column", "album"), ("heading", "Album"), ("sql_table", "Music"),
-        ("var_name", "Album"), ("select_order", 0), ("unselect_order", 8),
+        ("var_name", "MetaAlbumName"), ("select_order", 0), ("unselect_order", 8),
         ("key", False), ("anchor", "w"), ("instance", str), ("format", None),
-        ("display_width", 400), ("display_min_width", 140),
+        ("display_width", 200), ("display_min_width", 140),
         ("display_long", None), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "song_name"), ("heading", "Song Name"), ("sql_table", "Music"),
         ("var_name", "MetaSongName"), ("select_order", 0), ("unselect_order", 9),
         ("key", False), ("anchor", "w"), ("instance", str), ("format", None),
-        ("display_width", 400), ("display_min_width", 140),
+        ("display_width", 200), ("display_min_width", 140),
         ("display_long", None), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "release_date"), ("heading", "Release Date"), ("sql_table", "Music"),
         ("var_name", "ReleaseDate"), ("select_order", 0), ("unselect_order", 10),
-        ("key", False), ("anchor", "w"), ("instance", float), ("format", "{0,,f}"),
-        ("display_width", 80), ("display_min_width", 80),
+        ("key", False), ("anchor", "w"), ("instance", float), ("format", "{0:,.0f}"),
+        ("display_width", 180), ("display_min_width", 120),
         ("display_long", None), ("stretch", 0)]),
 
       OrderedDict([
         ("column", "original_date"), ("heading", "Original Date"), ("sql_table", "Music"),
         ("var_name", "OriginalDate"), ("select_order", 0), ("unselect_order", 11),
-        ("key", False), ("anchor", "w"), ("instance", float), ("format", "{0,,f}"),
-        ("display_width", 80), ("display_min_width", 80),
+        ("key", False), ("anchor", "w"), ("instance", float), ("format", "{0:,.0f}"),
+        ("display_width", 180), ("display_min_width", 120),
         ("display_long", None), ("stretch", 0)]),
 
       OrderedDict([
@@ -1349,34 +1734,34 @@ def music_treeview():
         ("column", "play_count"), ("heading", "Play Count"), ("sql_table", "Music"),
         ("var_name", "PlayCount"), ("select_order", 0), ("unselect_order", 15),
         ("key", False), ("anchor", "w"), ("instance", str), ("format", None),
-        ("display_width", 160), ("display_min_width", 140),
+        ("display_width", 160), ("display_min_width", 110),
         ("display_long", None), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "track_number"), ("heading", "Track Number"), ("sql_table", "Music"),
         ("var_name", "TrackNumber"), ("select_order", 0), ("unselect_order", 16),
         ("key", False), ("anchor", "e"), ("instance", str), ("format", None),
-        ("display_width", 160), ("display_min_width", 140),
+        ("display_width", 140), ("display_min_width", 100),
         ("display_long", None), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "rating"), ("heading", "Rating"), ("sql_table", "Music"),
         ("var_name", "Rating"), ("select_order", 0), ("unselect_order", 17),
         ("key", False), ("anchor", "w"), ("instance", int), ("format", "{:,}"),
-        ("display_width", 160), ("display_min_width", 140),
+        ("display_width", 120), ("display_min_width", 80),
         ("display_long", None), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "lyrics"), ("heading", "Lyrics"), ("sql_table", "Music"),
         ("var_name", "UnsynchronizedLyrics"), ("select_order", 0), ("unselect_order", 18),
         ("key", False), ("anchor", "w"), ("instance", str), ("format", None),
-        ("display_width", 600), ("display_min_width", 140),
+        ("display_width", 200), ("display_min_width", 140),
         ("display_long", None), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "time_index"), ("heading", "Time Index"), ("sql_table", "Music"),
         ("var_name", "LyricsTimeIndex"), ("select_order", 0), ("unselect_order", 19),
-        ("key", False), ("anchor", "w"), ("instance", str), ("format", None),
+        ("key", False), ("anchor", "w"), ("instance", list), ("format", None),
         ("display_width", 160), ("display_min_width", 140),
         ("display_long", None), ("stretch", 1)])
     ]
@@ -1386,7 +1771,7 @@ def music_treeview():
 
 def history_treeview():
     """ Define Data Dictionary treeview columns for history table.  Snippet:
-        ("column", "row_id"), ("heading", "Row ID"), ("sql_table", "History"),
+        ("column", "time"), ("heading", "Time"), ("sql_table", "History"),
         ("column", "music_id"), ("heading", "Music ID"), ("sql_table", "History"),
         ("column", "user"), ("heading", "User"), ("sql_table", "History"),
         ("column", "type"), ("heading", "Type"), ("sql_table", "History"),
@@ -1397,7 +1782,8 @@ def history_treeview():
         ("column", "size"), ("heading", "Size"), ("sql_table", "History"),
         ("column", "count"), ("heading", "Count"), ("sql_table", "History"),
         ("column", "comments"), ("heading", "Comments"), ("sql_table", "History"),
-        ("column", "delete_on"), ("heading", "Delete On"), ("sql_table", "calc"),
+        ("column", "seconds"), ("heading", "Seconds"), ("sql_table", "History"),
+        ("column", "row_id"), ("heading", "Row ID"), ("sql_table", "History"),
         ("column", "reason"), ("heading", "Reason"), ("sql_table", "calc"),
 
     """
@@ -1408,13 +1794,13 @@ def history_treeview():
         ("column", "time"), ("heading", "Time"), ("sql_table", "History"),
         ("var_name", "Time"), ("select_order", 0), ("unselect_order", 1),
         ("key", False), ("anchor", "w"), ("instance", float),
-        ("format", "{0:,.4f}"), ("display_width", 240),
-        ("display_min_width", 120), ("display_long", None), ("stretch", 0)]),
+        ("format", "date"), ("display_width", 300),
+        ("display_min_width", 200), ("display_long", None), ("stretch", 0)]),
 
       OrderedDict([
         ("column", "music_id"), ("heading", "Music ID"), ("sql_table", "History"),
         ("var_name", "MusicId"), ("select_order", 0), ("unselect_order", 2),
-        ("key", False), ("anchor", "e"), ("instance", int), ("format", None),
+        ("key", False), ("anchor", "e"), ("instance", int), ("format", "{:,}"),
         ("display_width", 100), ("display_min_width", 80),
         ("display_long", None), ("stretch", 0)]),  # 0=NO, 1=YES
 
@@ -1491,8 +1877,8 @@ def history_treeview():
       OrderedDict([
         ("column", "row_id"), ("heading", "Row ID"), ("sql_table", "History"),
         ("var_name", "Id"), ("select_order", 0), ("unselect_order", 13),
-        ("key", True), ("anchor", "e"), ("instance", int), ("format", None),
-        ("display_width", 140), ("display_min_width", 100),
+        ("key", True), ("anchor", "e"), ("instance", int), ("format", "{:,}"),
+        ("display_width", 80), ("display_min_width", 60),
         ("display_long", None), ("stretch", 1)]),
 
       OrderedDict([
@@ -1512,7 +1898,7 @@ def history_treeview():
 
 
 def update_history(scraped_dict):
-
+    """ NOT USED """
     for i, website in enumerate(scraped_dict):
         if len(website['link']) > 2 and website['flag'] != 'skip':
             pass
@@ -1525,7 +1911,7 @@ def update_history(scraped_dict):
 
 
 def create_webscrape(music_id, website):
-
+    """ NOT USED """
     # Read all history records finding the last one for each website
     # if the flag is 'downloaded' then set dict flag to 'skip'
     print('remove website parameter:', website)
@@ -1541,7 +1927,7 @@ def create_webscrape(music_id, website):
 
 
 def create_radio_buttons(music_id):
-
+    """ NOT USED """
     # if already downloaded set text to grey with date in parentheses.
     # if no link add (no link) after website name.
     # can you make a deactivated tkinter radio button? Or simply
@@ -1558,19 +1944,576 @@ def create_radio_buttons(music_id):
 
 
 def get_last_history(music_id, website='all'):
-
+    """ NOT USED """
     # match is on website human formatted name not internet
     #  formatted name. EG "Genius' not '//genius.com'
-    print('music_id parameter not used:', music_id, website)
+    print('sql.py - get_last_history(music_id, website):', music_id, website)
 
-    pass
+
+# ==============================  FIX SQL ROWS  ============================
+
+
+class FixData:
+    # Date parameter in form "Sun May 7 23:59:59 2023"
+
+    def __init__(self, cutoff_str):
+        self.rows_count = 0
+        self.rows_changed = 0
+        self.fix_count = 0  # Can be two fields changed per row
+        self.error_count = 0
+        self.skipped_count = 0
+        self.epoch_cutoff = time.mktime(time.strptime(cutoff_str))
+        self.past_count = 0
+        self.test = True
+        self.successful_update_count = 0
+        self.sql_cmd_error = False
+
+    def fix_meta_edit(self, update=False):
+        """ Remove duplicate history records under Type "meta", Action "edit"
+
+        """
+
+        # Backup database before updating
+        self.backup(update)
+
+        fix_list = list()
+        music_list = list()
+
+        hist_cursor.execute("SELECT * FROM History")
+        rows = hist_cursor.fetchall()
+
+        for sql_row in rows:
+            row = dict(sql_row)
+            self.rows_count += 1
+            print_all = False
+            #if 15879 <= row['Id'] <= 15880:
+            if row['MusicId'] == 999999:
+                print("\nFound history History Row Id:", row['Id'], "| MusicId:", row['MusicId'])
+                print("\trow['MusicId'] =", row['MusicId'], "| row['Target'] =", row['Target'])
+                print_all = True
+
+            if row['Type'] != 'meta' or row['Action'] != 'edit':
+                continue  # Wrong 'Type' and 'Action'
+
+            if print_all:
+                print("\tStep 1 for :", row['Id'])
+
+            # If first time for this MusicId, don't delete. Just log it.
+            if not row['MusicId'] in music_list:
+                music_list.append(row['MusicId'])
+                fix_list.append(OrderedDict([('KeepId', row['Id']),
+                                             ('MusicId', row['MusicId']),
+                                             ('Target', row['Target']),
+                                             ('Count', 0), ('Error', 0)]))
+                if print_all:
+                    print("\tAdding to fix_list:", row['Id'], "position:", len(fix_list))
+                self.skipped_count += 1  # First record is a keeper
+                continue  # Nothing changes
+
+            if print_all:
+                print("\tStep 2 for :", row['Id'])
+
+            date_str, rebuilt_prefix = self.date_from_comments("Found", row['Comments'])
+            if rebuilt_prefix is None:
+                self.error_count += 1
+                print("Cutoff date not found in meta-edit history comments")
+                print(" ", self.make_pretty_line(row))
+                continue  # Error isolating date within comment
+
+            if print_all:
+                print("\tStep 3 for :", row['Id'])
+
+            try:
+                time_obj = time.strptime(date_str)
+                # Check to ensure date in comments is prior to cutoff date
+                # fix_count and past_count are automatically updated for us.
+                if not self.check_cutoff_date(time_obj):
+                    # print("epoch:", epoch, "epoch_cutoff:", epoch_cutoff)
+                    # print('past_count  Type:', row['Type'], ' Action:', row['Action'],
+                    #      ' SourceMaster:', row['SourceMaster'], ' Comments:', row['Comments'])
+                    # print("\tPast cutoff date:", row['Id'], self.past_count)
+                    continue  # Prior to cutoff date
+
+            except ValueError:
+                self.error_count += 1
+                print('sql.py - fix_meta_edit() time object error:', utc_date_str)
+                print(" ", self.make_pretty_line(row))  # All keys in random order
+                continue
+
+            if print_all:
+                print("\tStep 4 for :", row['Id'])
+
+            self.rows_changed += 1
+
+            found_ok = False
+            for d in fix_list:
+                # Find matching MusicId setup previously in dictionary list
+                if d['MusicId'] == row['MusicId']:
+                    d['Count'] += 1
+                    #print(self.make_pretty_line(d))
+                    found_ok = True
+                    break
+
+            if print_all:
+                print("Step 5 for :", row['Id'])
+
+            if not found_ok:
+                print("Not found:")
+                print(self.make_pretty_line(d))
+
+            if self.test:
+                continue  # Skip over update
+
+            sql = "DELETE FROM History WHERE Id = ?"
+            if not self.sql_cmd_error:
+                key = row['Id']
+                try:
+                    hist_cursor.execute(sql, (key,))
+                    self.successful_update_count += 1
+                except Exception as err:
+                    print('Update Failed: %s\nError: %s' % (query, str(err)))
+                    print("  key:", key,)
+                    print(sql, "\n", (detail, comment, key))
+                    self.sql_cmd_error = True
+                pass
+
+        # Print count total lines
+        self.print_summary("fix_meta_edit()", fix_list)
+        self.wrapup(update)
+
+
+    def fix_utc_dates(self, update=False):
+        """ Change UTC dates to Local format
+            Summer time April to October (7 months) is UTC-6
+            Winter time November to March (5 months) is UTC-7
+
+    Code to desk check for converting gmtime to localtime prior to May 7, 2023
+
+    'file' or 'meta + 'init' or 'edit'
+    ./sql.py:521:    SourceDetail = time.asctime(time.localtime(Time))
+    ./sql.py:790:    SourceDetail = time.asctime(time.localtime(Time))
+    ./sql.py:522:    Comments = "Found: " + time.asctime(time.localtime(time.time()))
+    ./sql.py:619:    Comments = Action + " time: " + time.asctime(time.localtime(time.time()))
+
+    hist_default_dict(key, time_type='access'):
+    'time', 'init' or 'edit'
+    ./sql.py:669:    SourceDetail = time.asctime(time.localtime(Time))
+
+    'time', 'remove'
+    ./sql.py:707:    Comments = "Removed: " + time.asctime(time.localtime(time.time()))
+
+    def hist_init_lyrics_and_time(START_DIR, USER, LODICT):
+    'file' or 'meta + 'init' or 'edit'
+    ./sql.py:989:        SourceDetail = time.asctime(time.localtime(Time))
+
+    'scrape', 'parm'
+    ./sql.py:1140:                         time.asctime(time.localtime(time.time())))
+    ./mserve.py:6791:                         time.asctime(time.localtime(time.time())))
+
+    'encode', 'discid'
+    ./encoding.py:676:                   "Get disc ID: " + time.asctime(time.localtime(time.time())))
+    'encode', 'mbz_get1'
+    ./encoding.py:757:             "Get releases list: " + time.asctime(time.localtime(time.time())))
+    'encode', 'mbz_get2'
+    ./encoding.py:805:                "Get cover art: " + time.asctime(time.localtime(time.time())))
+    'encode', 'album'
+    ./encoding.py:1103:                    " Finished: " + time.asctime(time.localtime(time.time())))
+    'file', 'init'
+    ./encoding.py:1170:            "encoded: " + time.asctime(time.localtime(time.time())))
+    'encode', 'track'
+    ./encoding.py:1175:            "finished: " + time.asctime(time.localtime(time.time())))
+
+        """
+
+        # Backup database before updating
+        self.backup(update)
+
+        fix_list = list()
+        # list of dictionaries Control Field 'SD' is SourceDetail
+        # 'CM' For comment field with no prefix.
+        # Otherwise Comments field contains date after passed prefix, E.G. "encoded"
+        fix_list.append(self.utc_dict('file', 'init', 'SD'))  # SD = SourceDetail
+        # ERROR: SourceDetail: '05 Love Has Remembered Me.oga'
+        #   Type: 'file'  Action: 'init'  SourceMaster: 'April Wine'
+        #   Comments: 'encoded: Sun Aug 15 23:43:22 2021'
+        fix_list.append(self.utc_dict('file', 'edit', 'SD'))
+        fix_list.append(self.utc_dict('meta', 'init', 'SD'))
+        fix_list.append(self.utc_dict('meta', 'edit', 'SD'))
+        fix_list.append(self.utc_dict('file', 'init', 'Found'))  # Comments start
+        fix_list.append(self.utc_dict('file', 'edit', 'Found'))  # with "Found:"
+        fix_list.append(self.utc_dict('meta', 'init', 'Found'))
+        fix_list.append(self.utc_dict('meta', 'edit', 'Found'))
+
+        fix_list.append(self.utc_dict('file', 'init', 'init time'))
+        fix_list.append(self.utc_dict('file', 'edit', 'edit time'))
+        fix_list.append(self.utc_dict('meta', 'init', 'init time'))
+        fix_list.append(self.utc_dict('meta', 'edit', 'edit time'))
+
+        fix_list.append(self.utc_dict('time', 'init', 'SD'))
+        fix_list.append(self.utc_dict('time', 'edit', 'SD'))
+        # ERROR: SourceDetail: L004
+        #   Type: time  Action: edit  SourceMaster: SD Card SanDisk 128GB
+        #   Comments: Automatically added by hist_init_lyrics_and_time()
+        fix_list.append(self.utc_dict('time', 'remove', 'Removed'))
+        fix_list.append(self.utc_dict('scrape', 'parm', 'CM'))  # CM = Comments
+        fix_list.append(self.utc_dict('encode', 'discid', 'Get disc ID'))
+        fix_list.append(self.utc_dict('encode', 'mbz_get1', 'Get releases list'))
+        fix_list.append(self.utc_dict('encode', 'mbz_get2', 'Get cover art'))
+        """ SPECIAL HANDLING FOR: Key 'Field': with value of: ' Finished' (has leading space)
+            "Tracks: " + str(self.encode_album_cnt) +
+            "Duration: " + duration +
+            " Finished: " + time.asctime(time.localtime(time.time())))
+        """
+        fix_list.append(self.utc_dict('encode', 'album', ' Finished'))
+        fix_list.append(self.utc_dict('file', 'init', 'encoded'))
+        fix_list.append(self.utc_dict('encode', 'track', 'finished'))
+
+        self.rows_count = 0
+        self.rows_changed = 0
+
+        hist_cursor.execute("SELECT * FROM History")
+        rows = hist_cursor.fetchall()
+        for sql_row in rows:
+            row = dict(sql_row)
+            self.rows_count += 1
+
+            new_row = self.utc_process_row(row, fix_list)
+            if new_row == row:
+                continue  # Nothing has changed
+
+            self.rows_changed += 1
+
+            if self.test:
+                continue  # Skip over update
+
+            detail = new_row['SourceDetail']
+            comment = new_row['Comments']
+            key = row['Id']
+            sql = "UPDATE History SET SourceDetail=?, Comments=? WHERE Id = ?"
+            if not self.sql_cmd_error:
+                try:
+                    hist_cursor.execute(sql, (detail, comment, key))
+                    self.successful_update_count += 1
+                except Exception as err:
+                    print('Update Failed: %s\nError: %s' % (query, str(err)))
+                    print("  detail:", detail)
+                    print("  comment:", comment)
+                    print("  key:", key)
+                    print(sql, "\n", (detail, comment, key))
+                    self.sql_cmd_error = True
+
+        # Print count total lines
+        self.print_summary("fix_utc_dates()", fix_list)
+        self.wrapup(update)
+
+    @staticmethod
+    def utc_dict(Type, Action, Field):
+        """
+            Build control dictionary. E.G.
+                OrderedDict([('Type', 'encode'), ('Action', 'mbz_get2'),
+                             ('Field', 'Get cover art'), ('Count', 0), ('Error', 0)]))
+        """
+        return OrderedDict([('Type', Type), ('Action', Action),
+                            ('Field', Field), ('Count', 0), ('Error', 0)])
+
+    def utc_process_row(self, row, fix_list):
+
+        new_row = row.copy()
+        for d in fix_list:
+
+            if d['Type'] != row['Type'] or d['Action'] != row['Action']:
+                continue
+
+            # SPECIAL HANDLING for comments but first check they are not "None"
+            if row['Comments'] and row['Comments'].startswith('encoded: '):
+                # new_row['SourceDetail'] = self.utc_to_local(row['SourceDetail'], row)
+                d['Count'] += 1
+                d['Error'] += 1
+                self.error_count += 1
+                self.skipped_count += 1
+                continue
+
+            if row['Type'] == 'time' and row['Action'] == 'edit' and d['Field'] == 'SD' and \
+                row['Comments'] and row['Comments']. \
+                    startswith('Automatically added by hist_init_lyrics_and_time()'):
+                self.skipped_count += 1
+                # sql.py - utc_to_local() time object error: L004
+                continue
+
+            elif d['Field'] == 'SD':
+                new_row['SourceDetail'] = self.utc_to_local(row['SourceDetail'], row)
+                d['Count'] += 1
+
+            elif row['Comments'] and row['Comments'].\
+                    startswith('Automatically added by hist_init_lyrics_and_time()'):
+                # If it was "SD" it would have been trapped now. Skip this comment only
+                # from our tests
+                d['Count'] += 1
+                d['Error'] += 1
+                self.error_count += 1
+                self.skipped_count += 1
+                continue
+
+            elif d['Field'] == 'CM':
+                new_row['Comments'] = self.utc_to_local(row['Comments'], row)
+                d['Count'] += 1
+
+            # SPECIAL HANDLING for comments but they might be "None"
+            elif row['Comments'] and (row['Comments'].startswith(d['Field']) or
+                                      (d['Field'] == " Finished" and
+                                       d['Field'] in row['Comments'])):
+
+                old_comment = row['Comments']  # Save to compare changes later.
+
+                # One time fix for missing space before "Duration:" string
+                if "Tracks:" in row['Comments'] and "Duration:" in row['Comments']:
+                    if " Duration:" not in row['Comments']:
+                        row['Comments'] = row['Comments'].replace("Duration:", " Duration:")
+                        # Fix "Tracks: 2 Duration: 7:59 Finished: Thu Aug 26 01:28:39 2021"
+                        # print(old_comment)
+                        # print(row['Comments'])
+
+                # Check to ensure date in comments is prior to cutoff date
+                # fix_count and past_count are automatically updated for us.
+                # If before cutoff date then convert utc time to local time
+                new_row['Comments'] = self.utc_comment_wrapper(d['Field'], row['Comments'], row)
+                if old_comment == new_row['Comments']:
+                    # Nothing changed so date not found within comments or before cutoff.
+                    self.skipped_count += 1
+                    print('REVIEW:', self.make_pretty_line(row))
+                    continue
+                d['Count'] += 1
+
+            if d['Count'] == 1:
+                #print('GOOD  -', self.make_pretty_line(d))
+                pass
+
+            if d['Error'] == 1:
+                #print('ERROR -', self.make_pretty_line(d))
+                pass
+
+        return new_row
+
+    def utc_comment_wrapper(self, prefix, comment, row):
+        """
+            Date is at end of comment.
+
+            :param prefix in comment E.G. "encoded"
+            :param comment with ascii date suffix
+            :param row is only used for error messages
+        """
+        ''' OLD CODE
+        parts = comment.split(prefix)
+        if len(parts) != 2:
+            print('bad parts len:', len(parts))
+            return comment
+
+        date_str = parts[1][2:]
+        local_date = self.utc_to_local(date_str, row)
+        return parts[0] + prefix + ": " + local_date
+        '''
+        date_str, rebuilt_prefix = self.date_from_comments(prefix, comment)
+        if rebuilt_prefix is None:
+            return comment  # Error isolating date within comment
+        # Check to ensure date in comments is prior to cutoff date
+        # fix_count and past_count are automatically updated for us.
+        # If before cutoff date then convert utc time to local time
+        local_date = self.utc_to_local(date_str, row)
+        return rebuilt_prefix + local_date
+
+    def utc_to_local(self, utc_date_str, row):
+        """
+            :param utc_date_str from History SourceDetail or Comments
+            :param row is only used for error messages
+        """
+
+        try:
+            time_obj = time.strptime(utc_date_str)
+            # Check to ensure date in comments is prior to cutoff date
+            # fix_count and past_count are automatically updated for us.
+            if not self.check_cutoff_date(time_obj):
+                #print("epoch:", epoch, "epoch_cutoff:", epoch_cutoff)
+                #print('past_count  Type:', row['Type'], ' Action:', row['Action'],
+                #      ' SourceMaster:', row['SourceMaster'], ' Comments:', row['Comments'])
+                return utc_date_str
+
+        except ValueError:
+            self.error_count += 1
+            print('sql.py - utc_to_local() time object error:', utc_date_str)
+            print('  Type:', row['Type'], ' Action:', row['Action'], ' SourceMaster:',
+                  row['SourceMaster'], ' Comments:', row['Comments'])
+            print(self.make_pretty_line(row))  # All keys in random order
+            return utc_date_str
+
+        if 3 < time_obj.tm_mon < 11:
+            off = -6*3600  # Summer Time -6 hours from utc
+        else:
+            off = -7*3600  # Winter Time -7 hours from utc
+
+        epoch += float(off)
+
+        return time.asctime(time.localtime(epoch))
+
+    # Shared FixData() class functions
+
+    @staticmethod
+    def make_pretty_line(d):
+        line = ""
+        for key in d:
+            # Last 40 chars of value, right justified to 5 when only 1 to 4 characters
+            line += key + ": " + str(d[key])[-40:].rjust(5) + " | "
+        return line
+
+    def backup(self, update):
+        if update:
+            self.test = False
+            from location import FNAME_LIBRARY
+            os.popen("cp -a " + FNAME_LIBRARY + " " + FNAME_LIBRARY + ".bak")
+
+    def wrapup(self, update):
+        print("=" * 80)
+        if update:
+            print("self.successful_update_count:", self.successful_update_count)
+            if not self.sql_cmd_error:
+                con.commit()
+            else:
+                print("self.sql_cmd_error: changes have been rolled back.")
+                hist_cursor.execute("ROLLBACK")
+            print("Backup created:", FNAME_LIBRARY + ".bak")
+        else:
+            print("Test Run Only - NO UPDATES TO:", FNAME_LIBRARY)
+        print("=" * 80)
+
+    def print_summary(self, parent, dict_list):
+        print('\nsql.py FixData() ' + parent + ' Sub-Totals')
+        for d in dict_list:
+            if d['Count'] > 0:
+                # Thousands of records so only print groups updated
+                print(" ", self.make_pretty_line(d))
+
+        print('\nsql.py FixData() ' + parent + ' Summary Counts')
+        print('  rows_count   :', self.rows_count)
+        print('  rows_changed :', self.rows_changed)
+        print('  fix_count    :', self.fix_count)  # May be multiple fixes/row
+        print('  skipped_count:', self.skipped_count)
+        print('  error_count  :', self.error_count)
+        print('  past cutoff  :', self.past_count)
+        print()
+
+    @staticmethod
+    def date_from_comments(prefix, comment):
+        """
+            Date is at end of comment. E.G. "Found: Thu May 18 12:45:52 2023"
+            There must always be colon ":" after the prefix. E.G. "Found" is passed.
+            There must always be a space " " after the colon ":".
+
+            :param prefix in comment E.G. "encoded". May be " Found" with leading space
+                because it follows dynamic data.
+            :param comment with ascii date
+        """
+        parts = comment.split(prefix)
+        if len(parts) != 2:
+            print('sql.py - date_from_comment() len(parts) != 2:', len(parts))
+            return comment, None
+
+        date_str = parts[1][2:]
+        rebuilt_prefix = parts[0] + prefix + ": "
+        return date_str, rebuilt_prefix
+
+    def check_cutoff_date(self, time_obj):
+        epoch = time.mktime(time_obj)
+        if epoch < self.epoch_cutoff:
+            self.fix_count += 1
+            return True
+        else:
+            self.past_count += 1
+            return False
+
+
+# ==============================  FIX SQL ROWS  ============================
+
+
+class Versions:
+    """
+        Get installed version numbers. Can be called by CLI or GUI.
+    """
+
+    def __init__(self):
+
+        self.inst_list = []                 # List of dictionaries
+        self.inst_dict = {}                 # Dictionary of single program keys:
+        # prg_name, prg_ver, pkg_name, pkg_ver, prg_cmd, get_ver_parm,
+        # comments (E.G. special notes, version date/time, etc)
+
+        # History Time: [file modification time], MusicId: 0, User: [pkg_name],
+        #   Type: 'version', Action: 'program', SourceMaster: [name]
+        #   SourceDetail: [version installed], Target: [/usr/bin/blahBlah],
+        #   Size: [file size], Count: [line count if script], Seconds: 0.0
+        #   Comments: "Used in mserve.py"
+
+        # History Time: [file modification time], MusicId: 0, User: [package_name],
+        #   Type: 'version', Action: 'program', SourceMaster: 'prg_get_ver'
+        #   SourceDetail: [parsing method], Target: [command to get version],
+        #   Size: [major_ver], Count: [minor_ver], Seconds: [sub_minor.sub_sub_minor]
+        #   Comments: "Used by encoding.py"
+
+        # History Time: [file modification time], MusicId: 0, User: [package_name],
+        #   Type: 'version', Action: 'program', SourceMaster: 'package_get_version'
+        #   SourceDetail: [parsing method], Target: [command to get version],
+        #   Size: [major_version], Count: [minor_version], Seconds: [sub_minor.sub_sub_minor]
+        #   Comments: "Used by disc_get.py"
+        """
+            con.execute("create table IF NOT EXISTS History(Id INTEGER PRIMARY KEY, \
+                Time FLOAT, MusicId INTEGER, User TEXT, Type TEXT, \
+                Action TEXT, SourceMaster TEXT, SourceDetail TEXT, \
+                Target TEXT, Size INT, Count INT, Seconds FLOAT, \
+                Comments TEXT)")
+
+        """
+
+    def build_apt_list(self, update=False):
+        """ Samples
+            $ gst-launch-1.0 --gst-version
+            GStreamer Core Library version 1.8.3
+
+            $ apt list | grep python-tk
+            python-tk/xenial-updates,now 2.7.12-1~16.04 amd64 [installed]
+            python-tkcalendar/xenial,xenial,now 1.5.0-1 all [installed]
+
+            $ wc mserve.py
+             10826  46134 492518 mserve.py
+
+TO GET installed packages
+$ time apt list | grep "\[installed" > apt_list_installed.txt
+real	0m1.454s
+user	0m1.395s
+sys	    0m0.095s
+
+$ ll *.txt
+-rw-rw-r-- 1 rick rick 3377347 May 18 15:18 apt_list_full.txt
+-rw-rw-r-- 1 rick rick  185301 May 18 15:19 apt_list_installed.txt
+
+$ head apt_list_installed.txt
+a11y-profile-manager-indicator/xenial,now 0.1.10-0ubuntu3 amd64 [installed]
+abiword/xenial-updates,now 3.0.1-6ubuntu0.16.04.1 amd64 [installed]
+abiword-common/xenial-updates,xenial-updates,now 3.0.1-6ubuntu0.16.04.1 all [installed,automatic]
+abiword-plugin-grammar/xenial-updates,now 3.0.1-6ubuntu0.16.04.1 amd64 [installed,automatic]
+account-plugin-facebook/xenial,xenial,now 0.12+16.04.20160126-0ubuntu1 all [installed]
+account-plugin-flickr/xenial,xenial,now 0.12+16.04.20160126-0ubuntu1 all [installed]
+account-plugin-google/xenial,xenial,now 0.12+16.04.20160126-0ubuntu1 all [installed]
+accountsservice/xenial-updates,xenial-security,now 0.6.40-2ubuntu11.6 amd64 [installed]
+acl/xenial,now 2.2.52-3 amd64 [installed]
+acpi/xenial,now 1.7-1 amd64 [installed]
+
+        """
+        pass
 
 
 # =================================  MISCELLANEOUS  ===========================
 
 
 def alter_table1(cur, table, *args):
-    """ Copied from simple_insert(), still needs to be changed. """
+    """ Copied from simple_insert(), Needs more code !!! """
     query = 'INSERT INTO '+table+' VALUES (' + '?, ' * (len(args)-1) + '?)'
     cur.execute(query, args)
 
@@ -1580,13 +2523,12 @@ def simple_insert(cur, table, *args):
     cur.execute(query, args)
 
 
-default_value = {'TEXT': '""', 'INT': '0', 'FLOAT': '0.0', 'BLOB': '""'}
-
-
 def insert_blank_line(table_name):
-    """ Add underscores to insert_blank_line and table_name for pycharm syntax checking.
+    """ NOT USED...
+        Add underscores to insert_blank_line and table_name for pycharm syntax checking.
         If pragma breaks then remove underscores.
     """
+    default_value = {'TEXT': '""', 'INT': '0', 'FLOAT': '0.0', 'BLOB': '""'}
     cs = con.execute('pragma table_info('+table_name+')').fetchall()  # sqlite column metadata
     con.execute('insert into '+table_name+' values ('+','.join([default_value[c[2]] for c in cs])+')')
  
@@ -1625,5 +2567,8 @@ inserted as requested not as the data column specifies - each unit of data
 has its own datatype.
 
     '''
+
+
+
 
 # End of sql.py
