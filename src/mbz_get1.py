@@ -12,6 +12,7 @@ from __future__ import print_function   # Must be first import
 from __future__ import with_statement   # Error handling for file opens
 
 
+# Vendor modules
 import subprocess32 as sp
 #import threading
 import re
@@ -26,7 +27,7 @@ import os
 
 from pprint import pprint
 
-# Homegrown
+# Homegrown modules
 import location as lc
 import message
 import image as img
@@ -72,17 +73,24 @@ SEARCH_LIMIT = sys.argv[2]          # Number of search results to return when
                                     # less than 3 only CD's searched. When more
                                     # then vinyl (which may have artwork!) are
                                     # included. EG Jim Steinem Bad for Good
+EMAIL_ADDRESS = sys.argv[3]         # May 5, 2023 - Not tested yet
+
+#print("sys.argv:", *sys.argv)
+# ERROR: close failed in file object destructor:
+# sys.excepthook is missing
+# lost sys.stderr
+# You cannot print anything because parent's terminal not passed to shelled job
 
 
 def get_release_by_mbzid(mbz_id, toplevel=None):
 
     try:
         # This actually doesn't generate any errors...
-        mbz.set_useragent("mserve", "0.1", "RickLee518@gmail.com")
+        mbz.set_useragent("mserve", "0.1", EMAIL_ADDRESS)
     except mbz.NetworkError:
-        return { 'error': '99' }
+        return {'error': '99'}
     except:
-        return { 'error': '2' }
+        return {'error': '2'}
 
 #   PRODUCTION VERSION will use this instead:
 #    mbz.set_useragent("mserve", "0.1")
@@ -93,7 +101,7 @@ def get_release_by_mbzid(mbz_id, toplevel=None):
         release = mbz.get_release_by_id(mbz_id,
                 includes=['recordings'])
     except:
-        return { 'error': '5' }
+        return {'error': '5'}
 
     #print('\n===================== release ====================')
     #pprint(release)
@@ -163,7 +171,7 @@ def get_disc_info(toplevel=None):
     # (this step is required, as per the webservice access rules
     # at http://wiki.musicbrainz.org/XML_Web_Service/Rate_Limiting )
     try:
-        mbz.set_useragent("mserve", "0.1", "RickLee518@gmail.com")
+        mbz.set_useragent("dummy_organization", "0.1", EMAIL_ADDRESS)
     except:
         #print('useragent failed for mserve')
         return {'error': '2'}
@@ -525,15 +533,15 @@ def get_contents():
     this_disc = libdiscid.read(libdiscid.default_device())
 #    mb.set_useragent(app='get-contents', version='0.1')
 #    mb.auth(u=input('Musicbrainz username: '), p=getpass())
-    mb.set_useragent("mserve", "0.1", "RickLee518@gmail.com")
+    mb.set_useragent("mserve", "0.1", EMAIL_ADDRESS)
 
-    release = mb.get_releases_by_discid(this_disc.id, toc=this_disc.toc, \
+    release = mb.get_releases_by_discid(this_disc.id, toc=this_disc.toc,
                                         includes=['artists', 'recordings'])
 
     print('\nget_contents() release:\n',release)
 
     if release.get('disc'):
-       this_release=release['disc']['release-list'][0]
+       this_release = release['disc']['release-list'][0]
        title = this_release['title']
        artist = this_release['artist-credit'][0]['artist']['name']
      
@@ -895,7 +903,7 @@ def process_dir(thisDir, results=[], coverFiles=[]):
 
 
 def parse_args_opts():
-    """parse command line argument and options"""
+    """parse command line argument and options """
 
     googImgOpts = ['small', 'medium', 'large']
     fileTypeOpts = ['jpg', 'png', 'gif']
@@ -936,7 +944,7 @@ def parse_args_opts():
 
 def main_function():
     """
-    changed from main() to avoid naming confictions
+    changed from main() to avoid naming conflicts
 
     Recursively download cover images for music files in a
     given directory and its sub-directories

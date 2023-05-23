@@ -6,10 +6,72 @@
 #       After copying playlists between locations use:
 #
 #           cd ~/.config/mserve/L???    # Where ??? is 001, 002, etc.
-#           sed -i 's#/mnt/chromeos/removable#/media/rick#' last_playlist
-#           sed -i 's#/mnt/chromeos/removable#/media/rick#' last_selections
+#           sed -i 's#/mnt/chrome/removable#/media/rick#' last_playlist
+#           sed -i 's#/mnt/chrome/removable#/media/rick#' last_selections
 #
 #==============================================================================
+
+"""
+# The only pickle files in  /home/$USER/.config/mserve/ directory
+FNAME_LOCATIONS       = MSERVE_DIR + "locations"
+FNAME_LAST_LOCATION   = MSERVE_DIR + "last_location"
+FNAME_LIBRARY         = MSERVE_DIR + "library.db"
+
+# These pickle files are located to /home/$USER/.config/mserve/L999/ directory
+FNAME_LAST_OPN_STATES = MSERVE_DIR + "last_open_states"     # Expanded/Collapsed song list
+FNAME_LAST_SONG_NDX   = MSERVE_DIR + "last_song_ndx"        # Last song played in list
+# May 25 2021 -  last_selections corrupted by refresh_lib_tree()
+FNAME_LAST_SELECTIONS = MSERVE_DIR + "last_selections"      # Shuffled play order of songs
+FNAME_LAST_PLAYLIST   = MSERVE_DIR + "last_playlist"        # Songs selected for playing 
+
+# There can be two open at once so unlike other global variables this is never
+# replaced. It is simply used as base for creating new variable.
+FNAME_MOD_TIME        = MSERVE_DIR + "modification_time"
+
+
+    From mserve.py:
+
+    Taken from pickle file: /home/$USER/.config/mserve/L999/locations
+
+    def loc_populate_screen(self, item):
+        loc_dict = lc.item(item)
+        self.iid_var.set(loc_dict['iid'])
+        self.name_var.set(loc_dict['name'])
+        self.topdir_var.set(loc_dict['topdir'])
+        self.host_var.set(loc_dict['host'])
+        self.wakecmd_var.set(loc_dict['wakecmd'])
+        self.testcmd_var.set(loc_dict['testcmd'])
+        self.testrep_var.set(loc_dict['testrep'])
+        self.mountcmd_var.set(loc_dict['mountcmd'])
+        self.activecmd_var.set(loc_dict['activecmd'])
+        self.activemin_var.set(loc_dict['activemin'])
+
+    from location.py (NOTE add test for unique name, search by name):
+
+        #if name.strip():
+        if name == "" or name.isspace():
+            # Empty or all blank names not allowed
+            print("location.insert() Error: 'name' field is blank")
+            return None
+
+        #if topdir.strip():
+        if topdir == "" or topdir.isspace():
+            # Empty or all blank top directory not allowed
+            print("location.insert() Error: 'topdir' field is blank")
+            return None
+
+        d = {'iid': iid, 'name': name, 'topdir': topdir, 'host': host, 'wakecmd':
+             wakecmd, 'testcmd': testcmd, 'testrep': testrep, 'mountcmd':
+             mountcmd, 'activecmd': activecmd, 'activemin': activemin}
+
+        LIST.append(d)
+
+        # Create directory '~/.config/mserve/<iid>' Where <iid> = L001, L002, etc.
+        create_subdirectory(iid)
+
+        return iid
+
+"""
 
 from __future__ import print_function       # Must be first import
 import os
@@ -25,11 +87,15 @@ import message                              # manage dialog messages
 import global_variables as g
 if g.USER is None:
     print('location.py was forced to run g.init()')
+    # This is normal after 'm' runs mserve.py. If sql.py used, it will show first.
     g.init()
 
 # Define /home/$USER/.config/mserve/ directory
-MSERVE_DIR            = os.sep + "home" + os.sep + g.USER + os.sep + \
-                        ".config" + os.sep + "mserve" + os.sep
+# May 19, 2023 MSERVE_DIR now created in g.init()
+#MSERVE_DIR            = os.sep + "home" + os.sep + g.USER + os.sep + \
+#                        ".config" + os.sep + "mserve" + os.sep
+MSERVE_DIR = g.MSERVE_DIR
+# print("MSERVE_DIR:", MSERVE_DIR)
 
 # only files in  /home/$USER/.config/mserve/ directory
 FNAME_LOCATIONS       = MSERVE_DIR + "locations"
@@ -37,11 +103,11 @@ FNAME_LAST_LOCATION   = MSERVE_DIR + "last_location"
 FNAME_LIBRARY         = MSERVE_DIR + "library.db"
 
 # These files are located to /home/$USER/.config/mserve/L999/ directory
-FNAME_LAST_OPN_STATES = MSERVE_DIR + "last_open_states"
-FNAME_LAST_SONG_NDX   = MSERVE_DIR + "last_song_ndx"
+FNAME_LAST_OPN_STATES = MSERVE_DIR + "last_open_states"     # Expanded/Collapsed song list
+FNAME_LAST_SONG_NDX   = MSERVE_DIR + "last_song_ndx"        # Last song played in list
 # May 25 2021 -  last_selections corrupted by refresh_lib_tree()
-FNAME_LAST_SELECTIONS = MSERVE_DIR + "last_selections"      # Version 1
-FNAME_LAST_PLAYLIST   = MSERVE_DIR + "last_playlist"        # Version 1
+FNAME_LAST_SELECTIONS = MSERVE_DIR + "last_selections"      # Shuffled play order of songs
+FNAME_LAST_PLAYLIST   = MSERVE_DIR + "last_playlist"        # Songs selected for playing 
 
 ''' FUTURE VERSION '''
 FNAME_ALL_SONGS       = MSERVE_DIR + "all_songs"            # Version 2
@@ -61,6 +127,9 @@ FNAME_CURR_SELECTIONS = MSERVE_DIR + "curr_selections"      # Version 2
 FNAME_LAST_VARS       = MSERVE_DIR + "last_variables"       # TODO: Version 3
 
 """
+
+FUTURE Changes
+
 - 0 - Last Song index
 - 1 - Playlist name
 - 2 - Playlist read time
@@ -88,7 +157,7 @@ if not os.path.exists(MSERVE_DIR):
 
 ''' Global variables
 '''
-LIST = []                           # List of DICT's
+LIST = []                           # List of DICT entries
 DICT = {}                           # Location dictionary
 
 
@@ -176,6 +245,7 @@ if os.path.isfile(FNAME_LOCATIONS):
 
 
 def write():
+    # April 25, 2023 - Why does this work when LIST is not global?
     with open(FNAME_LOCATIONS, "wb") as f:
         # store the data as binary data stream
         pickle.dump(LIST, f)                      # Save locations list
@@ -188,14 +258,6 @@ def unpickle_list(filename):
 
             https://stackoverflow.com/questions/33307623/
                 python-exception-safe-pickle-use/33308573
-
-                with open(self.session_filename, "rb") as f:
-                    data = cPickle.loads(zlib.decompress(f.read()))
-
-        Compression not used but if needed see:
-
-            https://stackoverflow.com/questions/18474791/
-                decreasing-the-size-of-cpickle-objects
 
         NOT TESTED!
 
@@ -251,8 +313,8 @@ def insert(iid="", name="", topdir="", host="", wakecmd="", testcmd="",
 
 def iid_to_ndx(iid):
     """ Convert location index (iid) to zero based index for LIST[ndx] """
-    sndx = iid[-3:]             # Last 3 characters of "L999" = "999"
-    return int(sndx) - 1
+    num = iid[-3:]             # Last 3 characters of "L999" = "999"
+    return int(num) - 1
 
 
 def ndx_to_iid(ndx):
@@ -290,9 +352,34 @@ def onetime():
 
 
 def remove(iid):
-    """ Delete location from LIST """
+    """ Delete location DICT from LIST
+    """
+    global LIST                     # List of location dictionaries
+
+    # Build directory name to remove
+    forget_dir = MSERVE_DIR + iid + os.sep
+    # print('forget_dir:', forget_dir)
+
+    # Directory may never have been created for older buggy versions or
+    # remote locations without access or due to permissions
+    if not os.path.isdir(forget_dir):
+        print("Path is not a directory:", forget_dir)
+        return False
+
+    # Try to remove tree; if failed show an error using try...except on screen
+    try:
+        shutil.rmtree(forget_dir)
+    except OSError as e:
+        print("Error: %s - %s." % (e.filename, e.strerror))
+        return False
+
+    # Must delete DICT in LIST after directory removed
     ndx = iid_to_ndx(iid)           # treeview style string to LIST index
+    d = LIST[ndx]
+    # print('deleting iid:', d['iid'], d['name'])
     del LIST[ndx]
+    # Save LIST changes 'lc.write()' is done in mserve.py 'loc_submit()'
+    return True
 
 
 def item(iid, **kwargs):
@@ -310,7 +397,13 @@ def item(iid, **kwargs):
             DICT[key] = value
             keyword_found = True
         else:
-            print('location.item() invalid key passed:', key)
+            print('location.item() invalid keyword passed:', key)
+
+    # april 23, 2023 - One time fix
+    if keyword_found:
+        if DICT['iid'] == "L004" and DICT['name'] == "Test ~/Documents":
+            print('L004 - Test ~/Documents was found.')
+            DICT['iid'] = "L005"
 
     if keyword_found is True:
         # Dec 5, 2020 - Why does this work when LIST isn't global?
@@ -388,20 +481,16 @@ def test_host_up(host):
     """ Simply test if host if up and return True or False """
     ''' TODO: Fix error:
 
-    This is nc from the netcat-openbsd package. An alternative nc is available
-    in the netcat-traditional package.
-    usage: nc [-46bCDdhjklnrStUuvZz] [-I length] [-i interval] [-O length]
-    [-P proxy_username] [-p source_port] [-q seconds] [-s source]
-    [-T toskeyword] [-V rtable] [-w timeout] [-X proxy_protocol]
-    [-x proxy_address[:port]] [destination] [port]
-    
-    Restarting with new music library: /home/rick/Music
+        "This is nc from the netcat-openbsd package. An alternative nc is 
+        available in the netcat-traditional package..."
+        
+        Happens when restarting with new music library: /home/rick/Music
     '''
     if host.strip():
         return True if os.system("nc -z " + host + " 22 > /dev/null") \
                                  is 0 else False
     else:
-        print('test_host_up() receved blank host name from:',
+        print('test_host_up() received blank host name from:',
               sys._getframe(1).f_code.co_name)
         return False
 
@@ -410,7 +499,7 @@ def test(iid, toplevel):
 
     """ Validate location. In the most simple form check that local machine's
         top directory exists. In the most complicated form location is on
-        remote / host and host must be woken up, parition mounted and, then
+        remote / host and host must be woken up, partition mounted and, then
         test if top directory exists.
 
         This function is called by loc_open().
@@ -470,7 +559,7 @@ def test(iid, toplevel):
     # Test host up if not already done
     #if not testcmd == "" or not testcmd.isspace():
     if testcmd.strip():
-        # Loop # of interations checking if host is up
+        # Loop # of iterations checking if host is up
         if testrep < 1:
             testrep = 1
         for i in range(testrep):
@@ -487,11 +576,9 @@ def test(iid, toplevel):
         test_passed = True
 
     if test_passed is False:
-        testtime = int(float(testrep) * .1)
-        #print("location.test() Host did not come up after:",
-        #      testtime,"seconds.")
+        test_time = int(float(testrep) * .1)
         dtb.update("location.test() Host did not come up after: " +
-                   str(testtime) + " seconds.")
+                   str(test_time) + " seconds.")
         dtb.close()
         return False
     else:
@@ -576,7 +663,7 @@ class ModTime:
             self.topdir += os.sep
         testfile = self.topdir + "test19630518"
         with open(testfile, "w") as text_file:
-            text_file.write("Test Modifcation Time")
+            text_file.write("Test Modification Time")
         before_touch = os.stat(testfile).st_mtime
         os.popen("touch -m -t 196305180000 " + testfile)
         after_touch = os.stat(testfile).st_mtime
@@ -699,66 +786,5 @@ def t(float_time):
     ftime = datetime.datetime.fromtimestamp(float_time)
     return ftime.strftime("%b %d %Y %H:%M:%S")
 
-
-def remove_iid(iid, open_iid):
-    """ PARENT WILL:
-            Confirm forgetting location. Cannot be current open location.
-            If our opened location iid is changing call:
-                lc.set_location_filenames(iid)
-                Set FNAME_LAST_LOCATION files iid
-                Rename LODICT('iid') with new number
-
-        THIS FUNCTION WILL:
-            Remove '/home/$USER/.config/mserve/L999' directory
-            Rename higher '~/.config/mserve/L999' directories 1 less
-            Update higher iid's in locations master file 1 less
-            return iid mserve is now using for active location
-    """
-
-    ''' Remove /home/$USER/.config/mserve/L999 directory and files within
-    
-        - need to change globally opened filenames in lc.FNAME as well. 
-          Use .replace("/"+from+"/","/"+to+"/")
-        - os.rename(topdir + "/" + from, topdir + "/" + to)
-        - can .config be residing on a host? If so does os.rename() still work?
-
-    '''
-    global MSERVE_DIR
-
-    ''' Parent already did this check but double check anyway '''
-    if iid == open_iid:
-        print('ERROR. iid:', iid, 'cannot be active location')
-        return open_iid
-
-    # Build directory name to remove
-    forget_dir = MSERVE_DIR + os.sep + iid + os.sep
-
-    # Directory may never have been created for older buggy versions or
-    # remote locations without access or due to permissions
-    if not os.path.isfile(forget_dir):
-        return None
-
-    # Try to remove tree; if failed show an error using try...except on screen
-    try:
-        shutil.rmtree(forget_dir)
-    except OSError as e:
-        print("Error: %s - %s." % (e.filename, e.strerror))
-
-    # TODO: Decrement location ID's higher than deleted one.
-    return open_iid                 # The active location's iid hasn't changed
-
-
-def renumber_iid():
-
-    """ To iid will be deleted then from iid is renamed to it.
-
-        - need to change globally opened filenames in lc.FNAME as well.
-          Use .replace("/"+from+"/","/"+to+"/")
-        - os.rename(topdir + "/" + from, topdir + "/" + to)
-        - can .config be residing on a host? If so does os.rename() still work?
-
-    """
-
-    pass
 
 # End of location.py

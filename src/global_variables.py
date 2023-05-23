@@ -3,18 +3,28 @@
 
 # ==============================================================================
 #
-#       global_variables.py - Global variables shared by all modules.
+#       global_variables.py - Global variables shared by all mserve modules
+#
+#       May 19, 2023 - appdirs for universal application & storage directories
 #
 # ==============================================================================
 
-USER = None                 # User ID, Name, GUID varies by platform
-USER_ID = None              # Numeric User ID in Linux
+from __future__ import print_function       # Must be first import
 
+from appdirs import *   # Get application & storage directory names
+import os               # USER_ID = str(os.get uid())
+import pwd              # USER = pwd.get pw uid(os.get uid()).pw_name
 
-# Values from gnome-terminal to prevent window shrinking too small
+USER = None             # User ID, Name, GUID varies by platform
+USER_ID = None          # Numeric User ID in Linux
+HOME = None             # In Linux = /home/USER
+USER_CONFIG_DIR = None  # /home/user/.config/mserve
+USER_DATA_DIR = None    # /home/user/.local/share/mserve
+MSERVE_DIR = None       # /home/user/.config/mserve <- historically wrong
+
+# Same values used by gnome-terminal to prevent window shrinking too small
 WIN_MIN_WIDTH = 142
 WIN_MIN_HEIGHT = 63
-
 
 # Many older Global variables first used in mmm (multiple monitors manager)
 RESTART_SLEEP = .3      # Delay for mserve close down
@@ -50,20 +60,22 @@ def init():
         5   pw_dir      User home directory
         6   pw_shell    User command interpreter
     """
-    global USER, USER_ID
+    global USER, USER_ID, HOME, USER_DATA_DIR, USER_CONFIG_DIR, MSERVE_DIR
 
     if USER is not None:
-        print('User already set:', USER, USER_ID)
+        # print('User already set:', USER, USER_ID, HOME)
         return
 
-    # OLD METHOD removed Sep 13/2021
-    #import getpass
-    #USER = getpass.getuser()
-
-    import os
-    import pwd
     USER = pwd.getpwuid(os.getuid()).pw_name
     USER_ID = str(os.getuid())
-    #print('User:', USER, USER_ID)
+    HOME = os.path.expanduser("~")  # Works in Windows too. EG C:\Users\rick
+    # print('User:', USER, USER_ID, HOME)
+    appname = "mserve"
+    app_author = "pippim"
+    USER_DATA_DIR = user_data_dir(appname, app_author)
+    # print("USER_DATA_DIR:", USER_DATA_DIR)
+    USER_CONFIG_DIR = MSERVE_DIR = user_config_dir(appname, app_author)
+    MSERVE_DIR += os.sep
+    # print("USER_CONFIG_DIR:", USER_CONFIG_DIR)
 
 # End of global_variables.py

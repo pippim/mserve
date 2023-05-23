@@ -35,7 +35,9 @@ from __future__ import print_function       # Must be first import
 from __future__ import with_statement       # Error handling for file opens
 
 import global_variables as g
-g.init()
+if g.USER is None:
+    print('vu_meter.py was forced to run g.init()')
+    g.init()
 
 import pyaudio
 import numpy as np              # January 24, 2021 support separate 2 channels

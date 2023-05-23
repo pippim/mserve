@@ -322,13 +322,19 @@ def make_triangles(triangle_list, hgt, out_c, fill_c):
 
     # custom indicator
     style = ttk.Style()
+    # Check if triangles already created.
+    element_list = style.element_names()
+    if 'Treeitem.myindicator' in element_list:
+        # print('Treeitem.myindicator already created in image.py make_triangles()')
+        return
+
     try:
         style.element_create('Treeitem.myindicator', 'image', triangle_list[1],
                              ('user1', '!user2', triangle_list[0]),
                              ('user2', triangle_list[2]),
                              sticky='w', width=width)
     except tk.TclError:
-        print('Treeitem.myindicator already created in image.py make_triangles()')
+        print('Treeitem.myindicator tk.TclError in image.py make_triangles()')
         return
 
     # replace Treeitem.indicator by custom one
@@ -874,14 +880,9 @@ class GoneFishing:
 
     """
 
-    def __init__(self, parent, ms_font=(None, WIN_FONTSIZE * 4),
-                 command=None, stretch=True):
+    def __init__(self, parent, ms_font=(None, WIN_FONTSIZE * 4)):
 
         self.src_toplevel = parent          # mserve play_top
-        # monitors = monitor.get_xrandr_monitors()
-        # print('monitors:', monitors)
-
-        # GoneFishing.close() function will reference these instances
         self.shark_pid = None
         self.man_pid = None
         self.src_cover_top = None
@@ -895,6 +896,7 @@ class GoneFishing:
         if self.trg_window_id_hex is None:
             # No target window, tell functions there is no shark window
             self.shark_window_id_dec = None     # plot_move() and shark_move()
+            print("No target window to go fishing on. Needed at x,y coordinates 0,0")
             return
 
         self.src_cover_top = None           # Gone Fishing placeholder window
@@ -902,6 +904,7 @@ class GoneFishing:
         self.trg_toplevel = None            # Falling man silhouette window
         self.trg_was_maximized = None       # Check these states and restore
         self.trg_was_above = None           # when GoneFishing closes
+        self.toggle_str = ""                # Full screen indicator
         self.src_was_below = None           # when GoneFishing closes
 
         self.move_steps = None              # How many steps (x+y) to move
@@ -1021,8 +1024,8 @@ class GoneFishing:
             return
 
         # geometry of target window - Already obtained at top of init using:
-        # self.trg_window_id_hex, trg_geom = self.trg_get_window_id()
-        # print('self.trg_window_id_hex, trg_geom:', self.trg_window_id_hex, trg_geom)
+        self.trg_window_id_hex, trg_geom = self.trg_get_window_id()
+        # print('trg_window_id_hex:', self.trg_window_id_hex, 'trg_geom:', trg_geom)
         self.trg_x = trg_geom[0]  # x
         self.trg_y = trg_geom[1]  # y
         self.trg_w = trg_geom[2]  # width
@@ -1030,7 +1033,17 @@ class GoneFishing:
 
         self.man_window_id = None           # xdotool decimal format
 
-        self.trg_was_above = self.win_remove_above(self.trg_window_id_hex)
+        # self.win_remove_above()  # Changed April 30, 2023
+
+        self.trg_was_above = None
+        self.trg_check_full_screen()
+        """  The target window can stay maximized for undecorated windows only. We need to get
+             "always on top" (above) state, Maximized Vertically and Maximized Horizontally
+              states.
+
+              Sets         self.trg_was_above = True
+        """
+
         self.src_window_id_hex = hex(self.src_window_id_dec)
         self.src_was_below = self.win_remove_below(self.src_window_id_hex)
 
@@ -1120,6 +1133,7 @@ class GoneFishing:
             Move center of shark to center of man.
         """
         if self.shark_window_id_dec is None:
+            print("image.py GoneFishing.shark_move() shark_window_id_dec is None")
             return  # Failsafe
 
         if not self.on_y_axis and not self.on_x_axis:
@@ -1213,10 +1227,7 @@ gsettings set org.compiz.core:/org/compiz/profiles/unity/plugins/core/ active-pl
         self.src_toplevel.geometry('+{}+{}'.
                                    format(self.trg_x, self.trg_y))
         #self.src_toplevel.overrideredirect(1)    # Turn off decorations
-        # Now force it above?
-        mon_dict = monitor.center(self.src_toplevel)
-        if mon_dict['x'] == mon_dict['height']:
-            print('dummy if test to reference mon_dict for pycharm checking')
+        _mon_dict = monitor.center(self.src_toplevel)
         self.src_toplevel.deiconify()  # Forces window to appear
         self.src_toplevel.update_idletasks()
         self.src_window_moved = True
@@ -1245,9 +1256,27 @@ gsettings set org.compiz.core:/org/compiz/profiles/unity/plugins/core/ active-pl
     def trg_get_window_id():
         """  TEMPORARY: Largest window on monitor at 0,0 is the target window.
 
-            TODO: Get desktop size EG 5760x6240 and skip this as a window
+            TODO: Get desktop size EG 5760x3240 and skip this as a window
                   Get all monitors and their mapping x,y,w,h
                   Let user specify monitor as big screen TV. Currently 0,0
+
+            OUTPUT NON-FULL SCREEN AND ON TOP:
+                $ wmctrl -lG
+                0x03200002 -1 5355 24   410  1392 alien conky (alien)
+                0x0180000a -1 0    0    5790 3240 alien Desktop
+                0x03a00003  0 3940 2269 1742 941  alien Mozilla Firefox
+                0x03a00021  0 78   110  1773 970  alien Subscriptions - YouTube — Mozilla Firefox
+
+            OUTPUT FULL SCREEN NOT ON TOP:
+                0x03a00021  0 0    24   1920 1056 alien Subscriptions - YouTube — Mozilla Firefox
+
+            OUTPUT FULL SCREEN ON TOP:
+                0x03a00021  0 0    24   1920 1056 alien Subscriptions - YouTube — Mozilla Firefox
+
+            ENTIRE DESKTOP:
+                $ wmctrl -lGd
+                0  * DG: 5790x3240  VP: 0,0  WA: 0,24 5790x3216  N/A
+
         """
 
         all_windows = os.popen('wmctrl -lG').read().strip().splitlines()
@@ -1288,25 +1317,31 @@ gsettings set org.compiz.core:/org/compiz/profiles/unity/plugins/core/ active-pl
         return last_window, last_geom
 
 
-    @staticmethod
-    def win_remove_above(win_hex):
-        """  If window 'above' (Always on Top in Ubuntu-speak) toggle it off
-             and return True. Otherwise, return None
+    def win_remove_above(self):
+        """  If window 'above' (Always on Top in Ubuntu-speak) toggle it off.
+             Note: _NET_WM_STATE_FULLSCREEN could be checked but is not yet...
+             
+             No Longer used but keep just in case...
         """
-        was_above = None
-        all_lines = os.popen('xprop -id ' + win_hex).read().strip().splitlines()
+        self.trg_was_above = None
+        all_lines = os.popen('xprop -id ' + self.trg_window_id_hex).\
+            read().strip().splitlines()
+        print("\nimage.py GoneFishing.win_remove_above() all_lines:")
         for line in all_lines:
+            print(line)
             if "_NET_WM_STATE(ATOM)" in line:
                 # print('line:', line)
                 if "ABOVE" in line:
-                    was_above = True
-                    os.popen('wmctrl -ir ' + win_hex + ' -b toggle,above')
+                    self.trg_was_above = True
+                    print('if "ABOVE" in line:', self.trg_was_above)
+                    os.popen('wmctrl -ir ' + self.trg_window_id_hex +
+                             ' -b toggle,above')
                 break
-
-        return was_above
 
     def trg_restore_above(self):
         """  Revert the "always on top" (above) state.
+
+             No longer used. Keep just in case...
         """
         if self.trg_was_above is True:
             os.popen('wmctrl -ir ' + self.trg_window_id_hex +
@@ -1349,29 +1384,32 @@ gsettings set org.compiz.core:/org/compiz/profiles/unity/plugins/core/ active-pl
 
         NOT USED - Because taking out of full screen brings up chat window for hockey game.
 
-        Change mind - CBC doesn't have chat window
+        Change mind - CBC doesn't have chat window and stays in full screen on top.
+                      YouTube doesn't work coming out of full screen either.
         """
         self.trg_was_above = None
         self.toggle_str = ""
         all_lines = os.popen('xprop -id ' + self.trg_window_id_hex).read().strip().splitlines()
+        #print("image.py GoneFishing.trg_check_full_screen() line with FULL SCREEN:")
         for line in all_lines:
             if "_NET_WM_STATE(ATOM)" in line:
-                print('line:', line)
                 if "ABOVE" in line:
-                    self.toggle_str = self.toggle_str + ",above"
+                    self.toggle_str += ",above"
                 if '_NET_WM_STATE_MAXIMIZED_VERT' in line:
-                    self.toggle_str = self.toggle_str + ",maximized_vert"
+                    self.toggle_str += ",maximized_vert"
                 if '_NET_WM_STATE_MAXIMIZED_HORZ' in line:
-                    self.toggle_str = self.toggle_str + ",maximized_horz"
+                    self.toggle_str += ",maximized_horz"
                 if '_NET_WM_STATE_FULLSCREEN' in line:
-                    self.toggle_str = self.toggle_str + ",fullscreen"
+                    self.toggle_str += ",fullscreen"
+                    #print('line:', line)
 
                 if self.toggle_str != "":
-                    os.popen('wmctrl -ir ' + self.trg_window_id_hex +
-                             ' -b toggle' + self.toggle_str).read()
+                    _result = os.popen('wmctrl -ir ' + self.trg_window_id_hex +
+                                       ' -b toggle' + self.toggle_str).read()
                     self.trg_was_above = True
-                    print("os.popen('wmctrl -ir " + self.trg_window_id_hex +
-                          " -b toggle" + self.toggle_str)
+                    #print("os.popen('wmctrl -ir " + self.trg_window_id_hex +
+                    #      " -b toggle" + self.toggle_str)
+                    #print("_result:", _result)
 
                 break
 
@@ -1384,8 +1422,8 @@ gsettings set org.compiz.core:/org/compiz/profiles/unity/plugins/core/ active-pl
         if self.trg_was_above is True:
             os.popen('wmctrl -ir ' + self.trg_window_id_hex +
                      ' -b toggle' + self.toggle_str).read()
-            print("os.popen('wmctrl -ir " + self.trg_window_id_hex +
-                  " -b toggle" + self.toggle_str)
+            #print("os.popen('wmctrl -ir " + self.trg_window_id_hex +
+            #      " -b toggle" + self.toggle_str)
 
         self.trg_was_above = None
 
@@ -1410,6 +1448,7 @@ gsettings set org.compiz.core:/org/compiz/profiles/unity/plugins/core/ active-pl
             self.man_pid = None
 
         if full_close is False:
+            ''' Called from move_src_toplevel() close man & shark only. '''
             return
 
         ''' We were NOT called from move_src_toplevel() so FULL close '''
@@ -1429,7 +1468,8 @@ gsettings set org.compiz.core:/org/compiz/profiles/unity/plugins/core/ active-pl
 
         # Restore original target's above (always on top) state
         if self.trg_was_above is not None:
-            self.trg_restore_above()
+            #self.trg_restore_above()
+            self.trg_restore_full_screen()
             self.trg_was_above = None
 
         # Restore original source's below (normal) state

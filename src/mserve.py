@@ -29,6 +29,20 @@
 #                      startup and saved pause/play & show/hide chronology states
 #       May. 22 2023 - Replace Hockey buttons with FF/Rewind buttons. Toggle
 #                      with variable dropdown menu text.
+# TODO: Get rid of self.play_song_count. Use len(self.saved_selections)
+#       Rename 'saved_selections' to 'play_selections'
+#       Review the many self.play_...() function names
+#       Review recent image.py changes for full screen and maximized window. Not
+#           restoring properly when hockey countdown ends.
+#       History scrape-parm is using MusicId 0 or 2,255 with duplicate records.
+#           Should be reusing MusicId 0 and changing time.
+#           NOTE: Ian Hunter - Greatest Hits Disk 1 - When the Daylight Comes
+#                 However 'lyrics' - 'init' record doesn't appear?
+#                 When deleting lyrics get message "Clicking previous/next too
+#                 fast for web scraping"
+#       Move ~/.config/mserve/library.db to ~/.local/share/mserve/library.db
+#           Also move all files and L999 directories
+#       Switch  messagebox.showinfo() to message.ShowInfo(thread=...refresh...)
 #
 # ==============================================================================
 
@@ -43,7 +57,10 @@ TODO:   When inserting song collapse parent list of currently playing song if
         When editing lyrics, set scroll box to where cursor used to be. Add tip
         for copy & paste using CTRL+C and CTRL+V
 
-        Save last selections after each song.
+        History Type 'encode' uses MusicId 0 which is also used for configuration.
+        This will slow down configuration operations over time. Create new index
+        by History Type + Action. Then for example, get Type-"resume" +
+        Action-"L004", instead of search through all MusicId=0 records.
 
         Create self.message_waiting() called by every function to lift
             message window to top of window stack and return true so
@@ -128,20 +145,11 @@ TODO: verify external commands are in path:
     command -v ffplay, ffprobe, ffmpeg, kill, pactl, diff, touch,
                 wmctrl, xdotool, pqiv, stat
 
-    Sometimes pausing music doesn't restore other sound sources which were
-        turned down to 50% when we started playing.
-    
-    Sometimes when pausing our own volume is only 50% which makes volume
-        jump then diminish back.
-
-    When starting fresh session old ffplay profile of muted might be remembered.
-    
     Compare Location - Make background process so music player keeps spinning
 
     encoding.py - After song is ripped, we will still come back from time to
         time and update metatags from Musicbrainz or CoverArtArchive.
 
-    Playing selected song: Allow click on item and play it.
     
 """
 # inspection SpellCheckingInspection
@@ -330,7 +338,7 @@ $ rm /tmp/test.wav
 TV_BREAK1 = 90
 TV_BREAK2 = 1080
 PRUNED_SUBDIRS = 0  # sys arg topdir = 0, artist = 1, album = 2
-COMPIZ_FISHING_STEPS = 200  # May 18, 2023 when 100 steps windows disappear
+COMPIZ_FISHING_STEPS = 100  # May 18, 2023 when 100 steps windows disappear
                             # for a few seconds & system freezes once.
 
 
@@ -501,7 +509,6 @@ class PlayCommonSelf:
 
         self.play_top = None                # Music player selected songs
         self.play_on_top = None             # Is play frame overtop library?
-        self.pause_t_start = None           # Time current song was paused
         self.play_t_start = None            # Time current song was playing
         self.play_song_count = None         # playlist (selected) song count
         self.secs_before_pause = None       # get_curr_ffplay_secs(
@@ -1321,7 +1328,6 @@ class MusicTree(PlayCommonSelf):
             except:
                 # print('toggle_select(): song not found iid:',song)
                 song_number = 0
-            #number_digits = len(self.saved_selections)
             number_str = self.play_padded_number(song_number, len(self.saved_selections))
             # self.lib_tree.set(song, "Selected", self.lib_tree.set(song, "Size"))
             self.lib_tree.set(song, "Selected", number_str)
@@ -4841,10 +4847,7 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
             iid = str(ndx)
             self.saved_selections.append(iid)
 
-            # Update Selected MB/Sequence column with Song number
-            #song_number = len(self.saved_selections)
-            #song_count = len(save_playlist)
-            #number_digits = len(str(song_count))
+            # Update Song number incrementing with length of self.saved_selections
             number_str = self.play_padded_number(len(self.saved_selections),
                                                  len(str(len(save_playlist))))
             self.lib_tree.set(iid, "Selected", number_str)
@@ -4865,7 +4868,7 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
 
         # IF self.ndx is greater than number in playlist, reset to 0
         if self.ndx > (len(self.saved_selections) - 1):
-            # print('len(self.saved_selections):', len(self.saved_selections))
+            # print('self.play_song_count:', self.play_song_count)
             # print('last saved song index too large:', self.ndx, 'reset to zero')
             self.ndx = 0
 
@@ -4912,9 +4915,11 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
             self.lib_tree.update_idletasks()
             return  # Don't start playing again
 
+        ''' Opening play window. Set text in library window button tool tip'''
+        self.tt.set_text(self.lib_tree_btn2, "Lift music library window up.")
+
         ''' Count number of songs selected. '''
         self.play_song_count = 0    # How many songs selected for playing
-        self.pause_t_start = 0      # How much time was spent paused
         self.play_t_start = 0       # Hom much time was spent playing
         self.play_top_sink = ""     # Fix error if self.play_top_sink is not ""
 
@@ -5631,19 +5636,14 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
             self.play_top_sink = ""  # What functions expect to see when no sink.
 
         self.play_update_progress(start_secs)  # Update screen with song progress
+        self.play_paint_lyrics(rewind=True)  # Highlight line currently being sung. BUG: Only
+        # works with fast forward. Doesn't work with rewind button
         #   It also sets t_start, current_secs, secs_before_pause.
         if self.pp_state == "Paused":
             ''' Was paused. Stop new ffplay to reflect pause. Then begin play '''
             set_volume(self.play_top_sink, 25)  # Mimic volume of paused song
             ext.stop_pid_running(self.play_top_pid)  # Sends pause signal (stop)
-            #self.play_update_progress(start_secs)  # Update screen with song progress
-            #   It also sets t_start, current_secs, secs_before_pause.
             self.pp_toggle(stop_music=False)  # toggle real pause to match resume startup state
-        else:
-            # Set variables to reflect playing
-            #self.secs_before_pause = 0.0
-            #self.current_song_t_start = time.time() - start_secs
-            pass
 
     def song_set_ndx(self, seq):
         """ Set index to previous or next song. Called in many places.
@@ -5901,7 +5901,7 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
         """
 
         ''' Get our song_list index number from user treeview selections '''
-        if self.ndx > len(self.saved_selections) - 1:
+        if self.ndx > self.play_song_count - 1:
             self.ndx = 0  # Restarted smaller list
         iid = self.saved_selections[self.ndx]  # Library Treeview iid for song
         self.last_started = self.ndx  # Catch fast clicking Next
@@ -6006,6 +6006,7 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
                 ext.stop_pid_running(self.play_top_pid)
                 self.pp_toggle(stop_music=False)  # Pause to match resume state
                 self.play_update_progress(self.resume_song_secs)  # Reset variables
+                self.play_paint_lyrics()  # Highlight line currently being sung
             self.resume_state = None
             self.resume_song_secs = None
 
@@ -6069,9 +6070,7 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
         Called from:
             self.play_start() to start a new song
             self.pp_toggle() to resume song after pausing
-
         """
-
         while True:
             if self.killer.kill_now:
                 # SIGTERM to shut down / reboot was received
@@ -6175,15 +6174,13 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
         :param start_secs: Optional. Song is starting at seconds passed.
         """
         if start_secs:
+            # Specific seconds passed by resume, FF or Rewind button
             self.current_song_secs = start_secs
             self.current_song_t_start = time.time() - start_secs
-            self.secs_before_pause = start_secs
             if self.pp_state is "Playing":
                 self.secs_before_pause = 0.0
-
-                # Unknown what happens if song is playing when start_secs used.
-                pass
-            # print("play_update_progress(start_secs):", start_secs)
+            else:
+                self.secs_before_pause = start_secs
         else:
             self.current_song_secs = \
                 time.time() - self.current_song_t_start + self.secs_before_pause
@@ -6958,16 +6955,20 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
         webscrape.delete_files()  # Cleanup last run
         self.lyrics_line_count = 1  # Average about 45 lines
 
-        artist = ext.shell_quote(self.Artist)  # backslash in from of '
+        artist = ext.shell_quote(self.Artist)  # backslash in front of '
         song = ext.shell_quote(self.Title)     # and " in variables
+
         # 'Bob Seeger & The Silver Bullet Band' finds nothing, while just
         # 'Bob Seeger' finds 'Shakedown' song.
         artist = artist.split('&', 1)[0]
 
         if self.lyrics_scrape_pid == 0:
             # Only start new search if last one is finished.
-            # Implausible test since we aren't called until true.
-            MusicId = sql.hist_get_music_id(self.work_sql_key)
+            # Redundant test since we aren't called until true.
+
+            # May 23/2023 - MusicId is 0 or 2,255 
+            #MusicId = sql.music_id_for_song(self.work_sql_key)
+            MusicId = sql.music_id_for_song(self.play_make_sql_key())
             # Aug 12/2021 change 'USER' to 'g.USER' didn't test
             sql.hist_add(time.time(), MusicId, g.USER, 'scrape',
                          'parm', artist, song, "", 0, 0, 0.0,
@@ -6989,7 +6990,7 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
         # print('initial self.lyrics_scrape_pid:', self.lyrics_scrape_pid, \
         #      'type:', type(self.lyrics_scrape_pid))
 
-    def play_paint_lyrics(self):
+    def play_paint_lyrics(self, rewind=False):
         """ Scroll lyrics in text box """
         if not self.lyrics_scrape_done:
             ''' It takes 4 seconds to get lyrics from internet '''
@@ -7013,7 +7014,7 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
         if self.lyrics_auto_scroll:
             self.play_lyrics_auto_scroll()
         else:
-            self.play_lyrics_time_scroll()
+            self.play_lyrics_time_scroll(rewind=rewind)
 
         # Override auto_scroll
         if self.lyrics_score and self.lyrics_score.startswith("No lyrics found for"):
@@ -7106,7 +7107,7 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
         # Update 'Line: 99 of 99' in lyrics title bar (aka panel)
         self.lyrics_update_title_line_number(line_no)
 
-    def play_lyrics_time_scroll(self):
+    def play_lyrics_time_scroll(self, rewind=False):
         """ Synchronize cursor position in text box using lyrics time index
             and a highlight bar to indicate current lyrics line.
             Can be called when all indices set from previous training.
@@ -7119,6 +7120,11 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
         #    TypeError: object of type 'NoneType' has no len()
         if not self.play_top_is_active or not self.lyrics_time_list:
             return  # Play has stopped or no lyrics time index
+
+        if rewind is True:
+            # Song rewound 10 seconds so current line resets and needs look up
+            self.lyrics_curr_line = 0
+            #print("rewind requested. self.current_song_secs:", self.current_song_secs)
 
         # Look up current time in list
         old_lyrics_curr_line = self.lyrics_curr_line
@@ -7815,7 +7821,8 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
         while self.pp_state is 'Paused' and self.lyrics_scrape_done is False:
             ''' It takes a few seconds to get lyrics from internet '''
             self.play_paint_lyrics()
-            root.after(50)
+            # root.after(50)  # May 23 2023 - This suppresses tooltips
+            self.refresh_play_top()
 
 
     def play_clip_paste_lyrics(self):
@@ -9622,6 +9629,8 @@ IndexError: list index out of range
         L.remove(iid)
         self.saved_selections = tuple(L)  # convert list back into tuple
         self.play_song_count = len(self.saved_selections)
+        # TODO: Get rid of self.play_song_count. Use len(self.saved_selections)
+        #       Rename 'saved_selections' to 'play_selections'
         if self.play_top_is_active:  # Play window open?
             self.play_chron_create()  # Rebuild without removed song
 
@@ -9668,7 +9677,6 @@ IndexError: list index out of range
             self.lib_tree.item(curr_play_id, tags=tags)
 
         # Set treeview selection number
-        #number_digits = len(str(self.play_song_count))
         number_str = self.play_padded_number(self.ndx + 1, len(str(self.play_song_count)))
         self.lib_tree.set(iid, "Selected", number_str)
 
@@ -10429,7 +10437,7 @@ IndexError: list index out of range
         CLOCK_PREFIX = " 🕑 "  # big space + UTF-8 (1f551) + normal space
 
         ''' Pad song number with spaces to line up song name evenly '''
-        number_digits = len(str(len(self.saved_selections)))
+        number_digits = len(str(self.play_song_count))
         number_str = self.play_padded_number(playlist_no, number_digits)
 
         ''' Song title - remove track number and filename extension '''
@@ -10549,7 +10557,7 @@ IndexError: list index out of range
         ''' Position row to show previous 3, current and next 6 songs '''
         # BUG: We are showing wrong lyrics after chron_filter
         if self.chron_filter is None:
-            count = len(self.saved_selections)
+            count = self.play_song_count
             position = ndx
         else:
             count = len(self.chron_attached)

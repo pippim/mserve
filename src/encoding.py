@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # ==============================================================================
 #
-#       encoding.py - Encode CD to '.oga', '.wav' or '.flac'
+#   encoding.py - Encode CD to '.oga', '.wav' or '.flac'
 #
 #       TODO: Whilst encoding obtain lyrics and allow play song encoded with
 #             full lyrics edit and time index synchronization.
@@ -10,10 +10,15 @@
 #               variables back and forth. Also gives audit trail of encoding
 #               process should something go wrong.
 #
-#       Aug. 22 2021 - toolkit.ToolTips for fading tooltips on hover
+#   Aug. 22 2021 - toolkit.ToolTips() for fading tooltips on hover
+#   May. 07 2023 - Convert gmtime to localtime. Before today needs update.
 #
 # ==============================================================================
-
+"""
+Solves problems like:
+    https://askubuntu.com/questions/541977/
+    a-music-player-with-cd-ripping-and-cddb-lookup/542030#542030
+"""
 # identical imports in mserve
 from __future__ import print_function  # Must be first import
 from __future__ import with_statement  # Error handling for file opens
@@ -72,7 +77,7 @@ import image as img
 import timefmt as tmf           # Aug 13/2021 switch over to tmf abbreviation
 import sql
 
-EMAIL_ADDRESS = "RickLee518@gmail.com"
+EMAIL_ADDRESS = "pippim.com@gail.com"  # TODO - setup variable in SQL History
 
 # IPC pickle filename shouldn't end with .pkl because it's used for playlists.
 IPC_PICKLE_FNAME = lc.MSERVE_DIR + "ipc.pickle"
@@ -93,6 +98,7 @@ try:
 except ImportError:
     import discid
 '''
+# May 7, 2023. Why is this here when it isn't used?
 # inspection SpellCheckingInspection
 
 # ==============================================================================
@@ -215,11 +221,26 @@ class RipCD:
         self.start_w = frame1.winfo_reqheight()
         self.start_h = frame1.winfo_reqwidth()
 
+        http = "https://musicbrainz.org/"
+        msg = ("The Musicbrainz website " + http + " will be searched.\n" +
+               "This website contains Artist, Album and Song information\n" +
+               "for most Audio CDs ever produced.\n\n" +
+               "Enter your MusicBrainz account email address below.\n\n" +
+               "TIPS:\tCheck Medium to select songs all at once.\n\n" +
+               "\tUse browser to copy image from website (Amazon, etc.).\n" +
+               "\tThen click 'Clipboard image' button below.\n\n" +
+               "\tA blank release date entry can be checked and\n" +
+               "\tthen a pop-up window will appear to enter date.\n\n")
+
+        self.mbAuthorization = sql.Authorization(
+            self.cd_top, "MusicBrainz", http,  msg, tt=tooltips)
+
         ''' Scrollable textbox to show selections / ripping status '''
         Quote = ("It will take a minute to access Audio CD and the internet.\n" +
-                 "If audio disc number not found in Musicbrainz search that site.\n" +
+                 "If audio disc is not found in MusicBrainz search that site.\n" +
                  "Then you can select songs and images from listings below.\n" +
                  "What you select from listings will appear in this window.\n\n" +
+                 "MusicBrainz Account is using: " + EMAIL_ADDRESS + "\n\n" +
                  "TIPS:\tCheck Medium to select songs all at once.\n\n" +
                  "\tUse browser to copy image from website (Amazon, etc.).\n" +
                  "\tThen click 'Clipboard image' button below.\n\n" +
@@ -535,7 +556,6 @@ class RipCD:
         self.cd_rotated_value = 0  # For rotating audio cd image
         self.background = self.resized_art.getpixel((3, 3))
 
-
         self.cd_run_to_close()  # At this point tkinter mainloop has
         # control and Music Players keeps spinning it's artwork. We have our
         # own spinner with CD Audio Disc image and 1 second text "Reading Disc"
@@ -583,8 +603,8 @@ class RipCD:
         """
         # If quiting kill spawned programs and return
         if RIP_CD_IS_ACTIVE is False:
-            # TODO: Remove IPC_PICKLE_FNAME if it exists
-            #       Worst case scenario it's 90 MB and crashes backup < 25 MB
+            # Remove IPC_PICKLE_FNAME if it exists
+            ext.remove_existing(IPC_PICKLE_FNAME)
             if self.active_pid > 0:
                 # TODO: Use ext.kill_running
                 os.popen('kill -9 ' + str(self.active_pid))
@@ -608,6 +628,7 @@ class RipCD:
             ext_name = "python disc_get.py " + IPC_PICKLE_FNAME
             self.active_pid = ext.launch_command(ext_name,
                                                  toplevel=self.lib_top)
+            # TODO: Status is getting disc info with disc_get.py
 
         elif self.mbz_get1_active:
             # Update time for last step
@@ -652,7 +673,7 @@ class RipCD:
                     time.time(), 0, g.USER, 'encode', 'discid',
                     "CD/DVD Drive", "Audio CD", "libdiscid: " + self.disc.id,
                     length, tracks, self.get_discid_time,
-                    "Get disc ID: " + time.asctime(time.gmtime(time.time())))
+                    "Get disc ID: " + time.asctime(time.localtime(time.time())))
 
 
             # Note this can change in error 3 override from mbz_get1.py
@@ -661,9 +682,12 @@ class RipCD:
             # Search Musicbrainz with disc object and search limit (parm 2)
             # When limit is 3 or less artwork may be limited (or non-existent)
             # TODO: When limit is 1, treeview closes
-            ext_name = "python mbz_get1.py " + IPC_PICKLE_FNAME + " 10"
+            ext_name = "python mbz_get1.py " + IPC_PICKLE_FNAME + " 10 " + \
+                       EMAIL_ADDRESS
             self.active_pid = ext.launch_command(ext_name,
                                                  toplevel=self.lib_top)
+            # TODO: Status is getting MusicBrainz Release List with mbz_get1.py.
+
         elif self.mbz_get2_active:
             # Third step get mbz image list in background and enter idle loop
             self.mbz_get2_active = False
@@ -677,7 +701,7 @@ class RipCD:
                 self.release_list = pickle.load(f)
 
             # Did mbz_get1.py report an error?
-            #print('\nRELEASE LIST ==========================================')
+            #pprint('\nRELEASE LIST ==========================================')
             #pprint(self.release_list)  # To see release-list if error
             if type(self.release_list) is dict and self.release_list.get('error'):
                 if self.release_list.get('error'):
@@ -730,12 +754,13 @@ class RipCD:
                 self.selected_artist, self.selected_album,
                 "Musicbrainz ID: " + self.mbz_release_id,
                 0, releases, self.mbz_get1_time,
-                "Get releases list: " + time.asctime(time.gmtime(time.time())))
+                "Get releases list: " + time.asctime(time.localtime(time.time())))
 
             # Download images with 500x500 pixel (gets all parm ignored now)
             ext_name = "python mbz_get2.py " + IPC_PICKLE_FNAME + " 500"
             self.active_pid = ext.launch_command(ext_name,
                                                  toplevel=self.lib_top)
+            # TODO: Status is getting MusicBrainz Album Artwork with mbz_get2.py.
 
         elif self.treeview_active:
             # Fourth step Populate Treeview and enter idle loop
@@ -777,7 +802,7 @@ class RipCD:
                 time.time(), 0, g.USER, 'encode', 'mbz_get2',
                 self.selected_artist, self.selected_album, None,
                 size, releases, self.mbz_get2_time,
-                "Get cover art: " + time.asctime(time.gmtime(time.time())))
+                "Get cover art: " + time.asctime(time.localtime(time.time())))
 
             self.populate_cd_tree()
             self.cd_tree.update_idletasks()  # Refresh treeview display
@@ -795,7 +820,7 @@ class RipCD:
         if self.disc_enc_active:  # Ripping the CD now?
             self.update_rip_status()  # Update ripping progress
         self.active_pid = ext.check_pid_running(self.active_pid)
-        self.lib_top.update()
+        self.lib_top.update()  # It's really mserve.py lib_top
 
     def error_3(self):
         """ disc.id not found in MusicBrainz """
@@ -830,6 +855,7 @@ class RipCD:
             self.cd_top, thread=self.update_display, title=
             # self.lib_top, thread=self.update_display, align='left', title=
             # Makes no difference play_top isn't updating display
+            # April 24, 2023 - AskQuestion not working in mserve.py, so check code here.
             "Enter Disc ID from Musicbrainz", text=msg, icon="information")
 
         if answer.result != "yes":
@@ -1073,8 +1099,8 @@ class RipCD:
                     "Audio disc id: " + self.disc.id, self.encode_album_size,
                     self.encode_album_seconds, self.encode_album_time,
                     "Tracks: " + str(self.encode_album_cnt) +
-                    "Duration: " + duration +
-                    " Finished: " + time.asctime(time.gmtime(time.time())))
+                    " Duration: " + duration +
+                    " Finished: " + time.asctime(time.localtime(time.time())))
 
             self.encode_album_time = 0.0
             self.encode_album_seconds = 0
@@ -1120,7 +1146,7 @@ class RipCD:
                            stat.st_mtime, stat.st_ctime, self.song_size))
 
         sql.con.commit()
-        # TODO: What is lastrowid if updating record?
+        # TODO: What is last rowid if updating record?
         music_id = sql.cursor.lastrowid
 
         sql.cursor.execute("SELECT Id FROM Music WHERE OsFileName = ?",
@@ -1133,7 +1159,7 @@ class RipCD:
             # Song was previously encoded!
             print('self.music_id != music_id:', self.music_id, '!=', music_id)
 
-        #print('finished: ' + time.asctime(time.gmtime(time.time())))
+        #print('finished: ' + time.asctime(time.localtime(time.time())))
         #print('time.time():', time.time())
         #print('self.music_id:', self.music_id)
         #print('g.USER:', g.USER)
@@ -1141,12 +1167,12 @@ class RipCD:
             time.time(), self.music_id, g.USER, 'file', 'init',
             self.selected_artist, self.os_song_name, self.os_part_name,
             self.song_size, self.song_seconds, self.encode_track_time,
-            "encoded: " + time.asctime(time.gmtime(time.time())))
+            "encoded: " + time.asctime(time.localtime(time.time())))
         sql.hist_add(
             time.time(), self.music_id, g.USER, 'encode', 'track',
             self.selected_artist, self.os_song_name, self.os_part_name,
             self.song_size, self.song_seconds, self.encode_track_time,
-            "finished: " + time.asctime(time.gmtime(time.time())))
+            "finished: " + time.asctime(time.localtime(time.time())))
 
         #hist_cursor.execute(sql, (Time, MusicId, User, Type, Action, SourceMaster,
         #                    SourceDetail, Target, Size, Count, Seconds,
@@ -1801,9 +1827,8 @@ class RipCD:
 
         size = str(len(text))
         self.cd_tree.insert(
-            self.clip_parent, "end", values=(size,), text="Clipboard Image " +
-                                                          str(self.image_from_clipboard_count),
-            tags=("image_id", "unchecked"))
+            self.clip_parent, "end", values=(size,), tags=("image_id", "unchecked"),
+            text="Clipboard Image " + str(self.image_from_clipboard_count))
 
     # ==============================================================================
     #
@@ -2383,6 +2408,8 @@ class RipCD:
 class CustomScrolledText(scrolledtext.ScrolledText):
     """A text widget with a new method, highlight_pattern()
 
+            NOTE: This has been moved to toolkit.py
+
     example:
 
     text = CustomScrolledText()
@@ -2446,5 +2473,108 @@ class CustomScrolledText(scrolledtext.ScrolledText):
             self.mark_set("matchStart", index)
             self.mark_set("matchEnd", "%s+%sc" % (index, count.get()))
             self.tag_remove(tag, "matchStart", "matchEnd")
+
+
+# ==============================================================================
+#
+#       MetaScan class - Search Metadata
+#
+# ==============================================================================
+
+class MetaScan:
+    """ Search Metadata
+        Example DATA:
+            STREAM #0:0(und): Audio: aac (LC) (mp4a / 0x6134706D), 44100 Hz, stereo, fltp, 270 kb/s (default)
+            STREAM #0:1: Video: png, rgba(pc), 225x225, 90k tbr, 90k tbn, 90k tbc
+
+    """
+
+    def __init__(self, toplevel, thread=None):
+
+        self.top_level = toplevel
+        self.thread = thread
+
+        self.total_scanned = 0
+        self.missing_artwork = 0
+        self.found_artwork = 0
+        self.meta_data_updated = 0
+        self.meta_data_unchanged = 0
+        self.meta_dict = None
+
+    def CheckArtwork(self, meta_dict):
+        """ :param meta_dict Key/Value Pairs of ID tags 
+            :returns True if Song File has artwork, False if "Video" not found
+        """
+        if self.thread:
+            self.thread()
+
+        self.total_scanned += 1
+        for key, value in meta_dict.iteritems():
+            if key.startswith("STREAM"):
+                if "Video:" in value:
+                    self.found_artwork += 1
+                    return True
+
+        self.missing_artwork += 1
+        return False
+
+    def ChangedCounts(self, flag):
+        """ :parameter meta_dict Key/Value Pairs of ID tags """
+        if flag:
+            self.meta_data_updated += 1
+        else:
+            self.meta_data_unchanged += 1
+
+
+    """  2008 Nissan Altima Coupe Bose 6-CD Changer - Specification chart:
+
+    Supported media             CD, CD-R, CD-RW
+    Supported file systems      ISO9660 LEVEL1, ISO9660 LEVEL2, Apple ISO, Romeo, Joliet 
+                                * ISO9660 Level 3 (packet writing) is not supported.
+    Supported versions*1
+    MP3
+        Version                 MPEG1, MPEG2, MPEG2.5
+        Sampling frequency      8 kHz - 48 kHz
+        Bit rate                8 kbps - 320 kbps, VBR
+    WMA
+        Version                 WMA7, WMA8, WMA9
+        Sampling frequency      32 kHz - 48 kHz
+        Bit rate                48 kbps - 192 kbps, VBR
+    Tag information             ID3 tag VER1.0, VER1.1, VER2.2, VER2.3 (MP3 only)
+    Folder levels               Folder levels: 8, Max folders: 255 (including root folder), 
+                                Files: 512 (Max. 255 files for one folder)
+    Text character number limit 128 characters
+    Displayable char. codes*2   01: ASCII, 02: ISO-8859-1, 03: UNICODE (UTF-16 BOM Big 
+                                Endian), 04: UNICODE (UTF-16 Non-BOM Big Endian), 05:
+                                UNICODE (UTF-8), 06: UNICODE (Non-UTF-16 BOM Little Endian)
+
+    *1 Files created with a combination of 48 kHz sampling frequency and 64 kbps bit rate cannot be played.
+    *2 Available codes depend on what kind of media, versions and information are going to be displayed.
+
+    NOTES ON-LINE:
+        Audio CD sampling frequency is 44.1 KHz
+        Audio CD bit rate is always 1,411 kilobits per second (Kbps). The MP3 format can range from around
+        96 to 320Kbps, and streaming services like Spotify range from around 96 to 160Kbps.
+
+Code to desk check for converting gmtime to localtime prior to May 7, 2023 
+./sql.py:517:    SourceDetail = time.asctime(time.localtime(Time))
+./sql.py:518:    Comments = "Found: " + time.asctime(time.localtime(time.time()))
+./sql.py:615:    Comments = Action + " time: " + time.asctime(time.localtime(time.time()))
+./sql.py:665:    SourceDetail = time.asctime(time.localtime(Time))
+./sql.py:703:    Comments = "Removed: " + time.asctime(time.localtime(time.time()))
+./sql.py:786:        SourceDetail = time.asctime(time.localtime(Time))
+./sql.py:985:        SourceDetail = time.asctime(time.localtime(Time))
+./sql.py:1136:                         time.asctime(time.localtime(time.time())))
+./mserve.py:6791:                         time.asctime(time.localtime(time.time())))
+./encoding.py:676:                   "Get disc ID: " + time.asctime(time.localtime(time.time())))
+./encoding.py:757:             "Get releases list: " + time.asctime(time.localtime(time.time())))
+./encoding.py:805:                "Get cover art: " + time.asctime(time.localtime(time.time())))
+./encoding.py:1103:                    " Finished: " + time.asctime(time.localtime(time.time())))
+./encoding.py:1162:        #print('finished: ' + time.asctime(time.localtime(time.time())))
+./encoding.py:1170:            "encoded: " + time.asctime(time.localtime(time.time())))
+./encoding.py:1175:            "finished: " + time.asctime(time.localtime(time.time())))
+
+
+    """
 
 # End of encoding.py

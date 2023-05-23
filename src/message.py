@@ -16,7 +16,7 @@ try:
     import tkinter.ttk as ttk
     import tkinter.font as font
     import tkinter.filedialog as filedialog
-    import tkinter.messagebox as messagebox
+    # import tkinter.messagebox as messagebox
     import tkinter.simpledialog as simpledialog
     PYTHON_VER = "3"
 except ImportError:
@@ -24,7 +24,7 @@ except ImportError:
     import ttk
     import tkFont as font
     import tkFileDialog as filedialog
-    import tkMessageBox as messagebox
+    # import tkMessageBox as messagebox
     import tkSimpleDialog as simpledialog
     PYTHON_VER = "2"
 # print ("Python version: ", PYTHON_VER)
@@ -38,6 +38,7 @@ from datetime import datetime
 import image as img
 import external as ext              # For timings
 import timefmt as tmf               # Format hh:mm:ss.hh
+import toolkit
 
 # Values from gnome-terminal to prevent window shrinking too small
 WIN_MIN_WIDTH = 142
@@ -45,8 +46,6 @@ WIN_MIN_HEIGHT = 63
 
 MED_FONT = 10                       # Medium Font size
 MON_FONTSIZE = 11                   # Medium Font size
-
-AskQuestionActive = False           # Don't remember why this is here?
 
 
 class Open:
@@ -252,13 +251,21 @@ class CommonSelf:
         self.top_level = parent     # Allows .after() calls
         self.confirm = confirm      # Append "Are you sure?" line?
         self.align = align          # data (text lines) alignment
-        self.thread = thread        # The thread run before button click
+        if thread is None:
+            self.thread = None
+        elif callable(thread):
+            self.thread = thread    # The thread runs whilst waiting for button click
+        else:
+            print("message.py, CommonSelf, invalid thread= passed")
+            toolkit.print_trace()
+            self.thread = None
         self.loop_no = 1            # Loop counter (not used yet)
         self.text = text            # data (text lines) for text box
         self.textbox = None         # Textbox widget
         self.icon = icon            # Warning, Error, Info, Question icons
         self.entry = None           # Tkinter Entry widget
         self.string = ""            # What the user has entered (AskString)
+        self.result = None          # Defined in simpledialog already
         # MON_FONTSIZE may not be defined globally
         try:
             self.font = (None, MON_FONTSIZE)
@@ -429,6 +436,10 @@ class AskQuestion(simpledialog.Dialog, CommonSelf):
         Allows text to be highlighted and copied to clipboard with CTRL+C.
         Blocks other windows from getting focus
         MON_FONTSIZE is temporary font size until configuration file set up.
+
+        BUGS:
+        April 24, 2023 - When 'no' click was returning: 139944643864048.139944641065544
+
     """
 
     def __init__(self, parent, title=None, text=None, confirm='yes',
@@ -491,6 +502,7 @@ TclError: grab failed: another application has grab
     # standard button semantics
     def ok(self, event=None):
 
+        # From: /usr/lib/python2.7/lib-tk/tkSimpleDialog.py (returns 1)
         if not self.validate():
             self.initial_focus.focus_set()  # put focus back
             return
@@ -509,8 +521,8 @@ TclError: grab failed: another application has grab
         # put focus back to the parent window
         if self.parent is not None:
             self.parent.focus_set()
-        self.destroy()
         self.result = "no"
+        self.destroy()
 
 
 class AskString(simpledialog.Dialog, CommonSelf):
@@ -595,6 +607,7 @@ class AskString(simpledialog.Dialog, CommonSelf):
     # standard button semantics
     def ok(self, event=None):
 
+        # From: /usr/lib/python2.7/lib-tk/tkSimpleDialog.py (returns 1)
         if not self.validate():
             self.initial_focus.focus_set()  # put focus back
             return
@@ -618,13 +631,338 @@ class AskString(simpledialog.Dialog, CommonSelf):
         # put focus back to the parent window
         if self.parent is not None:
             self.parent.focus_set()
-        self.destroy()
         self.result = "no"
+        self.destroy()
 
 
 # ==============================================================================
 #
-#   message.py - ToolTipsPool, createToolTip
+#   message.py - InputWindow() class
+#
+# ==============================================================================
+
+
+class CommonIW:
+    """ Variables common to InputWindow__init__() and add_field()
+    """
+
+    def __init__(self):
+        self.dict = {}  # add_tip() dictionary
+
+        self.widget = None  # "999.999.999" = top.frame.button  1
+        self.current_state = None  # enter, press, release or leave    2
+        self.current_mouse_xy = 0  # Mouse position within widget      3
+        self.window_mouse_xy = 0  # Position when tip window created  4
+        self.enter_time = 0.0  # time button was entered           5
+        self.leave_time = 0.0  # time button was left              6
+        self.motion_time = 0.0  # time button was released          7
+        self.press_time = 0.0  # time button was pressed           8
+        self.release_time = 0.0  # time button was released          9
+        self.visible_delay = 0  # milliseconds before visible       10
+        self.visible_span = 0  # milliseconds to keep visible      11
+        self.extra_word_span = 0  # milliseconds for extra lines      12
+        self.fade_in_span = 0  # milliseconds for fading in        13
+        self.fade_out_span = 0  # milliseconds for fading out       14
+
+        # Too much window_ ??
+        #  'tip_window' used to be 'window_object'
+        #  'text' used to be 'window_text'
+        #  'window_fading_in' could be 'fading_in'
+        #  'window_fading_out' could be 'fading_out'
+        self.tip_window = None  # The tooltip window we created     15
+        self.text = None  # Text can be changed by caller     16
+        Geometry = namedtuple('Geometry', 'x, y, width, height')
+        # noinspection PyArgumentList
+        self.window_geom = Geometry(0, 0, 0, 0)  # 17
+        self.window_visible = False  # False when alpha = 0.0          # 18
+        # Window is never alpha 0 anymore...
+        self.current_alpha = 0.0  # current window alpha            # 19
+        self.window_fading_in = False  # 20
+        self.window_fading_out = False  # 21
+
+        self.tool_type = None  # "button", "label", etc.         # 22
+        self.name = None  # Widget name for debugging       # 23
+        self.fg = None  # Foreground color (buttons)      # 24
+        self.bg = None  # Background color (buttons)      # 25
+        self.normal_text_color = None  # self.widget.itemcget(...)       # 26
+        self.normal_button_color = None  # .itemcget("button_color"...)   # 27
+        self.anchor = None  # tooltip anchor point on widget  # 28
+
+
+class InputWindow(CommonIW):
+    """
+        Canvas button (rounded rectangles) highlighting upon button focus.
+        Tooltips can be buttons, canvas buttons or labels.
+        Tooltips are internally tracked by their widget object:
+            Toplevel.Frame.Widget.Window
+                Where .Window is created here.
+
+        USAGE:
+
+        From Master Toplevel initialize:
+
+            self.tt = ToolTips()
+
+        During screen creation Add tooltip (defaults to type='button'):
+
+            self.tt.add_tip(widget_name, type='canvas_button',
+                            text="This button\nDoes that.")
+
+        When screen is closed:
+
+            self.tt.close(widget_toplevel)
+
+        Parent must poll the tooltips every 33 ms or so with:
+
+            self.tt.poll_tips()
+
+        When polling is impractical, fade in and fade out are disabled by:
+
+            VISIBLE_DELAY = 0
+            VISIBLE_SPAN = 0
+            FADE_TIME = 0
+            FADE_STEPS = 0
+
+        TODO: When long pressing button (previous/next song testing) sometimes
+              it is ignored while tooltip is fading in. Button press and release
+              events are not being tracked in our poll_tips() function. Press
+              and hold button then after tooltip fully fades in a pseudo button
+              release event occurs and active state returns to normal.
+              The error message is usually displayed: "ToolTipsPool.showtip():
+              Previous tooltip should not be waiting to be visible".
+
+              If window doesn't have focus, don't display tips.
+              If window loses focus, close balloons.
+    """
+
+    def __init__(self):
+
+        """ Duplicate entry_init() """
+        CommonIW.__init__(self)  # Recycled class to set self. instances
+
+        self.log_nt = None  # namedtuple time, action, widget, x, y
+        self.log_list = []  # list of log dictionaries
+        self.deleted_str = "0.0.0"  # flag log entry as deleted (zero time)
+        self.now = time.time()  # Current time
+
+        self.dict = {}  # Tip dictionary
+        self.tips_list = []  # List of Tip dictionaries
+        self.tips_index = 0  # Current working Tip dictionary in list
+
+    def dict_to_fields(self):
+        """ Cryptic dictionary fields to easy names """
+        self.widget = self.dict['widget']  # 01
+        self.current_state = self.dict['current_state']  # 02
+        self.current_mouse_xy = self.dict[' current_mouse_xy']  # 03
+        self.window_mouse_xy = self.dict[' window_mouse_xy']  # 04
+        self.enter_time = self.dict['enter_time']  # 05
+        self.leave_time = self.dict['leave_time']  # 06
+        self.motion_time = self.dict['motion_time']  # 07
+        self.press_time = self.dict['press_time']  # 08
+        self.release_time = self.dict['release_time']  # 09
+        self.visible_delay = self.dict['visible_delay']  # 10
+        self.visible_span = self.dict['visible_span']  # 11
+        self.extra_word_span = self.dict['extra_word_span']  # 12
+        self.fade_in_span = self.dict['fade_in_span']  # 13
+        self.fade_out_span = self.dict['fade_out_span']  # 14
+        self.tip_window = self.dict['tip_window']  # 15
+        self.text = self.dict['text']  # 16
+        self.window_geom = self.dict['window_geom']  # 17
+        self.window_visible = self.dict['window_visible']  # 18
+        self.current_alpha = self.dict['current_alpha']  # 19
+        self.window_fading_in = self.dict['window_fading_in']  # 20
+        self.window_fading_out = self.dict['window_fading_out']  # 21
+        self.tool_type = self.dict['tool_type']  # 22
+        self.name = self.dict['name']  # 23
+        self.fg = self.dict['fg']  # 24
+        self.bg = self.dict['bg']  # 25
+        self.normal_text_color = self.dict['normal_text_color']  # 26
+        self.normal_button_color = self.dict['normal_button_color']  # 27
+        self.anchor = self.dict['anchor']  # 28
+
+    def fields_to_dict(self):
+        """ Easy names to cryptic dictionary fields """
+        self.dict['widget'] = self.widget  # 01
+        self.dict['current_state'] = self.current_state  # 02
+        self.dict[' current_mouse_xy'] = self.current_mouse_xy  # 03
+        self.dict[' window_mouse_xy'] = self.window_mouse_xy  # 04
+        self.dict['enter_time'] = self.enter_time  # 05
+        self.dict['leave_time'] = self.leave_time  # 06
+        self.dict['motion_time'] = self.motion_time  # 07
+        self.dict['press_time'] = self.press_time  # 08
+        self.dict['release_time'] = self.release_time  # 09
+        self.dict['visible_delay'] = self.visible_delay  # 10
+        self.dict['visible_span'] = self.visible_span  # 11
+        self.dict['extra_word_span'] = self.extra_word_span  # 12
+        self.dict['fade_in_span'] = self.fade_in_span  # 13
+        self.dict['fade_out_span'] = self.fade_out_span  # 14
+        self.dict['tip_window'] = self.tip_window  # 15
+        self.dict['text'] = self.text  # 16
+        self.dict['window_geom'] = self.window_geom  # 17
+        self.dict['window_visible'] = self.window_visible  # 18
+        self.dict['current_alpha'] = self.current_alpha  # 19
+        self.dict['window_fading_in'] = self.window_fading_in  # 20
+        self.dict['window_fading_out'] = self.window_fading_out  # 21
+        self.dict['tool_type'] = self.tool_type  # 22
+        self.dict['name'] = self.name  # 23
+        self.dict['fg'] = self.fg  # 24
+        self.dict['bg'] = self.bg  # 25
+        self.dict['normal_text_color'] = self.normal_text_color  # 26
+        self.dict['normal_button_color'] = self.normal_button_color  # 27
+        self.dict['anchor'] = self.anchor  # 28
+
+    def log_event(self, action, widget, x, y):
+        """ action is 'enter', 'leave', 'press' or 'release'.
+            If release coordinates outside of bounding box, it doesn't count.
+            Just log events to array. Do not process them at this point.
+            Called from bind
+
+            Events are logged instantly, however processed every 33 ms
+            There is no perceptible lag as 30 fps is faster than human eye.
+        """
+        Event = namedtuple('Event', 'time, action, widget, x, y')
+        # noinspection PyArgumentList
+        self.log_nt = Event(time.time(), action, widget, x, y)
+        self.log_list.append(self.log_nt)
+        # print('EVENT:', self.log_nt)
+
+    def process_log_list(self):
+        """ Process log list backwards deleting earlier matching widget events """
+        # https://stackoverflow.com/a/529427/6929343
+
+        for i, self.log_nt in reversed(list(enumerate(self.log_list))):
+            # print('log_dict in log_list', self.log_nt)
+            if self.log_nt.widget == self.deleted_str:
+                continue  # We deleted this one, grab next
+            # Delete matching widget events prior to this event (i) which is kept
+            # self.delete_older_for_widget(i)
+            self.set_tip_plan()
+
+        self.log_list = []  # Flush out log list for new events
+
+    def delete_older_for_widget(self, stop_index):
+        """ Process log list forwards from 0 deleting matching widget
+            Requires specialized testing using manual calls to 
+            log_event(action, widget, x, y) followed by process_log_list()
+
+            Intention is to delete <enter> event if there is a <leave> event
+            in the queue. Problem is the <leave> event is getting deleted
+            instead. Disable for now...
+
+        """
+        # Find event log's widget in list of tooltips
+        search_widget = self.widget_map(self.log_nt.widget)
+
+        for i, nt in enumerate(self.log_list):
+            if i >= stop_index:
+                return  # Don't want to delete the last one
+            if nt.widget == search_widget:
+                # Widget matches so flag as deleted
+                print('toolkit.py delete_older_for_widget():', self.log_nt)
+                # TODO: What if entering canvas is deleted and colors not changed?
+                Event = namedtuple('Event', 'time, action, widget, x, y')
+                # noinspection PyArgumentList
+                self.log_list[i] = Event(self.log_nt.time, self.log_nt.action,
+                                         self.deleted_str,
+                                         self.log_nt.x, self.log_nt.y)
+
+    def set_tip_plan(self):
+        """ Called to process event from self.log_nt """
+        # Find event log's widget in list of tooltips
+        search_widget = self.widget_map(self.log_nt.widget)
+        # print('self.log_nt:', self.log_nt)
+        for self.tips_index, self.dict in enumerate(self.tips_list):
+            if self.dict['widget'] == search_widget:
+                break
+
+        if len(self.dict) <= 1:
+            print('self.log_nt widget NOT FOUND!:', search_widget)
+            for self.dict in self.tips_list:
+                for key in self.dict:
+                    print("key: %s , value: %s" % (key, self.dict[key]))
+                return
+
+        if self.dict['widget'] != search_widget:
+            # TODO: This will spam at 30 fps
+            print('self.log_nt NOT FOUND!:', self.log_nt)
+            return
+
+        self.dict_to_fields()  # Dictionary to easy names
+        self.current_mouse_xy = (self.log_nt.x, self.log_nt.y)
+
+        ''' OVERVIEW:
+            Enter, wait, create, fade in, wait, fade out, destroy.  
+            self.window_fading_in and self.window_fading_out already 
+            setup so just need self.wait_time.
+        '''
+        if self.log_nt.action == 'leave':
+            # Leaving widget
+            self.leave_time = self.log_nt.time
+            prt_time = datetime.utcnow().strftime("%M:%S.%f")[:-2]
+            d_print(prt_time, 'leaving widget: ', str(self.widget)[-4:])
+
+            if self.window_fading_out:
+                # If already fading out, continue the process
+                pass  # Can't return now, need to go down for save
+
+            elif self.window_fading_in:
+                # We were in the middle of fading in, so force fade out from
+                # same alpha level
+                # WIP: Currently fades from 1.0 to 0.1
+                self.force_fade_out()
+
+            elif self.window_visible:
+                # Return widget colors to 'normal' state if needed.
+                self.reset_widget_colors()
+                # Begin fade process now
+                self.force_fade_out()
+
+            else:
+                # Window isn't visible now, so force it to never mount
+                self.enter_time = 0.0
+
+        elif self.log_nt.action == 'enter':
+            # Entering widget
+            prt_time = datetime.utcnow().strftime("%M:%S.%f")[:-2]
+            d_print(prt_time, 'entering widget:', str(self.widget)[-4:])
+            self.enter_time = self.log_nt.time
+            if self.window_visible is True:
+                # Same widget was entered again before fade out completed.
+                pass
+                # print('ERROR: Should not be visible already. If persistent, then')
+                # print("activate 'tt_DEBUG = True' and check for two 'ENTER:' in a row.")
+
+            if self.tool_type is 'canvas_button' and self.widget.state is 'normal':
+                self.set_widget_colors()
+
+        elif self.log_nt.action == 'motion':
+            # Mouse motion in widget
+            self.motion_time = self.log_nt.time
+            if self.window_visible:
+                self.move_window()
+
+        elif self.log_nt.action == 'press':
+            # Button pressed in widget
+            self.press_time = self.log_nt.time
+
+        elif self.log_nt.action == 'release':
+            # Button released after press in widget
+            self.release_time = self.log_nt.time
+
+        else:
+            print('ERROR: process_tip: Invalid action:', self.log_nt.action)
+
+        self.fields_to_dict()
+        self.tips_list[self.tips_index] = self.dict
+
+
+# ==============================================================================
+#
+#   NOT USED   NOT USED   NOT USED   NOT USED   NOT USED   NOT USED   NOT USED
+#
+#   message.py - ToolTipsPool, ToolTip, createToolTip - INSTANT DISPLAY tool tips
+#
+#   NOTE: Use toolkit.py - ToolTips() for fading tool tips
 #
 # ==============================================================================
 
@@ -660,7 +998,7 @@ class ToolTipsPool:
     """ 
         NOTE: Remove all pool references. Tips now instantly displayed!
         
-        USE: New toolkit.ToolTips class for one-step fading tips.
+        USE: New toolkit.ToolTips() class for one-step fading tips.
     
         Tooltip is defined with:
 
@@ -954,6 +1292,12 @@ LEAVE: 4200 172 14
             last_value = value
         print('durations:', values)
 
+# ==============================================================================
+#
+#   NOT USED   NOT USED   NOT USED   NOT USED   NOT USED   NOT USED   NOT USED
+#
+# ==============================================================================
+
 
 class ToolTip(object):
 
@@ -1124,6 +1468,12 @@ class ToolTip(object):
         if self.pool:
             self.pool.button_release()
 
+# ==============================================================================
+#
+#   NOT USED   NOT USED   NOT USED   NOT USED   NOT USED   NOT USED   NOT USED
+#
+# ==============================================================================
+
 
 class CreateToolTip(object):
 
@@ -1139,13 +1489,13 @@ class CreateToolTip(object):
         """
 
         self.widget = widget
-        try:
-            self.name = self.widget['text']         # For display during debugging
-        except tk.TclError:
-            self.name = "Unknown"
         self.text = text
         self.pool = pool
         self.tool_type = tool_type
+        try:
+            self.name = self.widget['text']         # For display during debugging
+        except tk.TclError:
+            self.name = self.tool_type              # 'canvas_button' or 'menu' type
         # For canvas rounded rectangle buttons we need extra variables
         self.button_press_time = None
         self.button_release_time = None

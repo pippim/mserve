@@ -203,7 +203,9 @@ class Monitors:
             GNOME = 3.18
 
         self.screen_width = SCREEN.width    # Should equal self.desk_width
+                                            # But contains 'gi.FunctionInfo(width)'
         self.screen_height = SCREEN.height  # Should equal self.desk_height
+                                            # But contains 'gi.FunctionInfo(height)'
         self.gdk_gnome_version = GNOME      # Traditional for outside
 
         self.monitors_list = []             # List of dictionaries w/monitor
@@ -256,10 +258,10 @@ class Monitors:
 
         # Wrap up
         if self.screen_width != self.desk_width:
-            print('ERROR monitor.py: SCREEN.width:,', self.screen.width,
+            print('ERROR monitor.py: SCREEN.width:,', self.screen_width,
                   'not equal to desk_width:', self.desk_width)
         if self.screen_height != self.desk_height:
-            print('ERROR monitor.py: SCREEN.height:,', self.screen.height,
+            print('ERROR monitor.py: SCREEN.height:,', self.screen_height,
                   'not equal to desk_height:', self.desk_height)
         if len(self.monitors_list) < 1:
             print('ERROR monitor.py: No monitors found!')
@@ -692,15 +694,15 @@ def get_window_geom(name):
                 ChromeOS and Android. See: https://stackoverflow.com/a/21213145/6929343
     """
 
-    if name == 'library':  # mserve & bserve
+    if name == 'library':  # mserve.py & bserve.py
         _w = int(1920 * .75)
         _h = int(1080 * .75)
         _root_xy = (100, 100)  # Temporary hard-coded coordinates
         default_geom = '%dx%d+%d+%d' % (_w, _h, _root_xy[0], _root_xy[1])
-    elif name == 'playlist':  # mserve
+    elif name == 'playlist':  # mserve.py
         xy = (130, 130)
         default_geom = '+%d+%d' % (xy[0], xy[1])
-    elif name == 'backups':  # bserve
+    elif name == 'backups':  # bserve.py
         xy = (130, 130)
         default_geom = '+%d+%d' % (xy[0], xy[1])
     elif name == 'history':  # webscrape.py
@@ -712,9 +714,16 @@ def get_window_geom(name):
     elif name == 'results':  # webscrape.py
         xy = (130, 130)
         default_geom = '+%d+%d' % (xy[0], xy[1])
+    elif name == 'sql_music':  # mserve.py
+        xy = (130, 130)
+        default_geom = '+%d+%d' % (xy[0], xy[1])
+    elif name == 'sql_history':  # mserve.py
+        xy = (130, 130)
+        default_geom = '+%d+%d' % (xy[0], xy[1])
     else:
         print('monitor.get_window_geom(): Bad window name:', name)
-        return False
+        xy = (130, 130)
+        default_geom = '+%d+%d' % (xy[0], xy[1])
 
     if sql.hist_check(0, 'window', name):
         sql.hist_cursor.execute("SELECT * FROM History WHERE Id = ?",
@@ -722,7 +731,7 @@ def get_window_geom(name):
         d = dict(sql.hist_cursor.fetchone())
         if d is None:
             # If we get here there is programmer error
-            print('monitor.get_window_geom(): No History ID:', HISTORY_ID)
+            print('monitor.get_window_geom(): No History ID:', sql.HISTORY_ID)
             return default_geom
         return d['SourceMaster']
     else:
@@ -743,7 +752,7 @@ def save_window_geom(name, geom):
                                 [sql.HISTORY_ID])
         d = dict(sql.hist_cursor.fetchone())
         if d is None:
-            print('monitor.save_window_geom error no History ID:', HISTORY_ID)
+            print('monitor.save_window_geom error no History ID:', sql.HISTORY_ID)
             return False
     else:
         # First time add the record
@@ -757,7 +766,7 @@ def save_window_geom(name, geom):
     ''' We have the existing history record, simply replace the geometry field '''
     sql_cmd = "UPDATE History SET Time=?, SourceMaster=? WHERE Id = ?"
 
-    sql.cursor.execute(sql_cmd, (time.time(), geom, sql.HISTORY_ID))
+    sql.hist_cursor.execute(sql_cmd, (time.time(), geom, sql.HISTORY_ID))
     sql.con.commit()
 
 # End of monitor.py

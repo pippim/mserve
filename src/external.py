@@ -11,6 +11,7 @@ import signal                           # Trap shutdown to close files
 import os
 import errno
 import time
+import datetime
 
 # Common routines used by many programs put here
 
@@ -50,6 +51,23 @@ def h(float_time):
     """ Print 24 hour clock with milliseconds """
     f_time = datetime.datetime.fromtimestamp(float_time)
     return f_time.strftime("%H:%M:%S.%f")
+
+
+def which(cmd, path=None):
+    """ test if path contains an executable file with name
+        https://stackoverflow.com/a/28909933/6929343
+    """
+    if path is None:
+        path = os.environ["PATH"].split(os.pathsep)
+
+    for prefix in path:
+        filename = os.path.join(prefix, cmd)
+        executable = os.access(filename, os.X_OK)
+        is_not_directory = os.path.isfile(filename)
+        if executable and is_not_directory:
+            # TODO for Windows add current directory
+            return prefix + os.sep + cmd  # Path in which command exists
+    return None
 
 
 def launch_command(ext_name, toplevel=None):
@@ -171,8 +189,7 @@ def continue_pid_running(active_pid):
 
 
 def stat_existing(filename):
-    """ Remove file if it exists
-        from: https://stackoverflow.com/a/10840586/6929343
+    """ stat file and return attributes
     """
     try:
         stat = os.stat(filename)
@@ -211,5 +228,36 @@ class GracefulKiller:
     def exit_gracefully(self, *args):
         self.kill_now = True
 
+
+"""
+https://trac.ffmpeg.org/wiki/AudioVolume
+
+Peak and RMS Normalization
+
+To normalize the volume to a given peak or RMS level, the file first has to be
+analyzed using the volumedetect filter:
+
+ffmpeg -i input.wav -filter:a volumedetect -f null /dev/null
+
+Read the output values from the command line log:
+
+[Parsed_volumedetect_0 @ 0x7f8ba1c121a0] mean_volume: -16.0 dB
+[Parsed_volumedetect_0 @ 0x7f8ba1c121a0] max_volume: -5.0 dB
+...
+
+... then calculate the required offset, and use the volume filter as shown above.
+Loudness Normalization
+
+If you want to normalize the (perceived) loudness of the file, use the ​
+loudnorm filter, which implements the EBU R128 algorithm:
+
+ffmpeg -i input.wav -filter:a loudnorm output.wav
+
+This is recommended for most applications, as it will lead to a more uniform
+ loudness level compared to simple peak-based normalization. However, it is
+  recommended to run the normalization with two passes, extracting the measured
+   values from the first run, then using the values in a second run with linear
+    normalization enabled. See the loudnorm filter documentation for more. 
+"""
 
 # End of external.py

@@ -130,8 +130,8 @@ DEFAULT_LIST = [
 
 BLACK_LIST = ['youtube', 'wikipedia', 'facebook', 'pinterest']
 
-BLACK_LIST_COUNT = 0
-WHITE_LIST_COUNT = 0
+BLACK_LIST_FOUND = []
+WHITE_LIST_FOUND = []
 list_output = []
 lyrics_output = []              # Was not defined global in scrape()
 
@@ -140,19 +140,19 @@ SEARCH = ""
 MUSIC_ID = ""
 
 
-
 class Results:
+    """ Work in progress """
     def __init__(self):
-        self.blacklist_count = 0
-        self.whitelist_count = 0
+        self.black_list_count = 0
+        self.white_list_count = 0
         self.list = []
         self.result = namedtuple('Result', 'order, type, link')
 
     def add_blacklist(self):
-        self.blacklist_count += 1
+        self.black_list_count += 1
 
     def add_whitelist(self):
-        self.blacklist_count += 1
+        self.white_list_count += 1
 
 
 results = Results()             # global class
@@ -214,11 +214,10 @@ def delete_files(select='all'):
             pass
 
 
-# TODO: Create dictionary with website and last time scraped. This way we can
+# TODO: Create SQL History with website and last time scraped. This way we can
 #       cycle through names and not bombard a single site with quick requests.
-#       At two seconds per site it will be ~15 seconds between requests which
-#       should satisfy most robot detectors. Dictionary is saved as pickle in
-#       ~/.config/mserve/webscrape.pkl
+#       At two seconds per site it will be ~15 seconds between requests, which
+#       should satisfy most robot detectors.
 
 
 MEGALOBIZ = METROLYRICS = AZLYRICS = LYRICS = LYRICSMODE = None
@@ -238,7 +237,7 @@ def google_search(search):
             8. LyricsPlanet
     """
     global WS_DICT, CTL_LIST
-    global MEGALOBIZ, AZLYRICS, LYRICS, LYRICSMODE, LETSSINGIT
+    global MEGALOBIZ, METROLYRICS, AZLYRICS, LYRICS, LYRICSMODE, LETSSINGIT
     global GENIUS, MUSIXMATCH, LYRICSPLANET, list_output
 
     # If we try to print normally an error occurs when launched in background
@@ -254,10 +253,10 @@ def google_search(search):
                          'xml;q=0.9,image/webp,*/*;q=0.8'}
     # inspection SpellCheckingInspection
 
-    results = 100  # valid options 10, 20, 30, 40, 50, and 100
+    hit_count = 100  # valid options 10, 20, 30, 40, 50, and 100
     #    page = requests.get(f"https://www.google.com/search?q={search}&num={results}")
     query = "https://www.google.com/search?q={search}&num={results}". \
-        format(search=search, results=results, headers=headers)
+        format(search=search, results=hit_count, headers=headers)
     # print('query:', query)
 
     # noinspection PyBroadException
@@ -331,18 +330,14 @@ def google_search(search):
     save_ctl()
 
 
-
-def add_blacklist(t):
-    global BLACK_LIST_COUNT
-    BLACK_LIST_COUNT += 1
-
+def add_blacklist(text):
+    global BLACK_LIST_FOUND
+    BLACK_LIST_FOUND.append(text)
 
 
-def add_whitelist(t):
-    global WHITE_LIST_COUNT
-    WHITE_LIST_COUNT += 1
-
-
+def add_whitelist(text):
+    global WHITE_LIST_FOUND
+    WHITE_LIST_FOUND.append(text)
 
 
 def scrape(search):
@@ -469,7 +464,9 @@ def get_from_metrolyrics():
 """
 <div id="lrc_54479852_member_box" class="lyrics_member_box">
     <div class="lyrics_title">
-        <span class="related_media_page name" title="Creed - My Sacrifice [HQ]" data-page="lrc/maker/Creed+-+My+Sacrifice+%5BHQ%5D.54479852" style="cursor:pointer;">
+        <span class="related_media_page name" 
+        title="Creed - My Sacrifice [HQ]" data-page="lrc/maker/Creed+-+My+Sacrifice+%5BHQ%5D.54479852" 
+        style="cursor:pointer;">
             5059 - Creed - My Sacrifice [HQ]
                          [04:47.14]</span>
         <span class="datetime" title="Saturday, July 7th 2018, at 01:07:14 pm">3 years ago</span>
@@ -483,10 +480,12 @@ def get_from_metrolyrics():
     <div class="lyrics_options">
         <div style="margin:10px 0;text-align:left;font-size:14px;color:#444;">
             <div>
-                <input id="lrc_54479852_keep_unused_lines" name="keep_unused_lines" type="checkbox" value="1"><label for="lrc_54479852_keep_unused_lines">Keep untagged brackets and blank lines?</label>
+                <input id="lrc_54479852_keep_unused_lines" name="keep_unused_lines" type="checkbox" value="1">
+                <label for="lrc_54479852_keep_unused_lines">Keep untagged brackets and blank lines?</label>
             </div>
             <div>
-                <input id="lrc_54479852_show_lyrics_only" name="show_lyrics_only" type="checkbox" value="1"><label for="lrc_54479852_keep_unused_lines">Show Lyrics Only (without LRC tag)</label>
+                <input id="lrc_54479852_show_lyrics_only" name="show_lyrics_only" type="checkbox" value="1">
+                <label for="lrc_54479852_keep_unused_lines">Show Lyrics Only (without LRC tag)</label>
             </div>
         </div>
         <div>
@@ -654,21 +653,22 @@ class HistoryTree:
         self.region = None  # 'heading', 'separator' or 'cell'
         self.bup_gen = None  # Backup generations
         self.subject_list = []  # GMAIL_SUBJECT.split('!')
-        self.iid = None
+        self.view_iid = None
 
         ''' get parameters in SQL setup by mserve '''
-        now = time.time()
-        last_time = sql.hist_last_time('scrape', 'parm')
-        if last_time is None:
-            last_time = now
-        hist_row = sql.hist_get_row(sql.HISTORY_ID)
-        lag = now - last_time
-        if lag > 1.0:
-            print('It took more than 1 second for webscrape to start:', lag)
-        else:
-            print('webscrape start up time:', lag)
-            pass
-        print(hist_row)
+        if SEARCH != "":
+            now = time.time()
+            last_time = sql.hist_last_time('scrape', 'parm')
+            if last_time is None:
+                last_time = now
+            hist_row = sql.hist_get_row(sql.HISTORY_ID)
+            lag = now - last_time
+            if lag > 1.0:
+                print('It took more than 1 second for webscrape to start:', lag)
+            else:
+                print('webscrape start up time from mserve:', lag)
+                pass
+            print(hist_row)
 
         ''' TODO: Relocate dtb '''
         dtb = message.DelayedTextBox(title="Building history table view",
@@ -800,6 +800,7 @@ class HistoryTree:
 
         ''' Colors for tags '''
         self.ignore_item = None
+        self.his_view.tree.tag_configure('menu_sel', foreground='Red')
 
         ''' Refresh last played 999 ago, every minute '''
         self.his_top_is_active = True  # Tell refresh_items() to run
@@ -923,7 +924,7 @@ class HistoryTree:
 
             ''' dtb_line displays only if lag experienced  '''
             dtb_line = row['Type'] + " - " + row['Action'] + \
-                       " - " + row['SourceMaster']
+                " - " + row['SourceMaster']
 
             if delayed_textbox.update(dtb_line):
                 # delayed_textbox returns true only when visible otherwise
@@ -1007,45 +1008,45 @@ class HistoryTree:
         if self.region == 'heading':
             column_number = view.tree.identify_column(event.x)  # returns '#?'
             self.create_window('Data Dictionary for column: ' + column_number,
-                               550, 450)  # width, height
+                               900, 450)  # width, height - July 27/22 make wider.
             column_name = view.columns[int(column_number.replace('#', '')) - 1]
             column_dict = toolkit.get_dict_column(column_name, view.tree_dict)
-            view_column = sql.PrettyHistory(None, column_dict)
-            view_column.tkinter_display(self.scrollbox)
+            #view_column = sql.PrettyHistory(None, column_dict)
+            #view_column.tkinter_display(self.scrollbox)  # May 1, 2023 updated
+            view_column = sql.PrettyTreeHeading(column_dict)
+            view_column.scrollbox = self.scrollbox
+            # Document self.scrollbox
+            sql.tkinter_display(view_column)
             return
 
         # At this point only other region is 'cell'
 
-        self.iid = view.tree.identify_row(y)
-        values = view.tree.item(self.iid, "values")
-        row_id = view.column_value(values, "row_id")
-        if row_id is None:
+        self.view_iid = view.tree.identify_row(y)
+        # Color the row 'red'.
+        tags = self.view.tree.item(self.view_iid)['tags']  # Append 'menu_sel' tag
+        if "menu_sel" not in tags:
+            tags.append("menu_sel")
+            self.view.tree.item(self.view_iid, tags=tags)
+        self.view.tree.see(self.view_iid)  # Ensure message is visible
+
+        values = view.tree.item(self.view_iid, "values")
+        sql_row_id = view.column_value(values, "row_id")
+        if sql_row_id is None:
             # Should never happen because row_id is key field
             # always included even if not displayed.
             print('webscrape.py common_button_3() row_id is None')
             return
 
-        row = sql.hist_get_row(row_id)
-
-        ''' The gmail_api.py module parses message into working dictionary '''
-        # if self.view == self.bup_view:
-        if self.view is None:  # TODO: decide when calc fields are on
-            # For bup view we add calculated fields such as "delete_on"
-            calc = self.bup_calc_to_pretty
-        else:
-            # For lib view there are no calculated fields to append to display
-            calc = None
-        # PrettyHistory = gmail_api.PrettyHistory(self.gma, header, calc=calc)
-        PrettyHistory = sql.PrettyHistory(None, row, calc=calc)
+        pretty = sql.PrettyHistory(sql_row_id)
 
         ''' Place Window top-left of parent window with PANEL_HGT padding
             Lifted from: ~/mserve/encoding.py
         '''
-        self.create_window("History row - webscrape", 1400, 975)
+        self.create_window("History row - webscrape", 1400, 575)
+        pretty.scrollbox = self.scrollbox
 
-        PrettyHistory.tkinter_display(self.scrollbox)
-        # Note self.scrollbox defined in multiple places, reduce in future
-        # self.hdr_top.geometry('%dx%d+%d+%d' % (1400, 975, xy[0], xy[1]))
+        # pretty class dictionary display method
+        sql.tkinter_display(pretty)
 
     def create_window(self, title, width, height):
 
@@ -1094,16 +1095,11 @@ class HistoryTree:
         bs_font = (None, g.MON_FONTSIZE)  # bs = bserve, ms = mserve
 
         ''' Scrollable textbox to show selections / ripping status '''
-        Quote = ("It will take a second to access internet.\n" +
-                 "Then gmail message header is displayed here.\n" +
-                 "What you select from listings will appear in this window.\n\n" +
-
-                 "TIPS:\tCheck Medium to select songs all at once.\n\n" +
-                 "\tIn your browser navigate to website with images.\n" +
-                 "\tRight click on image and select 'Copy'.\n" +
-                 "\tThen click 'Clipboard image' button below.\n\n" +
-                 "\tA blank release date entry can be checked and\n" +
-                 "\tthen a pop-up window will appear to enter date.\n\n")
+        Quote = ("Retrieving SQL data.\n" +
+                 "If this screen can be read, there is a problem.\n\n" +
+                 "TIPS:\n\n" +
+                 "\tRun in Terminal: 'webscrape.py' and check for errors.\n\n" +
+                 "\twww.pippim.com\n\n")
         # self.scrollbox = toolkit.CustomScrolledText(frame1, state="readonly", font=font)
         # TclError: bad state "readonly": must be disabled or normal
         # Text padding not working: https://stackoverflow.com/a/51823093/6929343
@@ -1118,6 +1114,9 @@ class HistoryTree:
         self.scrollbox.tag_config('blue', foreground='Blue')
         self.scrollbox.tag_config('green', foreground='Green')
         self.scrollbox.tag_config('black', foreground='Black')
+        self.scrollbox.tag_config('yellow', background='Yellow')
+        self.scrollbox.tag_config('cyan', background='Cyan')
+        self.scrollbox.tag_config('magenta', background='Magenta')
 
         self.scrollbox.config(tabs=("5m", "80m", "106m"))
         self.scrollbox.tag_configure("margin", lmargin1="5m", lmargin2="80m")
@@ -1128,15 +1127,22 @@ class HistoryTree:
     def pretty_close(self, *args):
         if self.hdr_top is None:
             return
+        self.tt.close(self.hdr_top)  # Close tooltips under top level
         self.scrollbox.unbind("<Button-1>")
         self.hdr_top_is_active = False
         self.hdr_top.destroy()
         self.hdr_top = None
 
+        # Reset color to normal in treeview line
+        tags = self.view.tree.item(self.view_iid)['tags']  # Remove 'menu_sel' tag
+        if "menu_sel" in tags:
+            tags.remove("menu_sel")
+            self.view.tree.item(self.view_iid, tags=tags)
+
     def bup_calc_to_pretty(self, pretty_dict):
         """ Add calculated fields from BackupGenerations and date matrix """
 
-        values = self.view.tree.item(self.iid)['values']
+        values = self.view.tree.item(self.view_iid)['values']
         pretty_dict['delete_on'] = self.view.column_value(values, 'delete_on')
         pretty_dict['reason'] = self.view.column_value(values, 'reason')
         pretty_dict['row_id'] = self.view.column_value(values, "row_id")

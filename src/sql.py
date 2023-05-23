@@ -29,8 +29,8 @@ from collections import namedtuple, OrderedDict
 # local modules
 import global_variables as g        # should be self-explanatory
 if g.USER is None:
-    print('sql.py was forced to run g.init()')
-    # This is normal after 'm' runs mserve.py. When no sql.py, location.py shows.
+    #print('sql.py was forced to run g.init()')
+    # sql.py runs init when mserve.py starts. Otherwise, location.py runs init.
     g.init()
 import timefmt as tmf               # Our custom time formatting functions
 import external as ext
@@ -46,7 +46,6 @@ CFG_DECIMAL_SEP = "."               # English "." for fractional amount
 CFG_DECIMAL_PLACES = 1              # 1 decimal place, eg "38.5 MB"
 CFG_DIVISOR_AMT = 1000000           # Divide by million
 CFG_DIVISOR_UOM = "MB"              # Unit of Measure becomes Megabyte
-
 
 NO_ARTIST_STR = "(No Artist)"         # global User defined labels
 NO_ALBUM_STR = "(No Album)"
@@ -235,7 +234,8 @@ def open_db():
     cursor = con.cursor()
     hist_cursor = con.cursor()
 
-    # fd = FixData("Sun May 7 23:59:59 2023")
+    fd = FixData("Sun May 22 23:59:59 2023")
+    fd.fix_scrape_parm(update=False)
     # Patch run May 15, 2023 with "update=True". 290 duplicate meta-edit deleted
     # fd.fix_meta_edit(update=False)
     # NEVER RUN fd.fix_utc_dates() AGAIN OR PERMANENT DAMAGE !!!!!!!!!!!!!!!
@@ -551,6 +551,20 @@ def update_metadata(key, artist, album, song, genre, tracknumber, date,
     return True  # Metadata was changed
 
 
+def music_id_for_song(key):
+    # Get the MusicID matching song file's basename
+    cursor.execute("SELECT Id FROM Music WHERE OsFileName = ?", [key])
+    row = cursor.fetchone()
+    if row is None:
+        print('music_id_for_song(key) error no music ID for:', key)
+        return 0
+    elif row[0] == 0:
+        print('music_id_for_song(key) error music ID is 0:', key)
+        return 0
+    else:
+        return row[0]
+
+
 #==============================================================================
 #
 #       sql.py - History table processing
@@ -569,27 +583,13 @@ def hist_get_row(key):
     return OrderedDict(row)
 
 
-def hist_get_music_id(key):
-    # Get the MusicID matching song file's basename
-    cursor.execute("SELECT Id FROM Music WHERE OsFileName = ?", [key])
-    row = cursor.fetchone()
-    if row is None:
-        print('hist_get_music_id(key) error no music ID for:', key)
-        return 0
-    elif row[0] == 0:
-        print('hist_get_music_id(key) error music ID is 0:', key)
-        return 0
-    else:
-        return row[0]
-
-
 def hist_add_time_index(key, time_list):
     """
         Add time index if 'init' doesn't exist.
         If time index does exist, add an 'edit' if it has changed.
     """
     # Get the MusicID matching song file's basename
-    MusicId = hist_get_music_id(key)
+    MusicId = music_id_for_song(key)
     if MusicId == 0:
         print('SQL hist_add_time_index(key) error no music ID for:', key)
         return False
@@ -687,7 +687,7 @@ def hist_delete_time_index(key):
         to add new history record.
     """
     # Get the MusicID matching song file's basename
-    MusicId = hist_get_music_id(key)
+    MusicId = music_id_for_song(key)
     if MusicId == 0:
         print('SQL hist_delete_time_index(key) error no music ID for:', key)
         return False
@@ -1136,7 +1136,7 @@ class Webscrape:
     def set_ws_parm(self, music_id):
         """ Save Webscrape parameters - Currently in mserve.py:
 
-            MusicId = sql.hist_get_music_id(self.work_sql_key)
+            MusicId = sql.music_id_for_song(self.work_sql_key)
             sql.hist_add(time.time(), MusicId, USER,
                          'scrape', 'parm', artist, song,
                          "", 0, 0, 0.0,
@@ -1398,6 +1398,7 @@ class PrettyHistory:
 
         self.dict['SQL History Row Id'] = sql_format_value(d['Id'])
         self.dict['SQL Music Row Id'] = sql_format_value(d['MusicId'])
+        self.dict['User'] = sql_format_value(d['User'])
         # 'SQL Music Row Id' is same name in PrettyMusic and is a lookup key
 
         self.part_start.append(len(self.dict))
@@ -1954,7 +1955,7 @@ def get_last_history(music_id, website='all'):
 
 
 class FixData:
-    # Date parameter in form "Sun May 7 23:59:59 2023"
+    # Date parameter in form "Sun May 22 23:59:59 2023"
 
     def __init__(self, cutoff_str):
         self.rows_count = 0
@@ -1967,6 +1968,117 @@ class FixData:
         self.test = True
         self.successful_update_count = 0
         self.sql_cmd_error = False
+
+    def fix_scrape_parm(self, update=False):
+        """ Fix MusicId 0 by looking up real MusicId
+        """
+        # Backup database before updating
+        self.backup(update)
+
+        fix_list = list()
+        music_list = list()
+
+        hist_cursor.execute("SELECT * FROM History")
+        rows = hist_cursor.fetchall()
+
+        for sql_row in rows:
+            row = dict(sql_row)
+            self.rows_count += 1
+            print_all = False
+            #if 15879 <= row['Id'] <= 15880:
+            if row['MusicId'] == 999999:  # Change 999999 to MusicId to print for debugging
+                print("\nFound history History Row Id:", row['Id'], "| MusicId:", row['MusicId'])
+                print("\trow['MusicId'] =", row['MusicId'], "| row['Target'] =", row['Target'])
+                print_all = True
+
+            if row['Type'] != 'scrape' or row['Action'] != 'parm':
+                continue  # Wrong 'Type' and 'Action'
+
+            if print_all:
+                print("\tStep 1 for :", row['Id'])
+
+            # If first time for this MusicId, don't delete. Just log it.
+            if not row['MusicId'] in music_list:
+                music_list.append(row['MusicId'])
+                fix_list.append(OrderedDict([('KeepId', row['Id']),
+                                             ('MusicId', row['MusicId']),
+                                             ('Target', row['Target']),
+                                             ('Count', 0), ('Error', 0)]))
+                if print_all:
+                    print("\tAdding to fix_list:", row['Id'], "position:", len(fix_list))
+                self.skipped_count += 1  # First record is a keeper
+                continue  # Nothing changes
+
+            if print_all:
+                print("\tStep 2 for :", row['Id'])
+
+            date_str = row['Comments']
+            if date_str is None:
+                self.error_count += 1
+                print("Cutoff date not found in scrape-parm history comments")
+                print(" ", self.make_pretty_line(row))
+                continue  # Error isolating date within comment
+
+            if print_all:
+                print("\tStep 3 for :", row['Id'])
+
+            try:
+                time_obj = time.strptime(date_str)
+                # Check to ensure date in comments is prior to cutoff date
+                # fix_count and past_count are automatically updated for us.
+                if not self.check_cutoff_date(time_obj):
+                    # print("epoch:", epoch, "epoch_cutoff:", epoch_cutoff)
+                    # print('past_count  Type:', row['Type'], ' Action:', row['Action'],
+                    #      ' SourceMaster:', row['SourceMaster'], ' Comments:', row['Comments'])
+                    # print("\tPast cutoff date:", row['Id'], self.past_count)
+                    continue  # Prior to cutoff date
+
+            except ValueError:
+                self.error_count += 1
+                print('sql.py - fix_scrape_parm() time object error:', utc_date_str)
+                print(" ", self.make_pretty_line(row))  # All keys in random order
+                continue
+
+            if print_all:
+                print("\tStep 4 for :", row['Id'])
+
+            self.rows_changed += 1
+
+            found_ok = False
+            for d in fix_list:
+                # Find matching MusicId setup previously in dictionary list
+                if d['MusicId'] == row['MusicId']:
+                    d['Count'] += 1
+                    #print(self.make_pretty_line(d))
+                    found_ok = True
+                    break
+
+            if print_all:
+                print("Step 5 for :", row['Id'])
+
+            if not found_ok:
+                print("Not found:")
+                print(self.make_pretty_line(d))
+
+            if self.test:
+                continue  # Skip over update
+
+            sql = "DELETE FROM History WHERE Id = ?"
+            if not self.sql_cmd_error:
+                key = row['Id']
+                try:
+                    hist_cursor.execute(sql, (key,))
+                    self.successful_update_count += 1
+                except Exception as err:
+                    print('Update Failed: %s\nError: %s' % (query, str(err)))
+                    print("  key:", key,)
+                    print(sql, "\n", (detail, comment, key))
+                    self.sql_cmd_error = True
+                pass
+
+        # Print count total lines
+        self.print_summary("fix_meta_edit()", fix_list)
+        self.wrapup(update)
 
     def fix_meta_edit(self, update=False):
         """ Remove duplicate history records under Type "meta", Action "edit"
@@ -1987,7 +2099,7 @@ class FixData:
             self.rows_count += 1
             print_all = False
             #if 15879 <= row['Id'] <= 15880:
-            if row['MusicId'] == 999999:
+            if row['MusicId'] == 999999:  # Change 999999 to MusicId to print for debugging
                 print("\nFound history History Row Id:", row['Id'], "| MusicId:", row['MusicId'])
                 print("\trow['MusicId'] =", row['MusicId'], "| row['Target'] =", row['Target'])
                 print_all = True
