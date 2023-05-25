@@ -234,8 +234,9 @@ def open_db():
     cursor = con.cursor()
     hist_cursor = con.cursor()
 
-    fd = FixData("Sun May 22 23:59:59 2023")
-    fd.fix_scrape_parm(update=False)
+    #fd = FixData("Sun May 22 23:59:59 2023")
+    # Patch run May 23, 2023 with "update=True". 66 corrupt scrape-parm deleted
+    # fd.fix_scrape_parm(update=False)
     # Patch run May 15, 2023 with "update=True". 290 duplicate meta-edit deleted
     # fd.fix_meta_edit(update=False)
     # NEVER RUN fd.fix_utc_dates() AGAIN OR PERMANENT DAMAGE !!!!!!!!!!!!!!!
@@ -1976,7 +1977,6 @@ class FixData:
         self.backup(update)
 
         fix_list = list()
-        music_list = list()
 
         hist_cursor.execute("SELECT * FROM History")
         rows = hist_cursor.fetchall()
@@ -1988,30 +1988,15 @@ class FixData:
             #if 15879 <= row['Id'] <= 15880:
             if row['MusicId'] == 999999:  # Change 999999 to MusicId to print for debugging
                 print("\nFound history History Row Id:", row['Id'], "| MusicId:", row['MusicId'])
-                print("\trow['MusicId'] =", row['MusicId'], "| row['Target'] =", row['Target'])
+                print("\trow['SourceMaster'] =", row['SourceMaster'],
+                      "| row['SourceDetail'] =", row['SourceDetail'])
+
                 print_all = True
 
             if row['Type'] != 'scrape' or row['Action'] != 'parm':
                 continue  # Wrong 'Type' and 'Action'
 
-            if print_all:
-                print("\tStep 1 for :", row['Id'])
-
-            # If first time for this MusicId, don't delete. Just log it.
-            if not row['MusicId'] in music_list:
-                music_list.append(row['MusicId'])
-                fix_list.append(OrderedDict([('KeepId', row['Id']),
-                                             ('MusicId', row['MusicId']),
-                                             ('Target', row['Target']),
-                                             ('Count', 0), ('Error', 0)]))
-                if print_all:
-                    print("\tAdding to fix_list:", row['Id'], "position:", len(fix_list))
-                self.skipped_count += 1  # First record is a keeper
-                continue  # Nothing changes
-
-            if print_all:
-                print("\tStep 2 for :", row['Id'])
-
+            # History time < bug fix date?
             date_str = row['Comments']
             if date_str is None:
                 self.error_count += 1
@@ -2019,18 +2004,11 @@ class FixData:
                 print(" ", self.make_pretty_line(row))
                 continue  # Error isolating date within comment
 
-            if print_all:
-                print("\tStep 3 for :", row['Id'])
-
             try:
                 time_obj = time.strptime(date_str)
                 # Check to ensure date in comments is prior to cutoff date
                 # fix_count and past_count are automatically updated for us.
                 if not self.check_cutoff_date(time_obj):
-                    # print("epoch:", epoch, "epoch_cutoff:", epoch_cutoff)
-                    # print('past_count  Type:', row['Type'], ' Action:', row['Action'],
-                    #      ' SourceMaster:', row['SourceMaster'], ' Comments:', row['Comments'])
-                    # print("\tPast cutoff date:", row['Id'], self.past_count)
                     continue  # Prior to cutoff date
 
             except ValueError:
@@ -2039,26 +2017,21 @@ class FixData:
                 print(" ", self.make_pretty_line(row))  # All keys in random order
                 continue
 
-            if print_all:
-                print("\tStep 4 for :", row['Id'])
+            fix_list.append(OrderedDict([('Id', row['Id']),
+                                         ('MusicId', row['MusicId']),
+                                         ('SourceMaster', row['SourceMaster']),
+                                         ('SourceDetail', row['SourceDetail']),
+                                         ('Count', 0), ('Error', 0)]))
+            d = fix_list[len(fix_list) - 1]
 
             self.rows_changed += 1
+            print(self.make_pretty_line(d))
+            if row['SourceMaster'] == "None":  # 12933 to 12940
+                print(self.make_pretty_line(row), "\n")  # 8 strange records
 
-            found_ok = False
-            for d in fix_list:
-                # Find matching MusicId setup previously in dictionary list
-                if d['MusicId'] == row['MusicId']:
-                    d['Count'] += 1
-                    #print(self.make_pretty_line(d))
-                    found_ok = True
-                    break
-
-            if print_all:
-                print("Step 5 for :", row['Id'])
-
-            if not found_ok:
-                print("Not found:")
-                print(self.make_pretty_line(d))
+            # Fuzzy search for MusicId
+            # Get [songs by Artist Name, MusicId] list
+            # This is too much work so simply delete 66 bad history records.
 
             if self.test:
                 continue  # Skip over update
@@ -2070,14 +2043,14 @@ class FixData:
                     hist_cursor.execute(sql, (key,))
                     self.successful_update_count += 1
                 except Exception as err:
-                    print('Update Failed: %s\nError: %s' % (query, str(err)))
+                    print('Update Failed: \nError: %s' % (str(err)))
                     print("  key:", key,)
                     print(sql, "\n", (detail, comment, key))
                     self.sql_cmd_error = True
                 pass
 
         # Print count total lines
-        self.print_summary("fix_meta_edit()", fix_list)
+        self.print_summary("fix_parm_scrape()", fix_list)
         self.wrapup(update)
 
     def fix_meta_edit(self, update=False):
@@ -2183,7 +2156,7 @@ class FixData:
                     hist_cursor.execute(sql, (key,))
                     self.successful_update_count += 1
                 except Exception as err:
-                    print('Update Failed: %s\nError: %s' % (query, str(err)))
+                    print('Update Failed: \nError: %s' % (str(err)))
                     print("  key:", key,)
                     print(sql, "\n", (detail, comment, key))
                     self.sql_cmd_error = True
@@ -2307,7 +2280,7 @@ class FixData:
                     hist_cursor.execute(sql, (detail, comment, key))
                     self.successful_update_count += 1
                 except Exception as err:
-                    print('Update Failed: %s\nError: %s' % (query, str(err)))
+                    print('Update Failed: \nError: %s' % (str(err)))
                     print("  detail:", detail)
                     print("  comment:", comment)
                     print("  key:", key)

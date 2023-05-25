@@ -21,6 +21,8 @@ HOME = None             # In Linux = /home/USER
 USER_CONFIG_DIR = None  # /home/user/.config/mserve
 USER_DATA_DIR = None    # /home/user/.local/share/mserve
 MSERVE_DIR = None       # /home/user/.config/mserve <- historically wrong
+                        # Bad name. It implies where mserve programs are
+PROGRAM_DIR = None
 
 # Same values used by gnome-terminal to prevent window shrinking too small
 WIN_MIN_WIDTH = 142
@@ -60,7 +62,7 @@ def init():
         5   pw_dir      User home directory
         6   pw_shell    User command interpreter
     """
-    global USER, USER_ID, HOME, USER_DATA_DIR, USER_CONFIG_DIR, MSERVE_DIR
+    global USER, USER_ID, HOME, USER_DATA_DIR, USER_CONFIG_DIR, MSERVE_DIR, PROGRAM_DIR
 
     if USER is not None:
         # print('User already set:', USER, USER_ID, HOME)
@@ -76,6 +78,8 @@ def init():
     # print("USER_DATA_DIR:", USER_DATA_DIR)
     USER_CONFIG_DIR = MSERVE_DIR = user_config_dir(appname, app_author)
     MSERVE_DIR += os.sep
+    PROGRAM_DIR = os.getcwd()
+    PROGRAM_DIR += os.sep
     # print("USER_CONFIG_DIR:", USER_CONFIG_DIR)
 
 # End of global_variables.py

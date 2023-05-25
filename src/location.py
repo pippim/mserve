@@ -13,20 +13,20 @@
 
 """
 # The only pickle files in  /home/$USER/.config/mserve/ directory
-FNAME_LOCATIONS       = MSERVE_DIR + "locations"
-FNAME_LAST_LOCATION   = MSERVE_DIR + "last_location"
-FNAME_LIBRARY         = MSERVE_DIR + "library.db"
+FNAME_LOCATIONS        = MSERVE_DIR + "locations"
+FNAME_LAST_LOCATION    = MSERVE_DIR + "last_location"
+FNAME_LIBRARY          = MSERVE_DIR + "library.db"
 
 # These pickle files are located to /home/$USER/.config/mserve/L999/ directory
-FNAME_LAST_OPN_STATES = MSERVE_DIR + "last_open_states"     # Expanded/Collapsed song list
-FNAME_LAST_SONG_NDX   = MSERVE_DIR + "last_song_ndx"        # Last song played in list
+FNAME_LAST_OPEN_STATES = MSERVE_DIR + "last_open_states"     # Expanded/Collapsed song list
+FNAME_LAST_SONG_NDX    = MSERVE_DIR + "last_song_ndx"        # Last song played in list
 # May 25 2021 -  last_selections corrupted by refresh_lib_tree()
-FNAME_LAST_SELECTIONS = MSERVE_DIR + "last_selections"      # Shuffled play order of songs
-FNAME_LAST_PLAYLIST   = MSERVE_DIR + "last_playlist"        # Songs selected for playing 
+FNAME_LAST_SELECTIONS  = MSERVE_DIR + "last_selections"      # Shuffled play order of songs
+FNAME_LAST_PLAYLIST    = MSERVE_DIR + "last_playlist"        # Songs selected for playing
 
 # There can be two open at once so unlike other global variables this is never
 # replaced. It is simply used as base for creating new variable.
-FNAME_MOD_TIME        = MSERVE_DIR + "modification_time"
+FNAME_MOD_TIME         = MSERVE_DIR + "modification_time"
 
 
     From mserve.py:
@@ -98,50 +98,16 @@ MSERVE_DIR = g.MSERVE_DIR
 # print("MSERVE_DIR:", MSERVE_DIR)
 
 # only files in  /home/$USER/.config/mserve/ directory
-FNAME_LOCATIONS       = MSERVE_DIR + "locations"
-FNAME_LAST_LOCATION   = MSERVE_DIR + "last_location"
-FNAME_LIBRARY         = MSERVE_DIR + "library.db"
+FNAME_LOCATIONS        = MSERVE_DIR + "locations"
+FNAME_LAST_LOCATION    = MSERVE_DIR + "last_location"
+FNAME_LIBRARY          = MSERVE_DIR + "library.db"
 
 # These files are located to /home/$USER/.config/mserve/L999/ directory
-FNAME_LAST_OPN_STATES = MSERVE_DIR + "last_open_states"     # Expanded/Collapsed song list
-FNAME_LAST_SONG_NDX   = MSERVE_DIR + "last_song_ndx"        # Last song played in list
+FNAME_LAST_OPEN_STATES = MSERVE_DIR + "last_open_states"     # Expanded/Collapsed song list
+FNAME_LAST_SONG_NDX    = MSERVE_DIR + "last_song_ndx"        # Last song played in list
 # May 25 2021 -  last_selections corrupted by refresh_lib_tree()
-FNAME_LAST_SELECTIONS = MSERVE_DIR + "last_selections"      # Shuffled play order of songs
-FNAME_LAST_PLAYLIST   = MSERVE_DIR + "last_playlist"        # Songs selected for playing 
-
-''' FUTURE VERSION '''
-FNAME_ALL_SONGS       = MSERVE_DIR + "all_songs"            # Version 2
-FNAME_CURR_PLAYING    = MSERVE_DIR + "curr_playing"         # Version 2
-FNAME_CURR_SELECTIONS = MSERVE_DIR + "curr_selections"      # Version 2
-
-"""
-    FUTURE Version 1 to Version 2 silent upgrade
-
-    If 'all_songs' doesn't exist, create it from SORTED_LIST global variable
-    If 'last_selections' exists, rename it to 'curr_playing'
-    If 'last_playlist' exists, rename it to 'curr_selections'
-
-
-"""
-
-FNAME_LAST_VARS       = MSERVE_DIR + "last_variables"       # TODO: Version 3
-
-"""
-
-FUTURE Changes
-
-- 0 - Last Song index
-- 1 - Playlist name
-- 2 - Playlist read time
-- 3 - Shuffle time
-- 4 - Manual reordered time
-- 5 - Time played
-- 6 - Time paused
-- 7 - Spare string
-- 8 - Spare float
-- 9 - Spare float
-- 10 - Spare int
-"""
+FNAME_LAST_SELECTIONS  = MSERVE_DIR + "last_selections"      # Shuffled play order of songs
+FNAME_LAST_PLAYLIST    = MSERVE_DIR + "last_playlist"        # Songs selected for playing
 
 # There can be two open at once so unlike other global variables this is never
 # replaced. It is simply used as base for creating new variable.
@@ -178,17 +144,13 @@ def create_subdirectory(iid):
 
 def set_location_filenames(iid):
     """ Called when mserve first starts up """
-    global FNAME_LAST_SELECTIONS, FNAME_LAST_OPN_STATES
+    global FNAME_LAST_SELECTIONS, FNAME_LAST_OPEN_STATES
     global FNAME_LAST_PLAYLIST, FNAME_LAST_SONG_NDX
-    global FNAME_ALL_SONGS, FNAME_CURR_PLAYING, FNAME_CURR_SELECTIONS
 
-    FNAME_LAST_OPN_STATES = set_one_filename(FNAME_LAST_OPN_STATES, iid)
-    FNAME_LAST_SONG_NDX   = set_one_filename(FNAME_LAST_SONG_NDX, iid)
-    FNAME_LAST_SELECTIONS = set_one_filename(FNAME_LAST_SELECTIONS, iid)
-    FNAME_LAST_PLAYLIST   = set_one_filename(FNAME_LAST_PLAYLIST, iid)
-    FNAME_ALL_SONGS       = set_one_filename(FNAME_ALL_SONGS, iid)
-    FNAME_CURR_PLAYING    = set_one_filename(FNAME_CURR_PLAYING, iid)
-    FNAME_CURR_SELECTIONS = set_one_filename(FNAME_CURR_SELECTIONS, iid)
+    FNAME_LAST_OPEN_STATES = set_one_filename(FNAME_LAST_OPEN_STATES, iid)
+    FNAME_LAST_SONG_NDX    = set_one_filename(FNAME_LAST_SONG_NDX, iid)
+    FNAME_LAST_SELECTIONS  = set_one_filename(FNAME_LAST_SELECTIONS, iid)
+    FNAME_LAST_PLAYLIST    = set_one_filename(FNAME_LAST_PLAYLIST, iid)
 
 
 def set_one_filename(filename, iid):
@@ -203,18 +165,13 @@ def rename_location_filenames(iid, old):
         NOT TESTED!
 
     """
-    global FNAME_LAST_SELECTIONS, FNAME_LAST_OPN_STATES
-    global FNAME_LAST_PLAYLIST, FNAME_LAST_SONG_NDX, FNAME_MOD_TIME
-    global FNAME_ALL_SONGS, FNAME_CURR_PLAYING, FNAME_CURR_SELECTIONS
+    global FNAME_LAST_SELECTIONS, FNAME_LAST_OPEN_STATES
+    global FNAME_LAST_PLAYLIST, FNAME_LAST_SONG_NDX
 
-    FNAME_LAST_OPN_STATES = rnm_one_filename(FNAME_LAST_OPN_STATES, iid, old)
-    FNAME_LAST_SONG_NDX   = rnm_one_filename(FNAME_LAST_SONG_NDX, iid, old)
-    FNAME_LAST_SELECTIONS = rnm_one_filename(FNAME_LAST_SELECTIONS, iid, old)
-    FNAME_LAST_PLAYLIST   = rnm_one_filename(FNAME_LAST_PLAYLIST, iid, old)
-    FNAME_ALL_SONGS       = rnm_one_filename(FNAME_ALL_SONGS, iid, old)
-    FNAME_CURR_PLAYING    = rnm_one_filename(FNAME_CURR_PLAYING, iid, old)
-    FNAME_CURR_SELECTIONS = rnm_one_filename(FNAME_CURR_SELECTIONS, iid, old)
-    FNAME_MOD_TIME        = rnm_one_filename(FNAME_MOD_TIME, iid, old)
+    FNAME_LAST_OPEN_STATES = rnm_one_filename(FNAME_LAST_OPEN_STATES, iid, old)
+    FNAME_LAST_SONG_NDX    = rnm_one_filename(FNAME_LAST_SONG_NDX, iid, old)
+    FNAME_LAST_SELECTIONS  = rnm_one_filename(FNAME_LAST_SELECTIONS, iid, old)
+    FNAME_LAST_PLAYLIST    = rnm_one_filename(FNAME_LAST_PLAYLIST, iid, old)
 
 
 def rnm_one_filename(old_fname, iid, old):

@@ -1116,12 +1116,17 @@ class GoneFishing:
         #      'x:', self.curr_x, self.direction_x, step_x, 'to:', self.trg_x,
         #      'y:', self.curr_y, self.direction_y, step_y, 'to:', self.trg_y)
 
+        # Removing "place" from gsettings allows smooth shark movement over
+        # monitors. However there are screen resets with disappearing windows
+        # for a couple seconds from time to time. Keeping "place" has shark
+        # stop at monitor border then "jump" into the next monitor.
+        '''
         if "'place', " in self.old_compiz_plugins:
             self.place_in_plugins = True
             override = self.old_compiz_plugins.replace("'place', ", '')
             #print('override:', override)
             self.set_gsettings(override)
-
+        '''
 
     def shark_move(self):
         """ How much to move window each step depends on:
@@ -1234,7 +1239,7 @@ gsettings set org.compiz.core:/org/compiz/profiles/unity/plugins/core/ active-pl
 
         # TODO: raise self.src_toplevel above full screen somehow
         if self.place_in_plugins:
-            self.set_gsettings(self.old_compiz_plugins)
+            self.set_gsettings(self.old_compiz_plugins)  # Old is restored twice
             self.place_in_plugins = False
 
 
@@ -1386,7 +1391,56 @@ gsettings set org.compiz.core:/org/compiz/profiles/unity/plugins/core/ active-pl
 
         Change mind - CBC doesn't have chat window and stays in full screen on top.
                       YouTube doesn't work coming out of full screen either.
+        SAMPLE:
+        _NET_WM_USER_TIME(CARDINAL) = 293540101
+        GDK_TIMESTAMP_PROP(GDK_TIMESTAMP_PROP) = 0x61
+        _NET_WM_ICON_GEOMETRY(CARDINAL) = 3875, 2543, 54, 54
+        _NET_FRAME_EXTENTS(CARDINAL) = 0, 0, 0, 0
+        WM_STATE(WM_STATE):
+                window state: Normal
+                icon window: 0x0
+        _NET_WM_DESKTOP(CARDINAL) = 0
+        _NET_WM_STATE(ATOM) = _NET_WM_STATE_FULLSCREEN
+        WM_HINTS(WM_HINTS):
+                Client accepts input or input focus: True
+                Initial state is Normal State.
+                bitmap id # to use for icon: 0x3201c91
+                bitmap id # of mask for icon: 0x3201c97
+                window id # of group leader: 0x3200001
+        _NET_WM_ALLOWED_ACTIONS(ATOM) = _NET_WM_ACTION_MOVE, _NET_WM_ACTION_RESIZE, _NET_WM_ACTION_STICK, _NET_WM_ACTION_MINIMIZE, _NET_WM_ACTION_MAXIMIZE_HORZ, _NET_WM_ACTION_MAXIMIZE_VERT, _NET_WM_ACTION_FULLSCREEN, _NET_WM_ACTION_CLOSE, _NET_WM_ACTION_CHANGE_DESKTOP, _NET_WM_ACTION_ABOVE, _NET_WM_ACTION_BELOW
+        WM_WINDOW_ROLE(STRING) = "browser"
+        _NET_WM_BYPASS_COMPOSITOR(CARDINAL) = 2
+        XdndAware(ATOM) = BITMAP
+        _GTK_MENUBAR_OBJECT_PATH(UTF8_STRING) = "/com/canonical/unity/gtk/window/2"
+        _UNITY_OBJECT_PATH(UTF8_STRING) = "/com/canonical/unity/gtk/window/2"
+        _GTK_UNIQUE_BUS_NAME(UTF8_STRING) = ":1.67"
+        _NET_WM_ICON(CARDINAL) = 	Icon (64 x 64):
+
+            ( LOTS OF HUGE ICONS SHOW UP IN TERMINAL )
+
+        _NET_WM_OPAQUE_REGION(CARDINAL) = 0, 0, 1920, 1080
+        _NET_WM_WINDOW_TYPE(ATOM) = _NET_WM_WINDOW_TYPE_NORMAL
+        _NET_WM_SYNC_REQUEST_COUNTER(CARDINAL) = 52428837, 52428838
+        _NET_WM_USER_TIME_WINDOW(WINDOW): window id # 0x3200024
+        WM_CLIENT_LEADER(WINDOW): window id # 0x3200001
+        _NET_WM_PID(CARDINAL) = 2925
+        WM_LOCALE_NAME(STRING) = "en_CA.UTF-8"
+        WM_CLIENT_MACHINE(STRING) = "alien"
+        WM_NORMAL_HINTS(WM_SIZE_HINTS):
+                program specified location: 0, 0
+                program specified minimum size: 675 by 143
+                program specified maximum size: 16384 by 16384
+                program specified base size: 675 by 143
+                window gravity: NorthWest
+        WM_PROTOCOLS(ATOM): protocols  WM_DELETE_WINDOW, WM_TAKE_FOCUS, _NET_WM_PING, _NET_WM_SYNC_REQUEST
+        WM_CLASS(STRING) = "Navigator", "Firefox"
+        WM_ICON_NAME(COMPOUND_TEXT) = "After Bakhmut, Is Russia Still Advancing? Col Daniel Davis - YouTube — Mozilla Firefox"
+        _NET_WM_ICON_NAME(UTF8_STRING) = "After Bakhmut, Is Russia Still Advancing? Col Daniel Davis - YouTube — Mozilla Firefox"
+        WM_NAME(COMPOUND_TEXT) = "After Bakhmut, Is Russia Still Advancing? Col Daniel Davis - YouTube — Mozilla Firefox"
+        _NET_WM_NAME(UTF8_STRING) = "After Bakhmut, Is Russia Still Advancing? Col Daniel Davis - YouTube — Mozilla Firefox"
+
         """
+
         self.trg_was_above = None
         self.toggle_str = ""
         all_lines = os.popen('xprop -id ' + self.trg_window_id_hex).read().strip().splitlines()
@@ -1395,6 +1449,8 @@ gsettings set org.compiz.core:/org/compiz/profiles/unity/plugins/core/ active-pl
             if "_NET_WM_STATE(ATOM)" in line:
                 if "ABOVE" in line:
                     self.toggle_str += ",above"
+                #if "_NET_WM_STATE_FOCUSED" in line:
+                #    self.toggle_str += ",focused"  # Added May 24, 2023
                 if '_NET_WM_STATE_MAXIMIZED_VERT' in line:
                     self.toggle_str += ",maximized_vert"
                 if '_NET_WM_STATE_MAXIMIZED_HORZ' in line:
@@ -1407,23 +1463,22 @@ gsettings set org.compiz.core:/org/compiz/profiles/unity/plugins/core/ active-pl
                     _result = os.popen('wmctrl -ir ' + self.trg_window_id_hex +
                                        ' -b toggle' + self.toggle_str).read()
                     self.trg_was_above = True
-                    #print("os.popen('wmctrl -ir " + self.trg_window_id_hex +
-                    #      " -b toggle" + self.toggle_str)
-                    #print("_result:", _result)
+                    print("os.popen('wmctrl -ir " + self.trg_window_id_hex +
+                          " -b toggle" + self.toggle_str)
+                    print("_result:", _result)
 
                 break
 
 
     def trg_restore_full_screen(self):
         """  Revert the "always on top" (above) state.
-
-        NOT USED - Because taking out of full screen brings up chat window
         """
         if self.trg_was_above is True:
-            os.popen('wmctrl -ir ' + self.trg_window_id_hex +
-                     ' -b toggle' + self.toggle_str).read()
-            #print("os.popen('wmctrl -ir " + self.trg_window_id_hex +
-            #      " -b toggle" + self.toggle_str)
+            _result = os.popen('wmctrl -ir ' + self.trg_window_id_hex +
+                               ' -b toggle' + self.toggle_str).read()
+            print("os.popen('wmctrl -ir " + self.trg_window_id_hex +
+                  " -b toggle" + self.toggle_str)
+            print("_result:", _result)
 
         self.trg_was_above = None
 
@@ -1468,18 +1523,15 @@ gsettings set org.compiz.core:/org/compiz/profiles/unity/plugins/core/ active-pl
 
         # Restore original target's above (always on top) state
         if self.trg_was_above is not None:
-            #self.trg_restore_above()
             self.trg_restore_full_screen()
-            self.trg_was_above = None
 
         # Restore original source's below (normal) state
         if self.src_was_below is not None:
             self.src_restore_below()
-            self.src_was_below = None
 
         # Restore g settings
         if self.place_in_plugins:
-            self.set_gsettings(self.old_compiz_plugins)
+            self.set_gsettings(self.old_compiz_plugins)  # Old is restored twice
             self.place_in_plugins = False
 
 

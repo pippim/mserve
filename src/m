@@ -95,7 +95,7 @@ def main():
 
 
 def main_c():
-    """
+    """  NOT USED
     Attempt at circle with no window decorations.
     """
     splash = tk.Tk()  # "very top" toplevel
