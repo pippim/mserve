@@ -35,26 +35,20 @@
 #                      Update: https://www.pippim.com/programs/mserve.html#
 #
 # TODO:
-#       Rename 'self.saved_selections'  -> 'self.playlist_ids'
-#              'self.song_list'         -> 'self.all_song_paths'
+#       Rename 'self.saved_selections'  -> 'self.play_order_ids'
+#              'self.song_list'         -> 'self.lib_tree_paths'
 #               self.song_list = SORTED_LIST = make_sorted_list(START_DIR)
-#
-#       Review recent image.py changes for full screen and maximized window. Not
-#           restoring properly when hockey countdown ends. Forces new windows top
-#           left monitor at 0,0 hiding file bar under Ubuntu panel bar.
+#              'self.ndx'               -> 'self.play_ndx'
 #
 #       Move ~/.config/mserve/library.db to ~/.local/share/mserve/library.db
 #           Also move all files and L999 directories. Update daily backup script
-#       Change messagebox.showinfo() to message.ShowInfo(thread=...refresh...)
-#       Make rule that playlist must have at least two songs so "next"/"prev"
-#           work flawlessly.
 #
 # ==============================================================================
 
 # noinspection SpellCheckingInspection
 """
 
-PEFORMANCE May 24, 2023:
+                PEFORMANCE May 24, 2023 - Not sure of CPU percentage?
 RUN #1 =========================================================================
 make_sorted_list(): 0.2405638695
 sql.create_tables(): 0.1966311932
@@ -89,17 +83,58 @@ load_last_selections(): 1.4005229473
 GRANULAR load_last_selections()
   FNAME_LAST_SONG_NDX: 0.0000660419
   FNAME_LAST_OPEN_STATES: 0.0464727879
-  FNAME_LAST_SELECTIONS: 0.8903269768
+  FNAME_LAST_SELECTIONS: 0.8903269768  # Deprecated May 25, 2023
   FNAME_LAST_PLAYLIST: 0.5562307835
 load_last_selections(): 1.4932079315
 
 
+                PEFORMANCE May 24, 2023 - Restart with Music Paused
+RUN #1 =========================================================================
+make_sorted_list(): 0.1393768787
+sql.create_tables(): 0.1111500263
+MusicTree() __init__(toplevel, song_list, sbar_width=12): 0.5217120647
+  ######################################################
+ //////////////                            \\\\\\\\\\\\\\
+<<<<<<<<<<<<<<    mserve - Music Server     >>>>>>>>>>>>>>
+ \\\\\\\\\\\\\\                            //////////////
+  ######################################################
 
-TODO:   When inserting song collapse parent list of currently playing song if
-        not our parent.
-      
-        Skip chron_tree.see() when song is already displayed
-      
+fast_play_startup() Experimental performance enhancements
+
+    FNAME_LAST_SONG_NDX: 0.0000598431
+    FNAME_LAST_PLAYLIST: 0.0042140484
+    FNAME_LAST_OPEN_STATES: 0.0026109219
+  OPEN FILES: 0.0069220066
+  Build self.saved_selections in playlist order: 0.1191630363
+  Merge three processes together: 0.3027529716
+  Apply totals to Artists & Albums + set checkbox: 0.1084859371
+  Wrap up: 0.0000300407
+fast_play_startup() All Steps: 0.5374200344
+RUN #2 =========================================================================
+make_sorted_list(): 0.1393649578
+sql.create_tables(): 0.1037619114
+MusicTree() __init__(toplevel, song_list, sbar_width=12): 0.5232260227
+  ######################################################
+ //////////////                            \\\\\\\\\\\\\\
+<<<<<<<<<<<<<<    mserve - Music Server     >>>>>>>>>>>>>>
+ \\\\\\\\\\\\\\                            //////////////
+  ######################################################
+
+fast_play_startup() Experimental performance enhancements
+
+    FNAME_LAST_SONG_NDX: 0.0000488758
+    FNAME_LAST_PLAYLIST: 0.0037820339
+    FNAME_LAST_OPEN_STATES: 0.0173220634
+  OPEN FILES: 0.0212059021
+  Build self.saved_selections in playlist order: 0.1176600456
+  Merge three processes together: 0.3188779354
+  Apply totals to Artists & Albums + set checkbox: 0.1066160202
+  Wrap up: 0.0000121593
+fast_play_startup() All Steps: 0.5644671917
+
+
+TODO:   When inserting song and playing, call wrap_up_song().
+
         When editing lyrics, set scroll box to where cursor used to be. Add tip
         for copy & paste using CTRL+C and CTRL+V
 
@@ -111,9 +146,7 @@ TODO:   When inserting song collapse parent list of currently playing song if
         Create self.message_waiting() called by every function to lift
             message window to top of window stack and return true so
             caller can do it's own return. If lifting window it is
-            shaken around to give attention to user. The lifted window
-            in turn calls tool.thread() to keep music player graphics
-            running.
+            shaken around to give attention to user.
 
 CALL:
     mserve "/mnt/music/Users/Person/Music/iTunes/iTunes Media/Music/"
@@ -395,6 +428,7 @@ ARTWORK_FOR_LOW_RES = g.PROGRAM_DIR + "Be Creative 2 cropped.jpg"
 
 def make_sorted_list(start_dir, toplevel=None, idle=None):
     """ Build list of songs on storage device beginning at 'start_dir'
+        Insert '/(No Artist)' and or '/(No Album)' subdirectory names
         Called at startup and by refresh_lib_tree()
         Use DelayedTextBox for status updates on long-running processes
         which doesn't appear if process shorter than a second.
@@ -744,7 +778,7 @@ class PlayCommonSelf:
         ''' Frame for Playlist Chronology '''
         self.F4 = None                      # tk.Frame(self.play_top, bg="Black
 
-        self.play_top_pid = None            # Integer for ffplay PID
+        self.play_top_pid = 0               # Integer for ffplay PID
         self.play_top_sink = ""             # String for ffplay Pulse Audio
         self.metadata = None                # {}
         self.Artist = None                  # metadata.get('ARTIST', "None")
@@ -1097,7 +1131,7 @@ class MusicTree(PlayCommonSelf):
         # Floppy Disk U+1F4BE 💾  Hard Disk U+1F5B4 🖄
         self.save_text = "💾  Save playlist"  # save songs window is opened.
         self.lib_tree_btn3 = tk.Button(frame3, text=self.save_text,
-                                       width=BTN_WID - 1, command=self.save_items)
+                                       width=BTN_WID - 1, command=self.save_playlist)
         self.lib_tree_btn3.grid(row=0, column=2, padx=2)
         self.tt.add_tip(self.lib_tree_btn3,
                         "Save playlist (selected songs in sorted order).",
@@ -1145,26 +1179,29 @@ class MusicTree(PlayCommonSelf):
         file_bar = tk.Menu(mb, tearoff=0)
         file_bar.add_command(label="New Location", font=(None, MED_FONT),
                              command=lambda: self.loc_add_new(caller='Drop', mode='Add'))
-        file_bar.add_command(label="New Playlist", font=(None, MED_FONT),
-                             command=self.new_items)
         file_bar.add_command(label="Open Location & Play",
                              font=(None, MED_FONT),
                              command=lambda: self.loc_open_play(caller='Drop'))
+        file_bar.add_separator()
+        file_bar.add_command(label="New Playlist", font=(None, MED_FONT),
+                             command=self.new_items)
+        file_bar.add_command(label="Append Playlist", font=(None, MED_FONT),
+                             command=self.append_items)
         file_bar.add_command(label="Open Playlist", font=(None, MED_FONT),
                              command=self.load_items)
         file_bar.add_command(label="Save Playlist", font=(None, MED_FONT),
-                             command=self.save_items)
+                             command=self.save_playlist)
         # UTF-8 3 dots U+2026 …
         file_bar.add_command(label="Save Playlist as…", font=(None, MED_FONT),
                              command=self.save_items)
-        file_bar.add_command(label="Append Playlist", font=(None, MED_FONT),
-                             command=self.append_items)
-
         file_bar.add_separator()
         file_bar.add_command(label="Restart", font=(None, MED_FONT),
                              command=self.restart)
         file_bar.add_command(label="Exit", font=(None, MED_FONT),
                              command=self.close)
+        file_bar.add_separator()
+        file_bar.add_command(label="Exit without saving Playlist", font=(None, MED_FONT),
+                             command=self.exit_without_save)
 
         mb.add_cascade(label="File", menu=file_bar, font=(None, MED_FONT))
 
@@ -1204,13 +1241,13 @@ class MusicTree(PlayCommonSelf):
         dtb.close()  # Close our startup messages delayed text box
 
         ''' Load last selections and begin playing with last song '''
-        ext.t_end('print')  # May 24, 2023 - MusicTree() : 1.0563580990
+        ext.t_end('no_print')  # May 24, 2023 - MusicTree() : 1.0563580990
 
 
-        self.load_last_selections()  # Create self.saved_selections[] and play all
-        #self.fast_play_startup()
+        #self.load_last_selections()  # Create self.saved_selections[] and play all
+        self.fast_play_startup()  # Read SORTED_LIST from make_sorted_list
 
-        ''' When load_last_selections() ends we need to enter idle loop
+        ''' When fast_play_startup() ends we need to enter idle loop
             until self.close() is called.
         '''
 
@@ -1339,22 +1376,14 @@ class MusicTree(PlayCommonSelf):
             self.tree_col_range_replace(str(i), 6,
                                         [1, 0, 0, 0, 0])
 
-            # TODO: Add Music and History tables. Take out of sql.py
-            #       Analyze performance hit for updating Music Table
-            #       with most recent access time (ie last played time)
-
-        ''' Calculate columns for Artists and Albums with no songs '''
-        # ext.t_init('Calculate all Artists and Albums')
-        for artist in self.lib_tree.get_children():
-            self.tree_col_parent_format(artist, "artist_sel")
-            for album in self.lib_tree.get_children(artist):
-                self.tree_col_parent_format(album, "album_sel")
-        # ext.t_end('print')
 
 
     def fast_lib_tree_create(self, delayed_textbox):
 
-        """ Add Artist, Album and Song to treeview listbox.
+        """ 
+            May 26, 2023 - NOT USED YET
+
+            Add Artist, Album and Song to treeview listbox.
             Set tags "Artist", "Album" or "Song".
             Initialize artists expanded and albums collapsed.
             All songs are NOT selected. They will be selected LATER.
@@ -1465,7 +1494,7 @@ class MusicTree(PlayCommonSelf):
             self.tree_col_parent_format(artist, "artist_sel")
             for album in self.lib_tree.get_children(artist):
                 self.tree_col_parent_format(album, "album_sel")
-        # ext.t_end('print')
+        # ext.t_end('no_print')
 
     def toggle_select(self, song, album, artist, song_number=0):
         """ Toggle song selection off and on. Update selected values and
@@ -1495,13 +1524,11 @@ class MusicTree(PlayCommonSelf):
         else:
             # We will toggle on and add to selected parent totals
             tags.append("songsel")
-            #       Dec. 28 2020 - Selected MB is now Song Number Sequence
+            # May 25, 2023 - load_last_selections() will pass song_number
             if song_number == 0:
-                # May 25, 2023 - fast_play_startup() will pass song_number
-                # noinspection PyBroadException
                 try:
                     song_number = self.saved_selections.index(song) + 1
-                except:
+                except ValueError:
                     print('mserve.py toggle_select(): song not found iid:', song)
                     song_number = 0
             number_str = self.play_padded_number(
@@ -3382,10 +3409,14 @@ $ wmctrl -l -p
     #
     # ==============================================================================
 
+    def exit_without_save(self):
+        self.close(save=False)
+
     # noinspection PyUnusedLocal
-    def close(self, *args):
+    def close(self, save=True, *args):
         self.close_sleepers()  # Shut down running functions
-        self.save_last_selections()  # Last selections for next open
+        if save:
+            self.save_last_selections()  # Last selections for next open
         self.tt.close(self.lib_top)  # Close tooltips under top level
         root.destroy()
         self.lib_top = None
@@ -3582,7 +3613,7 @@ $ wmctrl -l -p
                      "This experimental feature will backup these files:\n" +
                      "\t " + lc.FNAME_LAST_OPEN_STATES + "\n" +
                      "\t " + lc.FNAME_LAST_SONG_NDX + "\n" +
-                     "\t " + lc.FNAME_LAST_SELECTIONS + "\n" +
+                     # "\t " + lc.FNAME_LAST_SELECTIONS + "\n" +
                      "\t " + lc.FNAME_LAST_PLAYLIST + "\n\n" +
                      "...to the same location with the extension '.bak'\n\n"
                      "TIP:\tHighlight this text and use Control+C to copy\n"
@@ -3601,7 +3632,7 @@ $ wmctrl -l -p
         # Backup files
         shutil.copy(lc.FNAME_LAST_OPEN_STATES, lc.FNAME_LAST_OPEN_STATES + ".bak")
         shutil.copy(lc.FNAME_LAST_SONG_NDX, lc.FNAME_LAST_SONG_NDX + ".bak")
-        shutil.copy(lc.FNAME_LAST_SELECTIONS, lc.FNAME_LAST_SELECTIONS + ".bak")
+        # shutil.copy(lc.FNAME_LAST_SELECTIONS, lc.FNAME_LAST_SELECTIONS + ".bak")
         shutil.copy(lc.FNAME_LAST_PLAYLIST, lc.FNAME_LAST_PLAYLIST + ".bak")
 
         SORTED_LIST = SortedList2
@@ -3618,20 +3649,39 @@ $ wmctrl -l -p
         self.populate_lib_tree(dtb)
 
         ''' Load last selections and begin playing with last song '''
-        self.load_last_selections()  # Version prior to May 25, 2023
-        #self.fast_play_startup()
+        #self.load_last_selections()  # Version prior to May 25, 2023
+        self.fast_play_startup()
 
     def show_debug(self):
         """ Debugging - show monitors, tooltips and full metadata
         """
+        print("\nmserve.py - Debug Information\n=============================\n")
         mon = monitor.Monitors()            # Monitors class list of dicts
+        print("mon.gdk_screen:", mon.gdk_screen)
         for m in mon.monitors_list:
             print(m)
             
         print('Primary:', mon.primary_monitor)
-        print('Active:', mon.get_active_window())
+        active_win = mon.get_active_window()  #
+        print('Active Window Number:', active_win.number)
+        print(active_win.name)
         print()
-        
+
+        print("\nCURRENT SONG self.lib_tree VARIABLES")
+        print("====================================\n")
+        song_iid = self.saved_selections[self.ndx]
+        song = self.lib_tree.item(song_iid)['text']
+        album_iid = self.lib_tree.parent(song_iid)
+        album = self.lib_tree.item(album_iid)['text']
+        artist_iid = self.lib_tree.parent(album_iid)
+        artist = self.lib_tree.item(artist_iid)['text']
+        print("self.ndx:", self.ndx, ' | Song iid:', song_iid, " |", song)
+        print("Album iid:", album_iid, " |", album,
+              " | Artist iid:", artist_iid, " |", artist)
+        print("real_path:", self.real_path(int(song_iid)))
+        print("tree values:", self.lib_tree.item(song_iid)['values'])
+        print()
+
         lines = self.tt.line_dump()         # Show Tooltips in memory
         print(*lines, sep='\n')
         print()
@@ -4103,6 +4153,7 @@ $ wmctrl -l -p
 
     def populate_his_tree(self, delayed_textbox):
         """ Stuff SQL header rows into treeview
+            TODO: Review 'delayed_textbox'. If only used here, define it below.
         """
 
         #sql.cursor.execute("SELECT * FROM History INDEXED BY TimeIndex\
@@ -4188,7 +4239,6 @@ $ wmctrl -l -p
         return True  # Song with metadata (song_name) and lyrics has no time_index.
 
     # noinspection PyUnusedLocal
-
     def his_close(self, *args):
         self.pretty_close()  # Drill down may be open from create_window()
         last_geometry = monitor.get_window_geom_string(
@@ -4205,6 +4255,7 @@ $ wmctrl -l -p
         """ Stuff SQL table rows into treeview
             Used for populate_mus_view and populate_his_view
             test used to omit specific rows from view.
+            TODO: Review if 'self.refresh_play_top()' should be called
         """
         first_id = None
         #for i, sql_row in enumerate(rows):
@@ -4701,41 +4752,9 @@ $ wmctrl -l -p
         self.append_items(erase=True)
 
     def append_items(self, erase=False):
-        # noinspection SpellCheckingInspection
-        """ Load Playlist from disk and add to what's selected already
-
-TODO: Convert playlist from one location to another (Import Playlist?)
-    $ head Big_List.pkl
-    (lp0
-    S'/mnt/music/Compilations/Atomic Blonde Soundtrack/01 Cat People (Putting Out The Fire).m4a'
-    p1)
-
-    $ head last_playlist
-    (lp0
-    S'/home/rick/Music/Compilations/White Heat_ 30 Hits [Disc 1]/1-04 Icehouse.m4a'
-    p1)
-
-BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
-
-    Traceback (most recent call last):
-      File "./mserve", line 4565, in <module>
-        MusicTree(SORTED_LIST)                           # Build library treeview
-      File "./mserve", line 481, in __init__
-        self.load_last_selections()
-      File "./mserve", line 3009, in load_last_selections
-        self.play_items()
-      File "./mserve", line 3203, in play_items
-        self.play_start()
-      File "./mserve", line 3475, in play_start
-        self.song_set_ndx('next')
-      File "./mserve", line 3272, in song_set_ndx
-        self.wrap_up_song()                          # Close currently playing
-      File "./mserve", line 3297, in wrap_up_song
-        ID = self.saved_selections[self.ndx]        # Get treeview song ID
-    IndexError: tuple index out of range
-
+        """ BROKEN - DO NOT USE
+        Load Playlist from disk and add to what's selected already
         """
-        # inspection SpellCheckingInspection
         # set_font_style()
 
         # f = Playlist of songs selected for playing in artist/album/song order
@@ -4746,8 +4765,14 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
 
         if not f:
             return  # No file selected
+        elif True is True:
+            print("append_items is broken. DO NOT USE")
+            return
 
-        ''' Add song selections (doesn't turn any off) '''
+        ''' Add song selections (doesn't turn any off)
+            MUST validate file selected is LAST_PLAYLIST 
+        '''
+
         selected, newly_selected = \
             self.select_songs_from_filename(f, erase)
 
@@ -4762,7 +4787,7 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
 
     def select_songs_from_filename(self, filename, erase=False):
         """ Song selections used to flag our playlist
-            On startup, filename = lc.FNAME_LAST_SELECTIONS 
+            On startup, filename = lc.FNAME_LAST_PLAYLIST
         """
         # filename = songs selected for playing in shuffled artist/album/song
         # print('pickle.STOP code:', pickle.STOP)
@@ -4779,7 +4804,7 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
             self.new_items()  # Erase all previous selections
 
         newly_selected = 0
-        for song in save_songs:
+        for i, song in enumerate(save_songs):
             try:
                 ndx = self.song_list.index(song)
             except ValueError:
@@ -4787,13 +4812,37 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
                 continue
             iid = str(ndx)
             tags = self.lib_tree.item(iid)['tags']
-            if "checked" not in tags:
+            if "songsel" not in tags:
                 album = self.lib_tree.parent(iid)
                 artist = self.lib_tree.parent(album)
-                self.toggle_select(iid, album, artist)
+                self.toggle_select(iid, album, artist, i + 1)
                 newly_selected += 1
 
         return len(save_songs), newly_selected
+
+    def save_playlist(self):
+        """ Save playlist using save_last_selections
+
+        """
+        self.save_last_selections()
+        if len(self.saved_selections) <= 1:
+            # Same message in multiple places. Move to own function. Perhaps at top
+            # making language changes easier.
+            messagebox.showinfo(title="Invalid Playlist.",
+                                message="You must select at least two songs.",
+                                icon='error', parent=self.lib_top)
+            return
+
+        self.save_last_selections()
+        messagebox.showinfo(title="Playlist saved.",
+                            message=str(len(self.saved_selections)) +
+                            " songs in Playlist have been saved.\n\n" +
+                            "Note that the Playlist is also saved\n" +
+                            "whenever you exit or restart mserve.\n\n" +
+                            "If you accidentally make drastic changes\n" +
+                            "use the option 'Exit without saving Playlist'\n" +
+                            "from the 'File' dropdown menu at the top.\n",
+                            parent=self.lib_top)
 
     def save_last_selections(self):
 
@@ -4831,10 +4880,11 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
             save_songs.append(self.song_list[ndx])  # Get full path
             song_count += 1  # What if zero?
 
+        ''' Deprecated May 25, 2023 - Save selected songs in Alphabetical order 
         with open(lc.FNAME_LAST_SELECTIONS, "wb") as f:
             # store the data as binary data stream
             pickle.dump(save_songs, f)  # Save song list
-
+        '''
         ''' Save expanded/collapsed state of Artists & Albums '''
         save_parents = []
         for Artist in self.lib_tree.get_children():  # Process artists
@@ -4937,7 +4987,8 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
 
     def load_last_selections(self):
 
-        """ Load last playlist from ~/.../mserve/L999/xxx_xxx
+        """ DEPRECATED May 26, 2023 - Keep for one year for reference.
+            Load last playlist from ~/.../mserve/L999/xxx_xxx
             Load last location and open ~/.../mserve/I999/
             Playlist sorted by last order shuffled.
             Begin playing with song we left off at.
@@ -4969,8 +5020,6 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
         ''' Check for Last selections file on disk '''
         if not os.path.isfile(lc.FNAME_LAST_PLAYLIST):
             return  # save_playlist = pickle.load(f)
-        if not os.path.isfile(lc.FNAME_LAST_SELECTIONS):
-            return  # self.select_songs_from_filename(lc.FNAME_LAST_SELECTIONS)
         if not os.path.isfile(lc.FNAME_LAST_OPEN_STATES):
             return  # save_parents = pickle.load(f)
         if not os.path.isfile(lc.FNAME_LAST_SONG_NDX):
@@ -4982,7 +5031,7 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
         with open(lc.FNAME_LAST_SONG_NDX, 'rb') as f:
             self.ndx = pickle.load(f)
             #print('current index:', self.ndx)
-        ext.t_end('print')
+        ext.t_end('no_print')
 
         ''' Set library treeview opened states for Artists and Albums '''
         ext.t_init('FNAME_LAST_OPEN_STATES')
@@ -4997,7 +5046,7 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
             self.apply_open_state(Artist, save_parents)
             for Album in self.lib_tree.get_children(Artist):  # Read all albums
                 self.apply_open_state(Album, save_parents)
-        ext.t_end('print')  # FNAME_LAST_OPEN_STATES: 0.0412480831
+        ext.t_end('no_print')  # FNAME_LAST_OPEN_STATES: 0.0412480831
 
         ''' Set selections numbers of playlist order in music library '''
         ext.t_init('FNAME_LAST_PLAYLIST')
@@ -5027,7 +5076,7 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
             # Song play number replaces "Selected MB" in lib_tree column "Selected"
             self.lib_tree.set(iid, "Selected", number_str)
             '''
-        ext.t_end('print')  # FNAME_LAST_PLAYLIST: 0.1182599068
+        ext.t_end('no_print')  # FNAME_LAST_PLAYLIST: 0.1182599068
 
         if spam_count > 0:
             print("mserve.py load_last_selections() - Total songs not found:", spam_count)
@@ -5044,12 +5093,13 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
         # EXTREMELY WEIRD FUNCTION Requires self.song_list already created
         # self.song_list = SORTED_LIST = make_sorted_list(START_DIR)
         save_songs_count, newly_selected = \
-            self.select_songs_from_filename(lc.FNAME_LAST_SELECTIONS)
+            self.select_songs_from_filename(lc.FNAME_LAST_PLAYLIST)
+        #self.select_songs_from_filename(lc.FNAME_LAST_SELECTIONS)
 
         if save_songs_count == 0:
             print("save_songs_count:", save_songs_count,
                   "newly_selected:", newly_selected)
-        ext.t_end('print')  # FNAME_LAST_SELECTIONS: 0.8694190979
+        ext.t_end('no_print')  # FNAME_LAST_SELECTIONS: 0.8694190979
 
         #self.lib_tree.update_idletasks()  # This takes .13 seconds alone. Move out.
 
@@ -5074,8 +5124,8 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
 
         ''' Selected songs can be filtered by having time index or by Artist '''
         self.filtered_selections = list(self.saved_selections)  # Deep copy
-        ext.t_end('print')  # Wrap up
-        ext.t_end('print')  # May 24, 2023 - load_last_selections(): 1.6982600689
+        ext.t_end('no_print')  # Wrap up
+        ext.t_end('no_print')  # May 24, 2023 - load_last_selections(): 1.6982600689
 
         ''' Compare performance of various techniques 
         print("\nCompare performance of various techniques")
@@ -5105,15 +5155,11 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
 
     def fast_play_startup(self):
 
-        """ Load last playlist from ~/.../mserve/L999/xxx_xxx
-            Load last location and open ~/.../mserve/I999/
+        """ Load last playlist from ~/.../mserve/L999/last_playlist
+            Load last open states from ~/.../mserve/L999/last_open_states
             Playlist sorted by last order shuffled. (self.saved_selections)
             Begin playing with song we left off at. (self.ndx)
-            Mark selected playing songs in lib_tree.
-
-            Remove save_last_selections
-            Finally, remove splash screen if mserve.py was called by it.
-            See def make_sorted_list(
+            Mark selected (checkbox) songs in lib_tree.
         """
 
         global LODICT  # Never change LODICT after startup!
@@ -5136,8 +5182,6 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
         ''' Check for Last selections file on disk '''
         if not os.path.isfile(lc.FNAME_LAST_PLAYLIST):
             return  # save_playlist = pickle.load(f)
-        if not os.path.isfile(lc.FNAME_LAST_SELECTIONS):
-            return  # self.select_songs_from_filename(lc.FNAME_LAST_SELECTIONS)
         if not os.path.isfile(lc.FNAME_LAST_OPEN_STATES):
             return  # save_parents = pickle.load(f)
         if not os.path.isfile(lc.FNAME_LAST_SONG_NDX):
@@ -5148,13 +5192,14 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
         ext.t_init('fast_play_startup() All Steps')
 
         ext.t_init('OPEN FILES')
-        ''' Load selected songs and parent opened states from disk '''
+
+        ''' Load last song playing index '''
         ext.t_init('FNAME_LAST_SONG_NDX')
         self.ndx = 0  # Index to saved_selections[] list of song ids in order
         with open(lc.FNAME_LAST_SONG_NDX, 'rb') as f:
             self.ndx = pickle.load(f)
             #print('current index:', self.ndx)
-        ext.t_end('print')
+        ext.t_end('no_print')
 
         ''' Set selections numbers of playlist order in music library '''
         ext.t_init('FNAME_LAST_PLAYLIST')
@@ -5164,7 +5209,7 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
             #print('len(save_playlist):', len(save_playlist))
             #print("save_playlist[:10]:", save_playlist[:10])  # DEBUG
             # [u'/media/rick/SANDISK128/Music/April\ Wine/Greatest Hits Live 2003/Just between you and me.mp3',
-        ext.t_end('print')
+        ext.t_end('no_print')
 
         ''' Set library treeview opened states for Artists and Albums '''
         ext.t_init('FNAME_LAST_OPEN_STATES')
@@ -5174,9 +5219,23 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
             #print('len(save_parents):', len(save_parents))
             #print('save_parents[:10]:', save_parents[:10])  # DEBUG
             # save_parents: [(0, u'10cc', u'Artist'), (0, u'The Best of 10cc', u'Album'), (0, u'3 Doors Down',
-        ext.t_end('print')
+        ext.t_end('no_print')
 
-        ext.t_end('print')  # End OPEN FILES
+        ext.t_end('no_print')  # End OPEN FILES
+
+        ext.t_init('Build self.saved_selections in playlist order')
+        for song in save_playlist:
+            try:
+                ndx = self.song_list.index(song)
+            except ValueError:
+                if spam_count < 10:
+                    print('Not found:', song)
+                    # print(self.song_list[spam_count])
+                    spam_count += 1
+                continue
+            iid = str(ndx)
+            self.saved_selections.append(iid)
+        ext.t_end('no_print')
 
         ''' Set library treeview opened states for Artists and Albums '''
         bs = BatchSelect(self.lib_tree)
@@ -5190,33 +5249,24 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
                 self.apply_open_state(Album, save_parents)
                 for Song in self.lib_tree.get_children(Album):  # Read all songs
                     ''' Is song in playlist? '''
-                    full_path = self.real_path(int(Song) - 1)  # Full path
                     try:
-                        ndx = save_playlist.index(full_path)  # Song in playlist?
+                        ndx = self.saved_selections.index(Song)  # Song in playlist?
                     except ValueError:
                         not_selected_count += 1
                         if not_selected_count < 1:
                             # Not an error - simply here for future debugging
-                            print('Skipping - Not in playlist:', song)
+                            print('Skipping - Not in playlist:', full_path)
                         continue
 
-                    ''' Song found in playlist. Set play order. '''
-                    selected_count += 1  # ndx is song's position in playlist
-                    self.saved_selections.append(str(ndx))
-                    ''' May 25 2023 - This is already done by toggle_select() function 
-                    # Update Song number using current length of self.saved_selections
-                    number_str = self.play_padded_number(
-                        len(self.saved_selections), len(str(len(save_playlist))))
-                    # Song play number replaces "Selected MB" in lib_tree column "Selected"
-                    self.lib_tree.set(Song, "Selected", number_str)
-                    '''
+                    selected_count += 1
 
                     ''' Set song checkbox tags in music library treeview '''
                     number_str = self.play_padded_number(
-                        str(ndx), len(str(len(save_playlist))))
+                        str(ndx+1), len(str(len(save_playlist))))
                     adj_list = bs.add_select(Song, Album, Artist, number_str)
+                    # Update treeview columns with selected size, count and seconds
                     self.tree_col_range_add(Song, 8, adj_list)  # Column number passed
-        ext.t_end('print')
+        ext.t_end('no_print')
 
         ext.t_init('Apply totals to Artists & Albums + set checkbox')
         for Artist in self.lib_tree.get_children():  # Read all Artists
@@ -5225,6 +5275,7 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
             for Album in self.lib_tree.get_children(Artist):  # Read all Albums
                 adj_list = bs.get_totals(Album)
                 self.tree_col_range_add(Album, 8, adj_list, tagsel='album_sel')
+                ''' Toggle processing with BatchSelect() class '''
                 for Song in self.lib_tree.get_children(Album):  # Read all Albums
                     tags = self.lib_tree.item(Song)["tags"]
                     if "songsel" in tags:
@@ -5234,19 +5285,19 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
 
         adj_list = bs.get_totals('lib_top_totals')
         self.tree_title_range_add(8, adj_list)  # Pass start index
-        ext.t_end('print')
+        ext.t_end('no_print')
 
         ''' Results May 25, 2023
             load_last_selections(): 1.0014159679 (first time not using .pyc)
             load_last_selections(): 1.0120351315
             load_last_selections(): 1.0294408798
             load_last_selections(): 1.0091419220
-            fast_play_startup() All Steps: 0.5839891434 (first time not using .pyc)
-            fast_play_startup() All Steps: 0.6072599888
-            fast_play_startup() All Steps: 0.5963079929
-            fast_play_startup() All Steps: 0.5874288082
+            fast_play_startup() All Steps: 0.5239691734 (first time not using .pyc)
+            fast_play_startup() All Steps: 0.5547988415
+            fast_play_startup() All Steps: 0.5582001209
+            fast_play_startup() All Steps: 0.5424280167
             
-            NOTE: May 24, 2023 - load_last_selections(): 1.6982600689
+            NOTE: On May 24, it was - load_last_selections(): 1.6982600689
         '''
         ext.t_init('Wrap up')
         #print("mserve.py fast_play_startup() - Songs not on playlist:", not_selected_count)
@@ -5266,7 +5317,7 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
             self.next_active_cmd_time = time.time()
             self.loc_keep_awake()
 
-        # IF self.ndx is greater than number in playlist, reset to 0
+        # If self.ndx is greater than number in playlist, reset to 0
         if self.ndx > (len(self.saved_selections) - 1):
             # print('len(self.saved_selections):', len(self.saved_selections))
             print('last saved song index too large:', self.ndx, 'reset to zero')
@@ -5274,8 +5325,8 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
 
         ''' Selected songs can be filtered by having time index or by Artist '''
         self.filtered_selections = list(self.saved_selections)  # Deep copy
-        ext.t_end('print')
-        ext.t_end('print')  # May 24, 2023 - load_last_selections(): 1.6982600689
+        ext.t_end('no_print')
+        ext.t_end('no_print')  # May 24, 2023 - load_last_selections(): 1.6982600689
 
         if len(self.saved_selections) >= 2:
             # Continue playing where we left off
@@ -6142,11 +6193,11 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
                 break  # Playlist Number is attached (visible) in chron_tree
 
     def wrap_up_song(self):
+        self.kill_song()  # Kill if song is playing
         if len(self.saved_selections) == 0:
             # Cannot get treeview iid if self.saved_selections[] is empty list
             return  # Empty list.  May 24, 2023 - should not be making this
                     #  test at late stage. Better 'self.play_top_pid == 0:'
-        self.kill_song()  # Kill if song is playing
 
         iid = self.saved_selections[self.ndx]  # Get treeview song ID
         album = self.lib_tree.parent(iid)
@@ -7488,6 +7539,7 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
     def play_make_sql_key(self):
         """ Create key to read Music index by OsFileName which is
             /path/to/topdir/album/artist/song.ext
+            isn't this the same as real_path()?
         """
         list_index = int(self.saved_selections[self.ndx])
         return sql.make_key(self.song_list[list_index])
@@ -7592,12 +7644,13 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
             self.play_lyrics_remove_highlights()
             self.play_highlight(self.lyrics_curr_line)
             if self.lyrics_time_scroll:  # May 15/21: manual
-                self.play_lyrics_see_ahead()
+                self.play_lyrics_see_ahead(rewind=rewind)
 
         self.lyrics_prev_line = self.lyrics_curr_line
 
         # Update 'Line: 99 of 99' in lyrics title bar (aka panel)
         self.lyrics_update_title_line_number(self.lyrics_curr_line)
+
 
     # ==============================================================================
     #
@@ -7858,10 +7911,20 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
         self.play_F3_panel.update()
         self.lyrics_panel_last_line = line_no
 
-    def play_lyrics_see_ahead(self):
-        line_no = self.lyrics_curr_line + 2  # Reveal up-coming
+    def play_lyrics_see_ahead(self, rewind=False):
+        """ Should always see two lines ahead to coming up.
+            If rewinding need to see previous two lines.
+        """
+        if rewind:
+            # When rewinding song we are jumping backwards in lyrics
+            line_no = self.lyrics_curr_line - 2  # show backwards
+        else:
+            line_no = self.lyrics_curr_line + 2  # Reveal up-coming
+
         if line_no > self.lyrics_line_count:
             line_no = self.lyrics_line_count
+        elif line_no < 1:
+            line_no = 1
         self.lyrics_score_box.see(str(line_no) + ".0")
 
     def play_lyrics_replace_time(self):
@@ -7876,11 +7939,11 @@ BUG: After Append Items, Open Playlist, New Playlist, Save Playlist As...
                     play_lyrics_replace_time(self):
 
         """
-        print('play_lyrics_replace_time() BEGIN')
+        #print('play_lyrics_replace_time() BEGIN')
         this_ndx = self.lyrics_curr_line - 1
         if self.lyrics_time_list[this_ndx] < self.current_song_secs:
             # Clicked ahead too quickly now going back. Keep time
-            print('Clicked ahead too quickly now going back. Keep time')
+            #print('Clicked ahead too quickly now going back. Keep time')
             return
 
         # old time was greater than current time so replace it current.
@@ -9986,10 +10049,9 @@ IndexError: list index out of range
         self.play_art_fade_count = 0  # Set art fade in count
 
     def real_path(self, ndx):
-        """ WARNING: Called from multiple places
-            Convert /(NoArtist)/(No Album)/song.m4a to:
-                    /song.m4a
-            /Artist/Album/song.m4a stays the same
+        """
+            Convert '/(NoArtist)/(No Album)/song.m4a' to: '/song.m4a'
+            Regular '/Artist/Album/song.m4a' isn't changed.
         """
         rpath = self.song_list[ndx]
         # Strip out /(No Artist) and /(No Album) strings added earlier
@@ -10142,7 +10204,7 @@ IndexError: list index out of range
             self.lyrics_scrape_pid = 0
         self.lyrics_scrape_pid = 0
 
-        if not self.play_top_pid == 0:
+        if self.play_top_pid > 0:
             # If music playing then kill the process ID
             ext.kill_pid_running(self.play_top_pid)
             self.play_top_pid = 0
@@ -10690,8 +10752,6 @@ IndexError: list index out of range
         self.chron_attached = []
         if option is "artist_name":
             iid = self.saved_selections[int(item) - 1]  # Create treeview ID
-            # full_path = self.real_path(int(iid))
-            # print("full_path:", full_path)
             # Get artist in music library and build list of all checked songs
             album = self.lib_tree.parent(iid)
             artist = self.lib_tree.parent(album)  # Get the artist
@@ -11115,12 +11175,18 @@ class BatchSelect:
 
         tags = self.tree.item(song)['tags']
         tags.append("songsel")  # Special handling by mserve only
-        self.tree.set(song, "Selected", number_str)
+        #tags.append("checked")  # CheckboxTreeview handling
+        #tags.remove("unchecked")  # CheckboxTreeview handling
         self.tree.item(song, tags=tags)
 
+        self.tree.set(song, "Selected", number_str)
+
         self.tree.change_state(song, "checked")  # in CheckboxTreeview()
-        # We only need to _check_ancestor(song) for the last song on an album
-        # but this can only be done with logic in make_sorted_list()
+        # With new design of fast_play_startup() "checked" is now needed
+        # in addition to "songsel" tag.
+
+        # We only need to _check_ancestor(song) after last song on an album
+        # is selected
         # noinspection PyProtectedMember
         #self.tree._check_ancestor(song)  # in CheckboxTreeview()
 
@@ -11546,7 +11612,7 @@ def get_dir(parent, title, start):
 
 
 def load_last_location():
-    """ Open last location used.
+    """ Open last location used.  DEPRECATED May 26, 2023. Keep for one year.
     """
 
     global START_DIR, LODICT  # Never change LODICT after startup!
@@ -11772,7 +11838,7 @@ def main(toplevel=None, mon_geom=None):
     # Build list of songs in the location
     ext.t_init('make_sorted_list()')
     SORTED_LIST = make_sorted_list(START_DIR, toplevel=toplevel)
-    ext.t_end('print')  # May 24, 2023 - make_sorted_list(): 0.1631240845
+    ext.t_end('no_print')  # May 24, 2023 - make_sorted_list(): 0.1631240845
 
 
     if len(SORTED_LIST) == 0:
@@ -11792,7 +11858,7 @@ def main(toplevel=None, mon_geom=None):
     sql.create_tables(SORTED_LIST, START_DIR, PRUNED_SUBDIRS, g.USER, LODICT)
     #sql.hist_delete_type_action('encode', 'discid')  # One time Aug 23/2021
     #sql.hist_delete_type_action('encode', 'album')  # One time Aug 23/2021
-    ext.t_end('print')  # sql.create_tables(): 0.1092669964
+    ext.t_end('no_print')  # sql.create_tables(): 0.1092669964
         # May 24, 2023 -  sql.create_tables(): 0.1404261589
 
     MusicTree(toplevel, SORTED_LIST)  # Build treeview of songs
