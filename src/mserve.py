@@ -35,109 +35,33 @@
 #                      Update: https://www.pippim.com/programs/mserve.html#
 #       May. 25 2023 - Extensive performance enhancements over two days.
 #       May. 26 2023 - Volume slider to match CBC Hockey at 75% sound level.
-#
+
 # TODO:
-#       Rename 'self.saved_selections'  -> 'self.play_order_ids'
-#              'self.song_list'         -> 'self.lib_tree_paths'
+#       Rename 'self.saved_selections'  -> 'self.play_order_iid'
+#              'self.song_list'         -> 'self.song_iid_paths'
 #               self.song_list = SORTED_LIST = make_sorted_list(START_DIR)
-#              'self.ndx'               -> 'self.play_ndx'
-#
+#              'self.ndx'               -> 'self.curr_iid_ndx'
+
 #       Use sfx = mktemp XXX for Python with ascii_letter + digits, length 8:
 #       https://www.educative.io/answers/how-to-generate-a-random-string-in-python
-#
+
 #       Move ~/.config/mserve/library.db to ~/.local/share/mserve/library.db
 #           Also move all files and L999 directories. Update daily backup script
+
+#       After fine-tune index the old time indices are still in play. Have to
+#           force reload. Current work around is to click previous song, then
+#           next song followed by FF button until suitable point.
+
+#       Fine-tune time index Sample all - When prematurely clicking Done the
+#           button bar is distorted and changes aren't saved.  ffplay starts
+#           running the full song independently.
+
+#       Button width is too greedy requiring windows wider than necessary.
 #
 # ==============================================================================
 
 # noinspection SpellCheckingInspection
 """
-
-                PEFORMANCE May 24, 2023 - Not sure of CPU percentage?
-RUN #1 =========================================================================
-make_sorted_list(): 0.2405638695
-sql.create_tables(): 0.1966311932
-MusicTree() __init__(toplevel, song_list, sbar_width=12): 1.0563580990
-  ######################################################
- //////////////                            \\\\\\\\\\\\\\
-<<<<<<<<<<<<<<    mserve - Music Server     >>>>>>>>>>>>>>
- \\\\\\\\\\\\\\                            //////////////
-  ######################################################
-load_last_selections(): 1.6982600689
-RUN #2 =========================================================================
-make_sorted_list(): 0.1649501324
-sql.create_tables(): 0.1094450951
-MusicTree() __init__(toplevel, song_list, sbar_width=12): 0.5830850601
-  ######################################################
- //////////////                            \\\\\\\\\\\\\\
-<<<<<<<<<<<<<<    mserve - Music Server     >>>>>>>>>>>>>>
- \\\\\\\\\\\\\\                            //////////////
-  ######################################################
-load_last_selections(): 1.3619968891
-RUN #3 =========================================================================
-make_sorted_list(): 0.1838061810
-sql.create_tables(): 0.1232240200
-MusicTree() __init__(toplevel, song_list, sbar_width=12): 0.5540018082
-  ######################################################
- //////////////                            \\\\\\\\\\\\\\
-<<<<<<<<<<<<<<    mserve - Music Server     >>>>>>>>>>>>>>
- \\\\\\\\\\\\\\                            //////////////
-  ######################################################
-load_last_selections(): 1.4005229473
-
-GRANULAR load_last_selections()
-  FNAME_LAST_SONG_NDX: 0.0000660419
-  FNAME_LAST_OPEN_STATES: 0.0464727879
-  FNAME_LAST_SELECTIONS: 0.8903269768  # Deprecated May 25, 2023
-  FNAME_LAST_PLAYLIST: 0.5562307835
-load_last_selections(): 1.4932079315
-
-
-                PEFORMANCE May 24, 2023 - Restart with Music Paused
-RUN #1 =========================================================================
-make_sorted_list(): 0.1393768787
-sql.create_tables(): 0.1111500263
-MusicTree() __init__(toplevel, song_list, sbar_width=12): 0.5217120647
-  ######################################################
- //////////////                            \\\\\\\\\\\\\\
-<<<<<<<<<<<<<<    mserve - Music Server     >>>>>>>>>>>>>>
- \\\\\\\\\\\\\\                            //////////////
-  ######################################################
-
-fast_play_startup() Experimental performance enhancements
-
-    FNAME_LAST_SONG_NDX: 0.0000598431
-    FNAME_LAST_PLAYLIST: 0.0042140484
-    FNAME_LAST_OPEN_STATES: 0.0026109219
-  OPEN FILES: 0.0069220066
-  Build self.saved_selections in playlist order: 0.1191630363
-  Merge three processes together: 0.3027529716
-  Apply totals to Artists & Albums + set checkbox: 0.1084859371
-  Wrap up: 0.0000300407
-fast_play_startup() All Steps: 0.5374200344
-RUN #2 =========================================================================
-make_sorted_list(): 0.1393649578
-sql.create_tables(): 0.1037619114
-MusicTree() __init__(toplevel, song_list, sbar_width=12): 0.5232260227
-  ######################################################
- //////////////                            \\\\\\\\\\\\\\
-<<<<<<<<<<<<<<    mserve - Music Server     >>>>>>>>>>>>>>
- \\\\\\\\\\\\\\                            //////////////
-  ######################################################
-
-fast_play_startup() Experimental performance enhancements
-
-    FNAME_LAST_SONG_NDX: 0.0000488758
-    FNAME_LAST_PLAYLIST: 0.0037820339
-    FNAME_LAST_OPEN_STATES: 0.0173220634
-  OPEN FILES: 0.0212059021
-  Build self.saved_selections in playlist order: 0.1176600456
-  Merge three processes together: 0.3188779354
-  Apply totals to Artists & Albums + set checkbox: 0.1066160202
-  Wrap up: 0.0000121593
-fast_play_startup() All Steps: 0.5644671917
-
-
 TODO:   When inserting song and playing, call wrap_up_song().
 
         When editing lyrics, set scroll box to where cursor used to be. Add tip
@@ -322,10 +246,11 @@ WIN_FONTSIZE = 11           # Font size for Window name
 BIG_FONT = 18               # Font size not used
 LARGE_FONT = 14             # Font size not used
 MED_FONT = 10               # Medium Font size
-BTN_WID = 17                # Width for buttons on main window
-BTN_WID2 = 15               # Width for buttons on play window
+BTN_WID = 12                # Width for buttons on main window
+BTN_WID2 = 12               # Width for buttons on play window
 BTN_BRD_WID = 3             # Width for button border
 FRM_BRD_WID = 2             # Width for frame border
+# TODO: Calculate PANEL_HGT (height)
 PANEL_HGT = 24              # Height of Unity panel
 MAX_DEPTH = 3               # Sanity check if starting at c:\ or /
 # If MAX_DEPTH changes from 3, change 'depth_count = [ 0, 0, 0 ]' below.
@@ -10523,7 +10448,7 @@ IndexError: list index out of range
                 if app_sink == self.play_top_sink:
                     continue
                 try:
-                    percent = int(app_vol) - int(app_vol) * i / 20  # Reduce by 5%
+                    percent = int(app_vol) - (int(app_vol) * i / 20)  # Reduce by 5%
                 except ValueError:
                     percent = 0
                     print("mserve.py sample_song() invalid app_vol:", app_vol)
@@ -10582,7 +10507,7 @@ IndexError: list index out of range
                         if old_sink == self.play_top_sink:
                             continue
                         # Sink is still active after sample 10 secs
-                        percent = int(old_vol) * i / 20  # Volume up 5%
+                        percent = old_vol * i / 20  # Volume up 5%
                         app_time = set_volume(old_sink, percent)
                         our_time += app_time  # Total all job times
             if our_time < .04:
@@ -10938,6 +10863,7 @@ IndexError: list index out of range
         DATE_PREFIX = " 📅 "  # big space + UTF-8 (1f4c5) + normal space
         # CLOCK_PREFIX = " 🕐 "  # big space + UTF-8 (1f550) + normal space
         CLOCK_PREFIX = " 🕑 "  # big space + UTF-8 (1f551) + normal space
+        TIME_PREFIX = " 🗲 "   #  big space + Unicode Character “🗲” (U+1F5F2)."
 
         ''' Pad song number with spaces to line up song name evenly '''
         number_digits = len(str(len(self.saved_selections)))
@@ -10955,9 +10881,6 @@ IndexError: list index out of range
         artist = self.lib_tree.parent(album)
         line = cat3(line, ARTIST_PREFIX, self.lib_tree.item(artist)['text'])
         line = cat3(line, ALBUM_PREFIX, self.lib_tree.item(album)['text'])
-
-        # 'short_line' when not currently playing song
-        #if short_line:
 
         ''' Build extended line using metadata for song in SQL Music Table '''
         #path = self.real_path(int(playlist_no - 1))  # Remove (NO ARTIST), etc.
@@ -10992,6 +10915,9 @@ IndexError: list index out of range
         line = line.replace("00:0", "")
         line = line.replace("00:", "")  # Catch pink floyd Shine On 11 min song
         line = line.replace(CLOCK_PREFIX + "0", CLOCK_PREFIX)  # Catch 1-9 hour
+
+        if d['LyricsTimeIndex'] is not None:
+            line = line + TIME_PREFIX + " Synchronized"
 
         if short_line and playlist_no < 10:
             # We are called from create tree
@@ -11448,7 +11374,7 @@ def sink_master():
             this_volume = this_volume.replace('%', '')
             if this_volume.endswith(']'):
                 this_volume = this_volume[:-1]  # Bug April 29, 2023
-            all_sinks.append(tuple((str(sink.index), this_volume,
+            all_sinks.append(tuple((str(sink.index), int(this_volume),
                                     str(sink.proplist['application.name']))))
             #print(sink.proplist)
             #pulse_dict = sink.proplist
@@ -11501,24 +11427,6 @@ def step_volume(sink, p_start, p_stop, steps, interval, thread=None):
         Step volume up or down for Pulseaudio Input Sink #
         if p_stop > p_start we are going up, else we are going down
         interval defines interval between steps and time to call pa adjusted
-
-
-        # To get 1-10 you need 1,11 range!  Our volume turns up 10% each step
-        for i in range(1, 11):  # 10 steps
-            if not self.syn_top_is_active:
-                return
-            s_time = set_volume(self.sync_ffplay_sink, int(i * 10))
-            for app_sink, app_vol, app_name in self.old_sinks:
-                if not others:
-                    break  # Only doing ourselves
-                if app_sink == self.sync_ffplay_sink:
-                    continue  # Skip our sink!
-                percent = int(app_vol - int(app_vol * i / 10))  # Reduce by 10%
-                app_time = set_volume(app_sink, percent)  # Volume down 10%
-                s_time += app_time  # Total all job times
-            if s_time < .07:
-                root.after(int((.07 - s_time) * 1000))  # Sleep .07 per step
-
     """
     if sink is "":
         print("step_volume(): Input Sink # is blank")
