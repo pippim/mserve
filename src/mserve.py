@@ -340,6 +340,7 @@ $ rm /tmp/test.wav
 # TV commercial and intermission breaks
 TV_BREAK1 = 90
 TV_BREAK2 = 1080
+TV_VOLUME = 80  # 80=TV broadcast is 80% of mserve volume level
 
 # Firefox name which is really the sound source for big screen TV
 TV_SOUND = "Firefox"
@@ -693,7 +694,7 @@ class PlayCommonSelf:
         self.ff_button = None               # tk.Button(text="⏩  +10 sec"
         self.next_button = None             # tk.Button(text=" Next 🠊 "
 
-        self.play_hockey_allowed = False    # False = FF and REW buttons instead
+        self.play_hockey_allowed = True     # False = FF and REW buttons instead
         self.play_hockey_active = None      # TV turned down and music play?
         self.play_firefox_indices = None    # sink_list("Firefox") TV_SOUND
         self.play_hockey_secs = None        # Commercial = TV_BREAK1 seconds
@@ -5902,7 +5903,9 @@ $ wmctrl -l -p
         self.art_label.configure(image=self.play_current_song_art)
 
     def pp_toggle(self, stop_music=True):
-        """ Pause/Play button pressed. Signal ffplay and set button text """
+        """ Pause/Play button pressed. Signal ffplay and set button text
+        :param stop_music: FF/Rewind button or Resume has already stopped music.
+        """
         # print('pp_toggle() has been called:', ext.h(time.time()))
         if not self.play_top_is_active:
             return  # Play window closed?
@@ -5937,7 +5940,14 @@ $ wmctrl -l -p
             self.current_song_t_start = time.time()
             ext.continue_pid_running(self.vu_meter_pid)  # VU Meter PID
             # Volume at 25% turned up in 10 steps of .05 sec to 100%
-            step_volume(self.play_top_sink, 25, 100, 10, .05,
+            if self.play_hockey_active:
+                max_vol = TV_VOLUME
+                # Uncomment obvious debug tests below to really hear diff.
+                max_vol = 30
+            else:
+                max_vol = 100
+            print("max_vol:", max_vol)
+            step_volume(self.play_top_sink, 25, max_vol, 10, .05,
                         thread=self.play_vu_meter)
             self.pp_toggle_button()             # Set button text
 
@@ -6379,6 +6389,7 @@ $ wmctrl -l -p
 
         self.current_song_t_start = time.time()  # For pp_toggle, whether resume or not
         if resume:
+            # Just woken up from system sleep or reboot. Restore song at save point.
             self.play_update_progress(self.resume_song_secs)
             if self.resume_state == "Paused":
                 set_volume(self.play_top_sink, 25)
@@ -10684,7 +10695,9 @@ IndexError: list index out of range
             artist = self.lib_tree.parent(album)  # Get the artist
             for album in self.lib_tree.get_children(artist):  # Read all albums
                 for song in self.lib_tree.get_children(album):  # Read all songs
-                    if "checked" in self.lib_tree.item(song)['tags']:
+                    #if "checked" in self.lib_tree.item(song)['tags']:
+                    # May 26, 2023 - "checked" brings up many irrelevant songs
+                    if "songsel" in self.lib_tree.item(song)['tags']:
                         values = self.lib_tree.item(song)['values']
                         pretty_no = values[2]  # E.G. "No.__21"
                         num = ""
@@ -10984,7 +10997,6 @@ IndexError: list index out of range
             self.chron_tree.item(Id, text=line)  # TODO: values for time_index
 
         ''' Position row to show previous 3, current and next 6 songs '''
-        # BUG: We are showing wrong lyrics after chron_filter
         if self.chron_filter is None:
             count = len(self.saved_selections)
             position = ndx
@@ -11154,15 +11166,19 @@ class BatchSelect:
 class Volume:
     """ Usage:
 
-    vol = Volume(tk_toplevel, name, title, text, tooltips=self.tt,
+    vol = Volume(tk_toplevel, name="ffplay", title, text, tooltips=self.tt,
                  thread=self.refresh_play_top)
           - Opens window using last saved geometry, or tk_toplevel + 30x30
 
     vol.set() - Sets volume level. Initially uses last settings for 'name'
 
-    vol.get() - Gets volume level using horizontal slider
+    vol.get() - Gets volume level using horizontal slider def get_resume
 
-    vol.change_name() - name may have been 'mserve' iniitally but now it could
+    vol.save() -
+
+    vol.cancel() -
+
+    vol.change_name() - name may have been 'mserve' initially but now it could
         'CBC Hockey' or something else esoteric.
 
     vol.close()  # destroy window and save current geometry. Called internally
@@ -11190,13 +11206,58 @@ class Volume:
         :param lib_top_totals: self.lib_top_totals returned to caller
         """
         # root window is the parent window
-        self.toplevel = toplevel  # self.lib_tree
-        self.name = name  # self.lib_tree
-        self.title = title  # self.lib_tree
-        self.text = text  # self.lib_tree
-        self.tt = tooltips  # self.lib_tree
-        self.thread = thread  # self.lib_tree
-        # Data elements are StatSize, Count, Seconds
+        self.toplevel = toplevel    # self.lib_tree
+        self.name = name            # Initially name is "ffplay"
+        self.title = title          # E.G. "Set volume for mserve"
+        self.text = text            # "Adjust mserve volume to match other apps"
+        # Note volume doesn't change until next song begins. To test volume
+        # change click Next or Prev buttons in music player. Then press pause
+        # in mserve for TV broadcast volume level to restore. Repeat process
+        # until mserve volume matches volume of TV broadcast. Note when Play
+        # button is pressed in mserve all other applications have their volume
+        # turned down to 25%. This window will override that process in the
+        self.tt = tooltips          # Tooltips pool for buttons
+        self.thread = thread        # E.G. self.refresh_play_top()
+
+        self.last_volume = None
+        self.curr_volume = None
+        self.play_top.minsize(width=BTN_WID * 10, height=PANEL_HGT * 10)
+        #self.play_top.geometry('+%d+%d' % (xy[0], xy[1]))
+        # June 1, 2021 new sql history
+        geom = monitor.get_window_geom('volume')
+        self.play_top.geometry(geom)
+
+    def read_vol(self):
+        """
+            Get last saved volume.
+        """
+        location = LODICT['iid']
+        # print("save_resume() location:", location)
+
+        ''' Need new function:
+            d = sql.get_setting('resume', location)
+            if d is not None:
+                blah blah
+        '''
+        if sql.hist_check(0, 'volume', self.name):
+            sql.hist_cursor.execute("SELECT * FROM History WHERE Id = ?",
+                                    [sql.HISTORY_ID])
+            d = dict(sql.hist_cursor.fetchone())
+            if d is None:
+                print('mserve.py Volume() get_geom() error sql.HISTORY_ID:',
+                      sql.HISTORY_ID)
+                return False
+        else:
+            return None
+
+        # print("Found SourceMaster:", d['SourceMaster'], "SourceDetail:", d['SourceDetail'])
+        if d['SourceDetail'] != str(self.ndx):
+            print("mserve.py get_resume() Error SourceDetail:", d['SourceDetail'],
+                  "but self.ndx is:", self.ndx)
+
+        self.resume_state = d['SourceMaster']
+        self.resume_song_secs = d['Seconds']
+        return True
 
     def edit(self):
         """ Toggle song selection on.
@@ -11346,6 +11407,38 @@ def sink_list(program):
 pulse_working = True
 try:
     pulse = pulsectl.Pulse()
+    # print("pulse:", dir(pulse))
+    # This works: for sink in pulse.sink_input_list():
+    # This DOESN'T work: pulse.volume_change_all_chans(sink, float(percent) / 100.0)
+    # This DOESN'T work: pulse.volume_set(sink, float(percent) / 100.0)
+    '''
+        pulse: ['__class__', '__delattr__', '__dict__', '__doc__', '__enter__', '__exit__', 
+        '__format__', '__getattribute__', '__hash__', '__init__', '__module__', '__new__', 
+        '__reduce__', '__reduce_ex__', '__repr__', '__setattr__', '__sizeof__', '__str__', 
+        '__subclasshook__', '__weakref__', '_action_ids', '_actions', '_api', '_ctx', 
+        '_ctx_init', '_loop', '_loop_closed', '_loop_lock', '_loop_running', '_loop_stop', 
+        '_pa_state_cb', '_pa_subscribe_cb', '_pulse_get_list', '_pulse_info_cb', 
+        '_pulse_iterate', '_pulse_loop', '_pulse_method_call', '_pulse_op_cb', 
+        '_pulse_poll', '_pulse_poll_cb', '_pulse_run', '_pulse_state_cb', 
+        '_pulse_subscribe_cb', '_ret', 'card_info', 'card_list', 'card_profile_set', 
+        'card_profile_set_by_index', 'channel_list_enum', 'client_info', 'client_list', 
+        'close', 'connect', 'connected', 'default_set', 'disconnect', 'event_callback', 
+        'event_callback_set', 'event_facilities', 'event_listen', 'event_listen_stop', 
+        'event_mask_set', 'event_masks', 'event_types', 'get_card_by_name', 
+        'get_peak_sample', 'get_sink_by_name', 'get_source_by_name', 'init', 'module_info',
+         'module_list', 'module_load', 'module_unload', 'mute', 'name', 'play_sample', 
+         'port_set', 'server', 'server_info', 'set_poll_func', 'sink_default_set', 
+         'sink_info', 'sink_input_info', 'sink_input_list', 'sink_input_move', 
+         'sink_input_mute', 'sink_input_volume_set', 'sink_list', 'sink_mute', 
+         'sink_port_set', 'sink_suspend', 'sink_volume_set', 'source_default_set', 
+         'source_info', 'source_list', 'source_mute', 'source_output_info', 
+         'source_output_list', 'source_output_move', 'source_output_mute', 
+         'source_output_volume_set', 'source_port_set', 'source_suspend', 
+         'source_volume_set', 'stream_restore_delete', 'stream_restore_list', 
+         'stream_restore_read', 'stream_restore_test', 'stream_restore_write', 
+         'volume_change_all_chans', 'volume_get_all_chans', 'volume_set', 
+         'volume_set_all_chans']
+    '''
 
 except Exception as p_err:  # CallError, socket.error, IOError (pidfile), OSError (os.kill)
     pulse_working = False
@@ -11365,8 +11458,9 @@ def sink_master():
         # WIP: Use existing tuple structure but convert to pulsectl volume
         #      structure down the road.
         for sink in pulse.sink_input_list():
-            #print("\n=======  ", sink.index, sink.volume, sink.name)
-            #print(sink.proplist['application.name'])
+            if not sink.proplist['application.name'].startswith("speech-dispatcher"):
+                print("\n======= sink_master(): ", sink.proplist['application.name'],
+                      sink.index, sink.volume, sink.name)
             # sink.volume = channels = 2, volumes = [100 % 100 %]
             this_volume = str(sink.volume)
             this_volume = this_volume.split('[')[1]
@@ -11377,9 +11471,10 @@ def sink_master():
             all_sinks.append(tuple((str(sink.index), int(this_volume),
                                     str(sink.proplist['application.name']))))
             #print(sink.proplist)
-            #pulse_dict = sink.proplist
+            pulse_dict = sink.proplist
             #for i in pulse_dict:
             #    print("key:", i, "value:", pulse_dict[i])
+
         return all_sinks
 
 
@@ -11429,21 +11524,26 @@ def step_volume(sink, p_start, p_stop, steps, interval, thread=None):
         interval defines interval between steps and time to call pa adjusted
     """
     if sink is "":
-        print("step_volume(): Input Sink # is blank")
+        toolkit.print_trace()
+        print("mserve.py step_volume(): Input Sink # is blank")
         return
+    # TODO doesn't handle rounding properly. Rework code.
     adjust = int((p_stop - p_start) / steps)
-    for _ in range(steps):
+    for i in range(steps):
         p_start += adjust  # positive (up) or negative (down)
         t_start = time.time()
-        job_time = set_volume(sink, p_start)
-        # Sleep in milliseconds to interval time and allow screen updates
+        job_time, err = set_volume(sink, p_start)
+        if err is not None:
+            print("mserve.py step_volume():", i, "  | Error:", err)
         if thread:
+            # Update graphics or VU meters, etc.
             thread()
+        root.update_idletasks()  # May 27 2023 - Was below sleep calc. Move up.
+        # Sleep in milliseconds to interval time and allow screen updates
         sleep = interval * 1000 - (time.time() - t_start) * 1000
         if sleep < 1:
             sleep = 1
         if job_time < interval:
-            root.update_idletasks()
             root.after(int(sleep))
 
 
@@ -11451,26 +11551,33 @@ def set_volume(sink, percent, return_err=False):
     """ Set volume and return time required to do it
         Trap error messages with 2>&1
         subprocess
-
-        Long Term TODO: Use: https://github.com/mk-fg/python-pulse-control
-            this will be faster than call to `pactl`
     """
     if pulse_working:
+        ''' Fast method using pulse audio direct interface '''
         # TODO: refresh_pulse() common with sink_master()
         ext.t_init('set_volume() -- pulse.volume_change')
         err = None
         for sink in pulse.sink_list():
+            print("\n======== set_volume(): COMPARE: ", sink.proplist['application.name'],
+                  sink.index, sink.volume, sink.name)
             if str(sink.index) == sink:
                 # Volume is usually in 0-1.0 range, with >1.0 being soft-boosted
+                print("\n======== set_volume(): ", sink.proplist['application.name'],
+                      sink.index, sink.volume, sink.name)
                 pulse.volume_change_all_chans(sink, float(percent) / 100.0)
+                #pulse.volume_set(sink, float(percent) / 100.0)  # May 27, 2023 no diff
                 break
 
         job_time = ext.t_end('no_print')
+        ''' May 27 2023 - shorten code
         if return_err:
             return job_time, err
         else:
             return job_time
+        '''
+        return job_time, err
 
+    ''' Slow method using CLI (command line interface) to pulse audio '''
     # Build command line list for subprocess
     # noinspection PyListCreation
     command_line_list = []
@@ -11492,11 +11599,13 @@ def set_volume(sink, percent, return_err=False):
               'job_time:', job_time)
         print('error:', err)
     # if pipe.return_code == 0:                  # Future use
-
+    ''' May 27 2023 - shorten code
     if return_err:
         return job_time, err
     else:
         return job_time
+    '''
+    return job_time, err
 
 
 def ffmpeg_artwork(path, width, height):

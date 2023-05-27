@@ -720,6 +720,9 @@ def get_window_geom(name):
     elif name == 'sql_history':  # mserve.py
         xy = (130, 130)
         default_geom = '+%d+%d' % (xy[0], xy[1])
+    elif name == 'volume':  # mserve.py
+        xy = (130, 130)
+        default_geom = '+%d+%d' % (xy[0], xy[1])
     else:
         print('monitor.get_window_geom(): Bad window name:', name)
         xy = (130, 130)
