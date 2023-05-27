@@ -732,7 +732,7 @@ class PlayCommonSelf:
         self.sync_changed_score = None      # Was lyrics score changed?
         self.sync_changed_lyrics = None     # Lyrics score has changed DUPLICATE!
         self.sync_ffplay_pid = None         # ffplay linux process ID
-        self.sync_ffplay_sink = None        # pulseaudio sink number
+        self.sync_ffplay_sink = ""          # pulseaudio sink number
         self.label_line_count = None        # Display # of lines in lyrics
         self.sync_default_set = None        # Have tree line going into sync?
         self.new_time_list = None           # [] time list is edited these
@@ -9141,7 +9141,7 @@ IndexError: list index out of range
                     break  # Only doing ourselves
                 if app_sink == self.sync_ffplay_sink:
                     continue  # Skip our sink!
-                percent = int(app_vol - int(app_vol * i / 10))  # Reduce by 10%
+                percent = int(app_vol) - (int(app_vol) * i / 10)  # Reduce by 10%
                 app_time = set_volume(app_sink, percent)  # Volume down 10%
                 s_time += app_time  # Total all job times
             if s_time < .07:
@@ -9239,7 +9239,7 @@ IndexError: list index out of range
                     if old_sink == self.sync_ffplay_sink:
                         continue                # We are on our own sink already adjusted
                     if old_sink == app_sink:
-                        percent = int(old_vol * i / 10)  # Old volume up 10%
+                        percent = int(old_vol) * i / 10  # Old volume up 10%
                         app_time = set_volume(old_sink, percent)
                         s_time += app_time      # Total all system times
                         if app_time > .025:
@@ -11407,6 +11407,8 @@ def sink_list(program):
     all_sinks = sink_master()
     for entry in all_sinks:
         sink, vol, name = entry
+        sink = str(sink)  # May 26 2023 - Sink must be string not int
+        vol = int(vol)  # May 26 2023 - volume must be int not string
         if program == name:
             indices.append(sink)
             #print('MATCHING sink entry found:', entry)
