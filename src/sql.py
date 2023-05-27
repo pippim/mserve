@@ -835,9 +835,11 @@ def hist_check(MusicId, check_type, check_action):
                         MusicId is set to 0.
         User            User name, User ID or GUID varies by platform.
         Type            'file', 'catalog', 'link', 'index', 'checkout', 'song'
-                        'lyrics', 'time', 'fine-tune', 'meta', 'resume'
+                        'lyrics', 'time', 'fine-tune', 'meta', 'resume', 
+                        'volume', 'window'
         Action          'copy', 'download', 'remove', 'burn', 'edit', 'play'
-                        'scrape', 'init', 'shuffle', 'save', 'load', 
+                        'scrape', 'init', 'shuffle', 'save', 'load', 'level',
+                        NAME 
         SourceMaster    'Genius', 'Metro Lyrics', etc.
                         Device name, Playlist
         SourceDetail    '//genius.com' or 'www.metrolyrics.com', etc.

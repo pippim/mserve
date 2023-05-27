@@ -33,12 +33,17 @@
 #                      running function causing refresh_play_top() to stop. Now
 #                      next song automatically starts when current song ends.
 #                      Update: https://www.pippim.com/programs/mserve.html#
+#       May. 25 2023 - Extensive performance enhancements over two days.
+#       May. 26 2023 - Volume slider to match CBC Hockey at 75% sound level.
 #
 # TODO:
 #       Rename 'self.saved_selections'  -> 'self.play_order_ids'
 #              'self.song_list'         -> 'self.lib_tree_paths'
 #               self.song_list = SORTED_LIST = make_sorted_list(START_DIR)
 #              'self.ndx'               -> 'self.play_ndx'
+#
+#       Use sfx = mktemp XXX for Python with ascii_letter + digits, length 8:
+#       https://www.educative.io/answers/how-to-generate-a-random-string-in-python
 #
 #       Move ~/.config/mserve/library.db to ~/.local/share/mserve/library.db
 #           Also move all files and L999 directories. Update daily backup script
@@ -1657,7 +1662,7 @@ class MusicTree(PlayCommonSelf):
         """
         if selected_count > 0:
             # Format for at least one song selected
-            self.lib_top_totals[2] = "  🎵 " + str(song_count) + '  songs, ' + \
+            self.lib_top_totals[2] = "  🎵 " + str(song_count) + ' songs, ' + \
                                      str(selected_count) + ' selected  '
             self.lib_top_totals[3] = "  🖸 " + str(all_sizes) + " " + \
                                      CFG_DIVISOR_UOM + " used, " + str(all_selected) + \
@@ -3676,8 +3681,8 @@ $ wmctrl -l -p
         artist_iid = self.lib_tree.parent(album_iid)
         artist = self.lib_tree.item(artist_iid)['text']
         print("self.ndx:", self.ndx, ' | Song iid:', song_iid, " |", song)
-        print("Album iid:", album_iid, " |", album,
-              " | Artist iid:", artist_iid, " |", artist)
+        print("Artist iid:", artist_iid, " |", artist,
+              " | Album iid:", album_iid, " |", album)
         print("real_path:", self.real_path(int(song_iid)))
         print("tree values:", self.lib_tree.item(song_iid)['values'])
         print()
@@ -5187,10 +5192,7 @@ $ wmctrl -l -p
         if not os.path.isfile(lc.FNAME_LAST_SONG_NDX):
             return  # self.ndx = pickle.load(f)
 
-        print("\nfast_play_startup() Experimental performance enhancements\n")
-
         ext.t_init('fast_play_startup() All Steps')
-
         ext.t_init('OPEN FILES')
 
         ''' Load last song playing index '''
@@ -11216,6 +11218,72 @@ class BatchSelect:
             curr_values = [0, 0, 0]  # Size, Count, Seconds
         return curr_values
 
+
+# ==============================================================================
+#
+#       Volume() class. Tkinter slider to set application volume level
+#
+# ==============================================================================
+
+class Volume:
+    """ Usage:
+
+    vol = Volume(tk_toplevel, name, title, text, tooltips=self.tt,
+                 thread=self.refresh_play_top)
+          - Opens window using last saved geometry, or tk_toplevel + 30x30
+
+    vol.set() - Sets volume level. Initially uses last settings for 'name'
+
+    vol.get() - Gets volume level using horizontal slider
+
+    vol.change_name() - name may have been 'mserve' iniitally but now it could
+        'CBC Hockey' or something else esoteric.
+
+    vol.close()  # destroy window and save current geometry. Called internally
+        when <Escape> or Close Button pressed. Called externally when app
+        shuts down.
+
+    """
+
+    def __init__(self, toplevel=None, name=None, title=None, text=None,
+                 tooltips=None, thread=None):
+        """
+        BatchSelect class speeds up processing for toggle_select() function.
+        Updating is done after thousands of playlist songs are selected in
+        lib_tree:
+            Artist (I1)
+                Album (I2)
+                    Song (3)
+                    Song (4)
+                Album (I3)
+                    Song (6)
+                    Song (7)
+            Artist (I4)
+
+        :param treeview: self.lib_tree
+        :param lib_top_totals: self.lib_top_totals returned to caller
+        """
+        # root window is the parent window
+        self.toplevel = toplevel  # self.lib_tree
+        self.name = name  # self.lib_tree
+        self.title = title  # self.lib_tree
+        self.text = text  # self.lib_tree
+        self.tt = tooltips  # self.lib_tree
+        self.thread = thread  # self.lib_tree
+        # Data elements are StatSize, Count, Seconds
+
+    def edit(self):
+        """ Toggle song selection on.
+            Roll up totals into list of dictionaries.
+            DO NOT update parents here. Update parents with batch_update()
+        """
+        # 'values' 0=Access, 1=Size, 2=Selected Size, 3=StatTime, 4=StatSize,
+        #          5=Count, 6=Seconds, 7=SelSize, 8=SelCount, 9=SelSeconds
+        total_values = slice(4, 7)  # parm = start index, stop before index
+        # slice(4, 7) = Set slice to grab StatSize, Count, Seconds
+
+
+
 # ==============================================================================
 #
 #       MusicTree Functions that can be independent
@@ -11235,21 +11303,26 @@ def start_ffplay(song, tmp_name, extra_opt):
                 -af "a fade=type=in:start_time=99:duration=3"
     """
 
-    ''' May 22, 2023 to support kill and restart using FF / Rewind buttons '''
-    root.after(10)  # We are starting too soon. Old ffplay hasn't shut down yet.
-    # Initially 5 was successful but then 1 time out of 20 trace appeared
-    # Bullet-proof technique is to delay start_ffplay until old sink gone
-    # Parent will have to check before killing song what sinks are open
-
     ''' Get old Input Sinks before ffplay starts '''
+    loop_cnt = 0
     old_sink = sink_list("ffplay")
+    ''' Give time for pulseaudio to shut down last ffplay sink '''
+    while len(old_sink) > 0 and loop_cnt < 50:
+        # Relevant only for FF/Rewind button press. Only 10 ms
+        # was needed but allow up to 250 ms. No need to call
+        # refresh_play_top() because no song = no spinning graphics.
+        loop_cnt += 1  # If we finish loop could be dead 'ffplay'
+        root.after(5)
+        old_sink = sink_list("ffplay")
+    #print("start_ffplay(song, tmp_name, extra_opt) loop_cnt:",
+    #      song, tmp_name, extra_opt, loop_cnt)  # Largest loop_cnt = 1
 
     ''' ffplay start options to redirect output to temporary file '''
     # noinspection SpellCheckingInspection
     ext_name = 'ffplay -autoexit ' + '"' + song + '" ' + extra_opt + \
                ' -nodisp 2>' + tmp_name
     # inspection SpellCheckingInspection
-    ''' launch ffplay external command in background '''
+    ''' launch ffplay external command in background it polls for pid '''
     found_pid = ext.launch_command(ext_name, toplevel=None)
     #found_sink = None  # May 21, 2023 functions expect "" for no sink
     found_sink = ""  # May 21, 2023 functions expect "" for no sink
@@ -11257,12 +11330,13 @@ def start_ffplay(song, tmp_name, extra_opt):
         print('Waited 10 seconds, aborting start_ffplay() get PID')
         return found_pid, found_sink
 
-    ''' Get New PID and Input Sinks for ffplay '''
+    ''' Get New Input Sinks for ffplay '''
     loop_cnt = 0
     while True:
         # Give time for `ffplay` to create pulseaudio sink.
         loop_cnt += 1
         # Nov 6/22 not enough loops when system lags, change 20 to 500
+        ''' May 22, 2023 to support kill and restart using FF / Rewind buttons '''
         if loop_cnt == 500:
             print('Waited > 2.5+ seconds, aborting start_ffplay() get sink')
             return found_pid, found_sink
