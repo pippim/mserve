@@ -5943,7 +5943,7 @@ $ wmctrl -l -p
             if self.play_hockey_active:
                 max_vol = TV_VOLUME
                 # Uncomment obvious debug tests below to really hear diff.
-                max_vol = 30
+                # max_vol = 30 
             else:
                 max_vol = 100
             print("max_vol:", max_vol)
@@ -9058,7 +9058,7 @@ IndexError: list index out of range
         self.sync_ffplay_pid, self.sync_ffplay_sink = \
             start_ffplay(self.work_song_path, TMP_CURR_SAMPLE, extra_opt)
         self.sync_music_start_time = time.time()  # Music is playing now
-        set_volume(self.sync_ffplay_sink, 0)  # Turn off volume
+        set_volume(self.sync_ffplay_sink, 0, -1.0)  # Turn off volume
         ext.stop_pid_running(self.sync_ffplay_pid)  # Pause the music
 
         ''' During 1st second reduce other sound applications '''
@@ -9071,14 +9071,14 @@ IndexError: list index out of range
         for i in range(1, 11):  # 10 steps
             if not self.syn_top_is_active:
                 return
-            s_time = set_volume(self.sync_ffplay_sink, int(i * 10))
+            s_time = set_volume(self.sync_ffplay_sink, int(i * 10), .10)
             for app_sink, app_vol, app_name in self.old_sinks:
                 if not others:
                     break  # Only doing ourselves
                 if app_sink == self.sync_ffplay_sink:
                     continue  # Skip our sink!
                 percent = int(app_vol) - (int(app_vol) * i / 10)  # Reduce by 10%
-                app_time = set_volume(app_sink, percent)  # Volume down 10%
+                app_time = set_volume(app_sink, percent, -0.10)  # Volume down 10%
                 s_time += app_time  # Total all job times
             if s_time < .07:
                 root.after(int((.07 - s_time) * 1000))  # Sleep .07 per step
@@ -9157,7 +9157,7 @@ IndexError: list index out of range
                     percent = 100 - (i * 10)    # Turn down volume 10%
                     if err_count < 1:           # If no errors yet
                         app_time, err = set_volume(self.sync_ffplay_sink,
-                                                   percent, return_err=True)
+                                                   percent, -.10)
                     else:
                         err_count += 1          # Would be another error
                         app_time = 0
@@ -9176,7 +9176,7 @@ IndexError: list index out of range
                         continue                # We are on our own sink already adjusted
                     if old_sink == app_sink:
                         percent = int(old_vol) * i / 10  # Old volume up 10%
-                        app_time = set_volume(old_sink, percent)
+                        app_time = set_volume(old_sink, percent, .10)
                         s_time += app_time      # Total all system times
                         if app_time > .025:
                             print('sync_clean_ffplay(self): app_time too large:',
@@ -9604,7 +9604,7 @@ IndexError: list index out of range
         extra_opt = ' -ss ' + str(self.sync_start) + ' -t 2'
         self.sync_ffplay_pid, self.sync_ffplay_sink = \
             start_ffplay(self.work_song_path, TMP_CURR_SAMPLE, extra_opt)
-        set_volume(self.sync_ffplay_sink, 100)  # TODO: Why is volume
+        # set_volume(self.sync_ffplay_sink, 100)  # TODO: Why is volume
         # at 0% after first line so, we have to force 100% volume now?
 
         self.sync_music_start_time = time.time()  # Music is playing now
@@ -11458,9 +11458,9 @@ def sink_master():
         # WIP: Use existing tuple structure but convert to pulsectl volume
         #      structure down the road.
         for sink in pulse.sink_input_list():
-            if not sink.proplist['application.name'].startswith("speech-dispatcher"):
-                print("\n======= sink_master(): ", sink.proplist['application.name'],
-                      sink.index, sink.volume, sink.name)
+            #if not sink.proplist['application.name'].startswith("speech-dispatcher"):
+            #    print("\n======= sink_master(): ", sink.proplist['application.name'],
+            #          sink.index, sink.volume, sink.name)
             # sink.volume = channels = 2, volumes = [100 % 100 %]
             this_volume = str(sink.volume)
             this_volume = this_volume.split('[')[1]
@@ -11471,9 +11471,9 @@ def sink_master():
             all_sinks.append(tuple((str(sink.index), int(this_volume),
                                     str(sink.proplist['application.name']))))
             #print(sink.proplist)
-            pulse_dict = sink.proplist
-            #for i in pulse_dict:
-            #    print("key:", i, "value:", pulse_dict[i])
+            #pulse_dict = sink.proplist
+            #for key in pulse_dict:
+            #    print("key:", key, "value:", pulse_dict[key])
 
         return all_sinks
 
@@ -11525,14 +11525,16 @@ def step_volume(sink, p_start, p_stop, steps, interval, thread=None):
     """
     if sink is "":
         toolkit.print_trace()
-        print("mserve.py step_volume(): Input Sink # is blank")
+        print("mserve.py step_volume(): Input Sink # or Pulse Name is blank")
         return
     # TODO doesn't handle rounding properly. Rework code.
-    adjust = int((p_stop - p_start) / steps)
+    adjust = (float(p_stop) - float(p_start)) / float(steps)
+    #print("adjust = int((p_stop - p_start) / steps)",
+    #      adjust, p_stop, p_start, steps)
+    perc = float(p_start) + adjust  # positive (up) or negative (down)
     for i in range(steps):
-        p_start += adjust  # positive (up) or negative (down)
         t_start = time.time()
-        job_time, err = set_volume(sink, p_start)
+        job_time, err = set_volume(sink, int(perc))
         if err is not None:
             print("mserve.py step_volume():", i, "  | Error:", err)
         if thread:
@@ -11545,37 +11547,52 @@ def step_volume(sink, p_start, p_stop, steps, interval, thread=None):
             sleep = 1
         if job_time < interval:
             root.after(int(sleep))
+        perc += + adjust  # positive (up) or negative (down)
 
 
-def set_volume(sink, percent, return_err=False):
+pulse_error_cnt = 0
+
+
+def set_volume(target_sink, percent):
     """ Set volume and return time required to do it
         Trap error messages with 2>&1
-        subprocess
     """
+    global pulse_error_cnt
+
+    print("\nset_volume() -- looking for sink:", target_sink,
+          "setting volume to:", percent, "%",
+          "float(percent) / 100.0:", float(percent) / 100.0)
     if pulse_working:
         ''' Fast method using pulse audio direct interface '''
-        # TODO: refresh_pulse() common with sink_master()
         ext.t_init('set_volume() -- pulse.volume_change')
         err = None
-        for sink in pulse.sink_list():
-            print("\n======== set_volume(): COMPARE: ", sink.proplist['application.name'],
-                  sink.index, sink.volume, sink.name)
-            if str(sink.index) == sink:
+        #for sink in pulse.sink_list():
+        for sink in pulse.sink_input_list():
+            if str(sink.index) == target_sink:
                 # Volume is usually in 0-1.0 range, with >1.0 being soft-boosted
-                print("\n======== set_volume(): ", sink.proplist['application.name'],
-                      sink.index, sink.volume, sink.name)
-                pulse.volume_change_all_chans(sink, float(percent) / 100.0)
-                #pulse.volume_set(sink, float(percent) / 100.0)  # May 27, 2023 no diff
-                break
+                if not sink.proplist['application.name'].startswith("speech-dispatcher"):
+                    print("======== set_volume(): ", sink.proplist['application.name'],
+                          sink.index, sink.volume, sink.name)
+                    print("found sink#:", sink.index, type(sink.index))
+                print("Before:", pulse.volume_get_all_chans(sink))
+                #pulse.volume_change_all_chans(sink, float(percent) / 100.0)
+                # pulse.volume_change_all_chans(sink, adjust)
+                pulse.volume_set_all_chans(sink, float(percent) / 100.0)
 
-        job_time = ext.t_end('no_print')
-        ''' May 27 2023 - shorten code
-        if return_err:
-            return job_time, err
-        else:
-            return job_time
-        '''
-        return job_time, err
+                print("After:", pulse.volume_get_all_chans(sink))
+                #pulse.volume_set(sink, float(percent) / 100.0)
+                # Error: AttributeError: 'float' object has no attribute 'to_struct'
+                job_time = ext.t_end('no_print')
+                return job_time, err
+
+    if pulse_working and pulse_error_cnt < 10:
+        pulse_error_cnt += 1
+        print("mserve.py set_volume() pulsectl failed looking up sink#:", sink)
+        all_sinks = list()
+        for sink in pulse.sink_list():
+            all_sinks.append(sink)
+        print("all sinks:", all_sinks)
+        print("resorting to CLI pactl command")
 
     ''' Slow method using CLI (command line interface) to pulse audio '''
     # Build command line list for subprocess
@@ -11583,7 +11600,7 @@ def set_volume(sink, percent, return_err=False):
     command_line_list = []
     command_line_list.append("pactl")
     command_line_list.append("set-sink-input-volume")
-    command_line_list.append(sink)
+    command_line_list.append(target_sink)
     command_line_list.append(str(percent) + '%')
     #command_str = " ".join(command_line_list)  # list to printable string
 
@@ -11595,16 +11612,10 @@ def set_volume(sink, percent, return_err=False):
         print("standard output of set_volume() subprocess:")
     if err:
         print("standard error of set_volume() subprocess:")
-        print('set_volume() ERROR. sink:', sink, 'percent:', percent,
+        print('set_volume() ERROR. sink:', target_sink, 'percent:', percent,
               'job_time:', job_time)
         print('error:', err)
     # if pipe.return_code == 0:                  # Future use
-    ''' May 27 2023 - shorten code
-    if return_err:
-        return job_time, err
-    else:
-        return job_time
-    '''
     return job_time, err
 
 
