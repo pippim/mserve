@@ -27,6 +27,7 @@ except ImportError:         # Python 2
     import Tkinter as tk
     PYTHON_VER = "2"
 
+import os
 import time
 M_START_TIME = time.time()
 import image as img         # Routines for tk & photo images
@@ -57,6 +58,16 @@ def main():
     """
     Create splash screen and invoke mserve.py which takes a second or more
     """
+
+    ''' Change to working path '''
+    cwd = os.getcwd()
+    dir_path = os.path.dirname(os.path.realpath(__file__))
+    #print('current directory:', cwd)
+    #print('working path:', dir_path)
+    #print("os.path.realpath(__file__):", os.path.realpath(__file__))
+    if cwd != dir_path:
+        #print("Changing to dir_path:", dir_path)
+        os.chdir(dir_path)
 
     g.init()  # Initialize user name
     splash = tk.Tk()  # "very top" toplevel

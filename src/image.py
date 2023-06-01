@@ -1338,7 +1338,7 @@ gsettings set org.compiz.core:/org/compiz/profiles/unity/plugins/core/ active-pl
                 # print('line:', line)
                 if "ABOVE" in line:
                     self.trg_was_above = True
-                    print('if "ABOVE" in line:', self.trg_was_above)
+                    #print('if "ABOVE" in line:', self.trg_was_above)
                     os.popen('wmctrl -ir ' + self.trg_window_id_hex +
                              ' -b toggle,above')
                 break
@@ -1460,13 +1460,12 @@ gsettings set org.compiz.core:/org/compiz/profiles/unity/plugins/core/ active-pl
                     #print('line:', line)
 
                 if self.toggle_str != "":
-                    _result = os.popen('wmctrl -ir ' + self.trg_window_id_hex +
-                                       ' -b toggle' + self.toggle_str).read()
+                    res = os.popen('wmctrl -ir ' + self.trg_window_id_hex +
+                                   ' -b toggle' + self.toggle_str).read()
                     self.trg_was_above = True
-                    print("os.popen('wmctrl -ir " + self.trg_window_id_hex +
-                          " -b toggle" + self.toggle_str)
-                    print("_result:", _result)
-
+                    if res is not None:
+                        print("os.popen('wmctrl -ir " + self.trg_window_id_hex +
+                              " -b toggle" + self.toggle_str + ")  res:", res)
                 break
 
 
@@ -1474,11 +1473,11 @@ gsettings set org.compiz.core:/org/compiz/profiles/unity/plugins/core/ active-pl
         """  Revert the "always on top" (above) state.
         """
         if self.trg_was_above is True:
-            _result = os.popen('wmctrl -ir ' + self.trg_window_id_hex +
-                               ' -b toggle' + self.toggle_str).read()
-            print("os.popen('wmctrl -ir " + self.trg_window_id_hex +
-                  " -b toggle" + self.toggle_str)
-            print("_result:", _result)
+            res = os.popen('wmctrl -ir ' + self.trg_window_id_hex +
+                           ' -b toggle' + self.toggle_str).read()
+            if res is not None:
+                print("os.popen('wmctrl -ir " + self.trg_window_id_hex +
+                      " -b toggle" + self.toggle_str + ")  res:", res)
 
         self.trg_was_above = None
 

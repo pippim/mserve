@@ -34,16 +34,14 @@
 #                      next song automatically starts when current song ends.
 #                      Update: https://www.pippim.com/programs/mserve.html#
 #       May. 25 2023 - Extensive performance enhancements over two days.
-#       May. 26 2023 - Volume slider to match CBC Hockey at 75% sound level.
+#       May. 26 2023 - Set volume to 80% when CBC hockey game on air.
+#       May. 29 2023 - Music Library checkboxes batch update to Playlist.
 
 # TODO:
 #       Rename 'self.saved_selections'  -> 'self.play_order_iid'
 #              'self.song_list'         -> 'self.song_iid_paths'
 #               self.song_list = SORTED_LIST = make_sorted_list(START_DIR)
 #              'self.ndx'               -> 'self.curr_iid_ndx'
-
-#       Use sfx = mktemp XXX for Python with ascii_letter + digits, length 8:
-#       https://www.educative.io/answers/how-to-generate-a-random-string-in-python
 
 #       Move ~/.config/mserve/library.db to ~/.local/share/mserve/library.db
 #           Also move all files and L999 directories. Update daily backup script
@@ -56,13 +54,14 @@
 #           button bar is distorted and changes aren't saved.  ffplay starts
 #           running the full song independently.
 
-#       Button width is too greedy requiring windows wider than necessary.
+#       VU Meters disappear when chron_filter applied. The reappear after pause/
+#           play is pressed.
 #
 # ==============================================================================
 
 # noinspection SpellCheckingInspection
 """
-TODO:   When inserting song and playing, call wrap_up_song().
+TODO:   When inserting song and playing, call wrap_up_song()
 
         When editing lyrics, set scroll box to where cursor used to be. Add tip
         for copy & paste using CTRL+C and CTRL+V
@@ -186,7 +185,6 @@ import sys
 import os
 import shutil
 import time
-#from datetime import datetime              # incompatible with datetime.datetime.
 import datetime
 
 from PIL import Image, ImageTk, ImageDraw, ImageFont
@@ -197,9 +195,7 @@ from collections import OrderedDict
 
 import getpass              # Get username for file storage
 import notify2              # send inotify over python-dbus
-
 import locale               # To set thousands separator as , or .
-
 locale.setlocale(locale.LC_ALL, '')  # Use '' for auto locale selecting
 import numpy as np          # For image processing speed boost
 
@@ -259,6 +255,9 @@ MAX_DEPTH = 3               # Sanity check if starting at c:\ or /
 # TODO: Use sfx = mktemp XXX for Python with ascii_letter + digits, length 8:
 # https://www.educative.io/answers/how-to-generate-a-random-string-in-python
 # Remove User name from g.USER_ID since it no longer makes uniqueness
+# New filename would be: '/run/user/mserve/currently_playing_XXX' and allows
+# multiple mserve instances to run concurrently. However after a crash the
+# files will still be there.
 TMP_CURR_SONG = "/run/user/" + g.USER_ID + "/mserve.currently_playing"
 TMP_CURR_SAMPLE = "/run/user/" + g.USER_ID + "/mserve.current_sample"
 TMP_FFPROBE = "/run/user/" + g.USER_ID + "/mserve.ffprobe"
@@ -269,19 +268,6 @@ VU_METER_FNAME = "/run/user/" + g.USER_ID + "/mserve.vu-meter-mono.txt"
 VU_METER_LEFT_FNAME = "/run/user/" + g.USER_ID + "/mserve.vu-meter-left.txt"
 VU_METER_RIGHT_FNAME = "/run/user/" + g.USER_ID + "/mserve.vu-meter-right.txt"
 
-''' As of May 24, 2023:
-$ ll /run/user/1000/mserve*
--rw-rw-r-- 1 rick rick 191768 May 24 12:59 /run/user/1000/mserve.currently_playing
--rw-rw-r-- 1 rick rick  16514 May 24 12:57 /run/user/1000/mserve.ffmpeg.jpg
--rw-rw-r-- 1 rick rick   4454 May 24 12:57 /run/user/1000/mserve.ffprobe
--rw-rw-r-- 1 rick rick    326 May 23 05:30 /run/user/1000/mserve.scrape_ctl.json
--rw-rw-r-- 1 rick rick      5 May 24 12:59 /run/user/1000/mserve.vu-meter-left.txt
--rw-rw-r-- 1 rick rick      5 May 24 12:59 /run/user/1000/mserve.vu-meter-right.txt
-'''
-# Values from gnome-terminal to prevent window shrinking too small
-#WIN_MIN_WIDTH = 142  # Now in global variables
-#WIN_MIN_HEIGHT = 63
-
 KID3_INSTALLED = True
 KID3_PROGRAM = "xrandr --dpi 144 && kid3 "
 KID3_GEOMETRY = "1280x736"
@@ -291,11 +277,13 @@ FM_PROGRAM = "nautilus"
 
 # Chrome os Linux Beta doesn't support .grid_remove() properly
 GRID_REMOVE_SUPPORTED = True
+
 # When unselecting song in library, end song (if playing) and remove in list
-# TODO: clicking in library to remove song from playlist leaves music player
-# silent. Must click song in chron tree to start new song.
+# TODO: Unchecking current song in library leaves music player silent.
+# Must click song in chron tree to start new song.
 LIBRARY_UNSELECT_REMOVE_PLAYING = True
-# When selecting song in library, how does it go into currently playing list?
+
+# When checking song in library, how does it go into currently playing list?
 LIBRARY_SELECT_INSERT_PLAY_HERE = True
 LIBRARY_SELECT_INSERT_PLAY_NEXT = False
 LIBRARY_SELECT_INSERT_PLAY_RANDOM = False
@@ -310,11 +298,8 @@ first song inserted when the default would be the last song inserted.
 
 '''
 
-# Below reveals ALBUM_ art work which might be useful
-# FILE_TYPES = [".gif", ".png",".jpg", ".jpeg"]
 # Select music files only, no artwork
-# TODO: Make user definable and much larger list
-#       Deep scan with python-magic to read each file for song type
+# TODO: Deep scan with python-magic to read each file for song type
 FILE_TYPES = [".mp3", ".m4a", ".mp4", ".wma", ".oga", ".ogg", ".flac", ".wav", ".PCM"]
 NO_ARTIST_STR = "(No Artist)"   # global User defined labels
 NO_ALBUM_STR = "(No Album)"
@@ -336,14 +321,10 @@ $ rm /tmp/test.wav
 '''
 # inspection SpellCheckingInspection
 
-
-# TV commercial and intermission breaks
-TV_BREAK1 = 90
-TV_BREAK2 = 1080
-TV_VOLUME = 80  # 80=TV broadcast is 80% of mserve volume level
-
-# Firefox name which is really the sound source for big screen TV
-TV_SOUND = "Firefox"
+TV_BREAK1 = 90          # Hockey TV commercial is 90 seconds
+TV_BREAK2 = 1080        # Hockey TV intermission break is 18 minutes
+TV_VOLUME = 66          # Hockey music play 66% of mserve volume level
+TV_SOUND = "Firefox"    # Hockey broadcast is aired on Firefox browser
 
 # Number of seconds to Rewind or Fast Forward a song. Must be string
 REW_FF_SECS = "10"
@@ -374,8 +355,8 @@ def make_sorted_list(start_dir, toplevel=None, idle=None):
         In os.walk() we process 100 ms at a time and call lib_top.after() 
         for 100 ms so album artwork keeps spinning.
 
-        Before calling make_sorted_list() must ensure network is up. After a
-        resume from suspend network may be down.
+        Before calling make_sorted_list() must ensure network is up. After
+        resume from suspend, network may be down.
 
     '''
 
@@ -694,12 +675,11 @@ class PlayCommonSelf:
         self.ff_button = None               # tk.Button(text="⏩  +10 sec"
         self.next_button = None             # tk.Button(text=" Next 🠊 "
 
-        self.play_hockey_allowed = True     # False = FF and REW buttons instead
+        self.play_hockey_allowed = False    # False = FF and REW buttons instead
         self.play_hockey_active = None      # TV turned down and music play?
-        self.play_firefox_indices = None    # sink_list("Firefox") TV_SOUND
         self.play_hockey_secs = None        # Commercial = TV_BREAK1 seconds
         self.play_hockey_remaining = None   # init to self.play_hockey_secs
-        self.play_hockey_t_start = None     # time.time()
+        self.play_hockey_t_start = 0.0      # time.time()
         self.gone_fishing = None            # Class: Shark eating man
 
         ''' Show/Hide Playlist Chronology button (Frame 4) '''
@@ -853,8 +833,27 @@ class PlayCommonSelf:
         self.sync_ffplay_is_running = False     # Music playing for Syncing?
         self.loc_keep_awake_is_active = False   # Prevent remote host sleeping?
 
-        self.saved_selections = []          # 
-        self.filtered_selections = []       #
+        self.saved_selections = []          # lib_tree song ids in playlist order
+        # May 29, 2023 - sometimes saved_selections is a list and sometimes a tuple
+        #   self.saved_selections = tuple(L)  # convert list back into tuple
+        #   It should always be a list. No need for tuple conversion
+        self.filtered_selections = []       # Filtered songs from Chronology Pane
+
+        ''' Pending Playlist Updates from Checkbox Actions '''
+        self.pending_frame = None           # Hidden frame between TV & buttons
+        self.pending_grid_visible = False   # Is hidden frame visible now?
+        self.pending_additions = []         # List of checkbox additions and
+        self.pending_deletions = []         # deletions. Duplicates are removed.
+        self.pending_add_cnt = 0            # Count of additions and deletes.
+        self.pending_del_cnt = 0            # When both zero, grid removed.
+        self.pending_add_cnt_var = None     # Additions count
+        self.pending_add_song_var = None    # Last added song name
+        self.pending_del_cnt_var = None     # Deletions count
+        self.pending_del_song_var = None    # Last deleted song name
+        self.pending_tot_add_cnt = 0        # Total changes made without being
+        self.pending_tot_del_cnt = 0        # written to disk with "Save Playlist"
+        self.pending_update_btn = None      # Update Playlist from checked Button
+        self.pending_cancel_btn = None      # Cancel Playlist Update Button
 
 
 class MusicTree(PlayCommonSelf):
@@ -924,7 +923,7 @@ class MusicTree(PlayCommonSelf):
         self.lib_top_totals[1] = ""  # Playlist name makes title too long
 
         ''' Create frames '''
-        master_frame = tk.Frame(self.lib_top, bg="olive", relief=tk.RIDGE)
+        master_frame = tk.Frame(self.lib_top, bg="Olive", relief=tk.RIDGE)
         master_frame.grid(sticky=tk.NSEW)
         master_frame.columnconfigure(0, weight=1)
         master_frame.rowconfigure(0, weight=1)
@@ -936,10 +935,11 @@ class MusicTree(PlayCommonSelf):
         frame2.grid(row=0, column=0, sticky=tk.NSEW)
 
         ''' CheckboxTreeview List Box, Columns and Headings '''
-        self.lib_tree = CheckboxTreeview(frame2, show=('tree', 'headings'),
-                                         columns=("Access", "Size", "Selected", "StatTime",
-                                                  "StatSize", "Count", "Seconds",
-                                                  "SelSize", "SelCount", "SelSeconds"))
+        self.lib_tree = \
+            CheckboxTreeview(frame2, show=('tree', 'headings'),
+                             columns=("Access", "Size", "Selected", "StatTime",
+                                      "StatSize", "Count", "Seconds",
+                                      "SelSize", "SelCount", "SelSeconds"))
         # 'values' 0=Access, 1=Size, 2=Selected, 3=StatTime, 4=StatSize,
         #          5=Count, 6=Seconds, 7=SelSize, 8=SelCount, 9=SelSeconds
         # indices 3 to 9 are hidden. In treeview 10 columns appear with tree.
@@ -947,7 +947,8 @@ class MusicTree(PlayCommonSelf):
         self.lib_tree.heading(
             "#0", text="Click ▼ (collapse) ▶ (expand) an Artist or Album")
         self.lib_tree.column("Access", width=200, stretch=tk.YES)
-        self.lib_tree.heading("Access", text="Count / Last Played")
+        # TODO: When mserve gets metadata, but doesn't play song, keep old Access
+        self.lib_tree.heading("Access", text="Count / Last Access")
         self.lib_tree.column("Size", width=80, anchor=tk.E, stretch=tk.YES)
         self.lib_tree.heading("Size", text="Size " + CFG_DIVISOR_UOM, anchor=tk.E)
         self.lib_tree.column("Selected", width=80, anchor=tk.E, stretch=tk.YES)
@@ -957,10 +958,10 @@ class MusicTree(PlayCommonSelf):
         # In order to use .set method on columns they must be displayed. To
         # make "invisible", set width to 0 and stretch to tk.NO.
 
-        # Comment next two lines to show hidden columns
+        # Uncomment first pair of lines to show REGULAR columns, comment last pair
+        # Uncomment last pair of lines to show HIDDEN columns, comment first pair
         w = 0
         s = tk.NO
-        # Comment next two lines to show regular columns
         #w = 80
         #s = tk.YES
 
@@ -985,6 +986,8 @@ class MusicTree(PlayCommonSelf):
                                            "SelSize", "SelCount", "SelSeconds")
 
         ''' Treeview select item - custom select processing '''
+        self.lib_tree_open_states = []  # State of collapsed/expanded artists & albums
+        self.playlist_paths = []
         self.lib_tree.bind('<Button-1>', self.button_1_click)
         self.lib_tree.bind("<Button-3>", self.popup)
 
@@ -1025,17 +1028,21 @@ class MusicTree(PlayCommonSelf):
         self.lib_tree.configure(yscrollcommand=v_scroll.set)
 
         # Create a horizontal scrollbar linked to the frame.
+        # TODO Most of the times horizontal scroll not needed - make dynamic.
         h_scroll = tk.Scrollbar(frame2, orient=tk.HORIZONTAL, width=sbar_width,
                                 command=self.lib_tree.xview)
         h_scroll.grid(row=1, column=0, sticky=tk.EW)
         self.lib_tree.configure(xscrollcommand=h_scroll.set)
+
+        ''' Pending Playlist Updates from Checkbox Actions '''
+        self.create_pending_frame(master_frame)  # Hides after creation
 
         ''' Treeview Buttons '''
         frame3 = tk.Frame(master_frame, bg="Blue", bd=2, relief=tk.GROOVE,
                           borderwidth=BTN_BRD_WID)
         frame3.grid_rowconfigure(0, weight=1)
         frame3.grid_columnconfigure(0, weight=0)
-        frame3.grid(row=1, column=0, sticky=tk.NW)
+        frame3.grid(row=3, column=0, sticky=tk.NW)  # May 28, 2023 was row=2
 
         ''' ✘ Close Button ✘ ✔ '''
         self.lib_top.bind("<Escape>", self.close)
@@ -1048,49 +1055,47 @@ class MusicTree(PlayCommonSelf):
         #    thread = self.refresh_play_top
         #else:
         #    thread = None
-        self.tt.add_tip(self.lib_tree_btn1,
-                        "Close mserve and any windows mserve opened.", anchor="nw")
+        self.tt.add_tip(self.lib_tree_btn1, anchor="nw",
+                        text="Close mserve and any windows mserve opened.")
 
         ''' ▶  Play Button '''
         self.play_text = "▶  Play"  # play songs window is opened.
         self.lib_tree_btn2 = tk.Button(frame3, text=self.play_text,
-                                       width=BTN_WID, command=self.play_items)
+                                       width=BTN_WID + 2, command=self.play_items)
         self.lib_tree_btn2.grid(row=0, column=1, padx=2)
         self.tt.add_tip(self.lib_tree_btn2, "Play selected songs.", anchor="nw")
 
         ''' Save button '''
         # Floppy Disk U+1F4BE 💾  Hard Disk U+1F5B4 🖄
         self.save_text = "💾  Save playlist"  # save songs window is opened.
-        self.lib_tree_btn3 = tk.Button(frame3, text=self.save_text,
-                                       width=BTN_WID - 1, command=self.save_playlist)
+        self.lib_tree_btn3 = tk.Button(frame3, text=self.save_text, width=BTN_WID + 2,
+                                       command=self.write_playlist_to_disk)
         self.lib_tree_btn3.grid(row=0, column=2, padx=2)
-        self.tt.add_tip(self.lib_tree_btn3,
-                        "Save playlist (selected songs in sorted order).",
-                        anchor="nw")
+        self.tt.add_tip(self.lib_tree_btn3, anchor="nw",
+                        text="Save playlist (selected songs in sorted order).")
         ''' Load button '''
         self.load_text = "💾  Load playlist"  # Load songs window is opened.
         self.lib_tree_btn4 = tk.Button(frame3, text=self.load_text,
-                                       width=BTN_WID - 1, command=self.load_items)
+                                       width=BTN_WID + 2, command=self.load_items)
         self.lib_tree_btn4.grid(row=0, column=3, padx=2)
-        self.tt.add_tip(self.lib_tree_btn4,
-                        "Load new playlist (changes selections and sort order).",
-                        anchor="nw")
+        self.tt.add_tip(self.lib_tree_btn4, anchor="nw",
+                        text="Load new playlist (changes selections).")
+
         ''' Refresh Treeview Button u  1f5c0 🗀 '''
         ''' 🗘  Update differences Button u1f5d8 🗘'''
         self.rebuild_text = "🗘 Refresh library"  # Rebuild MusicTree
         self.lib_tree_btn5 = tk.Button(frame3, text=self.rebuild_text,
-                                       width=BTN_WID - 1, command=self.rebuild_lib_tree)
+                                       width=BTN_WID + 2, command=self.rebuild_lib_tree)
         self.lib_tree_btn5.grid(row=0, column=4, padx=2)
-        self.tt.add_tip(self.lib_tree_btn5, "Scan disk for songs added and removed.",
-                        anchor="ne")
-
+        self.tt.add_tip(self.lib_tree_btn5, anchor="ne",
+                        text="Scan disk for songs added and removed.")
         ''' Rip CD Button 🖸 (1f5b8) '''
         self.import_text = "🖸  Rip CD"
         self.lib_tree_btn6 = tk.Button(frame3, text=self.import_text,
                                        width=BTN_WID - 2, command=self.rip_cd)
         self.lib_tree_btn6.grid(row=0, column=5, padx=2)
-        self.tt.add_tip(self.lib_tree_btn6,
-                        "Convert songs from Audio CD to music files.", anchor="ne")
+        self.tt.add_tip(self.lib_tree_btn6, anchor="ne",
+                        text="Convert songs from Audio CD to music files.")
 
         ''' Colors for tags '''
         self.ignore_item = None
@@ -1107,52 +1112,61 @@ class MusicTree(PlayCommonSelf):
 
         ''' Menu bars: File, Edit, View, Search, About '''
         mb = tk.Menu(self.lib_top)
-        file_bar = tk.Menu(mb, tearoff=0)
-        file_bar.add_command(label="New Location", font=(None, MED_FONT),
-                             command=lambda: self.loc_add_new(caller='Drop', mode='Add'))
-        file_bar.add_command(label="Open Location & Play",
-                             font=(None, MED_FONT),
-                             command=lambda: self.loc_open_play(caller='Drop'))
-        file_bar.add_separator()
-        file_bar.add_command(label="New Playlist", font=(None, MED_FONT),
-                             command=self.new_items)
-        file_bar.add_command(label="Append Playlist", font=(None, MED_FONT),
-                             command=self.append_items)
-        file_bar.add_command(label="Open Playlist", font=(None, MED_FONT),
-                             command=self.load_items)
-        file_bar.add_command(label="Save Playlist", font=(None, MED_FONT),
-                             command=self.save_playlist)
+        self.file_menu = tk.Menu(mb, tearoff=0)
+        self.file_menu.add_command(label="New Location", font=(None, MED_FONT),
+                                   command=lambda: self.loc_add_new(caller='Drop',
+                                                                    mode='Add'))
+        self.file_menu.add_command(label="Open Location & Play", font=(None, MED_FONT),
+                                   command=lambda: self.loc_open_play(caller='Drop'))
+        self.file_menu.add_separator()
+        self.file_menu.add_command(label="New Playlist", font=(None, MED_FONT),
+                                   command=self.new_items)
+        self.file_menu.add_command(label="Append Playlist", font=(None, MED_FONT),
+                                   command=self.append_items)
+        self.file_menu.add_command(label="Open Playlist", font=(None, MED_FONT),
+                                   command=self.load_items)
         # UTF-8 3 dots U+2026 …
-        file_bar.add_command(label="Save Playlist as…", font=(None, MED_FONT),
-                             command=self.save_items)
-        file_bar.add_separator()
-        file_bar.add_command(label="Restart", font=(None, MED_FONT),
-                             command=self.restart)
-        file_bar.add_command(label="Exit", font=(None, MED_FONT),
-                             command=self.close)
-        file_bar.add_separator()
-        file_bar.add_command(label="Exit without saving Playlist", font=(None, MED_FONT),
-                             command=self.exit_without_save)
+        self.file_menu.add_command(label="Save Playlist as…", font=(None, MED_FONT),
+                                   command=self.save_items)
+        self.file_menu.add_separator()
+        self.file_menu.add_command(label="Save Play and Restart", font=(None, MED_FONT),
+                                   command=self.restart)
+        self.file_menu.add_command(label="Save Play and Exit", font=(None, MED_FONT),
+                                   command=self.close)
+        self.file_menu.add_separator()
+        self.file_menu.add_command(label="Save Playlist", font=(None, MED_FONT),
+                                   command=self.write_playlist_to_disk, state=tk.DISABLED)
+        self.file_menu.add_command(label="Exit without saving Playlist", font=(None, MED_FONT),
+                                   command=self.exit_without_save, state=tk.DISABLED)
 
-        mb.add_cascade(label="File", menu=file_bar, font=(None, MED_FONT))
+        mb.add_cascade(label="File", menu=self.file_menu, font=(None, MED_FONT))
 
         # Edit Menu - Edit Location
         edit_bar = tk.Menu(mb, tearoff=0)
         edit_bar.add_command(label="Edit Location", font=(None, MED_FONT),
-                             command=lambda: self.loc_edit(caller='Drop', mode='Edit'))
+                             command=lambda: self.loc_edit(
+                                 caller='Drop', mode='Edit'))
         edit_bar.add_command(label="Compare Location", font=(None, MED_FONT),
-                             command=lambda: self.loc_compare(caller='Drop', mode='Compare'))
+                             command=lambda: self.loc_compare(
+                                 caller='Drop', mode='Compare'))
         edit_bar.add_command(label="Forget Location", font=(None, MED_FONT),
-                             command=lambda: self.loc_forget(caller='Drop', mode='Forget'))
+                             command=lambda: self.loc_forget(
+                                 caller='Drop', mode='Forget'))
 
         mb.add_cascade(label="Edit", menu=edit_bar, font=(None, MED_FONT))
 
         # View menu - Show locations and SQL library
         view_bar = tk.Menu(mb, tearoff=0)
         view_bar.add_command(label="Show Location", font=(None, MED_FONT),
-                             command=lambda: self.show_location(caller='Drop', mode='Show'))
+                             command=lambda: self.show_location(
+                                 caller='Drop', mode='Show'))
         # NOTE: following is option #1 when tear off = 0
-        view_bar.add_command(label="Use TV Commercial buttons", font=(None, MED_FONT),
+        self.play_hockey_allowed = self.get_hockey_state()
+        if self.play_hockey_allowed:
+            text = "Enable FF/Rewind buttons"
+        else:
+            text = "Use TV Commercial buttons"
+        view_bar.add_command(label=text, font=(None, MED_FONT),
                              command=lambda: self.toggle_hockey(view_bar))
         view_bar.add_separator()  # If countdown running, don't show options
 
@@ -1173,7 +1187,6 @@ class MusicTree(PlayCommonSelf):
 
         ''' Load last selections and begin playing with last song '''
         ext.t_end('no_print')  # May 24, 2023 - MusicTree() : 1.0563580990
-
 
         #self.load_last_selections()  # Create self.saved_selections[] and play all
         self.fast_play_startup()  # Read SORTED_LIST from make_sorted_list
@@ -1201,6 +1214,410 @@ class MusicTree(PlayCommonSelf):
                 # self.close() has set to None
                 break
             self.lib_top.after(50)
+
+    def create_pending_frame(self, master_frame):
+        """ WIP """
+        ''' Frame for Pending Playlist Updates from Checkbox Actions '''
+        text = "Pending Playlist Updates from Checkbox Actions"
+        self.pending_frame = tk.LabelFrame(
+            master_frame, borderwidth=BTN_BRD_WID, text=text,
+            relief=tk.GROOVE, font=('calibre', 13, 'bold'))
+        self.pending_frame.grid(row=2, column=0, sticky=tk.NSEW)
+        self.pending_frame.grid_columnconfigure(3, weight=5)  # Song name extra wide
+
+        ms_font1 = (None, MON_FONTSIZE)  # Temporary for error message
+        ms_font2 = (None, MON_FONTSIZE)  # Temporary for error message
+        tk.Label(self.pending_frame, text='Addition Count:',
+                 font=ms_font1).grid(row=0, column=0, sticky=tk.W, padx=2, pady=2)
+        self.pending_add_cnt_var = tk.Label(self.pending_frame, font=ms_font2,
+                                            text="0", padx=2, pady=2, fg="Green")
+        self.pending_add_cnt_var.grid(row=0, column=1, sticky=tk.W)
+        tk.Label(self.pending_frame, text='Last Added:', font=ms_font1,
+                 padx=2, pady=2).grid(row=0, column=2, sticky=tk.W, padx=2)
+        self.pending_add_song_var = tk.Label(self.pending_frame, text='', fg="Green",
+                                             font=ms_font1, padx=2, pady=2)
+        self.pending_add_song_var.grid(row=0, column=3, sticky=tk.W, padx=2, pady=2)
+
+        tk.Label(self.pending_frame, text='Deletion Count:',
+                 font=ms_font1).grid(row=1, column=0, sticky=tk.W, padx=2)
+        self.pending_del_cnt_var = tk.Label(self.pending_frame, font=ms_font2,
+                                            text="0", padx=2, pady=2, fg="Red")
+        self.pending_del_cnt_var.grid(row=1, column=1, sticky=tk.W)
+        tk.Label(self.pending_frame, text='Last Deleted:',
+                 font=ms_font1, padx=2, pady=2).grid(row=1, column=2, sticky=tk.W, padx=2)
+        self.pending_del_song_var = tk.Label(self.pending_frame, text='', fg="Red",
+                                             font=ms_font1, padx=2, pady=2)
+        self.pending_del_song_var.grid(row=1, column=3, sticky=tk.W, padx=2, pady=2)
+
+        # Button that will cancel changes
+        self.pending_cancel_btn = tk.Button(self.pending_frame, text='Cancel',
+                                            command=self.pending_reset, font=ms_font1)
+        self.pending_cancel_btn.grid(row=2, column=0, sticky=tk.W)
+        self.tt.add_tip(self.pending_cancel_btn, anchor="nw",
+                        text="Cancel changes. Playlist remains unchanged.")
+
+        # Button that will apply changes
+        self.pending_update_btn = tk.Button(self.pending_frame, text='Apply',
+                                            command=self.pending_apply, font=ms_font1)
+        # For some reason when applying deletions to playlist song starts playing???
+        # lambda doesn't fix the problem though...
+        #                                    command=lambda: self.pending_apply(),
+        #                                    font=ms_font1)
+
+        self.pending_update_btn.grid(row=2, column=1, sticky=tk.W)
+        self.pending_update_btn.focus_force()  # First data entry field
+        self.tt.add_tip(self.pending_update_btn, anchor="nw",
+                        text="Temporarily update changes to playlist in memory.")
+
+        ''' Remove grid for tracking playlist changes until lib_tree box checked. '''
+        self.pending_grid_visible = True
+        self.pending_remove_grid()
+        self.lib_top.update_idletasks()
+
+    def pending_remove_grid(self):
+        if not self.pending_grid_visible:
+            print("mserve.py pending_remove_grid() called but already invisible.")
+            return
+        self.pending_grid_visible = False
+        if GRID_REMOVE_SUPPORTED:
+            self.pending_frame.grid_remove()
+
+    def pending_restore_grid(self):
+        # When applying or canceling updates, restore open_states
+        self.lib_tree_open_states = self.get_all_open_states()
+        # NOTE: The very first check that restored the grid will appear
+        #       As initially opened. All subsequent albums opened will
+        #       be closed.
+        if self.pending_grid_visible:
+            toolkit.print_trace()
+            print("mserve.py pending_restore_grid() called but already visible.")
+            return
+        if GRID_REMOVE_SUPPORTED:
+            self.pending_frame.grid()
+            self.pending_grid_visible = True
+
+    def pending_apply(self):
+        """
+            The "play_sel" tag reveals iid used for testing if deleted iid is
+            less than.
+
+            Save current song name and delete all songs. Then restore
+            current next for inserting. Finally, write_playlist_to_disk and
+            call fast_play_startup(start_play = False)
+            
+            Set self.ndx and last ndx accordingly. Note if currently playing
+            song is being deleted it will have to be paused then 
+            self.song_seq('restart') called.
+            
+            For pending_apply() insert all songs behind/after current self.ndx. 
+            Better yet, simply start playing with first song inserted. If no
+            song inserted, use last song ndx - deleted count prior to indexes.
+            
+            Because playlist is random each song deleted must be checked If 
+            playlist.index(iid) less than self.ndx to add to delete before 
+            index count.
+            
+            Additions will be processed in same order user selected them and
+            inserted after currently playing song.
+            
+            Big question does user want new items to play right away or after
+            currently playing song.
+            
+            Check if encoding.py adds songs to playlist.
+            
+            When closing open_states skip over artist the music player opened.
+            Also music player shouldn't close what pending opened.
+            
+            Apply button must know if working with new playlist?
+            
+            When user selects new playlist and then picks cancel, restore
+            previous playlist which presumably is still playing or paused at
+            previous current song.
+            
+            If music playing when apply is picked simply pause music, save 
+            everything then restart with resume playing.        
+        """
+
+        print("\n==================== mserve.py self.pending_apply() ====================")
+
+        ''' Step 1 - Establish current song iid & ndx '''
+        print("\n''' Step 1 - Establish current song iid & ndx '''")
+
+        if self.play_top_is_active:
+            tag_selections = self.lib_tree.tag_has("play_sel")  # Tuple with Id
+            current_playing_id = tag_selections[0]
+            if len(tag_selections) != 1:
+                print("mserve.py pending_apply() 'play_sel' tag count is not 1:",
+                      len(tag_selections))
+            if current_playing_id != self.saved_selections[self.ndx]:
+                print("mserve.py pending_apply() current_playing_id:",
+                      current_playing_id, "!= self.saved_selections[self.ndx]:",
+                      self.saved_selections[self.ndx])
+            current_playing_ndx = self.ndx
+        else:
+            current_playing_ndx = self.ndx  # When no play_top, self.ndx correct
+            current_playing_id = self.saved_selections[self.ndx]
+
+        # Older code would recreate self.saved_selections as tuple
+        print("Checking type(self.saved_selections):", type(self.saved_selections))
+        if not isinstance(self.saved_selections, list):
+            print("type(self.saved_selections):", type(self.saved_selections),
+                  "Forcing to <type 'list'>")
+            self.saved_selections = list(self.saved_selections)
+
+        print("current_playing_id:", current_playing_id)
+        print("current_playing_ndx:", current_playing_ndx)
+        current_playing_deleted = False
+
+        print("current len(self.saved_selections):", len(self.saved_selections),
+              " | current len(self.playlist_paths):", len(self.playlist_paths))
+        new_song_count = len(self.saved_selections) + self.pending_add_cnt -\
+            self.pending_del_cnt
+        print("len(self.saved_selections) + pending_add_cnt - pending_del_cnt:",
+              new_song_count)
+
+        if new_song_count < 2:
+            print("Playlist needs at least two songs.")
+            return
+
+        ''' Step 2 - Delete songs from playlist '''
+        print("\n''' Step 2 - Delete songs from playlist '''")
+        prior_to_current_count = 0
+        delete_play_ndx_list = []
+        delete_ndx_list = []
+
+        for delete_iid in self.pending_deletions:
+
+            delete_path = self.song_list[int(delete_iid)]
+            try:
+                delete_play_path_ndx = self.playlist_paths.index(delete_path)
+                delete_play_ndx_list.append(delete_play_path_ndx)
+            except ValueError:
+                toolkit.print_trace()
+                print("Could not find song in playlist:", delete_path)
+                continue
+
+            try:
+                delete_ndx = self.saved_selections.index(delete_iid)
+                delete_ndx_list.append(delete_ndx)
+                # Note delete_ndx is 1 less than Playlist Play Number
+            except ValueError:
+                toolkit.print_trace()
+                print("Could not find iid in self.saved_selections:", delete_iid)
+                continue
+
+            print("delete_iid:", delete_iid, "delete_ndx:", delete_ndx)
+            print("delete_path:", delete_path)
+            if delete_iid == current_playing_id:
+                current_playing_deleted = True
+                print("current_playing_deleted:", current_playing_deleted)
+            if delete_ndx < self.ndx:
+                prior_to_current_count += 1  # self.ndx reduced by count
+                print("prior_to_current_count:", prior_to_current_count)
+
+        print("delete_play_ndx_list:", delete_play_ndx_list)
+        print("delete_ndx_list     :", delete_ndx_list)
+        if len(delete_play_ndx_list) != self.pending_del_cnt:
+            print("len(delete_play_ndx_list) != self.pending_del_cnt")
+            print(len(delete_play_ndx_list), "!=", self.pending_del_cnt)
+
+        if len(delete_ndx_list) != self.pending_del_cnt:
+            print("len(delete_ndx_list) != self.pending_del_cnt")
+            print(len(delete_ndx_list), "!=", self.pending_del_cnt)
+
+        for index in sorted(delete_play_ndx_list, reverse=True):
+            # Code credit: https://stackoverflow.com/a/11303234/6929343
+            del self.playlist_paths[index]  # File is: lc.FNAME_LAST_PLAYLIST
+            print("deleting self.playlist_paths[index] in reverse order:", index)
+
+        for index in sorted(delete_ndx_list, reverse=True):
+            del self.saved_selections[index]
+            print("deleting self.saved_selections[index] in reverse order:", index)
+
+        if delete_play_ndx_list != delete_ndx_list:
+            print("mserve.py pending_apply(): delete_play_ndx_list != delete_ndx_list")
+
+        self.ndx = current_playing_ndx - prior_to_current_count
+        """
+            Changing self.ndx above will force same song to automatically restart play.
+            If current playing was removed from playlist then song after is restarted.
+
+            Some variables to change:
+
+                self.last_started = self.ndx
+                self.current_song_path = self.real_path(list_index)
+                self.play_metadata(self.current_song_path)
+                #global E_WIDTH
+                E_WIDTH = 32
+                self.current_song_artist.set(self.ellipsis(self.Artist, E_WIDTH))
+                self.current_song_album.set(self.ellipsis(self.Album, E_WIDTH))
+                self.current_song_name.set(self.ellipsis(self.Title, E_WIDTH))
+                self.saved_DurationSecs = self.DurationSecs
+                self.saved_DurationMin = tmf.mm_ss(self.saved_DurationSecs)
+                ext.t_end('no_print')
+                if not self.last_started == self.ndx:  # Fast clicking Next button?
+                    return
+
+        """
+
+        """ For reference
+            ''' Save full path of selected songs in current play order '''
+            save_songs = []
+            song_count = 0
+            for s_ndx in self.saved_selections:
+                if s_ndx.startswith("I"):
+                    print('Invalid saved_sections:', s_ndx,
+                          self.lib_tree.item(s_ndx, 'text'))
+                    continue
+                ndx = int(s_ndx)  # string to integer
+                save_songs.append(self.song_list[ndx])  # Get full path
+                song_count += 1  # What if zero?
+    
+            with open(lc.FNAME_LAST_PLAYLIST, "wb") as f:
+                # store the data as binary data stream
+                pickle.dump(save_songs, f)  # Save song list
+    
+        """
+
+        ''' Step 3 - Add songs to playlist '''
+        print("\n''' Step 3 - Add songs to playlist '''")
+        insert_point = self.ndx + 1  # Insert after current playing song
+
+        insert_play_paths = []
+        for insert_iid in self.pending_additions:
+            insert_play_paths.append(self.song_list[int(insert_iid)])
+            print("Building playlist path:", self.song_list[int(insert_iid)])
+
+        if len(insert_play_paths) != self.pending_add_cnt:
+            print("len(insert_play_paths) != self.pending_add_cnt")
+            print(len(insert_play_paths), "!=", self.pending_add_cnt)
+
+        if len(self.pending_additions) != self.pending_add_cnt:
+            print("len(self.pending_additions) != self.pending_add_cnt")
+            print(len(self.pending_additions), "!=", self.pending_add_cnt)
+
+        if insert_point >= len(self.saved_selections):
+            self.saved_selections.extend(self.pending_additions)
+            self.playlist_paths.extend(insert_play_paths)
+            print("Appending at end:", len(self.saved_selections),
+                  "self.pending_additions:", self.pending_additions)
+        else:
+            self.saved_selections[insert_point:insert_point] = self.pending_additions
+            self.playlist_paths[insert_point:insert_point] = insert_play_paths
+            print("Inserting at insert_point:", insert_point,
+                  " | self.pending_additions:", self.pending_additions)
+
+        if self.pending_add_cnt > 0:
+            print("First addition insert self.playlist_paths.index[insert_play_paths[0]]:")
+            first_path = insert_play_paths[0]
+            try:
+                first_ndx = self.playlist_paths.index(first_path)
+                print("First addition inserted self.playlist_paths.index:", first_ndx)
+                print(first_path)
+            except ValueError:
+                first_ndx = self.playlist_paths.index(first_path)
+
+        else:
+            print("self.pending_add_cnt is zero:", self.pending_add_cnt)
+
+        if self.ndx < 0:
+            print("mserve.py pending_apply() self.ndx is negative:", self.ndx)
+            self.ndx = 0
+        if self.ndx >= len(self.saved_selections):
+            print("mserve.py pending_apply() self.ndx:", self.ndx,
+                  "greater than len(self.saved_selections) - 1:", 
+                  len(self.saved_selections) - 1)
+            self.ndx = len(self.saved_selections) - 1
+
+        """ Reference play_insert()
+            if not LIBRARY_SELECT_INSERT_PLAY_HERE:
+                print("LIBRARY_SELECT_INSERT_PLAY_HERE must be true")
+                return
+    
+            # Possible if nothing is playing and new library was loaded?
+            if self.ndx > len(self.saved_selections) - 1:
+                self.ndx = 0
+                print('play_insert(): Unplanned resetting self.ndx = 0')
+    
+            # print ('Inserting song iid:',iid, 'at:',self.ndx)
+            curr_play_id = self.saved_selections[self.ndx]  # Get current song ID
+            L = list(self.saved_selections)  # convert tkinter tuple to list
+            L[self.ndx:self.ndx] = [iid]  # Insert song new ID here
+            self.saved_selections = tuple(L)  # convert list back into tuple
+    
+            # Remove currently playing red tag
+            tags = self.lib_tree.item(curr_play_id)['tags']
+            if "play_sel" in tags:
+                tags.remove("play_sel")
+                self.lib_tree.item(curr_play_id, tags=tags)
+    
+            # Set treeview selection number
+            number_str = self.play_padded_number(
+                self.ndx + 1, len(str(len(self.saved_selections))))
+            self.lib_tree.set(iid, "Selected", number_str)
+    
+            if self.play_top_is_active:  # Play window open?
+                self.last_started = self.ndx  # For fast clicking 'Next'
+                self.song_set_ndx(self.ndx)  # Start playing next song, ndx + 1
+                # Remove red highlighting 'play_sel' of old song 'red'
+                # If tagged as currently playing, remove it.
+                self.play_chron_create()  # Rebuild with new song
+
+        """
+
+        ''' Step 4 - Save total playlist change counts and reset '''
+        print("\n''' Step 4 - Save total playlist change counts and reset '''")
+        if current_playing_deleted:
+            print("We cannot start up with same song, it's deleted")
+
+        print("New len(self.saved_selections):", len(self.saved_selections),
+              " | New len(self.playlist_paths):", len(self.playlist_paths))
+
+        self.pending_tot_add_cnt += self.pending_add_cnt
+        self.pending_tot_del_cnt += self.pending_del_cnt
+
+        """ Enable dropdown menu options for new playlist in memory:
+        change self.file_menu to self.file_menu
+        self.file_menu.add_command(label="Save Playlist", font=(None, MED_FONT),
+                             command=self.write_playlist_to_disk, state=tk.DISABLED)
+        self.file_menu.add_command(label="Exit without saving Playlist", font=(None, MED_FONT),
+                             command=self.exit_without_save, state=tk.DISABLED)        
+        """
+        self.file_menu.entryconfig("Save Playlist", state=tk.NORMAL)
+        self.file_menu.entryconfig("Exit without saving Playlist", state=tk.NORMAL)
+
+        ''' Rebuild chronology treeview '''
+        #print("self.pp_state BEFORE calling self.play_chron_create():", self.pp_state)
+        self.play_chron_create()  # When applying additions, stays paused.
+        #print("self.pp_state AFTER calling self.play_chron_create():", self.pp_state)
+        # When applying deletions, pause is reversed and starts playing from song start?
+        
+        ''' Call reset which reads playlist in memory and applies to lib_tree'''
+        #print("self.pp_state BEFORE calling self.pending_reset():", self.pp_state)
+        self.pending_reset()
+        #print("self.pp_state AFTER calling self.pending_reset():", self.pp_state)
+
+        #print("self.pp_state BEFORE calling self.lib_tree.update_idletasks():", self.pp_state)
+        self.lib_tree.update_idletasks()
+        #print("self.pp_state AFTER calling self.lib_tree.update_idletasks():", self.pp_state)
+
+        current_playing_ndx = self.ndx  # When no play_top, self.ndx is still correct
+        current_playing_id = self.saved_selections[self.ndx]
+        print("current_playing_id:", current_playing_id)
+        print("current_playing_ndx:", current_playing_ndx)
+
+    def pending_reset(self):
+        self.pending_additions = []
+        self.pending_deletions = []
+        # Rebuild checkboxes, selected totals, song play order numbers
+        # Get current open states to reopen after cancel processing
+        # Uncheck all artists, albums, songs and "songsel" tags
+        self.clear_all_checks_and_selects()  # Clear in lib_tree music library
+        self.set_all_checks_and_selects()  # Rebuild using playlist in memory
+        ''' Restore previous open states when we first opened grid '''
+        self.apply_all_open_states(self.lib_tree_open_states)
+        # Restore old open states
+        self.pending_remove_grid()
 
     def populate_lib_tree(self, delayed_textbox):
 
@@ -1307,8 +1724,6 @@ class MusicTree(PlayCommonSelf):
             self.tree_col_range_replace(str(i), 6,
                                         [1, 0, 0, 0, 0])
 
-
-
     def fast_lib_tree_create(self, delayed_textbox):
 
         """ 
@@ -1363,11 +1778,6 @@ class MusicTree(PlayCommonSelf):
                 #   values=("",  "",  "",  0.0,  0,  0,    0,  0,  0 )
                 #                1         3         5         7
                 #                Size      StatTime  Count     sCount
-                #                       Loc     Songs   Time    Count sSize sSeconds
-                #                       0       2       4       6     8     10
-                # self.lib_top_totals=[ "", "", "", "", "",  0, 0, 0, 0, 0, 0 ]
-                #                           1       3        5     7     9
-                #                           Play    Space    Size  Secs  sCount
 
                 # Treeview bug inserts integer 0 as string 0, must overwrite
                 # At position 5, replace next 6 positions with 0
@@ -1427,9 +1837,11 @@ class MusicTree(PlayCommonSelf):
                 self.tree_col_parent_format(album, "album_sel")
         # ext.t_end('no_print')
 
-    def toggle_select(self, song, album, artist, song_number=0):
+    def toggle_select(self, song, album, artist):
         """ Toggle song selection off and on. Update selected values and
-            roll up totals into parents.
+            roll up totals into parents. Only called when manually checking
+            boxes. Never called for batched checkbox processing on load or
+            Process Pending functions.
         """
         # 'values' 0=Access, 1=Size, 2=Selected Size, 3=StatTime, 4=StatSize,
         #          5=Count, 6=Seconds, 7=SelSize, 8=SelCount, 9=SelSeconds
@@ -1441,13 +1853,15 @@ class MusicTree(PlayCommonSelf):
         # Can't Replace "songsel" with "checked" because artist is checked too
         if "songsel" in tags:
             # We will toggle off and subtract from selected parent totals
+            old = self.lib_tree.item(song)['values'][2]  # "Selected" column ndx 2
+            if old == "Adding":
+                self.lib_tree.set(song, "Selected", "")  # Reset to nothing
+            else:
+                self.lib_tree.set(song, "Selected", "Deleting")  # Will be deleted
             tags.remove("songsel")
-            self.lib_tree.set(song, "Selected", "")  # Blank selected size
             self.lib_tree.item(song, tags=tags)
             # noinspection PyProtectedMember
             self.lib_tree._uncheck_ancestor(song)  # in CheckboxTreeview()
-            if self.manually_checked:  # Did user manually check the box?
-                self.play_remove(song)  # Remove from playlist
             # Get StatSize, Count and Seconds multiplying by negative 1
             adj_list = [element * -1 for element in
                         self.lib_tree.item(song)['values'][total_values]]
@@ -1455,24 +1869,19 @@ class MusicTree(PlayCommonSelf):
         else:
             # We will toggle on and add to selected parent totals
             tags.append("songsel")
-            # May 25, 2023 - load_last_selections() will pass song_number
-            if song_number == 0:
-                try:
-                    song_number = self.saved_selections.index(song) + 1
-                except ValueError:
-                    print('mserve.py toggle_select(): song not found iid:', song)
-                    song_number = 0
-            number_str = self.play_padded_number(
-                song_number, len(str(len(self.saved_selections))))
-            #print("number_str, song_number, len(self.saved_selections):",
-            #      number_str, song_number, len(self.saved_selections))
-            # self.lib_tree.set(song, "Selected", self.lib_tree.set(song, "Size"))
+            try:
+                song_number = self.saved_selections.index(song) + 1
+                number_str = self.play_padded_number(
+                    song_number, len(str(len(self.saved_selections))))
+            except ValueError:
+                # print('mserve.py toggle_select(): song not found iid:', song)
+                song_number = 0
+                number_str = "Adding"  # Number will be assigned when inserted
+
             self.lib_tree.set(song, "Selected", number_str)
             self.lib_tree.item(song, tags=tags)
             # noinspection PyProtectedMember
             self.lib_tree._check_ancestor(song)  # in CheckboxTreeview()
-            if self.manually_checked:  # Did user manually check the box?
-                self.play_insert(song)  # Insert into playlist
             # Get StatSize, Count and Seconds
             adj_list = self.lib_tree.item(song)['values'][total_values]  # 1 past
 
@@ -1481,14 +1890,17 @@ class MusicTree(PlayCommonSelf):
         self.tree_col_range_add(artist, 8, adj_list, tagsel='artist_sel')
         self.tree_title_range_add(8, adj_list)  # Pass start index
 
-    def tree_col_range_replace(self, iid, numb, init_list):
+    def tree_col_range_replace(self, iid, numb, init_list, tagsel=None):
         """ Initialize treeview columns to list of values
         """
         for i, new_val in enumerate(init_list):
             col_str = "#" + str(numb + i)  # eg '#3'
             self.lib_tree.set(iid, col_str, new_val)
 
-    def tree_col_range_add(self, iid, numb, add_list, tagsel=""):
+        if tagsel:
+            self.tree_col_parent_format(iid, tagsel)
+
+    def tree_col_range_add(self, iid, numb, add_list, tagsel=None):
         """ Add list of values to contiguous treeview columns
             To subtract just add negative numbers.
         """
@@ -1538,6 +1950,24 @@ class MusicTree(PlayCommonSelf):
             self.lib_tree.set(iid, "Selected", "")  # Do we need to clear?
 
         self.lib_tree.item(iid, tags=tags)
+
+    def tree_title_zero_selected(self):
+        """ Called before batch update that calculates selected for entire
+            playlist.
+                 8 = (SelSize)
+                 9 = (SelCount)
+                10 = (SelSeconds)
+        """
+        # Copy and paste legend into code for guidance
+        #                       Loc     Songs   Time    Count sSize sSeconds
+        #                       0       2       4       6     8     10
+        # self.lib_top_totals=[ "", "", "", "", "",  0, 0, 0, 0, 0, 0 ]
+        #                           1       3        5     7     9
+        #                           Play    Space    Size  Secs  sCount
+
+        self.lib_top_totals[8] = 0
+        self.lib_top_totals[9] = 0
+        self.lib_top_totals[10] = 0
 
     def tree_title_range_add(self, start_ndx, add_list):
         """ list of values to add to title bar
@@ -2977,29 +3407,51 @@ class MusicTree(PlayCommonSelf):
         # get item id (iid) matching checkbox that was just clicked
         item = self.lib_tree.identify_row(y)
 
-        """ Warning if status is tri-state, all will be selected. """
-        # Call CheckboxTreeview function first to let it flag item(s).
+        ''' Set object for warning messages below. '''
+        if self.lib_tree.tag_has("Artist", item):
+            parent = "Artist"
+        elif self.lib_tree.tag_has("Album", item):
+            parent = "Album"
+        else:
+            parent = None
+
+        ''' Warning if status is tri-state, all will be selected. '''
         if self.lib_tree.tag_has("tristate", item):
             dialog = message.AskQuestion(
                 self.lib_top, thread=self.refresh_play_top,
-                title="Discard unique selections.",
-                text="All items will be selected and unique selections lost.")
+                title="Discard custom unchecked?",
+                text="All songs under " + parent + " will be checked.\n" +
+                     "Some Songs are unchecked and will be reversed.")
             if dialog.result != 'yes':
                 return
 
-        """ Warning if unchecking parent all children will be unchecked. """
-        # Call CheckboxTreeview function first to let it flag item(s).
-        if self.lib_tree.tag_has("checked", item):
-            if self.lib_tree.tag_has("Artist", item) or \
-                    self.lib_tree.tag_has("Album", item):
-                dialog = message.AskQuestion(
-                    parent=self.lib_top, thread=self.refresh_play_top,
-                    title="Discard child selections.",
-                    text="All child items will be unchecked.")
-                if dialog.result != 'yes':
-                    return
+        ''' Warning if unchecking parent all children will be unchecked. '''
+        if self.lib_tree.tag_has("Artist", item):
+            parent = "Artist"
+        elif self.lib_tree.tag_has("Album", item):
+            parent = "Album"
+        else:
+            parent = None
+
+        ''' Warning if checking parent all children will be checked. '''
+        if self.lib_tree.tag_has("checked", item) and parent is not None:
+            dialog = message.AskQuestion(
+                parent=self.lib_top, thread=self.refresh_play_top,
+                title="Uncheck all songs below?",
+                text="All songs under " + parent + " will be unchecked.")
+            if dialog.result != 'yes':
+                return
+
+        if self.lib_tree.tag_has("unchecked", item) and parent is not None:
+            dialog = message.AskQuestion(
+                parent=self.lib_top, thread=self.refresh_play_top,
+                title="Check all songs below?",
+                text="All songs under " + parent + " will be checked.")
+            if dialog.result != 'yes':
+                return
 
         # Call CheckboxTreeview function check (select/unselect) item.
+        # May 29, 2023 - Review calling _box_click, can it call us instead?
         # noinspection PyProtectedMember
         self.lib_tree._box_click(event)
 
@@ -3011,23 +3463,24 @@ class MusicTree(PlayCommonSelf):
 
         else:
             # No need to test tristate, item must be checked or unchecked.
+            # If item was tri-state, it becomes unchecked when clicked.
             print("button_1_click() ERROR: No 'checked' or 'unchecked' tag.",
                   self.lib_tree.item(item, 'tags'))
             return
 
     def process_unchecked(self, item):
         """ We just unchecked the item, update totals
-
-            TODO: Removing from playlist artwork keeps spinning but playing
-                  stops. Instead, next song should start playing.
         """
+        self.manually_checked = True  # Used for self.reverse/self.toggle
         tags = self.lib_tree.item(item)['tags']
         if 'Artist' in tags or 'Album' in tags:
             self.set_all_parent(item, 'Del')
         elif 'Song' in tags:
+            self.pending_append(item, 'Del')
             self.reverse(item)
         else:
-            print('process_unchecked() bad tag:', tags)
+            print('process_unchecked() bad line type tag:', tags)
+        self.manually_checked = False
 
     def process_checked(self, item):
         """ We just checked the item, update totals
@@ -3041,9 +3494,10 @@ class MusicTree(PlayCommonSelf):
         if 'Artist' in tags or 'Album' in tags:
             self.set_all_parent(item, 'Add')
         elif 'Song' in tags:
+            self.pending_append(item, 'Add')
             self.reverse(item)
         else:
-            print('process_checked() bad tag:', tags)
+            print('process_checked() bad line type tag:', tags)
         self.manually_checked = False
 
     def set_all_parent(self, Id, action):
@@ -3063,16 +3517,72 @@ class MusicTree(PlayCommonSelf):
             print("set_all_parent() error: 'Id' is neither 'Album' nor 'Artist'")
 
     def set_all_songs(self, Id, action):
-        """ set single song selected or unselected """
+        """ set all songs selected or unselected """
         # count = 0
         for child in self.lib_tree.get_children(Id):
             # Check selected column being non-blank
             selected = self.lib_tree.item(child)['values'][2]
-            if (selected == "" and action == "Add") \
-                    or (not selected == "" in tags and action == "Del"):
+            # NOTE: selected may soon be "Pending" in addition to "No. 999"
+            if (selected == "" and action == "Add") or \
+                    (not selected == "" in tags and action == "Del"):
+                self.pending_append(child, action)
                 self.reverse(child)
                 # count += 1
         # print(self.lib_tree.item(Id,'text'),'action:',action,'count:',count)
+
+    def pending_append(self, item, action):
+        """ Add song to pending_additions or pending_deletions lists
+        """
+        if action is 'Add':
+            self.pending_additions.append(item)
+        elif action is 'Del':
+            self.pending_deletions.append(item)
+        else:
+            print("mserve.py pending_append(" + item + ", action):" +
+                  " has invalid action:", action)
+
+        '''' May have accidentally added and then deleted and vice versa '''
+        self.pending_duplicates()
+
+    def pending_duplicates(self):
+        """ If song exists in pending_additions and pending_deletions
+            remove the song from both lists. Duplicates occur when a song
+            is checked and then unchecked.
+        """
+        duplicates = []
+        for song in self.pending_additions:
+            if song in self.pending_deletions:  # Addition in Deletions list?
+                duplicates.append(song)
+        for song in self.pending_deletions:
+            if song in self.pending_additions:  # Deletion in Additions list?
+                if song not in duplicates:  # Not already in Duplicates list?
+                    duplicates.append(song)
+
+        for song in duplicates:  # Remove songs duplicated in both lists
+            self.pending_additions.remove(song)
+            self.pending_deletions.remove(song)
+
+        self.pending_add_cnt = len(self.pending_additions)  # Additions Count
+        if self.pending_add_cnt > 0:
+            add_last_text = self.lib_tree.item(
+                self.pending_additions[self.pending_add_cnt - 1], "text")
+        else:
+            add_last_text = "None"
+
+        self.pending_del_cnt = len(self.pending_deletions)  # Deletions Count
+        if self.pending_del_cnt > 0:
+            del_last_text = self.lib_tree.item(
+                self.pending_deletions[self.pending_del_cnt - 1], "text")
+        else:
+            del_last_text = "None"
+
+        ''' Update tkinter fields on screen '''
+        self.pending_add_cnt_var.config(text=str(self.pending_add_cnt))
+        self.pending_del_cnt_var.config(text=str(self.pending_del_cnt))
+        self.pending_add_song_var.config(text=add_last_text)
+        self.pending_del_song_var.config(text=del_last_text)
+        if not self.pending_grid_visible:
+            self.pending_restore_grid()
 
     def ensure_visible(self, Id):
         """ WARNING: Called from multiple places """
@@ -3184,7 +3694,9 @@ class MusicTree(PlayCommonSelf):
     def reverse(self, Id):
         """ WARNING: Called from multiple places """
         # Toggle song tag on/off. Only used for song, not parent
+        self.manually_checked = True
         if Id.startswith("I"):
+            print("mserve.py reverse(" + Id + "): should not be called.")
             return  # Parents are a no-go
 
         # New code October 1, 2020
@@ -3544,7 +4056,6 @@ $ wmctrl -l -p
                      "This experimental feature will backup these files:\n" +
                      "\t " + lc.FNAME_LAST_OPEN_STATES + "\n" +
                      "\t " + lc.FNAME_LAST_SONG_NDX + "\n" +
-                     # "\t " + lc.FNAME_LAST_SELECTIONS + "\n" +
                      "\t " + lc.FNAME_LAST_PLAYLIST + "\n\n" +
                      "...to the same location with the extension '.bak'\n\n"
                      "TIP:\tHighlight this text and use Control+C to copy\n"
@@ -4660,6 +5171,7 @@ $ wmctrl -l -p
 
     def new_items(self):
         """ Clear previously selected play list entries
+            TODO: May 29, 20023 - Needs total rewrite
         """
 
         self.play_close()  # Close playing selections
@@ -4669,7 +5181,7 @@ $ wmctrl -l -p
             for album in self.lib_tree.get_children(artist):
                 for song in self.lib_tree.get_children(album):
                     tags = self.lib_tree.item(song)['tags']
-                    if "checked" in tags:
+                    if "songsel" in tags:
                         # Turn off all songs
                         self.toggle_select(song, album, artist)
 
@@ -4677,6 +5189,7 @@ $ wmctrl -l -p
 
     def load_items(self):
         """ Load Playlist from disk and erase what's selected already
+            TODO: May 29, 20023 - Needs total rewrite
         """
         self.lib_top_totals.append(LODICT['name'])
         self.lib_top_totals.append("")  # Playlist name makes title bar too long
@@ -4684,7 +5197,8 @@ $ wmctrl -l -p
 
     def append_items(self, erase=False):
         """ BROKEN - DO NOT USE
-        Load Playlist from disk and add to what's selected already
+            Load Playlist from disk and add to what's selected already
+            TODO: May 29, 20023 - Needs total rewrite
         """
         # set_font_style()
 
@@ -4718,7 +5232,9 @@ $ wmctrl -l -p
 
     def select_songs_from_filename(self, filename, erase=False):
         """ Song selections used to flag our playlist
-            On startup, filename = lc.FNAME_LAST_PLAYLIST
+            Assume that all checkboxes have been cleared beforehand.
+            Assume that checkboxes will be applied after playlist read.
+            TODO: May 29, 20023 - Needs self.manually_checked handled.
         """
         # filename = songs selected for playing in shuffled artist/album/song
         # print('pickle.STOP code:', pickle.STOP)
@@ -4746,16 +5262,22 @@ $ wmctrl -l -p
             if "songsel" not in tags:
                 album = self.lib_tree.parent(iid)
                 artist = self.lib_tree.parent(album)
-                self.toggle_select(iid, album, artist, i + 1)
+                # TODO: Clear checkboxes first.
+                #       Use BatchSelect - see fast_play_startup().
+                #       Apply checkboxes when done.
+                self.manually_checked = False
+                self.toggle_select(iid, album, artist)
                 newly_selected += 1
 
         return len(save_songs), newly_selected
 
-    def save_playlist(self):
-        """ Save playlist using save_last_selections
-
+    def write_playlist_to_disk(self):
+        """ Save playlist using save_last_selections. Also saves current song ndx.
         """
-        self.save_last_selections()
+        # disable the two options that could have brought us here
+        self.file_menu.entryconfig("Save Playlist", state=tk.DISABLED)
+        self.file_menu.entryconfig("Exit without saving Playlist", state=tk.DISABLED)
+
         if len(self.saved_selections) <= 1:
             # Same message in multiple places. Move to own function. Perhaps at top
             # making language changes easier.
@@ -4765,6 +5287,9 @@ $ wmctrl -l -p
             return
 
         self.save_last_selections()
+        self.pending_tot_add_cnt = 0        # Total changes made without being
+        self.pending_tot_del_cnt = 0        # written to disk with "Save Playlist"
+
         messagebox.showinfo(title="Playlist saved.",
                             message=str(len(self.saved_selections)) +
                             " songs in Playlist have been saved.\n\n" +
@@ -4802,6 +5327,7 @@ $ wmctrl -l -p
             return ''' No songs selected '''
 
         ''' Save full path of selected songs in Artist/Album/Track order '''
+        ''' Deprecated May 25, 2023 - Save selected songs in Alphabetical order 
         save_songs = []
         song_count = 0
         ext.t_init('save_last_selections()')
@@ -4811,20 +5337,24 @@ $ wmctrl -l -p
             save_songs.append(self.song_list[ndx])  # Get full path
             song_count += 1  # What if zero?
 
-        ''' Deprecated May 25, 2023 - Save selected songs in Alphabetical order 
         with open(lc.FNAME_LAST_SELECTIONS, "wb") as f:
             # store the data as binary data stream
             pickle.dump(save_songs, f)  # Save song list
+        ext.t_end('no_print')  # Calculate processing time.
         '''
+
         ''' Save expanded/collapsed state of Artists & Albums '''
-        save_parents = []
+        self.lib_tree_open_states = self.get_all_open_states()
+        """ Below replaced by above
+        self.lib_tree_open_states = []
         for Artist in self.lib_tree.get_children():  # Process artists
-            self.append_open_state(Artist, save_parents)  # Artist text
+            self.append_open_state(Artist, self.lib_tree_open_states)  # Artist text
             for Album in self.lib_tree.get_children(Artist):  # Process albums
-                self.append_open_state(Album, save_parents)  # Album text
+                self.append_open_state(Album, self.lib_tree_open_states)  # Album text
+        """
 
         with open(lc.FNAME_LAST_OPEN_STATES, "wb") as f:
-            pickle.dump(save_parents, f)  # Save open states
+            pickle.dump(self.lib_tree_open_states, f)  # Save open states
 
         ''' Save last opened location iid '''
         # noinspection PyBroadException
@@ -4841,10 +5371,16 @@ $ wmctrl -l -p
         save_songs = []
         song_count = 0
         for s_ndx in self.saved_selections:
-            if s_ndx.startswith("I"):
-                print('Invalid saved_sections:', s_ndx,
-                      self.lib_tree.item(s_ndx, 'text'))
+            try:
+                if s_ndx.startswith("I"):
+                    print("mserve.py save_last_selections() 's_ndx' not song:",
+                          s_ndx, self.lib_tree.item(s_ndx, 'text'))
+                    continue
+            except AttributeError:
+                print("mserve.py save_last_selections() 's_ndx' not string:",
+                      type(s_ndx), s_ndx)
                 continue
+
             ndx = int(s_ndx)  # string to integer
             save_songs.append(self.song_list[ndx])  # Get full path
             song_count += 1  # What if zero?
@@ -4860,7 +5396,16 @@ $ wmctrl -l -p
             # store the data as binary data stream
             pickle.dump(self.ndx, f)  # Save song index
 
-        ext.t_end('no_print')  # Calculate processing time.
+
+    def get_all_open_states(self):
+        """ Below replaced by above         """
+        ''' Save expanded/collapsed state of Artists & Albums '''
+        open_list = list()
+        for Artist in self.lib_tree.get_children():  # Process artists
+            self.append_open_state(Artist, open_list)  # Artist text
+            for Album in self.lib_tree.get_children(Artist):  # Process albums
+                self.append_open_state(Album, open_list)  # Album text
+        return open_list
 
     def get_open_state(self, Id):
         if not Id.startswith("I"):
@@ -4885,6 +5430,13 @@ $ wmctrl -l -p
         else:
             print("append_open_state(): Missing 'Artist' or 'Album' tag:", tags)
         opn_states_list.append(tuple((opened, text, tags)))
+
+    def apply_all_open_states(self, open_states):
+        """ May 30, 2023 - Below replaced by above  """
+        for Artist in self.lib_tree.get_children():  # Read all artists
+            self.apply_open_state(Artist, open_states)
+            for Album in self.lib_tree.get_children(Artist):  # Read all albums
+                self.apply_open_state(Album, open_states)
 
     def apply_open_state(self, Id, opn_states_list):
         """ Set the expanded/collapsed indicators (triangles) for
@@ -4950,9 +5502,9 @@ $ wmctrl -l -p
 
         ''' Check for Last selections file on disk '''
         if not os.path.isfile(lc.FNAME_LAST_PLAYLIST):
-            return  # save_playlist = pickle.load(f)
+            return  # self.playlist_paths = pickle.load(f)
         if not os.path.isfile(lc.FNAME_LAST_OPEN_STATES):
-            return  # save_parents = pickle.load(f)
+            return  # self.lib_tree_open_states = pickle.load(f)
         if not os.path.isfile(lc.FNAME_LAST_SONG_NDX):
             return  # self.ndx = pickle.load(f)
 
@@ -4966,30 +5518,33 @@ $ wmctrl -l -p
 
         ''' Set library treeview opened states for Artists and Albums '''
         ext.t_init('FNAME_LAST_OPEN_STATES')
-        #save_parents = []  # List of expanded/collapsed flags
+        #self.lib_tree_open_states = []  # List of expanded/collapsed flags
         with open(lc.FNAME_LAST_OPEN_STATES, 'rb') as f:
-            save_parents = pickle.load(f)
-            #print('len(save_parents):', len(save_parents))
-            #print('save_parents[:10]:', save_parents[:10])  # DEBUG
-            # save_parents: [(0, u'10cc', u'Artist'), (0, u'The Best of 10cc', u'Album'), (0, u'3 Doors Down',
+            self.lib_tree_open_states = pickle.load(f)
+            #print('len(self.lib_tree_open_states):', len(self.lib_tree_open_states))
+            #print('self.lib_tree_open_states[:10]:', self.lib_tree_open_states[:10])  # DEBUG
+            # self.lib_tree_open_states: [(0, u'10cc', u'Artist'), (0, u'The Best of 10cc', u'Album'), (0, u'3 Doors Down',
 
+        self.apply_all_open_states(self.lib_tree_open_states)
+        """ May 30, 2023 - Below replaced by above
         for Artist in self.lib_tree.get_children():  # Read all artists
-            self.apply_open_state(Artist, save_parents)
+            self.apply_open_state(Artist, self.lib_tree_open_states)
             for Album in self.lib_tree.get_children(Artist):  # Read all albums
-                self.apply_open_state(Album, save_parents)
+                self.apply_open_state(Album, self.lib_tree_open_states)
+        """
         ext.t_end('no_print')  # FNAME_LAST_OPEN_STATES: 0.0412480831
 
         ''' Set selections numbers of playlist order in music library '''
         ext.t_init('FNAME_LAST_PLAYLIST')
-        #save_playlist = []  # Song paths with "songsel" tag sorted by playlist order
+        #self.playlist_paths = []  # Song paths with "songsel" tag sorted by playlist order
         with open(lc.FNAME_LAST_PLAYLIST, 'rb') as f:
-            save_playlist = pickle.load(f)
-            #print('len(save_playlist):', len(save_playlist))
-            #print("save_playlist[:10]:", save_playlist[:10])  # DEBUG
+            self.playlist_paths = pickle.load(f)
+            #print('len(self.playlist_paths):', len(self.playlist_paths))
+            #print("self.playlist_paths[:10]:", self.playlist_paths[:10])  # DEBUG
             # [u'/media/rick/SANDISK128/Music/April\ Wine/Greatest Hits Live 2003/Just between you and me.mp3',
 
         spam_count = 0  # Turn off debugging by setting to 10
-        for song in save_playlist:
+        for song in self.playlist_paths:
             try:
                 ndx = self.song_list.index(song)
             except ValueError:
@@ -5003,7 +5558,7 @@ $ wmctrl -l -p
             # Update Song number using current length of self.saved_selections
             ''' May 25 2023 - This is done by toggle_select() function 
             number_str = self.play_padded_number(
-                len(self.saved_selections), len(str(len(save_playlist))))
+                len(self.saved_selections), len(str(len(self.playlist_paths))))
             # Song play number replaces "Selected MB" in lib_tree column "Selected"
             self.lib_tree.set(iid, "Selected", number_str)
             '''
@@ -5112,9 +5667,9 @@ $ wmctrl -l -p
 
         ''' Check for Last selections file on disk '''
         if not os.path.isfile(lc.FNAME_LAST_PLAYLIST):
-            return  # save_playlist = pickle.load(f)
+            return  # self.playlist_paths = pickle.load(f)
         if not os.path.isfile(lc.FNAME_LAST_OPEN_STATES):
-            return  # save_parents = pickle.load(f)
+            return  # self.lib_tree_open_states = pickle.load(f)
         if not os.path.isfile(lc.FNAME_LAST_SONG_NDX):
             return  # self.ndx = pickle.load(f)
 
@@ -5131,28 +5686,30 @@ $ wmctrl -l -p
 
         ''' Set selections numbers of playlist order in music library '''
         ext.t_init('FNAME_LAST_PLAYLIST')
-        #save_playlist = []  # Song paths with "songsel" tag sorted by playlist order
+        #self.playlist_paths = []  # Song paths with "songsel" tag sorted by playlist order
         with open(lc.FNAME_LAST_PLAYLIST, 'rb') as f:
-            save_playlist = pickle.load(f)
-            #print('len(save_playlist):', len(save_playlist))
-            #print("save_playlist[:10]:", save_playlist[:10])  # DEBUG
+            self.playlist_paths = pickle.load(f)
+            #print('len(self.playlist_paths):', len(self.playlist_paths))
+            #print("self.playlist_paths[:10]:", self.playlist_paths[:10])  # DEBUG
             # [u'/media/rick/SANDISK128/Music/April\ Wine/Greatest Hits Live 2003/Just between you and me.mp3',
         ext.t_end('no_print')
 
         ''' Set library treeview opened states for Artists and Albums '''
         ext.t_init('FNAME_LAST_OPEN_STATES')
-        #save_parents = []  # List of expanded/collapsed flags
+        #self.lib_tree_open_states = []  # List of expanded/collapsed flags
         with open(lc.FNAME_LAST_OPEN_STATES, 'rb') as f:
-            save_parents = pickle.load(f)
-            #print('len(save_parents):', len(save_parents))
-            #print('save_parents[:10]:', save_parents[:10])  # DEBUG
-            # save_parents: [(0, u'10cc', u'Artist'), (0, u'The Best of 10cc', u'Album'), (0, u'3 Doors Down',
+            self.lib_tree_open_states = pickle.load(f)
+            #print('len(self.lib_tree_open_states):', len(self.lib_tree_open_states))
+            #print('self.lib_tree_open_states[:10]:', self.lib_tree_open_states[:10])  # DEBUG
+            # self.lib_tree_open_states: [(0, u'10cc', u'Artist'),
+            # (0, u'The Best of 10cc', u'Album'), (0, u'3 Doors Down',
         ext.t_end('no_print')
 
         ext.t_end('no_print')  # End OPEN FILES
 
         ext.t_init('Build self.saved_selections in playlist order')
-        for song in save_playlist:
+        spam_count = 0
+        for song in self.playlist_paths:
             try:
                 ndx = self.song_list.index(song)
             except ValueError:
@@ -5165,16 +5722,21 @@ $ wmctrl -l -p
             self.saved_selections.append(iid)
         ext.t_end('no_print')
 
-        ''' Set library treeview opened states for Artists and Albums '''
+        self.set_all_checks_and_selects()
+        """
+        
+        self.set_all_checks_and_selects() replaces commented code below
+        
+        ''' Set opened states for Artists and Albums, play number for Songs '''
         bs = BatchSelect(self.lib_tree)
 
         not_selected_count = 0
         selected_count = 0
         ext.t_init('Merge three processes together')
         for Artist in self.lib_tree.get_children():  # Read all artists
-            self.apply_open_state(Artist, save_parents)
+            self.apply_open_state(Artist, self.lib_tree_open_states)
             for Album in self.lib_tree.get_children(Artist):  # Read all albums
-                self.apply_open_state(Album, save_parents)
+                self.apply_open_state(Album, self.lib_tree_open_states)
                 for Song in self.lib_tree.get_children(Album):  # Read all songs
                     ''' Is song in playlist? '''
                     try:
@@ -5190,19 +5752,22 @@ $ wmctrl -l -p
 
                     ''' Set song checkbox tags in music library treeview '''
                     number_str = self.play_padded_number(
-                        str(ndx+1), len(str(len(save_playlist))))
+                        str(ndx+1), len(str(len(self.playlist_paths))))
                     adj_list = bs.add_select(Song, Album, Artist, number_str)
                     # Update treeview columns with selected size, count and seconds
-                    self.tree_col_range_add(Song, 8, adj_list)  # Column number passed
+                    # May 30, 2023 - was self.tree_col_range_add()
+                    self.tree_col_range_replace(Song, 8, adj_list)  # Column number passed
         ext.t_end('no_print')
 
         ext.t_init('Apply totals to Artists & Albums + set checkbox')
         for Artist in self.lib_tree.get_children():  # Read all Artists
             adj_list = bs.get_totals(Artist)
-            self.tree_col_range_add(Artist, 8, adj_list, tagsel='artist_sel')
+            # May 30, 2023 - was range_add()
+            self.tree_col_range_replace(Artist, 8, adj_list, tagsel='artist_sel')
             for Album in self.lib_tree.get_children(Artist):  # Read all Albums
                 adj_list = bs.get_totals(Album)
-                self.tree_col_range_add(Album, 8, adj_list, tagsel='album_sel')
+                # May 30, 2023 - was range_add()
+                self.tree_col_range_replace(Album, 8, adj_list, tagsel='album_sel')
                 ''' Toggle processing with BatchSelect() class '''
                 for Song in self.lib_tree.get_children(Album):  # Read all Albums
                     tags = self.lib_tree.item(Song)["tags"]
@@ -5212,8 +5777,10 @@ $ wmctrl -l -p
                         break  # Only one Song has to be tested
 
         adj_list = bs.get_totals('lib_top_totals')
+        self.tree_title_zero_selected()
         self.tree_title_range_add(8, adj_list)  # Pass start index
         ext.t_end('no_print')
+        """
 
         ''' Results May 25, 2023
             load_last_selections(): 1.0014159679 (first time not using .pyc)
@@ -5230,7 +5797,7 @@ $ wmctrl -l -p
         ext.t_init('Wrap up')
         #print("mserve.py fast_play_startup() - Songs not on playlist:", not_selected_count)
         #print("mserve.py fast_play_startup() - Songs checked in playlist:", selected_count)
-        #print("mserve.py fast_play_startup() - Playlist size:", len(save_playlist))
+        #print("mserve.py fast_play_startup() - Playlist size:", len(self.playlist_paths))
         # print('saved_selections:', self.saved_selections[:10])  # DEBUG
         # saved_selections: ['215', '3694', '1432', '2924', '1627', '2329', '1886', '3623', '1178', '1616']
         #ext.t_init('self.lib_tree.update_idletasks()')
@@ -5261,6 +5828,98 @@ $ wmctrl -l -p
             self.play_from_start = False  # TODO: Review variable usage, kinda weird!
             # print('Continue playing with song#:',self.ndx)
             self.play_items()
+
+    def clear_all_checks_and_selects(self):
+        """ Called from self.pending_reset()
+        """
+        ext.t_init('Apply totals to Artists & Albums + set checkbox')
+        for Artist in self.lib_tree.get_children():  # Read all Artists
+            self.uncheck_tag(Artist)
+            for Album in self.lib_tree.get_children(Artist):  # Read all Albums
+                self.uncheck_tag(Album)
+                for Song in self.lib_tree.get_children(Album):  # Read all Albums
+                    self.uncheck_tag(Song)
+                    ''' Force Play No. blank - erase 'Adding' and 'Deleting' '''
+                    self.lib_tree.set(Song, "Selected", "")
+        ext.t_end('no_print')
+
+    def uncheck_tag(self, iid):
+        tags = self.lib_tree.item(iid)["tags"]
+        update = False
+        if "songsel" in tags:
+            tags.remove("songsel")
+            update = True
+        if "checked" in tags:
+            tags.remove("checked")
+            update = True
+        if "tristate" in tags:
+            tags.remove("tristate")
+            update = True
+        if "unchecked" not in tags:
+            tags.append("unchecked")
+            update = True
+        if update:
+            self.lib_tree.item(iid, tags=tags)
+
+    def set_all_checks_and_selects(self):
+        """ Called from self.pending_reset() and self.fast_play_startup()
+            Before calling all items must be "unchecked" and "songsel" blanked.
+        """
+
+        ''' Set opened states for Artists and Albums, play number for Songs '''
+        bs = BatchSelect(self.lib_tree)
+
+        not_selected_count = 0
+        selected_count = 0
+        ext.t_init('Merge three processes together')
+        for Artist in self.lib_tree.get_children():  # Read all artists
+            self.apply_open_state(Artist, self.lib_tree_open_states)
+            for Album in self.lib_tree.get_children(Artist):  # Read all albums
+                self.apply_open_state(Album, self.lib_tree_open_states)
+                for Song in self.lib_tree.get_children(Album):  # Read all songs
+                    ''' Is song in playlist? '''
+                    try:
+                        ndx = self.saved_selections.index(Song)  # Song in playlist?
+                    except ValueError:
+                        not_selected_count += 1
+                        if not_selected_count < 1:
+                            # Not an error - simply here for future debugging
+                            print('Skipping - Not in playlist:', full_path)
+                        continue
+
+                    selected_count += 1
+
+                    ''' Set song checkbox tags in music library treeview '''
+                    number_str = self.play_padded_number(
+                        str(ndx+1), len(str(len(self.playlist_paths))))
+                    adj_list = bs.add_select(Song, Album, Artist, number_str)
+                    # Update treeview columns with selected size, count and seconds
+                    # May 30, 2023 - was self.tree_col_range_add()
+                    self.tree_col_range_replace(Song, 8, adj_list)  # Column number passed
+        ext.t_end('no_print')
+
+        ext.t_init('Apply totals to Artists & Albums + set checkbox')
+        for Artist in self.lib_tree.get_children():  # Read all Artists
+            adj_list = bs.get_totals(Artist)
+            # May 30, 2023 - was range_add()
+            self.tree_col_range_replace(Artist, 8, adj_list, tagsel='artist_sel')
+            for Album in self.lib_tree.get_children(Artist):  # Read all Albums
+                adj_list = bs.get_totals(Album)
+                # May 30, 2023 - was range_add()
+                self.tree_col_range_replace(Album, 8, adj_list, tagsel='album_sel')
+                ''' Toggle processing with BatchSelect() class '''
+                for Song in self.lib_tree.get_children(Album):  # Read all Albums
+                    tags = self.lib_tree.item(Song)["tags"]
+                    if "songsel" in tags:
+                        # noinspection PyProtectedMember
+                        self.lib_tree._check_ancestor(Song)  # in CheckboxTreeview()
+                        break  # Only one Song has to be tested
+
+        adj_list = bs.get_totals('lib_top_totals')
+        self.tree_title_zero_selected()
+        self.tree_title_range_add(8, adj_list)  # Pass start index
+        ext.t_end('no_print')
+
 
     # ==============================================================================
     #
@@ -5588,7 +6247,6 @@ $ wmctrl -l -p
         """
         self.place_play_buttons()  # Placement varies if Hockey enabled
 
-
         ''' Frame for Playlist (Chronology) '''
         self.F4 = tk.Frame(self.play_top, bg="Black", borderwidth=BTN_BRD_WID,
                            relief=tk.GROOVE)
@@ -5622,6 +6280,7 @@ $ wmctrl -l -p
 
         ''' Start songs in a loop until signal to close '''
         while self.play_top_is_active:  # Loop whilst play window is open
+            # May 29, 2023 - When resuming buttons do not have art color assigned
             self.play_start(resume=resume, chron_state=chron_state)
             resume = False  # We can only resume once
             chron_state = None  # Extra safety
@@ -5646,6 +6305,7 @@ $ wmctrl -l -p
             return
 
         self.play_hockey_allowed = not self.play_hockey_allowed  # Flip switch
+        # Code is duplicated
         if self.play_hockey_allowed:
             view_bar.entryconfigure(1, label="Enable FF/Rewind buttons")
         else:
@@ -5665,7 +6325,7 @@ $ wmctrl -l -p
         """
 
         ''' Frame for Buttons '''
-        self.play_btn = tk.Frame(self.play_top, bg="Blue",
+        self.play_btn = tk.Frame(self.play_top, bg="Olive",
                                  borderwidth=BTN_BRD_WID, relief=tk.GROOVE)
         self.play_btn.grid(row=3, column=0, sticky=tk.NSEW)
         # Leave empty row #2 for F3 frame (was row=2)
@@ -5692,7 +6352,7 @@ $ wmctrl -l -p
                 ''' Shuffle Button Em space + u 1f500 = 🔀 '''
                 # BIG_SPACE = " "         # UTF-8 (2003) aka Em Space
                 self.shuffle_button = tk.Button(self.play_btn, text=" 🔀 Shuffle",
-                                                width=BTN_WID2 - 6, command=self.play_shuffle)
+                                                width=BTN_WID2 - 3, command=self.play_shuffle)
                 self.shuffle_button.grid(row=0, column=col, padx=2, sticky=tk.W)
                 self.tt.add_tip(self.shuffle_button, "Shuffle songs into random order.",
                                 anchor="sw")
@@ -5707,7 +6367,7 @@ $ wmctrl -l -p
                 ''' Prev Track Button '''
                 # U+1f844 🡄         U+1f846 🡆         U_1f808 🠈         I+1f80a 🠊
                 self.prev_button = \
-                    tk.Button(self.play_btn, text="🠈  Previous", width=BTN_WID2 - 4,
+                    tk.Button(self.play_btn, text="🠈  Previous", width=BTN_WID2 - 2,
                               command=lambda s=self: s.song_set_ndx('prev'))
                 self.prev_button.grid(row=0, column=col, padx=2, sticky=tk.W)
                 self.tt.add_tip(self.prev_button, "Play previous song in playlist.",
@@ -5727,7 +6387,7 @@ $ wmctrl -l -p
                 # 📺 | television (U+1F4FA) @ Graphic
                 #self.play_hockey_active = False  # U+1f3d2 🏒
                 self.com_button = tk.Button(self.play_btn, text="📺  Commercial",
-                                            width=BTN_WID2 - 3, command=lambda
+                                            width=BTN_WID2 + 1, command=lambda
                                             s=self: s.start_hockey(TV_BREAK1))
                 self.com_button.grid(row=0, column=col, padx=2, sticky=tk.W)
                 self.tt.add_tip(self.com_button, "Play music for 90 seconds.\n" +
@@ -5735,7 +6395,7 @@ $ wmctrl -l -p
             elif name == "Int":
                 ''' Hockey Intermission Button '''
                 self.int_button = tk.Button(self.play_btn, text="🏒  Intermission",
-                                            width=BTN_WID2 - 3, command=lambda
+                                            width=BTN_WID2 + 1, command=lambda
                                             s=self: s.start_hockey(TV_BREAK2))
                 self.int_button.grid(row=0, column=col, padx=2, sticky=tk.W)
                 self.tt.add_tip(self.int_button, "Play music for 18 minutes.\n" +
@@ -5761,7 +6421,7 @@ $ wmctrl -l -p
                 self.play_list_hide = False  # DO THIS ONCE?
                 self.chron_button = tk.Button(
                     self.play_btn, text="🖸 Hide Chronology",
-                    width=BTN_WID2 + 1, command=lambda s=self: s.play_show_hide())
+                    width=BTN_WID2 + 5, command=lambda s=self: s.play_show_hide())
                 self.chron_button.grid(row=0, column=col, padx=2, sticky=tk.W)
         
                 # TODO: DRY - This text is duplicated in show/hide function
@@ -5771,6 +6431,8 @@ $ wmctrl -l -p
             else:
                 print("mserve.py place_play_buttons() Bad button name:", name)
 
+        if self.pp_state is "Paused":  # Initially defined as if playing
+            self.set_pp_button_text()  # Button text reflects match play/pause state
 
     def on_resize(self, event):
         """ Resize image when frame size changes """
@@ -5902,9 +6564,9 @@ $ wmctrl -l -p
         self.play_current_song_art = ImageTk.PhotoImage(paused_resized_art)
         self.art_label.configure(image=self.play_current_song_art)
 
-    def pp_toggle(self, stop_music=True):
+    def pp_toggle(self, start_music=True):
         """ Pause/Play button pressed. Signal ffplay and set button text
-        :param stop_music: FF/Rewind button or Resume has already stopped music.
+        :param start_music: FF/Rewind button Next/Previous button used.
         """
         # print('pp_toggle() has been called:', ext.h(time.time()))
         if not self.play_top_is_active:
@@ -5916,118 +6578,130 @@ $ wmctrl -l -p
             return
 
         if self.pp_state is "Playing":
-            # Was playing so now pause. Parent may have already stopped music
-            if stop_music:
-                # Volume down in 10 steps of 7.5% with .05 sec in-between, end @ 25%
-                # def step_volume(sink, p_start, p_stop, steps, interval, thread=None):
-                step_volume(self.play_top_sink, 100, 25, 10, .05,
-                            thread=self.play_vu_meter)
-                ext.stop_pid_running(self.play_top_pid)  # Pause the music
-                self.secs_before_pause = get_curr_ffplay_secs(TMP_CURR_SONG)
+            # Volume down in 10 steps of 7.5% with .05 sec in-between, end @ 25%
+            # def step_volume(sink, p_start, p_stop, steps, interval, thread=None):
+            step_volume(self.play_top_sink, 100, 25, 10, .05,
+                        thread=self.play_vu_meter)
+            ext.stop_pid_running(self.play_top_pid)  # Pause the music
+            self.secs_before_pause = get_curr_ffplay_secs(TMP_CURR_SONG)
 
+            ''' VU Meter is stopping at wrong time move code down
             ext.stop_pid_running(self.vu_meter_pid)  # Pause VU Meters
-            self.show_paused_art()              # Mount "Paused" artwork
-
             for _ in range(self.VU_HIST_SIZE):  # Remove VU_meter rectangles
                 self.play_vu_meter(stop='yes')  # Gradually declines as
                 self.play_top.after(10)         # history list has more 0 levels
             self.play_vu_meter_blank()          # Fill with self.background
             self.pp_toggle_button()             # Set button text
-
-        else:  # self.pp_state is "Paused"
+            '''
+            self.pp_state = "Paused"  # Was Playing now is Paused
+            self.set_pp_button_text()
+            if self.play_hockey_active:
+                set_tv_sound_levels(100)  # Restore TV sound
+        else:
             # Was paused so resume playing
-            ext.continue_pid_running(self.play_top_pid)  # Audio PID
-            self.current_song_t_start = time.time()
-            ext.continue_pid_running(self.vu_meter_pid)  # VU Meter PID
             # Volume at 25% turned up in 10 steps of .05 sec to 100%
             if self.play_hockey_active:
                 max_vol = TV_VOLUME
                 # Uncomment obvious debug tests below to really hear diff.
-                # max_vol = 30 
+                # max_vol = 30
             else:
                 max_vol = 100
-            print("max_vol:", max_vol)
-            step_volume(self.play_top_sink, 25, max_vol, 10, .05,
-                        thread=self.play_vu_meter)
+            #print("max_vol:", max_vol)
+            #if self.play_top_pid > 0:  # This test would work but not obvious why
+            if start_music:
+                # When called from Next/Previous Song button, no song yet
+                ext.continue_pid_running(self.play_top_pid)  # Audio PID
+                self.current_song_t_start = time.time()
+                step_volume(self.play_top_sink, 25, max_vol, 10, .05,
+                            thread=self.play_vu_meter)
+            ''' VU Meter is stopping at wrong time move code down
+            ext.continue_pid_running(self.vu_meter_pid)  # VU Meter PID
             self.pp_toggle_button()             # Set button text
+            '''
+            self.pp_state = "Playing"  # Was Paused now is Playing
+            self.set_pp_button_text()
+            if self.play_hockey_active:
+                set_tv_sound_levels(25)  # Soften volume tv ads to 25%
 
     def pp_toggle_button(self):
-        """ Flip button text. Called from song_set_ndx() and pp_toggle() """
+        """ DEPRECATED May 29, 2023
+        Flip button text. Called from song_set_ndx() and pp_toggle() """
         if self.pp_state is "Playing":
             self.pp_state = "Paused"  # Was Playing now is Paused
-            self.pp_button['text'] = self.pp_play_text
-            text = "Pause music, pause artwork and\nallow manual lyrics scrolling."
-            self.tt.set_text(self.pp_button, text)
+            self.set_pp_button_text()
             if self.play_hockey_active:
-                self.play_restore_firefox()  # Restore TV sound
+                set_tv_sound_levels(100)  # Restore TV sound
         else:
             self.pp_state = "Playing"  # Was Paused now is Playing
-            self.pp_button['text'] = self.pp_pause_text
-            text = "Play music, spin artwork and\nautomatically scroll lyrics."
-            self.tt.set_text(self.pp_button, text)
+            self.set_pp_button_text()
             if self.play_hockey_active:
-                self.play_soften_firefox()  # Soften volume for commercials
+                set_tv_sound_levels(25)  # Soften volume tv ads to 25%
+        toolkit.print_trace()
+        exit()
+
+    def set_pp_button_text(self):
+        """ Set Pause/Play button text to reflect current state. """
+        if self.pp_state is "Playing":
+            self.pp_button['text'] = self.pp_pause_text
+            text = "Pause music and artwork.\n" +\
+                   "Lyrics can be manually scrolled."
+            self.tt.set_text(self.pp_button, text)
+
+            ''' VU Meter is stopping at wrong time. Code moved from above '''
+            ext.continue_pid_running(self.vu_meter_pid)  # VU Meter PID
+        else:
+            self.show_paused_art()              # Mount "Paused" artwork
+            self.pp_button['text'] = self.pp_play_text
+            text = "Play music and spin artwork.\n" +\
+                   "Lyrics are automatically scrolled."
+            self.tt.set_text(self.pp_button, text)
+
+            ''' VU Meter is stopping at wrong time. Code moved from above '''
+            ext.stop_pid_running(self.vu_meter_pid)  # Pause VU Meters
+            for _ in range(self.VU_HIST_SIZE):  # Remove VU_meter rectangles
+                self.play_vu_meter(stop='yes')  # Gradually declines as
+                self.play_top.after(10)  # history list has more 0 levels
+            self.play_vu_meter_blank()  # Fill with self.background
 
     def song_rewind(self):
         """ Rewind song 10 seconds back. If Music paused, then begin playing.
             If current song secs is <12, then send restart song signal
         """
-        #print("\n song_rewind() clicked:", self.ndx)
-        #print("self.current_song_secs:", self.current_song_secs,
-        #      "self.DurationSecs:", self.DurationSecs)
         if self.current_song_secs < float(REW_FF_SECS) + 2.0:
             self.song_set_ndx('restart')
             return
 
         new_time = self.current_song_secs - float(REW_FF_SECS)
-        # Below is identical for song_ff() and song_rew() functions
-        # print("song_rew() calling song_ff_rew_common(new_time):", new_time)
         self.song_ff_rew_common(new_time)
 
     def song_ff(self):
         """ Fast Forward song 10 seconds ahead. If Music paused, then begin playing.
             If current song secs + 15 second > duration, then send Next signal
         """
-        #print("\n song_ff() clicked:", self.ndx)
-        #print("self.current_song_secs:", type(self.current_song_secs), self.current_song_secs,
-        #      "self.DurationSecs:", type(self.DurationSecs), self.DurationSecs)
         if self.current_song_secs + float(REW_FF_SECS) + 5.0 > float(self.DurationSecs):
             self.song_set_ndx('next')
             return
 
         start_secs = self.current_song_secs + float(REW_FF_SECS)
-        #print("song_ff() calling song_ff_rew_common(start_secs):", start_secs)
-        # Below is identical for song_ff() and song_rew() functions
         self.song_ff_rew_common(start_secs)
 
     def song_ff_rew_common(self, start_secs):
-        # Below is identical for song_ff() and song_rew() functions
-        # print("song_ff_rew_common() start_secs:", start_secs)
+        """ Shared function for for song_ff() and song_rew() functions """
         if self.play_top_pid > 0:  # Song is currently playing
             self.kill_song()  # To ff/rewind playing song, kill last ffplay instance
-
-        # print("str(int(self.current_song_secs)) 3:", str(int(self.current_song_secs)))
         extra_opt = self.ffplay_extra_opt(str(int(start_secs)), fade_in=2)
-        # print("song_ff_rew_common() extra_opt:", extra_opt)
 
         ''' Launch ffplay to play song using extra_opt for start position '''
         self.play_top_pid, self.play_top_sink = \
             start_ffplay(self.current_song_path, TMP_CURR_SONG, extra_opt)
-
-        # May 22 2023 - Below has been fixed. A call trace will print when broken
-        if type(self.play_top_sink) == list:  # May 21 2023 - empty list returned
-            # Problem caused by new ffplay start before old ffplay sink killed
-            self.play_top_sink = ""  # What functions expect to see when no sink.
-
         self.play_update_progress(start_secs)  # Update screen with song progress
         self.play_paint_lyrics(rewind=True)  # Highlight line currently being sung. BUG: Only
-        # works with fast forward. Doesn't work with rewind button
-        #   It also sets t_start, current_secs, secs_before_pause.
+
         if self.pp_state == "Paused":
-            ''' Was paused. Stop new ffplay to reflect pause. Then begin play '''
+            ''' Was paused. Stop newly created ffplay to reflect pause. Then begin play '''
             set_volume(self.play_top_sink, 25)  # Mimic volume of paused song
             ext.stop_pid_running(self.play_top_pid)  # Sends pause signal (stop)
-            self.pp_toggle(stop_music=False)  # toggle real pause to match resume startup state
+            self.pp_toggle()  # toggle pause to begin playing
 
     def song_set_ndx(self, seq):
         """ Set index to previous or next song. Called in many places.
@@ -6044,11 +6718,6 @@ $ wmctrl -l -p
                 When filtered other songs are detached from treeview.
                 When clicking next/previous and hitting detached song,
                     preform recursive call with same operation.
-
-            TODO: REVIEW: Not saving time indices on next click?
-
-                    REVIEW: When chron_filter activated are we overwriting
-                    song lyrics? EG David Bowie over top of Platinum Blonde
         """
         if not self.play_top_is_active:
             return  # Play window closed?
@@ -6084,8 +6753,8 @@ $ wmctrl -l -p
 
         self.current_song_path = ""  # signal not increment song
         if self.pp_state is "Paused":  # Button reflects paused?
-            self.pp_toggle_button()  # Button reflects playing
-            # No song loaded so, we don't need to actually unpause. New plays.
+            # May 29, 2023 - Song already killed. No sound to turn up.
+            self.pp_toggle(start_music=False)  # Turn on Playing
 
     def filter_song_set_ndx(self, seq):
         """ Set index to previous or next song in filtered chronology tree
@@ -6188,20 +6857,23 @@ $ wmctrl -l -p
                 return
 
             # End hockey countdown
-            self.play_hockey_t_start = 0
+            self.play_hockey_t_start = 0.0
             #self.hockey_countdown(999999)
             return
 
         self.play_hockey_active = True
+        self.play_hockey_t_start = time.time()
         self.play_hockey_secs = secs  # Commercial = 90 seconds
         self.play_hockey_remaining = self.play_hockey_secs
-        self.play_soften_firefox()  # Soften volume tv ads to 25%
-        self.play_hockey_t_start = time.time()
+        set_tv_sound_levels(25)  # Soften volume tv ads to 25%
 
         ''' GoneFishing gobbles up big screen with shark 
         
             BIG PROBLEM May 18, 2023 system locks up. journal ctl -xe -b-2:
             May 18 18:51:25 alien kernel: compiz[4681]: segfault at 68 ip 00007fa0c6cb796e sp 00007f ff e6
+            
+            NOTE: Caused by 'gsettings' disabling and enabling 'place' window feature.
+            Disable this functionality in image.py for now.
         '''
         ext.t_init('Gone Fishing')
         self.gone_fishing = img.GoneFishing(self.play_top)
@@ -6217,40 +6889,30 @@ $ wmctrl -l -p
         if self.pp_state is "Paused":
             self.pp_toggle()  # Play music
 
-    def play_soften_firefox(self):
-        """
-            Set Firefox volume to 25%
-        """
-        # Firefox may have multiple entries
-        self.play_firefox_indices = sink_list(TV_SOUND)
-        for index in self.play_firefox_indices:
-            os.popen('pactl set-sink-input-volume ' + index + ' 25%') \
-                     .read().strip().splitlines()
+        self.print_hockey()
 
-    def play_restore_firefox(self):
-        """
-            Restore Firefox volume to 100%
-            Note Input Sinks may have changed since volume decreased.
-        """
-        # rebuild to prevent 17 errors if paused when countdown ends:
-        #   Failed to get sink input information: No such entity
-        self.play_firefox_indices = sink_list(TV_SOUND)
-
-        for index in self.play_firefox_indices:
-            os.popen('pactl set-sink-input-volume ' + index + ' 100%') \
-                     .read().strip().splitlines()
+    def print_hockey(self):
+        if True is True:
+            return
+        print("self.print_hockey() self.pp_state", self.pp_state)
+        print("self.print_hockey() self.play_hockey_remaining", self.play_hockey_remaining)
+        print("self.print_hockey() self.gone_fishing:", self.gone_fishing)
 
     def hockey_countdown(self, elapsed):
         """
             Update time remaining for commercials or intermission
         """
+        if True is False:
+            print("hockey_countdown(elapsed):", elapsed)
+            self.print_hockey()
+
         if not self.play_top_is_active:
             return  # Play window closed?
         if not self.play_hockey_active:
             return  # Play hockey not active?
 
         if self.gone_fishing is not None:
-            self.gone_fishing.shark_move()                 # Move shark closer to man
+            self.gone_fishing.shark_move()  # Move shark closer to falling man
 
         if elapsed < self.play_hockey_secs:
             remaining = int(self.play_hockey_secs - elapsed)
@@ -6258,8 +6920,7 @@ $ wmctrl -l -p
                 # We don't want to update every 1/10th seconds
                 return
             self.play_hockey_remaining = remaining
-            com_str = "🏒  Remaining: " + str(remaining)
-            int_str = com_str
+            int_str = com_str = "🏒  Remaining: " + str(remaining)
         else:
             # repaint buttons
             com_str = "🏒  Commercial"
@@ -6267,7 +6928,7 @@ $ wmctrl -l -p
             if self.gone_fishing is not None:
                 self.gone_fishing.close()
             self.gone_fishing = None        # So global close doesn't try
-            self.play_restore_firefox()     # Restore volume after commercials
+            set_tv_sound_levels(100)  # Restore TV sound
 
         self.com_button['text'] = com_str
         self.int_button['text'] = int_str
@@ -6379,6 +7040,10 @@ $ wmctrl -l -p
         '''
         if resume:
             # Convert float type read from SQL History Column "Seconds"
+            if not isinstance(self.resume_song_secs, float):
+                self.resume_song_secs = 0.0  # Fix error May 31, 2023
+                print("self.resume_song_secs was not type 'float'. Force to:",
+                      self.resume_song_secs)
             extra_opt = self.ffplay_extra_opt(int(self.resume_song_secs))
         else:
             extra_opt = ''  # Not system startup, play song normally
@@ -6390,11 +7055,15 @@ $ wmctrl -l -p
         self.current_song_t_start = time.time()  # For pp_toggle, whether resume or not
         if resume:
             # Just woken up from system sleep or reboot. Restore song at save point.
+            # May 29, 2023 - When resuming buttons do not have art color assigned
             self.play_update_progress(self.resume_song_secs)
             if self.resume_state == "Paused":
                 set_volume(self.play_top_sink, 25)
                 ext.stop_pid_running(self.play_top_pid)
-                self.pp_toggle(stop_music=False)  # Pause to match resume state
+                # Set Pause status to match resume pause status
+                #self.pp_toggle(stop_music=False)  # Pause to match resume state
+                self.pp_state = "Paused"  # Was Playing now is Paused
+                self.set_pp_button_text()
                 self.play_update_progress(self.resume_song_secs)  # Reset variables
                 self.play_paint_lyrics()  # Highlight line currently being sung
             self.resume_state = None
@@ -6405,6 +7074,8 @@ $ wmctrl -l -p
         if real_start:
             self.play_to_end()  # play song until end
             self.queue_next_song()  # Save indices & next song as appropriate
+        else:
+            pass  # A long running process made play_refresh_top() run out.
 
     def queue_next_song(self):
         if self.current_song_path is not "":  # next/prev set new name?
@@ -7595,6 +8266,7 @@ $ wmctrl -l -p
     #       MusicTree Processing - Basic time index
     #
     # ==============================================================================
+
 
     def play_train_lyrics(self):
         """ Train Lyrics was right-clicked.
@@ -9058,7 +9730,7 @@ IndexError: list index out of range
         self.sync_ffplay_pid, self.sync_ffplay_sink = \
             start_ffplay(self.work_song_path, TMP_CURR_SAMPLE, extra_opt)
         self.sync_music_start_time = time.time()  # Music is playing now
-        set_volume(self.sync_ffplay_sink, 0, -1.0)  # Turn off volume
+        set_volume(self.sync_ffplay_sink, 0)  # Turn off volume
         ext.stop_pid_running(self.sync_ffplay_pid)  # Pause the music
 
         ''' During 1st second reduce other sound applications '''
@@ -9071,14 +9743,14 @@ IndexError: list index out of range
         for i in range(1, 11):  # 10 steps
             if not self.syn_top_is_active:
                 return
-            s_time = set_volume(self.sync_ffplay_sink, int(i * 10), .10)
+            s_time = set_volume(self.sync_ffplay_sink, int(i * 10))
             for app_sink, app_vol, app_name in self.old_sinks:
                 if not others:
                     break  # Only doing ourselves
                 if app_sink == self.sync_ffplay_sink:
                     continue  # Skip our sink!
                 percent = int(app_vol) - (int(app_vol) * i / 10)  # Reduce by 10%
-                app_time = set_volume(app_sink, percent, -0.10)  # Volume down 10%
+                app_time = set_volume(app_sink, percent)  # Volume down 10%
                 s_time += app_time  # Total all job times
             if s_time < .07:
                 root.after(int((.07 - s_time) * 1000))  # Sleep .07 per step
@@ -9156,8 +9828,7 @@ IndexError: list index out of range
                 if app_sink == self.sync_ffplay_sink:  # This is our sink
                     percent = 100 - (i * 10)    # Turn down volume 10%
                     if err_count < 1:           # If no errors yet
-                        app_time, err = set_volume(self.sync_ffplay_sink,
-                                                   percent, -.10)
+                        app_time, err = set_volume(self.sync_ffplay_sink, percent)
                     else:
                         err_count += 1          # Would be another error
                         app_time = 0
@@ -9176,7 +9847,7 @@ IndexError: list index out of range
                         continue                # We are on our own sink already adjusted
                     if old_sink == app_sink:
                         percent = int(old_vol) * i / 10  # Old volume up 10%
-                        app_time = set_volume(old_sink, percent, .10)
+                        app_time = set_volume(old_sink, percent)
                         s_time += app_time      # Total all system times
                         if app_time > .025:
                             print('sync_clean_ffplay(self): app_time too large:',
@@ -10133,7 +10804,8 @@ IndexError: list index out of range
         # When paused music at 50%, even though ffplay closes need to
         # set volume to 100% because next load of ffplay inherits setting.
         if self.play_top_sink is not "":
-            self.play_100()
+            #self.play_100()
+            set_volume(self.play_top_sink, 100)
             self.play_top_sink = ""
 
         # If no internet web scraping process could be running for entire song
@@ -10171,9 +10843,11 @@ IndexError: list index out of range
         self.save_resume()
         # Save chronology tree state = "show", "hide"
         self.save_chron_state()
+        # Save if Hockey buttons are active or FF/Rewind buttons are
+        self.save_hockey_state()
 
         if self.play_hockey_active:
-            self.play_restore_firefox()
+            set_tv_sound_levels(100)  # Restore TV sound
 
         self.play_top_is_active = False
         ext.kill_pid_running(self.vu_meter_pid)
@@ -10242,7 +10916,7 @@ IndexError: list index out of range
                 return False
         else:
             # First time add the record self.pp_state
-            # Music Id is 0. As is Size & Count
+            # Music Id is 0. As is Size, Count & Seconds
             sql.hist_add(time.time(), 0, g.USER, 'resume', location, self.pp_state,
                          str(self.ndx), self.current_song_path, 0, 0, self.current_song_secs,
                          "Last song playing/paused when location closed")
@@ -10308,10 +10982,72 @@ IndexError: list index out of range
                 return False
         else:
             # First time add the record self.pp_state
-            # Music Id is 0. As is Size & Count
+            # Music Id is 0. As is Size, Count & Seconds
             sql.hist_add(time.time(), 0, g.USER, 'chron_state', location, state,
                          None, None, 0, 0, 0.0,
                          "Chronology (playlist) shown or hidden?")
+            sql.con.commit()
+            return True
+
+        ''' We have the existing history record, replace current song information
+            May 16 2023 - Note flaw in this code and other where g.USER is assumed same. 
+        '''
+        sql_cmd = "UPDATE History SET Time=?, SourceMaster=? WHERE Id = ?"
+
+        sql.hist_cursor.execute(sql_cmd, (time.time(), state, sql.HISTORY_ID))
+        sql.con.commit()
+        return True
+
+    @staticmethod
+    def get_hockey_state():
+        """
+            Get last saved state of Show/Hide hockeyology button
+        """
+        location = LODICT['iid']  # Should be a global variable already?
+
+        if sql.hist_check(0, 'hockey_state', location):
+            sql.hist_cursor.execute("SELECT * FROM History WHERE Id = ?", [sql.HISTORY_ID])
+            d = dict(sql.hist_cursor.fetchone())
+            if d is None:
+                print('mserve.py get_hockey_state() error sql.HISTORY_ID:', sql.HISTORY_ID)
+                return False
+        else:
+            return False
+
+        if d['SourceMaster'] == "On":
+            hockey_state = True
+        elif d['SourceMaster'] == "Off":
+            hockey_state = False
+        else:
+            print("mserve.py get_hockey_state() d['SourceMaster'] invalid:",
+                  d['SourceMaster'])
+            hockey_state = None
+
+        return hockey_state
+
+    def save_hockey_state(self):
+        """
+            Save state of Show/Hide hockeyology button
+        """
+        location = LODICT['iid']  # L004, etc.
+
+        if self.play_hockey_allowed:
+            state = "On"
+        else:
+            state = "Off"
+
+        if sql.hist_check(0, 'hockey_state', location):
+            sql.hist_cursor.execute("SELECT * FROM History WHERE Id = ?",
+                                    [sql.HISTORY_ID])
+            d = dict(sql.hist_cursor.fetchone())
+            if d is None:
+                print('mserve.py save_hockey_state() error sql.HISTORY_ID:', sql.HISTORY_ID)
+                return False
+        else:
+            # First time add the record self.pp_state
+            # Music Id is 0. As is Size, Count & Seconds
+            sql.hist_add(time.time(), 0, g.USER, 'hockey_state', location, state,
+                         None, None, 0, 0, 0.0, "Hockey TV Commercial Buttons used?")
             sql.con.commit()
             return True
 
@@ -10633,13 +11369,13 @@ IndexError: list index out of range
         menu.add_separator()
         if self.chron_filter is None:
             # Give three filter options
-            menu.add_command(label="Only Synchronized songs", font=(None, MED_FONT),
+            menu.add_command(label="Filter Synchronized songs", font=(None, MED_FONT),
                              command=lambda: self.chron_apply_filter('time_index', item))
-            menu.add_command(label="Songs not Synchronized", font=(None, MED_FONT),
+            menu.add_command(label="Filter not Synchronized", font=(None, MED_FONT),
                              command=lambda: self.chron_apply_filter('no_time_index', item))
-            menu.add_command(label="Songs for this Artist", font=(None, MED_FONT),
+            menu.add_command(label="Filter by this Artist", font=(None, MED_FONT),
                              command=lambda: self.chron_apply_filter('artist_name', item))
-            menu.add_command(label="Songs over 5 Minutes", font=(None, MED_FONT),
+            menu.add_command(label="Filter over 5 Minutes", font=(None, MED_FONT),
                              command=lambda: self.chron_apply_filter('over_5', item))
         else:
             # option to remove filters for full playlist
@@ -10765,6 +11501,7 @@ IndexError: list index out of range
 
         # Stop current song and remove highlighting in lib_tree
         if self.pp_state == "Playing":
+            # Note something is stopping vu_meter, but it's not this
             self.pp_toggle()  # Pause current song because it will be changing.
         self.wrap_up_song()
 
@@ -10876,7 +11613,7 @@ IndexError: list index out of range
         DATE_PREFIX = " 📅 "  # big space + UTF-8 (1f4c5) + normal space
         # CLOCK_PREFIX = " 🕐 "  # big space + UTF-8 (1f550) + normal space
         CLOCK_PREFIX = " 🕑 "  # big space + UTF-8 (1f551) + normal space
-        TIME_PREFIX = " 🗲 "   #  big space + Unicode Character “🗲” (U+1F5F2)."
+        TIME_PREFIX = " 🗲 "   # big space + Unicode Character “🗲” (U+1F5F2)."
 
         ''' Pad song number with spaces to line up song name evenly '''
         number_digits = len(str(len(self.saved_selections)))
@@ -11083,7 +11820,7 @@ class BatchSelect:
 
     def __init__(self, treeview):
         """
-        BatchSelect class speeds up processing for toggle_select() function.
+        BatchSelect replaces toggle_select() function on startup.
         Updating is done after thousands of playlist songs are selected in
         lib_tree:
             Artist (I1)
@@ -11190,20 +11927,6 @@ class Volume:
     def __init__(self, toplevel=None, name=None, title=None, text=None,
                  tooltips=None, thread=None):
         """
-        BatchSelect class speeds up processing for toggle_select() function.
-        Updating is done after thousands of playlist songs are selected in
-        lib_tree:
-            Artist (I1)
-                Album (I2)
-                    Song (3)
-                    Song (4)
-                Album (I3)
-                    Song (6)
-                    Song (7)
-            Artist (I4)
-
-        :param treeview: self.lib_tree
-        :param lib_top_totals: self.lib_top_totals returned to caller
         """
         # root window is the parent window
         self.toplevel = toplevel    # self.lib_tree
@@ -11231,14 +11954,6 @@ class Volume:
         """
             Get last saved volume.
         """
-        location = LODICT['iid']
-        # print("save_resume() location:", location)
-
-        ''' Need new function:
-            d = sql.get_setting('resume', location)
-            if d is not None:
-                blah blah
-        '''
         if sql.hist_check(0, 'volume', self.name):
             sql.hist_cursor.execute("SELECT * FROM History WHERE Id = ?",
                                     [sql.HISTORY_ID])
@@ -11255,20 +11970,7 @@ class Volume:
             print("mserve.py get_resume() Error SourceDetail:", d['SourceDetail'],
                   "but self.ndx is:", self.ndx)
 
-        self.resume_state = d['SourceMaster']
-        self.resume_song_secs = d['Seconds']
         return True
-
-    def edit(self):
-        """ Toggle song selection on.
-            Roll up totals into list of dictionaries.
-            DO NOT update parents here. Update parents with batch_update()
-        """
-        # 'values' 0=Access, 1=Size, 2=Selected Size, 3=StatTime, 4=StatSize,
-        #          5=Count, 6=Seconds, 7=SelSize, 8=SelCount, 9=SelSeconds
-        total_values = slice(4, 7)  # parm = start index, stop before index
-        # slice(4, 7) = Set slice to grab StatSize, Count, Seconds
-
 
 
 # ==============================================================================
@@ -11395,10 +12097,8 @@ def sink_list(program):
     for entry in all_sinks:
         sink, vol, name = entry
         sink = str(sink)  # May 26 2023 - Sink must be string not int
-        vol = int(vol)  # May 26 2023 - volume must be int not string
         if program == name:
             indices.append(sink)
-            #print('MATCHING sink entry found:', entry)
     return indices
 
 
@@ -11408,37 +12108,6 @@ pulse_working = True
 try:
     pulse = pulsectl.Pulse()
     # print("pulse:", dir(pulse))
-    # This works: for sink in pulse.sink_input_list():
-    # This DOESN'T work: pulse.volume_change_all_chans(sink, float(percent) / 100.0)
-    # This DOESN'T work: pulse.volume_set(sink, float(percent) / 100.0)
-    '''
-        pulse: ['__class__', '__delattr__', '__dict__', '__doc__', '__enter__', '__exit__', 
-        '__format__', '__getattribute__', '__hash__', '__init__', '__module__', '__new__', 
-        '__reduce__', '__reduce_ex__', '__repr__', '__setattr__', '__sizeof__', '__str__', 
-        '__subclasshook__', '__weakref__', '_action_ids', '_actions', '_api', '_ctx', 
-        '_ctx_init', '_loop', '_loop_closed', '_loop_lock', '_loop_running', '_loop_stop', 
-        '_pa_state_cb', '_pa_subscribe_cb', '_pulse_get_list', '_pulse_info_cb', 
-        '_pulse_iterate', '_pulse_loop', '_pulse_method_call', '_pulse_op_cb', 
-        '_pulse_poll', '_pulse_poll_cb', '_pulse_run', '_pulse_state_cb', 
-        '_pulse_subscribe_cb', '_ret', 'card_info', 'card_list', 'card_profile_set', 
-        'card_profile_set_by_index', 'channel_list_enum', 'client_info', 'client_list', 
-        'close', 'connect', 'connected', 'default_set', 'disconnect', 'event_callback', 
-        'event_callback_set', 'event_facilities', 'event_listen', 'event_listen_stop', 
-        'event_mask_set', 'event_masks', 'event_types', 'get_card_by_name', 
-        'get_peak_sample', 'get_sink_by_name', 'get_source_by_name', 'init', 'module_info',
-         'module_list', 'module_load', 'module_unload', 'mute', 'name', 'play_sample', 
-         'port_set', 'server', 'server_info', 'set_poll_func', 'sink_default_set', 
-         'sink_info', 'sink_input_info', 'sink_input_list', 'sink_input_move', 
-         'sink_input_mute', 'sink_input_volume_set', 'sink_list', 'sink_mute', 
-         'sink_port_set', 'sink_suspend', 'sink_volume_set', 'source_default_set', 
-         'source_info', 'source_list', 'source_mute', 'source_output_info', 
-         'source_output_list', 'source_output_move', 'source_output_mute', 
-         'source_output_volume_set', 'source_port_set', 'source_suspend', 
-         'source_volume_set', 'stream_restore_delete', 'stream_restore_list', 
-         'stream_restore_read', 'stream_restore_test', 'stream_restore_write', 
-         'volume_change_all_chans', 'volume_get_all_chans', 'volume_set', 
-         'volume_set_all_chans']
-    '''
 
 except Exception as p_err:  # CallError, socket.error, IOError (pidfile), OSError (os.kill)
     pulse_working = False
@@ -11455,26 +12124,17 @@ def sink_master():
 
     # If Python pulseaudio is working, use the fast method
     if pulse_working:
-        # WIP: Use existing tuple structure but convert to pulsectl volume
-        #      structure down the road.
         for sink in pulse.sink_input_list():
-            #if not sink.proplist['application.name'].startswith("speech-dispatcher"):
-            #    print("\n======= sink_master(): ", sink.proplist['application.name'],
-            #          sink.index, sink.volume, sink.name)
-            # sink.volume = channels = 2, volumes = [100 % 100 %]
             this_volume = str(sink.volume)
+            # sink.volume = channels = 2, volumes = [100 % 100 %]
             this_volume = this_volume.split('[')[1]
             this_volume = this_volume.split(' ')[0]
             this_volume = this_volume.replace('%', '')
             if this_volume.endswith(']'):
-                this_volume = this_volume[:-1]  # Bug April 29, 2023
+                # Bug end up with "0]" fixed Bug April 29, 2023
+                this_volume = this_volume[:-1]
             all_sinks.append(tuple((str(sink.index), int(this_volume),
                                     str(sink.proplist['application.name']))))
-            #print(sink.proplist)
-            #pulse_dict = sink.proplist
-            #for key in pulse_dict:
-            #    print("key:", key, "value:", pulse_dict[key])
-
         return all_sinks
 
 
@@ -11498,7 +12158,6 @@ def sink_master():
             this_volume = int(this_volume.replace('%', ''))
             in_volume = True
             continue
-
         # noinspection SpellCheckingInspection
         if in_sink is True and in_volume is True and "tion.name =" in line:
             # inspection SpellCheckingInspection
@@ -11559,40 +12218,27 @@ def set_volume(target_sink, percent):
     """
     global pulse_error_cnt
 
-    print("\nset_volume() -- looking for sink:", target_sink,
-          "setting volume to:", percent, "%",
-          "float(percent) / 100.0:", float(percent) / 100.0)
+    #print("\n set_volume() -- looking for sink:", target_sink,
+    #      "setting volume to:", percent, "%",
+    #      "float(percent) / 100.0:", float(percent) / 100.0)
     if pulse_working:
         ''' Fast method using pulse audio direct interface '''
         ext.t_init('set_volume() -- pulse.volume_change')
-        err = None
-        #for sink in pulse.sink_list():
+        err = None  # No known pulsectl errors have appeared yet
         for sink in pulse.sink_input_list():
             if str(sink.index) == target_sink:
-                # Volume is usually in 0-1.0 range, with >1.0 being soft-boosted
-                if not sink.proplist['application.name'].startswith("speech-dispatcher"):
-                    print("======== set_volume(): ", sink.proplist['application.name'],
-                          sink.index, sink.volume, sink.name)
-                    print("found sink#:", sink.index, type(sink.index))
-                print("Before:", pulse.volume_get_all_chans(sink))
-                #pulse.volume_change_all_chans(sink, float(percent) / 100.0)
-                # pulse.volume_change_all_chans(sink, adjust)
                 pulse.volume_set_all_chans(sink, float(percent) / 100.0)
-
-                print("After:", pulse.volume_get_all_chans(sink))
-                #pulse.volume_set(sink, float(percent) / 100.0)
-                # Error: AttributeError: 'float' object has no attribute 'to_struct'
                 job_time = ext.t_end('no_print')
                 return job_time, err
 
     if pulse_working and pulse_error_cnt < 10:
-        pulse_error_cnt += 1
-        print("mserve.py set_volume() pulsectl failed looking up sink#:", sink)
+        pulse_error_cnt += 1  # Limit to 10 errors printed
+        print("\nmserve.py set_volume() pulsectl missing sink:", target_sink)
         all_sinks = list()
         for sink in pulse.sink_list():
             all_sinks.append(sink)
         print("all sinks:", all_sinks)
-        print("resorting to CLI pactl command")
+        print("resorting to CLI 'pactl' command")
 
     ''' Slow method using CLI (command line interface) to pulse audio '''
     # Build command line list for subprocess
@@ -11617,6 +12263,17 @@ def set_volume(target_sink, percent):
         print('error:', err)
     # if pipe.return_code == 0:                  # Future use
     return job_time, err
+
+
+
+def set_tv_sound_levels(percent):
+    """
+        Set Firefox tv sound levels to given percentage
+    """
+    # Firefox may have multiple entries
+    tv_sound_list = sink_list(TV_SOUND)
+    for index in tv_sound_list:
+        set_volume(index, percent)
 
 
 def ffmpeg_artwork(path, width, height):

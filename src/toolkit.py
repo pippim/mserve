@@ -308,47 +308,57 @@ def unique_key(key, dictionary):
             return new_key
         new_key = key + "(" + str(i) + ")"
 
-    print("toolkit.py - unique_key() has 99 keys")
+    print_trace()
+    print("toolkit.py - unique_key() has > " + str(i) + " duplicate keys.")
     return "ERROR: ???"
 
 
-def tv_tag_add(tv, line, new):
-    tags = tv.item(line)['tags']
+def tv_tag_add(tv, iid, new, strict=False):
+    """ Treeview tag function """
+    tags = tv.item(iid)['tags']
     if new not in tags:
         tags.append(new)
-        tv.item(line, tags=tags)
+        tv.item(iid, tags=tags)
         return True
     else:
-        print("'new':", new, "already in treeview 'tags' list:", tags)
-        print_trace()
+        if strict:
+            print_trace()
+            print("'new' tag: '" + new + "' already in treeview 'tags' list:", tags)
         return False
 
 
-def tv_tag_replace(tv, line, old, new):
-    tags = tv.item(line)['tags']
+def tv_tag_replace(tv, iid, old, new, strict=False):
+    """ Treeview tag function """
+    tags = tv.item(iid)['tags']
     if old in tags:
         if new in tags:
-            print("'new':", new, "already in treeview 'tags' list:", tags)
-            print_trace()
+            if strict:
+                print_trace()
+                print("'new' tag: '" + new + "' already in treeview 'tags' list:", tags)
             return False
         else:
             tags.remove(old)
             tags.append(new)
-            tv.item(line, tags=tags)
+            tv.item(iid, tags=tags)
             return True
     else:
-        print("'old':", old, "NOT in treeview 'tags' list:", tags)
-        print_trace()
+        if strict:
+            print_trace()
+            print("'old' tag: '" + old + "' NOT in treeview 'tags' list:", tags)
         return False
 
 
-def tv_tag_remove(tv, line, old):
-    tags = tv.item(line)['tags']
+def tv_tag_remove(tv, iid, old, strict=False):
+    """ Treeview tag function """
+    tags = tv.item(iid)['tags']
     if old in tags:
         tags.remove(old)
-        tv.item(line, tags=tags)
+        tv.item(iid, tags=tags)
         return True
     else:
+        if strict:
+            print_trace()
+            print("'old' tag: '" + old + "' NOT in treeview 'tags' list:", tags)
         return False
 
 
