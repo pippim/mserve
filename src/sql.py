@@ -12,6 +12,7 @@
 #           Location - Storage locations with host controls, last song, etc.
 #
 #       May. 07 2023 - Convert gmtime to localtime. Before today needs update.
+#       Jun. 04 2023 - Use OsFileNameBlacklist() class for reading by song
 #==============================================================================
 
 from __future__ import print_function       # Must be first import
@@ -39,7 +40,9 @@ try:
     from location import FNAME_LIBRARY  # SQL database name (SQLite3 format)
 except ImportError:
     # TODO: Use ~/ conversion from /home/rick/
+    print("'from location import FNAME_LIBRARY' FAILED !!!")
     FNAME_LIBRARY = "/home/rick/.config/mserve/library.db"
+    print("Using hard-coded:", FNAME_LIBRARY)
 
 CFG_THOUSAND_SEP = ","              # English "," to for thousands separator
 CFG_DECIMAL_SEP = "."               # English "." for fractional amount
@@ -73,7 +76,7 @@ azlyrics link, azlyrics download time
 # Global variables must be defined at module level
 con = cursor = hist_cursor = None
 START_DIR_SEP  = None
-MUSIC_ID  = None
+#MUSIC_ID  = None    # June 3, 2023 - Appears unused
 _START_DIR = _USER = _LODICT = None
 
 
@@ -96,7 +99,7 @@ def create_tables(SortedList, start_dir, pruned_subdirs, user, lodict):
 
     # global con, cursor, hist_cursor
     global START_DIR_SEP    # Count of / or \ separators in toplevel directory
-    global MUSIC_ID         # primary key into Music table used by History table
+    #global MUSIC_ID         # primary key into Music table used by History table
 
     global _START_DIR, _USER, _LODICT
     _START_DIR = start_dir  # Toplevel directory, EG /mnt/music/
@@ -125,10 +128,9 @@ def create_tables(SortedList, start_dir, pruned_subdirs, user, lodict):
         # TODO: Check of os_name in Music Table. If so continue loop
         #       Move this into mserve.py main loop and update access time in SQL.
         groups = os_name.split(os.sep)
-        Artist = groups[START_DIR_SEP+1]
-        Album = groups[START_DIR_SEP+2]
-        # Song = groups[START_DIR_SEP+3]  # Not used
-        key = make_key(os_name)
+        Artist = groups[START_DIR_SEP+1]  # May contain "(No Artist)"
+        Album = groups[START_DIR_SEP+2]  # May contain "(No Album)"
+        key = os_name[len(_START_DIR):]
 
         if Artist != LastArtist:
             # In future we can add Artist table with totals
@@ -144,9 +146,14 @@ def create_tables(SortedList, start_dir, pruned_subdirs, user, lodict):
         full_path = full_path.replace(os.sep + NO_ARTIST_STR, '')
         full_path = full_path.replace(os.sep + NO_ALBUM_STR, '')
 
+        ''' June 2, 2023 - Do not store songs with missing artist or album '''
+        if os.sep + NO_ARTIST_STR in key or os.sep + NO_ALBUM_STR in key:
+            ofb.AddBlacklist(full_path[len(_START_DIR):])
+            continue
+
         # os.stat gives us all of file's attributes
         stat = os.stat(full_path)
-        size = stat.st_size
+        #size = stat.st_size  # TODO: test if this extra step necessary
         # converted = float(size) / float(CFG_DIVISOR_AMT)   # Not used
         # fsize = str(round(converted, CFG_DECIMAL_PLACES))  # Not used
 
@@ -158,21 +165,33 @@ def create_tables(SortedList, start_dir, pruned_subdirs, user, lodict):
                VALUES (?, ?, ?, ?, ?)" 
 
         cursor.execute(sql, (key, stat.st_atime, stat.st_mtime,
-                             stat.st_ctime, size))
+                             stat.st_ctime, stat.st_size))
 
     con.commit()
+
     # Temporary during development to record history for lyrics web scrape and
     # time index synchronizing to lyrics.
-    hist_init_lost_and_found(start_dir, user, lodict)
-    hist_init_lyrics_and_time(start_dir, user, lodict)
+    #ext.t_init("SQL startup functions to remove")
+    #ext.t_init("hist_init_lost_and_found")
+    #hist_init_lost_and_found(start_dir, user, lodict)
+    #job_time = ext.t_end('print')
+    #print("Did not print? job_time:", job_time)  # 0.0426070690155
+    #ext.t_init("hist_init_lyrics_and_time")
+    #hist_init_lyrics_and_time(start_dir, user, lodict)
+    #job_time = ext.t_end('print')  # 0.0366790294647
+    #print("Did not print? job_time:", job_time)
+    #job_time = ext.t_end('print')  # 0.0793550014496
+    #print("Did not print? job_time:", job_time)
+
+    # June 3, 2023 before: sql.create_tables(): 0.1658391953
+    # June 3, 2023 AFTER : sql.create_tables(): 0.0638458729
 
 
 def open_db():
     """ Open SQL Tables """
     global con, cursor, hist_cursor
-    # con = sqlite3.connect(":memory:")
+    # con = sqlite3.connect(":memory:")  # Initial tests, not needed anymore
     con = sqlite3.connect(FNAME_LIBRARY)
-    # print('FNAME_LIBRARY:',FNAME_LIBRARY)
 
     # MUSIC TABLE - 'PlayCount' & 'Rating' not used
     
@@ -202,6 +221,8 @@ def open_db():
                 History(MusicId)")
     con.execute("CREATE INDEX IF NOT EXISTS TimeIndex ON \
                 History(Time)")
+    con.execute("CREATE INDEX IF NOT EXISTS TypeActionIndex ON \
+                History(Type, Action)")
 
     '''
         INDEX on OsSongName and confirm original when OsArtistName and
@@ -234,11 +255,18 @@ def open_db():
     cursor = con.cursor()
     hist_cursor = con.cursor()
 
-    #fd = FixData("Sun May 22 23:59:59 2023")
+    ''' Functions to fix errors in SQL database '''
+    #fd = FixData("Thu Jun 01 23:59:59 2023")  # Class for common fix functions
+
+    # Patch run Jun 02, 2023 with "update=True". 39 Music Ids deleted
+    #fd.del_music_ids(3908, 3946, update=False)
+
     # Patch run May 23, 2023 with "update=True". 66 corrupt scrape-parm deleted
-    # fd.fix_scrape_parm(update=False)
+    #fd.fix_scrape_parm(update=False)
+
     # Patch run May 15, 2023 with "update=True". 290 duplicate meta-edit deleted
-    # fd.fix_meta_edit(update=False)
+    #fd.fix_meta_edit(update=False)
+
     # NEVER RUN fd.fix_utc_dates() AGAIN OR PERMANENT DAMAGE !!!!!!!!!!!!!!!
     # Patch run May 12, 2023 with "update=True". Thousands converted utc to local
     #fd.fix_utc_dates(update=False)
@@ -251,8 +279,122 @@ def close_db():
     con.close()
 
 
+class OsFileNameBlacklist:
+    """ Music Player allows songs with "(No Artist)/" and "/(No Album)/"
+        subdirectories but these cannot be stored in SQL Database.
+
+        Music Table Key OsFileName is "Artist/Album/99 Song.ext"
+
+        self.blacks[] list of songs that cannot be accessed.
+        self.whites[] list of equivalent songs if possible or None.
+
+        USAGE:
+
+        ofb = OsFileNameBlackList()
+        ofb.CheckBlacklist(key) returns true if Blacklisted.
+        ofb.CheckWhitelist(key) returns true if Blacklisted and a whitelist.
+            key exists that is not 'None'. All blacklist keys have a
+            whitelist key initially set to 'None'.
+        ofb.AddBlacklist(key) adds key to blacklist and None to whitelist
+            counterpart list.
+        ofb.SetWhitelist(bad, good) Looks up bad key in blacklist to get
+            index and sets whitelist @ index to good key passed.
+        ofb.GetWhitelist(bad) returns the good key to replace the bad key
+            or returns None.
+    """
+
+    def __init__(self):
+        self.blacks = []
+        self.whites = []
+
+        self.white_key = None  # Used for GetWhitelist(key)
+
+    def Select(self, key):
+        """
+        Wrapper for reading Music Table Row by OsFileName - "artist/album/99 song.ext"
+        :param key: E.G. "Faith No More/17 Last Cup Of Sorrow.m4a"
+        :return: Returns dictionary or None
+        """
+
+        cursor.execute("SELECT * FROM Music WHERE OsFileName = ?", [key])
+        try:
+            d = dict(cursor.fetchone())
+            return d  # Normal successful read
+
+        except TypeError:  # TypeError: 'NoneType' object is not iterable:
+            if self.CheckBlacklist(key):
+                if self.CheckWhitelist(key):
+                    cursor.execute("SELECT * FROM Music WHERE OsFileName = ?",
+                                   [self.white_key])
+                    d = dict(cursor.fetchone())
+                    return d
+                else:
+                    return None
+            else:
+                self.AddBlacklist(key)
+                return None
+
+    def CheckBlacklist(self, key):
+        """ TODO: Simpler to use: 'if key in self.blacks' """
+        try:
+            _ndx = self.blacks.index(key)
+            return True
+        except ValueError:
+            return False
+
+    def AddBlacklist(self, key):
+        try:
+            ndx = self.blacks.index(key)
+            print("sql.py AddBlacklist(key) already exists in list:", key,
+                  "at 0's based index:", ndx)
+            return False
+        except ValueError:
+            # This is normally expected
+            self.blacks.append(key)
+            self.whites.append(None)
+            return True
+
+    def CheckWhitelist(self, key):
+        """ TODO: Simpler to use: 'if key in self.whites' """
+        try:
+            ndx = self.blacks.index(key)
+            self.white_key = self.whites[ndx]  # Kind of cheating... but...
+            return self.white_key is not None
+        except ValueError:
+            print("sql.py CheckWhitelist(key) key not in self.blacks:", key)
+            return False  # More explicit than None
+
+    def GetWhitelist(self, key):
+        try:
+            ndx = self.blacks.index(key)
+            self.white_key = self.whites[ndx]  # Redundancy
+            if self.white_key is None:
+                print("sql.py GetWhitelist(key) WARNING:", key, "points to None")
+            return self.white_key  # Value could still be None which is False
+        except ValueError:
+            print("sql.py GetWhitelist(key) WARNING:", key,
+                  "does not exist in self.blacks")
+            return None
+
+    def SetWhitelist(self, black_key, white_key):
+        try:
+            ndx = self.blacks.index(black_key)
+            self.whites[ndx] = white_key  # Overwrite 'None' with substitute song
+        except ValueError:
+            print("sql.py SetWhitelist(black_key, white_key) invalid black_key:",
+                  black_key)
+            return None
+
+
+''' Global substitution for read Music Table by path '''
+ofb = OsFileNameBlacklist()
+
+
 def make_key(fake_path):
-    """ Create key to read Music index by OsFileName which is
+    """
+        DEPRECATED: June 3, 2023
+
+        Create key to read Music index by OsFileName which is
         /path/to/topdir/album/artist/song.ext
 
     TODO: What about PRUNED_SUBDIRS from mserve code?
@@ -262,11 +404,20 @@ def make_key(fake_path):
 
         What about '(NO_ARTIST)' and '(NO_ALBUM)' strings?
     """
-
+    ''' Version prior to June 3, 2023 when new Blacklist implemented '''
     groups = fake_path.split(os.sep)
     artist = groups[START_DIR_SEP+1]
     album = groups[START_DIR_SEP+2]
     song = groups[START_DIR_SEP+3]
+
+    ''' June 3, 2023 - (No Artist) stripped for new Blacklist '''
+    global _START_DIR
+    suffix = fake_path
+    suffix = suffix.replace(os.sep + NO_ARTIST_STR, '')
+    suffix = suffix.replace(os.sep + NO_ALBUM_STR, '')
+    suffix = suffix[len(_START_DIR):]
+
+    #return suffix
     return artist + os.sep + album + os.sep + song
 
 
@@ -295,8 +446,9 @@ def get_lyrics(key):
     """
         Get Unsynchronized Lyrics and Lyrics Time Index
     """
-    global MUSIC_ID
+    # global MUSIC_ID  # June 3, 2023 - Appears unused
 
+    """ Version prior to June 3, 2023 
     cursor.execute("SELECT * FROM Music WHERE OsFileName = ?", [key])
     ''' For LyricsTimeIndex Music Table Column we need to do:
         >>> json.dumps([1.2,2.4,3.6])
@@ -307,9 +459,19 @@ def get_lyrics(key):
     # Test if parent fields available:
     # print('self.Artist:',self.Artist)
     # NameError: global name 'self' is not defined
-    d = dict(cursor.fetchone())
-
-    MUSIC_ID = d["Id"]
+    try:
+        d = dict(cursor.fetchone())
+    except TypeError:  # TypeError: 'NoneType' object is not iterable:
+        d = None
+        #MUSIC_ID = None  # June 3, 2023 - Appears unused
+        print("sql.py get_lyrics() Bad key:", key)
+        return None, None
+    """
+    """ June 3, 2023 - May get whitelisted version """
+    d = ofb.Select(key)
+    if d is None:
+        return None, None
+    #MUSIC_ID = d["Id"]  # June 3, 2023 - Appears unused
 
     if d["LyricsTimeIndex"] is not None:
         return d["UnsynchronizedLyrics"], json.loads(d["LyricsTimeIndex"])
@@ -320,7 +482,11 @@ def get_lyrics(key):
 def music_get_row(key):
     # Get row using the MusicID
     cursor.execute("SELECT * FROM Music WHERE Id = ?", [key])
-    row = cursor.fetchone()
+
+    try:
+        row = dict(cursor.fetchone())
+    except TypeError:  # TypeError: 'NoneType' object is not iterable:
+        row = None
     if row is None:
         print('sql.py - music_get_row() not found:', key)
         return None
@@ -337,28 +503,11 @@ def update_metadata(key, artist, album, song, genre, tracknumber, date,
         Update Music Table with metadata tags.
         Called from mserve.py and encoding.py
 
-        First check if metadata has changed. If not then return False.
+        Check if metadata has changed. If no changes return False.
 
         Update metadata in library and insert history record:
             'meta' 'init' for first time
             'meta' 'edit' for 2nd and subsequent changes
-
-        Metadata tags passed from following mserve variables:
-
-        self.Artist=self.metadata.get('ARTIST', "None")
-        self.Album=self.metadata.get('ALBUM', "None")
-        self.Title=self.metadata.get('TITLE', "None")
-        self.Genre=self.metadata.get('GENRE', "None")
-        self.Track=self.metadata.get('TRACK', "None")
-        self.Date=self.metadata.get('DATE', "None")
-        self.Duration=self.metadata.get('DURATION', "0,0").split(',')[0]
-        self.Duration=self.Duration.split('.')[0]
-        self.DurationSecs=self.getSec(self.Duration)
-
-        sql.update_metadata(self.play_make_sql_key(), self.Artist, self.Album, \
-                            self.Title, self.Genre, self.Track, self.Date, \
-                            self.DurationSecs, self.Duration)
-
     """
 
     # noinspection SpellCheckingInspection
@@ -369,12 +518,12 @@ def update_metadata(key, artist, album, song, genre, tracknumber, date,
     # text_factory = str). It is highly recommended that you instead just
     # switch your application to Unicode strings.
     # TODO: Check for Python 3 may be required because Unicode is default type
-    artist = artist.decode("utf8")          # Queensrÿche
+    artist = artist.decode("utf8")  # Queensrÿche
     # inspection SpellCheckingInspection
     album = album.decode("utf8")
     song = song.decode("utf8")
     if type(date) is str:
-        if date != "None":      # Strange but true... See "She's No Angel" by April Wine.
+        if date != "None":  # See "She's No Angel" by April Wine.
             # Problem with date "1993-01-26"
             try:
                 date = float(date)  # Dumb idea because it's year
@@ -384,54 +533,41 @@ def update_metadata(key, artist, album, song, genre, tracknumber, date,
     if genre is not None:
         genre = genre.decode("utf8")
 
-    #print('artist type:', type(artist), type(album), type(song))
-    # May 4, 2023 - Left over bug from when SQL 'TrackNumber' defined INT not TEXT
-    #if tracknumber == "00":
-    #    tracknumber = "0"
-    #if tracknumber == "04":
-    #    tracknumber = "4"
+    # Don't allow GIGO which required FixData del_music_ids() function June 2023
+    if artist is None or album is None or song is None:
+        return False
+    if artist == NO_ARTIST_STR or album == NO_ARTIST_STR:
+        return False
+    if artist == NO_ALBUM_STR or album == NO_ALBUM_STR:
+        return False
 
+    """ Prior to June 3, 2023 - TODO Add to Whitelist if possible
     cursor.execute("SELECT * FROM Music WHERE OsFileName = ?", [key])
-    d = dict(cursor.fetchone())
+    try:
+        d = dict(cursor.fetchone())
+    except TypeError:  # TypeError: 'NoneType' object is not iterable:
+        d = None
+        print("sql.py update_metadata() Bad key:", key)
+    """
+    d = ofb.Select(key)
     if d is None:
-        print('sql.py update_metadata() error no music ID for:', key)
-        return
+        ''' June 3, 2023 - See if Whitelist can be created '''
+        # File and Directory names with ":", "?", "/" and "." replaced with "_"
+        fudged_artist = ext.legalize_dir_name(artist)
+        fudged_album = ext.legalize_dir_name(album)
+        fudged_song = key.split(os.sep)[-1]  # "song" S/B "99 song.ext"
+        fudged_song = ext.legalize_song_name(fudged_song)  # Not needed but test
+        white_key = fudged_artist + os.sep + fudged_album + os.sep + fudged_song
 
-    # Debugging information to comment out later (or perhaps logging?)
-    '''
-    print('\nSQL updating metadata for:',key)
-    print('artist type :', type(artist), 'album type :', type(album), 
-          'song type :', type(song), 'genre type :', type(genre))
-    print('SQL type    :', type(d['MetaArtistName']), type(d['MetaAlbumName']),
-          type(d['MetaSongName']), type(d['Genre']))
-    print(artist       , d['MetaArtistName'])
-    print(album        , d['MetaAlbumName'])
-    print(song         , d['MetaSongName'])
-    print(genre        , d['Genre'])
-    print(tracknumber  , d['TrackNumber'])
-    print(date         , d['ReleaseDate'])
-    print(seconds      , d['Seconds'])
-    print(duration     , d['Duration'])
-
-    if artist      != d['MetaArtistName']:
-        print('artist:', artist, d['MetaArtistName'])
-    elif album       != d['MetaAlbumName']:
-        print('album:', album, d['MetaAlbumName'])
-    elif song        != d['MetaSongName']:
-        print('song:', song, d['MetaSongName'])
-    elif genre       != d['Genre']:
-        print('genre:', genre, d['Genre'])
-    elif tracknumber != d['TrackNumber']:
-        print('tracknumber:', tracknumber, d['TrackNumber'])
-    elif date        != d['ReleaseDate']:
-        print('date:', date, d['ReleaseDate'])
-    elif seconds     != d['Seconds']:
-        print('seconds:', seconds, d['Seconds'])
-    elif duration    != d['Duration']:
-        print('duration:', duration, d['Duration'])
-    else:
-        print('All things considered EQUAL')
-    '''
+        e = ofb.Select(white_key)  # If white key works, use it in Whitelist
+        if e is not None:
+            print("Found substitute key:", e['OsFileName'])
+            ofb.SetWhitelist(key, white_key)
+            key = white_key  # Use white_key instead of passed key
+            d = e  # Substitute "None" for good dictionary
+        else:
+            print('sql.py update_metadata() error no music ID for:', key)
+            return False
 
     # Are we adding a new 'init' or 'edit' history record?
     if d['MetaArtistName'] is None:
@@ -455,13 +591,15 @@ def update_metadata(key, artist, album, song, genre, tracknumber, date,
     else:
         return False                            # Metadata same as library
 
+    # For debugging, set update_print_count to 0. Otherwise set initial value to 10
     global update_print_count
     if update_print_count < 10:
         print('\nSQL updating metadata for:', key)
         print('artist type :', type(artist), 'album type :', type(album),
               'song type :', type(song), 'tracknumber type :', type(tracknumber))
-        print('SQL type    :', type(d['MetaArtistName']), 'album type :', type(d['MetaAlbumName']),
-              'song type :', type(d['MetaSongName']), 'tracknumber type :', type(d['TrackNumber']))
+        print('SQL type    :', type(d['MetaArtistName']), 'album type :',
+              type(d['MetaAlbumName']), 'song type :', type(d['MetaSongName']),
+              'tracknumber type :', type(d['TrackNumber']))
         print(artist, d['MetaArtistName'])
         print(album, d['MetaAlbumName'])
         print(song, d['MetaSongName'])
@@ -503,9 +641,11 @@ def update_metadata(key, artist, album, song, genre, tracknumber, date,
 
     # Add history record
     # Time will be file's last modification time
+
     ''' Build full song path '''
     full_path = _START_DIR.encode("utf8") + key
     # Below not needed because "(No Album)" strings not in Music Table filenames
+    # June 2, 2023, no longer relevant because rejected above.
     full_path = full_path.replace(os.sep + NO_ARTIST_STR, '')
     full_path = full_path.replace(os.sep + NO_ALBUM_STR, '')
 
@@ -549,22 +689,26 @@ def update_metadata(key, artist, album, song, genre, tracknumber, date,
 
     con.commit()
 
-    return True  # Metadata was changed
+    return True  # Metadata was updated in SQL database
 
 
 def music_id_for_song(key):
     # Get the MusicID matching song file's basename
-    cursor.execute("SELECT Id FROM Music WHERE OsFileName = ?", [key])
-    row = cursor.fetchone()
-    if row is None:
-        print('music_id_for_song(key) error no music ID for:', key)
+    d = ofb.Select(key)
+    if d is None:
         return 0
-    elif row[0] == 0:
+    #cursor.execute("SELECT Id FROM Music WHERE OsFileName = ?", [key])
+    #try:
+    #    row = dict(cursor.fetchone())
+    #except TypeError:  # TypeError: 'NoneType' object is not iterable:
+    #    print("sql.py music_id_for_song(key) key not found:", key)
+    #    return 0
+
+    if d['Id'] == 0:
         print('music_id_for_song(key) error music ID is 0:', key)
         return 0
     else:
-        return row[0]
-
+        return d['Id']  # The actual Music ID found
 
 #==============================================================================
 #
@@ -575,8 +719,12 @@ def music_id_for_song(key):
 
 def hist_get_row(key):
     # Get the MusicID matching song file's basename
-    cursor.execute("SELECT * FROM History WHERE Id = ?", [key])
-    row = cursor.fetchone()
+    hist_cursor.execute("SELECT * FROM History WHERE Id = ?", [key])
+
+    try:
+        row = dict(hist_cursor.fetchone())
+    except TypeError:  # TypeError: 'NoneType' object is not iterable:
+        row = None
     if row is None:
         print('sql.py - hist_get_row not found():', key)
         return None
@@ -601,6 +749,11 @@ def hist_add_time_index(key, time_list):
         print('sql.hist_add_time_index(key) edit time, init:', key, HISTORY_ID)
         hist_cursor.execute("SELECT * FROM History WHERE Id = ?", [HISTORY_ID])
         d = dict(hist_cursor.fetchone())
+        try:
+            d = dict(hist_cursor.fetchone())
+        except TypeError:  # TypeError: 'NoneType' object is not iterable:
+            d = None
+
         if d is None:
             print('sql.hist_add_time_index() error no History ID:', key,
                   HISTORY_ID)
@@ -639,7 +792,12 @@ def hist_default_dict(key, time_type='access'):
     """ Construct a default dictionary used to add a new history record """
 
     cursor.execute("SELECT * FROM Music WHERE OsFileName = ?", [key])
-    d = dict(cursor.fetchone())
+
+    try:
+        d = dict(cursor.fetchone())
+    except TypeError:  # TypeError: 'NoneType' object is not iterable:
+        d = None
+
     if d is None:
         print('SQL hist_default_dict() error no music row for:', key)
         return None
@@ -701,7 +859,11 @@ def hist_delete_time_index(key):
     print('sql.hist_delete_time_index(key) HISTORY_ID:', key, HISTORY_ID)
 
     hist_cursor.execute("SELECT * FROM History WHERE Id = ?", [HISTORY_ID])
-    d = dict(hist_cursor.fetchone())
+    try:
+        d = dict(hist_cursor.fetchone())
+    except TypeError:  # TypeError: 'NoneType' object is not iterable:
+        d = None
+
     if d is None:
         print('sql.hist_delete_time_index(key) error no History ID:', key,
               HISTORY_ID)
@@ -740,8 +902,8 @@ def hist_init_lost_and_found(START_DIR, USER, LODICT):
     Type = 'file'           # This records OS filename into history
     Action = 'init'         # Means we "found" the file or it was renamed
     '''
-    As of April 13, 2021:
-    DICT={'iid': iid, 'name': name, 'topdir': topdir, 'host': host, 'wakecmd':
+    LODICT (location dictionary in memory) format as of April 13, 2021:
+    DICT={'iid': iid, 'name': name, 'topdir': topdir, 'host': host, 'wakecmd': \
       wakecmd, 'testcmd': testcmd, 'testrep': testrep, 'mountcmd': \
       mountcmd, 'activecmd': activecmd, 'activemin': activemin}
     '''
@@ -781,7 +943,7 @@ def hist_init_lost_and_found(START_DIR, USER, LODICT):
         # os.stat gives us all of file's attributes
         stat = ext.stat_existing(full_path)
         if stat is None:
-            print("sql.hist_init_lost_and_found(): File below doesn't exist:\n")
+            print("\nsql.hist_init_lost_and_found() - File below doesn't exist:")
             names = cursor.description
             for i, name in enumerate(names):
                 # Pad name with spaces for VALUE alignment
@@ -834,11 +996,12 @@ def hist_check(MusicId, check_type, check_action):
                         For setting (screen, monitor, window, etc) the
                         MusicId is set to 0.
         User            User name, User ID or GUID varies by platform.
-        Type            'file', 'catalog', 'link', 'index', 'checkout', 'song'
+        Type            'file', 'catalog', 'link', 'index', 'checkout', 'song',
                         'lyrics', 'time', 'fine-tune', 'meta', 'resume', 
-                        'volume', 'window'
-        Action          'copy', 'download', 'remove', 'burn', 'edit', 'play'
+                        'volume', 'window', 'chron-state', 'hockey'
+        Action          'copy', 'download', 'remove', 'burn', 'edit', 'play',
                         'scrape', 'init', 'shuffle', 'save', 'load', 'level',
+                        'show', 'hide', 'On', 'Off'
                         NAME 
         SourceMaster    'Genius', 'Metro Lyrics', etc.
                         Device name, Playlist
@@ -866,6 +1029,40 @@ def hist_check(MusicId, check_type, check_action):
 
     HISTORY_ID = 0
     return False                # Not Found
+
+
+def get_config(get_type, get_action):
+    """ Get configuration history using 'Type' + 'Action' key
+
+        VARIABLE        DESCRIPTION
+        --------------  -----------------------------------------------------
+        Type - Action   'window' - library, playlist, history, encoding,
+                                   results, sql_music, sql_history
+                        'resume' - LODICT[iid]. SourceMaster = Playing/Paused
+                        'chron_state' - LODICT[iid]. SourceMaster = hide/show
+                        'hockey_state' - LODICT[iid]. SourceMaster = On/Off
+        Target          For Type='window' = geometry (x, y, width, height)
+    """
+    found_count = 0
+    found_id = None
+
+    for row in hist_cursor.execute("SELECT Id, Type, Action FROM History " +
+                                   "INDEXED BY TypeActionIndex " +
+                                   "WHERE Type = ? AND Action = ?",
+                                   (get_type, get_action)):
+        Id = row[0]
+        Type = row[1]
+        Action = row[2]
+        if Type == check_type and Action == check_action:
+            found_id = Id
+            found_count += 1
+        else:
+            print("sql.py get_config() impossible Type & Action:", Type, Action)
+
+    if found_count > 1:
+        print("sql.py get_config() impossible found too many:", found_count)
+
+    return found_id                 # First time for config will be "None"
 
 
 def hist_last_time(check_type, check_action):
@@ -920,6 +1117,7 @@ def hist_delete_type_action(Type, Action):
                 Keep this as boilerplate for next time
     """
 
+    # TODO: Use "INDEXED BY TypeActionIndex " +
     sql = "DELETE FROM History WHERE Type=? AND Action=?"
 
     hist_cursor.execute(sql, (Type, Action))
@@ -1081,7 +1279,11 @@ class Authorization:
             # If record exists, we get HISTORY_ID set to row number primary key
             hist_cursor.execute("SELECT * FROM History WHERE Id = ?",
                                 [HISTORY_ID])
-            d = dict(hist_cursor.fetchone())
+            try:
+                d = dict(hist_cursor.fetchone())
+            except TypeError:  # TypeError: 'NoneType' object is not iterable:
+                d = None
+
             if d is None:
                 # If we get here there is programmer error
                 print("sql.py Authorization.GetUser(): No '" + self.Type +
@@ -1287,8 +1489,13 @@ class PrettyMusic:
         # Get Music Table row, remove commas
         key = sql_row_id.replace(',', '')
         #print("sql_row_id:", sql_row_id, 'key:', key)
+        # NOTE: This isn't using OsFileName key so ofb.Select() won't work
         cursor.execute("SELECT * FROM Music WHERE Id = ?", [key])
-        d = dict(cursor.fetchone())
+
+        try:  # NOTE: This isn't using OsFileName key so ofb.Select() won't work
+            d = dict(cursor.fetchone())
+        except TypeError:  # TypeError: 'NoneType' object is not iterable:
+            d = None
         if d is None:
             print('sql.py.PrettyMusic() - No SQL for Music Table Id:', key)
             return  # Dictionary will be empty
@@ -1393,8 +1600,12 @@ class PrettyHistory:
         # Get Music Table row, remove commas
         key = sql_row_id.replace(',', '')
         #print("sql_row_id:", sql_row_id, 'key:', key)
-        cursor.execute("SELECT * FROM History WHERE Id = ?", [key])
-        d = dict(cursor.fetchone())
+        hist_cursor.execute("SELECT * FROM History WHERE Id = ?", [key])
+
+        try:
+            d = dict(hist_cursor.fetchone())
+        except TypeError:  # TypeError: 'NoneType' object is not iterable:
+            d = None
         if d is None:
             print('sql.py.PrettyHistory() - No SQL for History Table Id:', key)
             return
@@ -1971,6 +2182,122 @@ class FixData:
         self.test = True
         self.successful_update_count = 0
         self.sql_cmd_error = False
+
+    def del_music_ids(self, start, end, update=False):
+        """ Delete range of music IDs that were created in error.
+            First pass delete History Table rows matching MusicId range.
+            Second pass delete Music Table rows matching Id range.
+
+            FIXES ERRORS after another location wasn't handled properly:
+
+sql.hist_init_lost_and_found(): File below doesn't exist:
+COLUMN: Id                        VALUE: 3928
+COLUMN: OsFileName                VALUE: Faith No More/(No Album)/19 The Perfect Crime.m4a
+COLUMN: OsModificationTime        VALUE: 1448681593.0
+COLUMN: MetaSongName              VALUE: None
+COLUMN: Seconds                   VALUE: None
+
+sql.hist_init_lost_and_found(): File below doesn't exist:
+COLUMN: Id                        VALUE: 3936
+COLUMN: OsFileName                VALUE: Fleetwood Mac/(No Album)/RandomSong2.m4a
+COLUMN: OsModificationTime        VALUE: 1595468339.8
+COLUMN: MetaSongName              VALUE: None
+COLUMN: Seconds                   VALUE: None
+
+        """
+        # Backup database before updating
+        self.backup(update)
+
+        ''' PHASE I - Delete History Records linked to MusicId '''
+
+        fix_list = list()
+        sql = "SELECT * FROM History INDEXED BY MusicIdIndex " +\
+              "WHERE MusicId >= ? AND MusicId <= ?"
+        hist_cursor.execute(sql, (start, end))
+        rows = hist_cursor.fetchall()
+
+        for sql_row in rows:
+            row = dict(sql_row)
+            # self.rows_count += 1 We only count Music Rows in second pass
+            print_all = False
+            #if 15879 <= row['Id'] <= 15880:
+            if row['MusicId'] == 999999:  # Change 999999 to MusicId to print for debugging
+                print("\nFound history History Row Id:", row['Id'], "| MusicId:", row['MusicId'])
+                print("\trow['SourceMaster'] =", row['SourceMaster'],
+                      "| row['SourceDetail'] =", row['SourceDetail'])
+
+                print_all = True
+
+            fix_list.append(OrderedDict([('Id', row['Id']),
+                                         ('MusicId', row['MusicId']),
+                                         ('SourceMaster', row['SourceMaster']),
+                                         ('SourceDetail', row['SourceDetail']),
+                                         ('Count', 0), ('Error', 0)]))
+            d = fix_list[len(fix_list) - 1]
+
+            self.rows_changed += 1
+            print(self.make_pretty_line(d))
+
+            if self.test:
+                continue  # Skip over update
+
+            sql = "DELETE FROM History WHERE Id = ?"
+            if not self.sql_cmd_error:
+                key = row['Id']
+                try:
+                    hist_cursor.execute(sql, (key,))
+                    self.successful_update_count += 1
+                except Exception as err:
+                    print('Update Failed: \nError: %s' % (str(err)))
+                    print("  key:", key,)
+                    print(sql, "\n", (detail, comment, key))
+                    self.sql_cmd_error = True
+                pass
+
+        ''' PHASE II - Delete Music Rows in MusicId Range '''
+
+        del_list = list()
+        sql = "SELECT * FROM Music WHERE Id >= ? AND Id <= ?"
+        cursor.execute(sql, (start, end))
+        rows = cursor.fetchall()
+
+        for sql_row in rows:
+            row = dict(sql_row)
+            self.rows_count += 1  # Not counted in first pass through history records
+            print_all = False
+            #if 15879 <= row['Id'] <= 15880:
+            if row['Id'] == 999999:  # Change 999999 to MusicId to print for debugging
+                print("\nFound history History Row Id:", row['Id'], "| MetaSongName:", row['MetaSongName'])
+                print_all = True
+
+            del_list.append(OrderedDict([('Id', row['Id']),
+                                         ('MetaSongName', row['MetaSongName']),
+                                         ('Count', 0), ('Error', 0)]))
+            d = del_list[len(del_list) - 1]
+
+            self.rows_changed += 1
+            print(self.make_pretty_line(d))
+
+            if self.test:
+                continue  # Skip over update
+
+            sql = "DELETE FROM Music WHERE Id = ?"
+            if not self.sql_cmd_error:
+                key = row['Id']
+                try:
+                    cursor.execute(sql, (key,))
+                    self.successful_update_count += 1
+                except Exception as err:
+                    print('Update Failed: \nError: %s' % (str(err)))
+                    print("  key:", key, " | sql:", sql)
+                    self.sql_cmd_error = True
+                pass
+
+        # Print count total lines
+        self.print_summary("del_music_ids() History", fix_list)
+        self.print_summary("del_music_ids() Music", del_list)
+
+        self.wrapup(update)
 
     def fix_scrape_parm(self, update=False):
         """ Fix MusicId 0 by looking up real MusicId

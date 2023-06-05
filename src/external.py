@@ -215,6 +215,43 @@ def remove_existing(filename):
     return False    # File doesn't exist
 
 
+def legalize_dir_name(name):
+    """ '/', ':', and '?' are some of the invalid characters for file and
+        directory names that are replaced with "_".
+        See: https://stackoverflow.com/a/31976060/6929343
+    """
+    name = legalize_most(name)
+    name = name.replace('.', '_')
+    return name
+
+
+def legalize_most(name):
+    """ Everything except '.' is fixed (legalized)
+    """
+    name = name.replace('/', '_')  # Only character that Linux forbids
+    name = name.replace('?', '_')
+    name = name.replace(':', '_')
+    name = name.replace('<', '_')
+    name = name.replace('>', '_')
+    name = name.replace('"', '_')
+    name = name.replace('\\', '_')
+    name = name.replace('|', '_')
+    name = name.replace('*', '_')
+    return name
+
+
+def legalize_song_name(name):
+    """ Only one '.' can appear in pathname. Replace first ones with "_"
+    """
+    name = legalize_most(name)
+    if name.endswith("."):  # In Windows files can end in `.`
+        name = name[:-1]
+    ext = name.count('.')  # How many extension characters?
+    if ext > 1:
+        name = name.replace('.', '_', ext - 1)  # Keep last extension
+    return name
+
+
 class GracefulKiller:
     """ From: https://stackoverflow.com/a/31464349/6929343
     """

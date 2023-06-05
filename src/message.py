@@ -5,6 +5,20 @@
 #
 #==============================================================================
 
+""" TODO:
+        Remove: WIN_MIN_WIDTH = 142
+                WIN_MIN_HEIGHT = 63
+                MED_FONT = 10                       # Medium Font size
+                MON_FONTSIZE = 11                   # Medium Font size
+
+        Use: g. equivalents from global_variables.py
+
+        Create self.message_waiting() called by every function to lift
+            message window to top of window stack and return true so
+            caller can do it's own return. If lifting window it is
+            shaken around to give attention to user.
+"""
+
 # identical imports in mserve
 from __future__ import print_function       # Must be first import
 from __future__ import with_statement       # Error handling for file opens

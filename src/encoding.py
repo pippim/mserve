@@ -1152,6 +1152,7 @@ class RipCD:
         sql.cursor.execute("SELECT Id FROM Music WHERE OsFileName = ?",
                            [self.os_part_name])
         # self.music_id = sql.cursor.fetchone()  # BONEHEAD move !!!
+        # TODO: June 3, 2023 - Below is broken. Use ofb.Select()?
         d = dict(sql.cursor.fetchone())
         self.music_id = d["Id"]
         # self.music_id = sql.cursor.fetchone()[0]  # This would work too.
@@ -1388,8 +1389,9 @@ class RipCD:
             return False  # No more songs
 
         # Does target directory exist?
-        part = self.selected_artist.encode("utf8") + os.sep + \
-            self.selected_album.encode("utf8") + os.sep
+        ''' June 3, 2023 Create legal names - Replace '/', '?', ':' with '_' '''
+        part = ext.legalize_dir_name(self.selected_artist.encode("utf8")) + os.sep + \
+            ext.legalize_dir_name(self.selected_album.encode("utf8")) + os.sep
         prefix = self.topdir.encode("utf8") + os.sep + part
         if not os.path.isdir(prefix):
             try:
@@ -1401,8 +1403,9 @@ class RipCD:
                 self.rip_current_track = self.disc.last_track + 1
                 return False
 
-        self.os_full_name = prefix + self.os_song_name  # topdir/artist/album/99 song.ext
-        self.os_part_name = part + self.os_song_name    # SQL music key
+        # topdir/artist/album/99 song.ext - self.os_song_name already legal
+        self.os_full_name = prefix + self.os_song_name  
+        self.os_part_name = part + self.os_song_name  # SQL music key  
         self.rip_current_track = i + 1
         return True
 
@@ -2400,6 +2403,7 @@ class RipCD:
         # HUGE PROBLEM: Why subtract 1 here and not use 1 less above?
         self.selected_title = os_name[offset_2 - 1:]  # For metadata song name
         os_name = os_name + '.' + self.fmt        # Add extension
+        os_name = ext.legalize_song_name(os_name)  # Take out /, ?, :, . (not last .)
         #self.os_part_name = os_name[offset_1:]  # Strip out 99 or 1-99
         #self.os_part_name = self.os_part_name[:-4]  # .wav, .oga, .flac
         return os_name  # os_name inserted into selection 

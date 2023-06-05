@@ -1463,9 +1463,10 @@ gsettings set org.compiz.core:/org/compiz/profiles/unity/plugins/core/ active-pl
                     res = os.popen('wmctrl -ir ' + self.trg_window_id_hex +
                                    ' -b toggle' + self.toggle_str).read()
                     self.trg_was_above = True
-                    if res is not None:
+                    if res is not None and res != "":
                         print("os.popen('wmctrl -ir " + self.trg_window_id_hex +
-                              " -b toggle" + self.toggle_str + ")  res:", res)
+                              " -b toggle" + self.toggle_str + ")  res:", res,
+                              "len(res):", len(res), "type:", type(res))
                 break
 
 
@@ -1475,7 +1476,7 @@ gsettings set org.compiz.core:/org/compiz/profiles/unity/plugins/core/ active-pl
         if self.trg_was_above is True:
             res = os.popen('wmctrl -ir ' + self.trg_window_id_hex +
                            ' -b toggle' + self.toggle_str).read()
-            if res is not None:
+            if res is not None and res != "":
                 print("os.popen('wmctrl -ir " + self.trg_window_id_hex +
                       " -b toggle" + self.toggle_str + ")  res:", res)
 

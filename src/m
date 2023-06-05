@@ -50,8 +50,8 @@ logging.basicConfig(format='%(asctime)s %(levelname)s %(message)s',
 # Values from gnome-terminal to prevent window shrinking too small
 import global_variables as g
 
-WIN_MIN_WIDTH = 142
-WIN_MIN_HEIGHT = 63
+#WIN_MIN_WIDTH = 142
+#WIN_MIN_HEIGHT = 63
 
 
 def main():
@@ -59,7 +59,7 @@ def main():
     Create splash screen and invoke mserve.py which takes a second or more
     """
 
-    ''' Change to working path '''
+    ''' Change to working path - same code in m and mserve.py '''
     cwd = os.getcwd()
     dir_path = os.path.dirname(os.path.realpath(__file__))
     #print('current directory:', cwd)
@@ -69,16 +69,16 @@ def main():
         #print("Changing to dir_path:", dir_path)
         os.chdir(dir_path)
 
-    g.init()  # Initialize user name
+    g.init()  # Initialize g.WIN_MIN_WIDTH, g.WIN_MIN_HEIGHT
     splash = tk.Tk()  # "very top" toplevel
     splash.title("Music Server - mserve")
-    splash.minsize(WIN_MIN_WIDTH, WIN_MIN_HEIGHT)
+    splash.minsize(g.WIN_MIN_WIDTH, g.WIN_MIN_HEIGHT)
 
     ''' Set font style for all fonts including tkSimpleDialog.py '''
     img.set_font_style()  # Make messagebox text larger for HDPI monitors
 
     ''' Set program icon in taskbar '''
-    # Waste of time for splash screen.
+    # Waste of startup time for splash screen which should be short as possible.
     # img.taskbar_icon(splash, 64, 'white', 'lightskyblue', 'black')
 
     ''' Get splash image '''
@@ -100,7 +100,7 @@ def main():
     splash.overrideredirect(True)  # Remove splash window close button
 
     # Call mserve module about 10k lines of code
-    mserve.main(toplevel=splash, mon_geom=mon_dict)
+    mserve.main(toplevel=splash, mon_geom=mon_dict, cwd=cwd, parameters=sys.argv)
     exit()  # Required to close mserve.py ending comes back here!
     splash.mainloop()
 
