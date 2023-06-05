@@ -62,9 +62,6 @@ def main():
     ''' Change to working path - same code in m and mserve.py '''
     cwd = os.getcwd()
     dir_path = os.path.dirname(os.path.realpath(__file__))
-    #print('current directory:', cwd)
-    #print('working path:', dir_path)
-    #print("os.path.realpath(__file__):", os.path.realpath(__file__))
     if cwd != dir_path:
         #print("Changing to dir_path:", dir_path)
         os.chdir(dir_path)
@@ -90,7 +87,7 @@ def main():
     canvas.create_image(0, 0, image=splash_image, anchor=tk.NW)
     #splash.update_idletasks()  # This is required for visibility
 
-    # Center splash screen on monitor and get monitors geometry
+    # Center splash screen on monitor and get monitor's geometry
     mon_dict = monitor.center(splash)
     #splash.wm_overrideredirect(1)  # June 13/20201 debug long press, move this to top.
     splash.update()  # This is required for visibility
@@ -99,7 +96,7 @@ def main():
     # From: https://stackoverflow.com/a/37199655/6929343
     splash.overrideredirect(True)  # Remove splash window close button
 
-    # Call mserve module about 10k lines of code
+    # Call mserve.py module about 13k lines of code
     mserve.main(toplevel=splash, mon_geom=mon_dict, cwd=cwd, parameters=sys.argv)
     exit()  # Required to close mserve.py ending comes back here!
     splash.mainloop()

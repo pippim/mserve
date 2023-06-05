@@ -37,18 +37,34 @@
 #       May. 26 2023 - Set volume to 66% when CBC hockey game on air.
 #       Jun. 01 2023 - Music Library checkboxes batch update to Playlist.
 #       Jun. 03 2023 - Handle (No Album) in lib_tree paths used in SQL tables
+#       Jun. 05 2023 - No location when passing music directory parameter.
 
 # TODO:
 # -----------------------------------------------------------------------------
+
+#   When renaming keep in mind future programming for playlist maintenance. For
+#       example, might need "act_playlist_paths", "new_playlist_paths", "old_",
+#       "del_", etc.
+
 #   Rename 'self.saved_selections'  -> 'self.play_order_iid'
 #          'self.saved_selections'  -> 'self.play_iid_seqs'     #1
+#          'self.saved_selections'  -> 'self.playlist_iid'      #1
+#          'self.saved_selections'  -> 'self.play_lib_iid'      #1
+
+#          'self.saved_playlist'    -> 'self.playlist_paths'    #1  DONE !
+
 #          'self.song_list'         -> 'self.lib_tree_paths'    #1
 
 #          'self.ndx'               -> 'self.curr_iid_ndx'
+#          'self.ndx'               -> 'self.play_curr_ndx'
+#          New Variable             -> 'self.play_curr_iid'     # self.saved_selections(self.ndx)
 #          'self.ndx'               -> 'self.play_ndx'
 #          'self.ndx'               -> 'self.seq_ndx'           #1
 #          'self.ndx'               -> 'self.iid_ndx'
 #          'self.ndx'               -> 'self.song_ndx'
+
+
+#          'START_DIR'              -> 'MUSIC_DIR'
 
 #   Verify parameter #1 is directory. E.G. "START_DIR = sys.argv[1]"
 #       If not a directory, use last location and give error message.
@@ -113,14 +129,17 @@ CALL:
     mserve "/mnt/music/Users/Person/Music/iTunes/iTunes Media/Music/"
 
 REQUIRES:
-    sudo apt install compiz                  # for Hockey Commercials
-    sudo apt install dconf-editor            # for Hockey Commercials (gsettings)
-    sudo apt install ffmpeg                  # file artwork, ffprobe (meta) and ffplay
+    sudo apt install compiz                  # for Hockey (smooth shark move)
+    sudo apt install dconf-editor            # for Hockey (gsettings)
+    sudo apt install ffmpeg                  # for artwork, ffprobe and ffplay
     sudo apt install gstreamer1.0-tools      # For encoding CDs gst-launch-1.0
-    sudo apt install kid3                    # Optional for editing metadata / artwork
-    sudo apt install pqiv                    # Make transparent (Hockey Commercials)
+    sudo apt install kid3                    # Optional for editing metadata
+    sudo apt install pqiv                    # Make transparent Shark (Hockey)
     sudo apt install python-appdirs          # Application directory names
     sudo apt install python-beautifulsoup    # Scrape Song lyrics
+    sudo apt install python-gi               # Gnome window functions (newer)
+    sudo apt install gir1.2-wnck-3.0         # Gnome window functions (older?)
+    # NOTE: python-wnck was never installed but may work
     sudo apt install python-libdiscid        # Get CD's disc ID
     sudo apt install python-notify2          # Popup bubble messages
     sudo apt install python-numpy            # Installed by default in Ubuntu
@@ -131,11 +150,11 @@ REQUIRES:
     sudo apt install python-pil.imagetk      # Pillow image processing
     sudo apt install python-requests         # Get Cover Art
     sudo apt install python-subprocess32     # To compare locations
-    sudo apt install python-tk               # Tkinter (default in Windows and Mac)
+    sudo apt install python-tk               # Tkinter (default in Windows & Mac)
+    sudo apt install wmctrl                  # To move Kid3 or Fishing window
     sudo apt install x11-apps                # xwd window dump (screen shot)
     sudo apt install xclip                   # Insert clipboard
-    sudo apt install xdotool                 # To move Kid3 into invoking
-    sudo apt install wmctrl                  #  lib_top / play_top window
+    sudo apt install xdotool                 # To move Kid3 or Fishing window
 
     sudo add-apt-repository ppa:j-4321-i/ttkwidgets  # CheckboxTreeview
     # NOTE: on Chromebook crostini you need to patch Debian to use Ubuntu key
@@ -944,7 +963,8 @@ class MusicTree(PlayCommonSelf):
         # Move to main()
         # img.taskbar_icon(self.lib_top, 64, 'white', 'lightskyblue', 'black')
 
-        ''' Window Title bar.
+        ''' Window Title bar. E.G.
+            AW17R3  🎵 757 songs, 279 selected  🖸 6626.3 MB used, 2602.1 MB selected - mserve
         '''
         self.lib_top.title("Music Server")
         #                       Loc     Songs   Time  Count sSize sSeconds
@@ -7004,7 +7024,7 @@ $ wmctrl -l -p
         self.secs_before_pause = 0  # How much before paused
 
         ''' Hide chronology (playlist) to match last setting for location '''
-        if chron_state and chron_state == "hide":
+        if chron_state and chron_state == "Hide":
             self.play_list_hide = False  # Should be this value already. Safety
             self.play_show_hide()  # Toggle chronology off
 
@@ -10806,7 +10826,7 @@ IndexError: list index out of range
 
         # Save state of playing / paused and seconds progress into song.
         self.save_resume()
-        # Save chronology tree state = "show", "hide"
+        # Save chronology tree state = "Show", "Hide", None
         self.save_chron_state()
         # Save if Hockey buttons are active or FF/Rewind buttons are
         self.save_hockey_state()
@@ -10839,16 +10859,11 @@ IndexError: list index out of range
         """
             Get last saved state of playing / paused and seconds progress into song.
         """
-        location = LODICT['iid']
-        # print("save_resume() location:", location)
 
-        ''' Need new function:
-            d = sql.get_setting('resume', location)
-            if d is not None:
-                blah blah
-        '''
+        d = self.get_config_for_loc('resume')
+        ''' June 5, 2023 OLD CODE
         if sql.hist_check(0, 'resume', location):
-            sql.hist_cursor.execute("SELECT * FROM History WHERE Id = ?",
+            sql.hist_cursor.execute("SELECT * FROM History WHERE Id = ? LIMIT 1",
                                     [sql.HISTORY_ID])
             try:
                 d = dict(sql.hist_cursor.fetchone())
@@ -10859,6 +10874,7 @@ IndexError: list index out of range
                 return False
         else:
             return None
+        '''
 
         # print("Found SourceMaster:", d['SourceMaster'], "SourceDetail:", d['SourceDetail'])
         if d['SourceDetail'] != str(self.ndx):
@@ -10874,11 +10890,15 @@ IndexError: list index out of range
         """
             Save state of playing / paused and seconds progress into song.
         """
+        if NEW_LOCATION:
+            # print('WIP:', start_dir, "may point to topdir, Artist or Album")
+            pass
+
         location = LODICT['iid']
         # print("save_resume() location:", location)
 
         if sql.hist_check(0, 'resume', location):
-            sql.hist_cursor.execute("SELECT * FROM History WHERE Id = ?",
+            sql.hist_cursor.execute("SELECT * FROM History WHERE Id = ? LIMIT 1",
                                     [sql.HISTORY_ID])
             try:
                 d = dict(sql.hist_cursor.fetchone())
@@ -10908,15 +10928,40 @@ IndexError: list index out of range
         sql.con.commit()
         return True
 
+
     @staticmethod
-    def get_chron_state():
+    def get_config_for_loc(Type):
+        """ Wrapper Action is auto assigned as location
+        """
+        if NEW_LOCATION:
+            return None
+
+        Action = LODICT['iid']
+        return sql.get_config(Type, Action)
+
+
+    @staticmethod
+    def save_config_for_loc(Type, SourceMaster="", SourceDetail="", Target="",
+                            Size=0, Count=0, Seconds=0.0, Comments=""):
+        """ Wrapper Action is auto assigned as location
+        """
+        if NEW_LOCATION:
+            return None
+        Action = LODICT['iid']
+        sql.save_config(
+            Type, Action, SourceMaster=SourceMaster, SourceDetail=SourceDetail,
+            Target=Target, Size=Size, Count=Count, Seconds=Seconds,
+            Comments=Comments)
+
+    def get_chron_state(self):
         """
             Get last saved state of Show/Hide Chronology button
         """
-        location = LODICT['iid']  # Should be a global variable already?
-
+        d = self.get_config_for_loc('chron_state')
+        ''' June 5, 2023 OLD CODE
         if sql.hist_check(0, 'chron_state', location):
-            sql.hist_cursor.execute("SELECT * FROM History WHERE Id = ?", [sql.HISTORY_ID])
+            sql.hist_cursor.execute("SELECT * FROM History WHERE Id = ? LIMIT 1",
+                                    [sql.HISTORY_ID])
             try:
                 d = dict(sql.hist_cursor.fetchone())
             except TypeError:  # TypeError: 'NoneType' object is not iterable:
@@ -10926,10 +10971,10 @@ IndexError: list index out of range
                 return None
         else:
             return None
-
-        if d['SourceMaster'] == "hide":
+        '''
+        if d['SourceMaster'] == "Hide":
             chron_state = d['SourceMaster']
-        elif d['SourceMaster'] == "show":
+        elif d['SourceMaster'] == "Show":
             chron_state = d['SourceMaster']
         else:
             print("mserve.py get_chron_state() d['SourceMaster'] invalid:",
@@ -10942,15 +10987,19 @@ IndexError: list index out of range
         """
             Save state of Show/Hide Chronology button
         """
+        if NEW_LOCATION:
+            # print('WIP:', start_dir, "may point to topdir, Artist or Album")
+            pass
+
         location = LODICT['iid']  # L004, etc.
 
         if self.play_list_hide:
-            state = "hide"
+            state = "Hide"
         else:
-            state = "show"
+            state = "Show"
 
         if sql.hist_check(0, 'chron_state', location):
-            sql.hist_cursor.execute("SELECT * FROM History WHERE Id = ?",
+            sql.hist_cursor.execute("SELECT * FROM History WHERE Id = ? LIMIT 1",
                                     [sql.HISTORY_ID])
 
             try:
@@ -10961,7 +11010,7 @@ IndexError: list index out of range
                 print('mserve.py save_chron_state() error sql.HISTORY_ID:', sql.HISTORY_ID)
                 return False
         else:
-            # First time add the record self.pp_state
+            # First time add the record self.play_list_hide
             # Music Id is 0. As is Size, Count & Seconds
             sql.hist_add(time.time(), 0, g.USER, 'chron_state', location, state,
                          None, None, 0, 0, 0.0,
@@ -10978,26 +11027,28 @@ IndexError: list index out of range
         sql.con.commit()
         return True
 
-    @staticmethod
-    def get_hockey_state():
+    def get_hockey_state(self):
         """
-            Get last saved state of Show/Hide hockeyology button
+            Get last saved state for Hockey TV Commercial Buttons and Volume
         """
-        location = LODICT['iid']  # Should be a global variable already?
-
+        global TV_VOLUME
+        d = self.get_config_for_loc('hockey_state')
+        ''' June 5, 2023 OLD CODE
         if sql.hist_check(0, 'hockey_state', location):
-            sql.hist_cursor.execute("SELECT * FROM History WHERE Id = ?", [sql.HISTORY_ID])
+            sql.hist_cursor.execute("SELECT * FROM History WHERE Id = ? LIMIT 1",
+                                    [sql.HISTORY_ID])
 
             try:
                 d = dict(sql.hist_cursor.fetchone())
             except TypeError:  # TypeError: 'NoneType' object is not iterable:
                 d = None
             if d is None:
-                print('mserve.py get_hockey_state() error sql.HISTORY_ID:', sql.HISTORY_ID)
+                print('mserve.py get_hockey_state() error sql.HISTORY_ID:',
+                      sql.HISTORY_ID)
                 return False
         else:
             return False
-
+        '''
         if d['SourceMaster'] == "On":
             hockey_state = True
         elif d['SourceMaster'] == "Off":
@@ -11007,12 +11058,21 @@ IndexError: list index out of range
                   d['SourceMaster'])
             hockey_state = None
 
+        if d['Size'] is not None and 25 <= int(d['Size']) <= 100:
+            TV_VOLUME = int(d['Size'])  # TV_VOLUME from 25 to 100 is valid
+        else:
+            print("mserve.py get_hockey_state() TV_VOLUME is invalid:", d['Size'])
+
         return hockey_state
 
     def save_hockey_state(self):
         """
-            Save state of Show/Hide hockeyology button
+            Save state for Hockey TV Commercial Buttons and Volume
         """
+        if NEW_LOCATION:
+            # print('WIP:', start_dir, "may point to topdir, Artist or Album")
+            pass
+
         location = LODICT['iid']  # L004, etc.
 
         if self.play_hockey_allowed:
@@ -11021,26 +11081,28 @@ IndexError: list index out of range
             state = "Off"
 
         if sql.hist_check(0, 'hockey_state', location):
-            sql.hist_cursor.execute("SELECT * FROM History WHERE Id = ?",
+            sql.hist_cursor.execute("SELECT * FROM History WHERE Id = ? LIMIT 1",
                                     [sql.HISTORY_ID])
             d = dict(sql.hist_cursor.fetchone())
             if d is None:
-                print('mserve.py save_hockey_state() error sql.HISTORY_ID:', sql.HISTORY_ID)
+                print('mserve.py save_hockey_state() error sql.HISTORY_ID:',
+                      sql.HISTORY_ID)
                 return False
         else:
             # First time add the record self.pp_state
             # Music Id is 0. As is Size, Count & Seconds
-            sql.hist_add(time.time(), 0, g.USER, 'hockey_state', location, state,
-                         None, None, 0, 0, 0.0, "Hockey TV Commercial Buttons used?")
+            sql.hist_add(time.time(), 0, g.USER, 'hockey_state', location,
+                         state, None, None, TV_VOLUME, 0, 0.0,
+                         "Hockey TV Commercial Buttons used?")
             sql.con.commit()
             return True
 
         ''' We have the existing history record, replace current song information
             May 16 2023 - Note flaw in this code and other where g.USER is assumed same. 
         '''
-        sql_cmd = "UPDATE History SET Time=?, SourceMaster=? WHERE Id = ?"
+        sql_cmd = "UPDATE History SET Time=?, SourceMaster=?, Size=? WHERE Id = ?"
 
-        sql.hist_cursor.execute(sql_cmd, (time.time(), state, sql.HISTORY_ID))
+        sql.hist_cursor.execute(sql_cmd, (time.time(), state, TV_VOLUME, sql.HISTORY_ID))
         sql.con.commit()
         return True
 
@@ -12505,7 +12567,7 @@ def load_last_location():
 
 
 class ToolTip(object):
-    """ Now obsolete. Leave here to compare to message.ToolTip() """
+    """ DEPRECATED. Simplified version of message.ToolTip() """
 
     def __init__(self, widget, text, thread=None, pool=None, tool_type='button'):
         """ Background defaults to yellow """
@@ -12601,26 +12663,41 @@ def custom_paste(event):
 
 LODICT = {}  # Never change LODICT after startup!
 NEW_LOCATION = False  # Is directory not saved in location master file?
+OLD_CWD = None  # Directory when 'm' or mserve.py was called
 SORTED_LIST = []
 root = None  # Tkinter toplevel object. Can be passed by `m`
 
 
-def open_files(cwd, start_parms):
+def open_files(old_cwd, prg_path, parameters):
     """
         Create data directories if they don't exist.
 
-        There is no window to post messages to at this time. So leave
-        list of messages for later when the lib_top window is open.
-
         If no passed music directory, or if passed directory doesn't exist,
         use default location directory. If no default location directory,
-        then prompt from one. If prompt cancelled then exit.
+        use the startup directory when 'm' or 'mserve.py' was called. If that
+        directory doesn't contain music, or subdirectories with music then
+        prompt for a music directory. If prompt cancelled then exit.
     """
-    global START_DIR  # Music directory. E.G. "/home/USER/Music
-    global NEW_LOCATION  # True=Unknown music directory in parameter #1
-    global LODICT  # June 1, 2023 - Wasn't declared global before today
+    global OLD_CWD  # Directory when 'm' or mserve.py was called
 
-    print("def open_files(cwd, start_parms):", cwd, start_parms)
+    OLD_CWD = old_cwd  # When exiting system will restore cwd
+
+    print("def open_files(old_cwd, prg_path, parameters):",
+          old_cwd, prg_path, parameters)
+
+    ''' Was music_dir passed as parameter? '''
+    try:
+        music_dir = parameters[1]
+        hold_dir = os.getcwd()
+        os.chdir(old_cwd)  # Temporarily change to original directory
+        # Massage parameter 1 of ".", "..", "../Sibling", etc.
+        music_dir = os.path.realpath(music_dir)
+        os.chdir(hold_dir)  # Change back to mserve.py directory
+    except IndexError:  # list index out of range
+        music_dir = None
+
+    print("music_dir:", music_dir)
+    ''' Does music_dir or it's subdirectories contain music files? '''
 
     """ 
     Move some of code from main(), shown below, up here to open_files()
@@ -12678,9 +12755,12 @@ def open_files(cwd, start_parms):
 def main(toplevel=None, mon_geom=None, cwd=None, parameters=None):
     """
     Establish our file locations from sys.argv or last used location
-    :param mon_geom: Monitor geometry if called by m (splash screen)
+
     :type toplevel: Object
     :param toplevel: Splash screen mounted by m for startup
+    :param mon_geom: Monitor geometry if called by m (splash screen)
+    :param cwd: Current Working Directory when program started
+    :param parameters: sys.argv used to call program
     """
 
     global root  # named when main() called
@@ -12689,18 +12769,25 @@ def main(toplevel=None, mon_geom=None, cwd=None, parameters=None):
     global NEW_LOCATION  # True=Unknown music directory in parameter #1
     global LODICT  # June 1, 2023 - Wasn't declared global before today
 
-    ''' Change to working path - same code in m and mserve.py '''
-    cwd = os.getcwd()
-    dir_path = os.path.dirname(os.path.realpath(__file__))
-    #print('current directory:', cwd)
-    #print('working path:', dir_path)
-    #print("os.path.realpath(__file__):", os.path.realpath(__file__))
-    if cwd != dir_path:
-        #print("Changing to dir_path:", dir_path)
-        os.chdir(dir_path)
+    ''' cwd is saved and passed by "m" before calling mserve.py '''
+    prg_path = os.path.dirname(os.path.realpath(__file__))
+    if cwd is None:
+        ''' Change to working path - same code in m and mserve.py '''
+        cwd = os.getcwd()
+        if cwd != prg_path:
+            #print("Changing to dir_path:", dir_path)
+            os.chdir(prg_path)
 
+    ''' parameters are passed by "m" to mserve.py '''
+    if parameters is None:
+        parameters = sys.argv
+
+    ''' mon_geom is passed by "m" to mserve.py '''
     if mon_geom is not None:
         # print('mon_geom:', mon_geom)
+        # Appears to be useless on June 5, 2023
+        #     # Center splash screen on monitor and get monitor's geometry
+        #     mon_dict = monitor.center(splash)
         pass
 
     # Create Tkinter "very top" Top Level window
@@ -12721,7 +12808,7 @@ def main(toplevel=None, mon_geom=None, cwd=None, parameters=None):
     ''' Set program icon in taskbar '''
     img.taskbar_icon(root, 64, 'white', 'lightskyblue', 'black')
 
-    open_files(cwd, parameters)  # Create application directory
+    open_files(cwd, prg_path, parameters)  # Create application directory
     
     # Find location dictionary matching top directory passed as argument
     try:

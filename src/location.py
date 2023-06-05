@@ -106,6 +106,7 @@ FNAME_LIBRARY          = MSERVE_DIR + "library.db"
 FNAME_LAST_OPEN_STATES = MSERVE_DIR + "last_open_states"     # Expanded/Collapsed song list
 FNAME_LAST_SONG_NDX    = MSERVE_DIR + "last_song_ndx"        # Last song played in list
 # May 25 2021 -  last_selections corrupted by refresh_lib_tree()
+# Jun 05 2023 -  last_selections DEPRECATED
 FNAME_LAST_SELECTIONS  = MSERVE_DIR + "last_selections"      # Shuffled play order of songs
 FNAME_LAST_PLAYLIST    = MSERVE_DIR + "last_playlist"        # Songs selected for playing
 
@@ -149,7 +150,7 @@ def set_location_filenames(iid):
 
     FNAME_LAST_OPEN_STATES = set_one_filename(FNAME_LAST_OPEN_STATES, iid)
     FNAME_LAST_SONG_NDX    = set_one_filename(FNAME_LAST_SONG_NDX, iid)
-    FNAME_LAST_SELECTIONS  = set_one_filename(FNAME_LAST_SELECTIONS, iid)
+    #FNAME_LAST_SELECTIONS  = set_one_filename(FNAME_LAST_SELECTIONS, iid)
     FNAME_LAST_PLAYLIST    = set_one_filename(FNAME_LAST_PLAYLIST, iid)
 
 
@@ -170,7 +171,7 @@ def rename_location_filenames(iid, old):
 
     FNAME_LAST_OPEN_STATES = rnm_one_filename(FNAME_LAST_OPEN_STATES, iid, old)
     FNAME_LAST_SONG_NDX    = rnm_one_filename(FNAME_LAST_SONG_NDX, iid, old)
-    FNAME_LAST_SELECTIONS  = rnm_one_filename(FNAME_LAST_SELECTIONS, iid, old)
+    #FNAME_LAST_SELECTIONS  = rnm_one_filename(FNAME_LAST_SELECTIONS, iid, old)
     FNAME_LAST_PLAYLIST    = rnm_one_filename(FNAME_LAST_PLAYLIST, iid, old)
 
 
@@ -238,7 +239,7 @@ def unpickle_list(filename):
 
 
 def insert(iid="", name="", topdir="", host="", wakecmd="", testcmd="",
-           testrep=10, mountcmd="", activecmd="", activemin=10):
+           testrep=10, mountcmd="", activecmd="", activemin=10, create_dir=True):
     """ Insert new location into LIST """
     if iid is "":
         next_ndx = len(LIST)
@@ -260,12 +261,15 @@ def insert(iid="", name="", topdir="", host="", wakecmd="", testcmd="",
          wakecmd, 'testcmd': testcmd, 'testrep': testrep, 'mountcmd':
          mountcmd, 'activecmd': activecmd, 'activemin': activemin}
 
-    LIST.append(d)
 
-    # Create directory '~/.config/mserve/<iid>' Where <iid> = L001, L002, etc.
-    create_subdirectory(iid)
-
-    return iid
+    # We don't want to create if temporary for random music directory parameter
+    if create_dir:
+        LIST.append(d)  # Add to list of location dictionaries
+        # Create directory '~/.config/mserve/<iid>' Where <iid> = L001, L002, etc.
+        create_subdirectory(iid)
+        return iid  # Newly created location iid
+    else:
+        return d  # Just the dictionary to use as LODICT in mserve
 
 
 def iid_to_ndx(iid):

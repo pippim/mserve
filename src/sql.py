@@ -1031,38 +1031,44 @@ def hist_check(MusicId, check_type, check_action):
     return False                # Not Found
 
 
-def get_config(get_type, get_action):
+def get_config(Type, Action):
     """ Get configuration history using 'Type' + 'Action' key
 
         VARIABLE        DESCRIPTION
         --------------  -----------------------------------------------------
         Type - Action   'window' - library, playlist, history, encoding,
                                    results, sql_music, sql_history
-                        'resume' - LODICT[iid]. SourceMaster = Playing/Paused
+        Type - Action   'resume' - LODICT[iid]. SourceMaster = Playing/Paused
                         'chron_state' - LODICT[iid]. SourceMaster = hide/show
                         'hockey_state' - LODICT[iid]. SourceMaster = On/Off
         Target          For Type='window' = geometry (x, y, width, height)
     """
-    found_count = 0
-    found_id = None
+    hist_cursor.execute("SELECT * FROM History INDEXED BY TypeActionIndex " +
+                        "WHERE Type = ? AND Action = ? LIMIT 1", (Type, Action))
+    try:
+        d = dict(hist_cursor.fetchone())
+    except TypeError:  # TypeError: 'NoneType' object is not iterable:
+        d = None
 
-    for row in hist_cursor.execute("SELECT Id, Type, Action FROM History " +
-                                   "INDEXED BY TypeActionIndex " +
-                                   "WHERE Type = ? AND Action = ?",
-                                   (get_type, get_action)):
-        Id = row[0]
-        Type = row[1]
-        Action = row[2]
-        if Type == check_type and Action == check_action:
-            found_id = Id
-            found_count += 1
-        else:
-            print("sql.py get_config() impossible Type & Action:", Type, Action)
+    return d
 
-    if found_count > 1:
-        print("sql.py get_config() impossible found too many:", found_count)
 
-    return found_id                 # First time for config will be "None"
+def save_config(Type, Action="", SourceMaster="", SourceDetail="", Target="", 
+                Size=0, Count=0, Seconds=0.0, Comments=""):
+    """ Save configuration history using 'Type' + 'Action' key
+    """
+    # Check if record exists
+    d = get_config(Type, Action)
+    if d is None:
+        hist_add(time.time(), 0, g.USER, Type, Action, SourceMaster,
+                 SourceDetail, Target, Size, Count, Seconds, Comments)
+        return
+
+    cmd = "UPDATE History SET Time=?, SourceMaster=?, SourceDetail=?, \
+        Target=?, Size=?, Count=?, Seconds=?, Comments=? WHERE Id = ?"
+    hist_cursor.execute(cmd, (time.time(), SourceMaster, SourceDetail, Target,
+                              Size, Count, Seconds, Comments, [d['Id']]))
+    con.commit()
 
 
 def hist_last_time(check_type, check_action):
