@@ -74,11 +74,11 @@ def init():
     # print('User:', USER, USER_ID, HOME)
     appname = "mserve"
     app_author = "pippim"
-    USER_DATA_DIR = user_data_dir(appname, app_author)
+    USER_DATA_DIR = MSERVE_DIR = user_data_dir(appname, app_author)
     # print("USER_DATA_DIR:", USER_DATA_DIR)
-    USER_CONFIG_DIR = MSERVE_DIR = user_config_dir(appname, app_author)
+    USER_CONFIG_DIR = user_config_dir(appname, app_author)
     MSERVE_DIR += os.sep
-    PROGRAM_DIR = os.getcwd()
+    PROGRAM_DIR = os.path.dirname(os.path.realpath(__file__))
     PROGRAM_DIR += os.sep
     # print("USER_CONFIG_DIR:", USER_CONFIG_DIR)
 

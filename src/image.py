@@ -1200,10 +1200,18 @@ class GoneFishing:
              'session', 'ezoom', 'scale', 'switcher', 'unityshell']
              
 No PLACE one-liner:
-gsettings set org.compiz.core:/org/compiz/profiles/unity/plugins/core/ active-plugins "['core', 'composite', 'opengl', 'regex', 'mousepoll', 'animation', 'wall', 'vpswitch', 'session', 'snap', 'workarounds', 'compiztoolbox', 'imgpng', 'resize', 'move', 'expo', 'fade', 'ezoom', 'scale', 'switcher', 'unityshell']"
+gsettings set org.compiz.core:/org/compiz/profiles/unity/plugins/core/ 
+active-plugins "['core', 'composite', 'opengl', 'regex', 'mousepoll', 
+'animation', 'wall', 'vpswitch', 'session', 'snap', 'workarounds', 
+'compiztoolbox', 'imgpng', 'resize', 'move', 'expo', 'fade', 
+'ezoom', 'scale', 'switcher', 'unityshell']"
 
 Restore PLACE one-liner:
-gsettings set org.compiz.core:/org/compiz/profiles/unity/plugins/core/ active-plugins "['core', 'composite', 'opengl', 'regex', 'mousepoll', 'animation', 'wall', 'vpswitch', 'session', 'snap', 'workarounds', 'compiztoolbox', 'imgpng', 'resize', 'move', 'place', 'expo', 'fade', 'ezoom', 'scale', 'switcher', 'unityshell']"
+gsettings set org.compiz.core:/org/compiz/profiles/unity/plugins/core/ 
+active-plugins "['core', 'composite', 'opengl', 'regex', 'mousepoll', 
+'animation', 'wall', 'vpswitch', 'session', 'snap', 'workarounds', 
+'compiztoolbox', 'imgpng', 'resize', 'move', 'place', 'expo', 'fade', 
+'ezoom', 'scale', 'switcher', 'unityshell']"
 
         '''
 

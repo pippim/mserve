@@ -39,9 +39,8 @@ import external as ext
 try:
     from location import FNAME_LIBRARY  # SQL database name (SQLite3 format)
 except ImportError:
-    # TODO: Use ~/ conversion from /home/rick/
     print("'from location import FNAME_LIBRARY' FAILED !!!")
-    FNAME_LIBRARY = "/home/rick/.config/mserve/library.db"
+    FNAME_LIBRARY = g.USER_DATA_DIR + os.sep + "library.db"
     print("Using hard-coded:", FNAME_LIBRARY)
 
 CFG_THOUSAND_SEP = ","              # English "," to for thousands separator
@@ -50,8 +49,8 @@ CFG_DECIMAL_PLACES = 1              # 1 decimal place, eg "38.5 MB"
 CFG_DIVISOR_AMT = 1000000           # Divide by million
 CFG_DIVISOR_UOM = "MB"              # Unit of Measure becomes Megabyte
 
-NO_ARTIST_STR = "(No Artist)"         # global User defined labels
-NO_ALBUM_STR = "(No Album)"
+NO_ARTIST_STR = "<No Artist>"       # global User defined labels
+NO_ALBUM_STR = "<No Album>"
 '''
 From: https://www.sqlite.org/pragma.html#pragma_user_version
 
@@ -128,8 +127,8 @@ def create_tables(SortedList, start_dir, pruned_subdirs, user, lodict):
         # TODO: Check of os_name in Music Table. If so continue loop
         #       Move this into mserve.py main loop and update access time in SQL.
         groups = os_name.split(os.sep)
-        Artist = groups[START_DIR_SEP+1]  # May contain "(No Artist)"
-        Album = groups[START_DIR_SEP+2]  # May contain "(No Album)"
+        Artist = groups[START_DIR_SEP+1]  # May contain "<No Artist>"
+        Album = groups[START_DIR_SEP+2]  # May contain "<No Album>"
         key = os_name[len(_START_DIR):]
 
         if Artist != LastArtist:
@@ -188,41 +187,43 @@ def create_tables(SortedList, start_dir, pruned_subdirs, user, lodict):
 
 
 def open_db():
-    """ Open SQL Tables """
+    """ Open SQL Tables - Music Table and History Table
+        Create Tables and Indices that don't exist
+    """
     global con, cursor, hist_cursor
-    # con = sqlite3.connect(":memory:")  # Initial tests, not needed anymore
     con = sqlite3.connect(FNAME_LIBRARY)
 
-    # MUSIC TABLE - 'PlayCount' & 'Rating' not used
-    
+    # MUSIC TABLE
+    # Avoid \t & \n in sqlite_master.
+    #   See: https://stackoverflow.com/questions/76427995/
+    #   how-do-i-clean-up-sqlite-master-format-in-python
     # Create the table (key must be INTEGER not just INT !
-    # See https://stackoverflow.com/a/7337945/6929343 for explanation
-    con.execute("create table IF NOT EXISTS Music(Id INTEGER PRIMARY KEY, \
-                OsFileName TEXT, OsAccessTime FLOAT, \
-                OsModificationTime FLOAT, OsCreationTime FLOAT, \
-                OsFileSize INT, MetaArtistName TEXT, MetaAlbumName TEXT, \
-                MetaSongName TEXT, ReleaseDate FLOAT, OriginalDate FLOAT, \
-                Genre TEXT, Seconds INT, Duration TEXT, PlayCount INT, \
-                TrackNumber TEXT, Rating TEXT, UnsynchronizedLyrics BLOB, \
-                LyricsTimeIndex TEXT)")
+    #   See https://stackoverflow.com/a/7337945/6929343 for explanation
+    con.execute("create table IF NOT EXISTS Music(Id INTEGER PRIMARY KEY, " +
+                "OsFileName TEXT, OsAccessTime FLOAT, " +
+                "OsModificationTime FLOAT, OsCreationTime FLOAT, " +
+                "OsFileSize INT, MetaArtistName TEXT, MetaAlbumName TEXT, " +
+                "MetaSongName TEXT, ReleaseDate FLOAT, OriginalDate FLOAT, " +
+                "Genre TEXT, Seconds INT, Duration TEXT, PlayCount INT, " +
+                "TrackNumber TEXT, Rating TEXT, UnsynchronizedLyrics BLOB, " +
+                "LyricsTimeIndex TEXT)")
 
-    con.execute("CREATE UNIQUE INDEX IF NOT EXISTS OsFileNameIndex ON \
-                Music(OsFileName)")
-
+    con.execute("CREATE UNIQUE INDEX IF NOT EXISTS OsFileNameIndex ON " +
+                "Music(OsFileName)")
 
     # HISTORY TABLE
-    con.execute("create table IF NOT EXISTS History(Id INTEGER PRIMARY KEY, \
-                Time FLOAT, MusicId INTEGER, User TEXT, Type TEXT, \
-                Action TEXT, SourceMaster TEXT, SourceDetail TEXT, \
-                Target TEXT, Size INT, Count INT, Seconds FLOAT, \
-                Comments TEXT)")
+    con.execute("create table IF NOT EXISTS History(Id INTEGER PRIMARY KEY, " +
+                "Time FLOAT, MusicId INTEGER, User TEXT, Type TEXT, " +
+                "Action TEXT, SourceMaster TEXT, SourceDetail TEXT, " +
+                "Target TEXT, Size INT, Count INT, Seconds FLOAT, " +
+                "Comments TEXT)")
 
-    con.execute("CREATE INDEX IF NOT EXISTS MusicIdIndex ON \
-                History(MusicId)")
-    con.execute("CREATE INDEX IF NOT EXISTS TimeIndex ON \
-                History(Time)")
-    con.execute("CREATE INDEX IF NOT EXISTS TypeActionIndex ON \
-                History(Type, Action)")
+    con.execute("CREATE INDEX IF NOT EXISTS MusicIdIndex ON " +
+                "History(MusicId)")
+    con.execute("CREATE INDEX IF NOT EXISTS TimeIndex ON " +
+                "History(Time)")
+    con.execute("CREATE INDEX IF NOT EXISTS TypeActionIndex ON " +
+                "History(Type, Action)")
 
     '''
         INDEX on OsSongName and confirm original when OsArtistName and
@@ -256,10 +257,11 @@ def open_db():
     hist_cursor = con.cursor()
 
     ''' Functions to fix errors in SQL database '''
-    #fd = FixData("Thu Jun 01 23:59:59 2023")  # Class for common fix functions
+    #fd = FixData("Thu Jun 06 23:59:59 2023")  # Class for common fix functions
 
-    # Patch run Jun 02, 2023 with "update=True". 39 Music Ids deleted
-    #fd.del_music_ids(3908, 3946, update=False)
+    # Patch run Jun 02, 2023 with "update=True". 39 Music Ids deleted 3908->3946
+    # Patch run Jun 07, 2023 with "update=True". 1 Music Ids deleted 2186->2186
+    #fd.del_music_ids(2186, 2186, update=False)
 
     # Patch run May 23, 2023 with "update=True". 66 corrupt scrape-parm deleted
     #fd.fix_scrape_parm(update=False)
@@ -280,7 +282,7 @@ def close_db():
 
 
 class OsFileNameBlacklist:
-    """ Music Player allows songs with "(No Artist)/" and "/(No Album)/"
+    """ Music Player allows songs with "<No Artist>/" and "/<No Album>/"
         subdirectories but these cannot be stored in SQL Database.
 
         Music Table Key OsFileName is "Artist/Album/99 Song.ext"
@@ -410,7 +412,7 @@ def make_key(fake_path):
     album = groups[START_DIR_SEP+2]
     song = groups[START_DIR_SEP+3]
 
-    ''' June 3, 2023 - (No Artist) stripped for new Blacklist '''
+    ''' June 3, 2023 - <No Artist> already stripped for new Blacklist '''
     global _START_DIR
     suffix = fake_path
     suffix = suffix.replace(os.sep + NO_ARTIST_STR, '')
@@ -556,7 +558,7 @@ def update_metadata(key, artist, album, song, genre, tracknumber, date,
         fudged_artist = ext.legalize_dir_name(artist)
         fudged_album = ext.legalize_dir_name(album)
         fudged_song = key.split(os.sep)[-1]  # "song" S/B "99 song.ext"
-        fudged_song = ext.legalize_song_name(fudged_song)  # Not needed but test
+        fudged_song = ext.legalize_song_name(fudged_song)
         white_key = fudged_artist + os.sep + fudged_album + os.sep + fudged_song
 
         e = ofb.Select(white_key)  # If white key works, use it in Whitelist
@@ -573,7 +575,9 @@ def update_metadata(key, artist, album, song, genre, tracknumber, date,
     if d['MetaArtistName'] is None:
         # This happens when song has never been played in mserve
         action = 'init'
-        print('\nSQL adding metadata for:', key)
+        #print('\nSQL adding metadata for:', key)
+        # June 6, 2023 not legalized for white_key:
+        # SQL adding metadata for: Filter/The Very Best Things: 1995–2008/01 Hey Man Nice Shot.oga
     elif \
         artist       != d['MetaArtistName'] or \
         album        != d['MetaAlbumName'] or \
@@ -589,7 +593,7 @@ def update_metadata(key, artist, album, song, genre, tracknumber, date,
         action = 'edit'
 
     else:
-        return False                            # Metadata same as library
+        return False  # Metadata same as library
 
     # For debugging, set update_print_count to 0. Otherwise set initial value to 10
     global update_print_count
@@ -644,7 +648,7 @@ def update_metadata(key, artist, album, song, genre, tracknumber, date,
 
     ''' Build full song path '''
     full_path = _START_DIR.encode("utf8") + key
-    # Below not needed because "(No Album)" strings not in Music Table filenames
+    # Below not needed because "<No Album>" strings not in Music Table filenames
     # June 2, 2023, no longer relevant because rejected above.
     full_path = full_path.replace(os.sep + NO_ARTIST_STR, '')
     full_path = full_path.replace(os.sep + NO_ALBUM_STR, '')
@@ -1067,7 +1071,7 @@ def save_config(Type, Action="", SourceMaster="", SourceDetail="", Target="",
     cmd = "UPDATE History SET Time=?, SourceMaster=?, SourceDetail=?, \
         Target=?, Size=?, Count=?, Seconds=?, Comments=? WHERE Id = ?"
     hist_cursor.execute(cmd, (time.time(), SourceMaster, SourceDetail, Target,
-                              Size, Count, Seconds, Comments, [d['Id']]))
+                              Size, Count, Seconds, Comments, d['Id']))
     con.commit()
 
 
@@ -1821,7 +1825,6 @@ def tkinter_display(pretty):
     if pretty.search is not None:
         # NOTE: yellow, cyan and magenta are defined to highlight background
         pretty.scrollbox.highlight_pattern(pretty.search, "yellow")
-        print("background in yellow")
 
     # Don't allow changes to displayed selections (test copy clipboard)
     pretty.scrollbox.configure(state="disabled")
@@ -2198,14 +2201,14 @@ class FixData:
 
 sql.hist_init_lost_and_found(): File below doesn't exist:
 COLUMN: Id                        VALUE: 3928
-COLUMN: OsFileName                VALUE: Faith No More/(No Album)/19 The Perfect Crime.m4a
+COLUMN: OsFileName                VALUE: Faith No More/<No Album>/19 The Perfect Crime.m4a
 COLUMN: OsModificationTime        VALUE: 1448681593.0
 COLUMN: MetaSongName              VALUE: None
 COLUMN: Seconds                   VALUE: None
 
 sql.hist_init_lost_and_found(): File below doesn't exist:
 COLUMN: Id                        VALUE: 3936
-COLUMN: OsFileName                VALUE: Fleetwood Mac/(No Album)/RandomSong2.m4a
+COLUMN: OsFileName                VALUE: Fleetwood Mac/<No Album>/RandomSong2.m4a
 COLUMN: OsModificationTime        VALUE: 1595468339.8
 COLUMN: MetaSongName              VALUE: None
 COLUMN: Seconds                   VALUE: None

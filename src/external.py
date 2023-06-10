@@ -72,7 +72,15 @@ def which(cmd, path=None):
 
 def launch_command(ext_name, toplevel=None):
     """ Launch external command in background and return PID to parent.
-        Use for programs requiring more than .2 seconds to run.
+        Use for programs requiring more than .2 seconds to run. Otherwise,
+        program could run and finish before PID can be obtained.
+
+        UPGRADE: https://stackoverflow.com/a/19152273/6929343
+        # Can't use shell=True if you want the pid of `du`, not the
+        # shell, so we have to do the redirection to file ourselves
+        proc = subprocess.Popen("/usr/bin/du folder", stdout=file("1.txt", "ab"))
+        print "PID:", proc.pid
+        print "Return code:", proc.wait()
     """
 
     all_pid = pid_list(ext_name)
@@ -137,7 +145,20 @@ def check_pid_running(active_pid):
 
 
 def shell_quote(s):
-    """ Escape quotes in shell variable names """
+    """ Escape quotes in shell variable names
+        Rename to "google_search_string_massage(s)"?
+    """
+    ''' E.G.
+            def play_lyrics_from_web(self):
+            """ turn on auto scrolling, it can be overridden from saved steps or
+                if left-clicking on lyrics to set lyrics line to time index.
+            """
+            webscrape.delete_files()  # Cleanup last run
+            self.lyrics_line_count = 1  # Average about 45 lines
+    
+            artist = ext.shell_quote(self.Artist)  # backslash in front of '
+            song = ext.shell_quote(self.Title)     # and " in variables
+    '''
     s = s.replace("'", "'\\''")
     return s.replace('"', '"\\""')
 
@@ -264,6 +285,56 @@ class GracefulKiller:
     # noinspection PyUnusedLocal
     def exit_gracefully(self, *args):
         self.kill_now = True
+
+
+class SoundControl:
+    """ "FF" for "fast forward", so ffmpeg stands for
+        "Fast Forward Moving Picture Experts Group".
+
+        Controller for ffmpeg, ffprobe and ffplay
+
+        USAGE:
+            sc_main = SoundControl()  # main playlist object
+            sc_sync = SoundControl()  # synchronize (fine-tune time index)
+            sc_sample = SoundControl()  # sample song object
+    """
+
+    # Initialization parameters
+    pid = 0
+    sink = ""
+    start_sec = 0
+    duration_secs = 0
+    fade_in_secs = 0
+    duet_sinks = []  # list of opposing sinks to turn up/down
+
+    steps = 10  # How many steps between volume start and end?
+    step_time = .05  # Time between steps
+
+    # Metadata fields
+    artist = None
+    album = None
+    title = None
+    release_date = None
+    original_date = None
+    play_count = None
+    genre = None
+    rating = None
+
+    # OS song information
+    path = None
+    access_time = None
+    modification_time = None
+    creation_time = None
+    state = "Playing"  # Other option is "Paused" (STOP)
+    current_secs = None
+
+
+    def __init__(self, path):
+        self.path = path
+
+    # noinspection PyUnusedLocal
+    def launch(self, *args):
+        pass
 
 
 """

@@ -36,7 +36,7 @@
 #       May. 25 2023 - Extensive performance enhancements over two days.
 #       May. 26 2023 - Set volume to 66% when CBC hockey game on air.
 #       Jun. 01 2023 - Music Library checkboxes batch update to Playlist.
-#       Jun. 03 2023 - Handle (No Album) in lib_tree paths used in SQL tables
+#       Jun. 03 2023 - Handle <No Album> in lib_tree paths used in SQL tables
 #       Jun. 05 2023 - No location when passing music directory parameter.
 
 # TODO:
@@ -85,6 +85,7 @@
 #       TODO: The 1/2 second to ramp up one volume and ramp down another is
 #             adding up with pauses to graphics and music. Spin off subprocess
 #             that doesn't lag animations or introduce noticeable sound delays.
+#             June 7, 2023 - UPDATE: will create ff.py module to do everything. 
 
 #   History Type 'encode' uses MusicId 0 which is also used for configuration.
 #       This will slow down configuration operations over time. Create new index
@@ -134,20 +135,22 @@ REQUIRES:
     sudo apt install ffmpeg                  # for artwork, ffprobe and ffplay
     sudo apt install gstreamer1.0-tools      # For encoding CDs gst-launch-1.0
     sudo apt install kid3                    # Optional for editing metadata
+    sudo apt install pauvcontrol             # For VU Meters (sound loopback) 
     sudo apt install pqiv                    # Make transparent Shark (Hockey)
     sudo apt install python-appdirs          # Application directory names
     sudo apt install python-beautifulsoup    # Scrape Song lyrics
     sudo apt install python-gi               # Gnome window functions (newer)
     sudo apt install gir1.2-wnck-3.0         # Gnome window functions (older?)
-    # NOTE: python-wnck was never installed but may work
+    # NOTE: python-wnck not tested but may work instead of gi + gir1.2-wnck-3.0
     sudo apt install python-libdiscid        # Get CD's disc ID
     sudo apt install python-notify2          # Popup bubble messages
     sudo apt install python-numpy            # Installed by default in Ubuntu
-    sudo apt install python-magic            # Get file type information
+    sudo apt install python-magic            # Get file type "magic" information
     sudo apt install python-musicbrainzngs   # Get metadata for CD
     sudo apt install python-mutagen          # Encode and ID3 tags
     sudo apt install python-pil              # Pillow graphics routines
     sudo apt install python-pil.imagetk      # Pillow image processing
+    sudo apt install python-pyaudio          # For VU meters
     sudo apt install python-requests         # Get Cover Art
     sudo apt install python-subprocess32     # To compare locations
     sudo apt install python-tk               # Tkinter (default in Windows & Mac)
@@ -353,8 +356,8 @@ first song inserted when the default would be the last song inserted.
 # Select music files only, no artwork
 # TODO: Deep scan with python-magic to read each file for song type
 FILE_TYPES = [".mp3", ".m4a", ".mp4", ".wma", ".oga", ".ogg", ".flac", ".wav", ".PCM"]
-NO_ARTIST_STR = "(No Artist)"   # global User defined labels
-NO_ALBUM_STR = "(No Album)"
+NO_ARTIST_STR = "<No Artist>"   # global User defined labels
+NO_ALBUM_STR = "<No Album>"
 NO_ART_STR = "No Artwork"
 PAUSED_STR = "|| Paused"
 NUMBER_PREFIX = "№ "            # UTF-8 (2116) + normal space
@@ -373,9 +376,10 @@ $ rm /tmp/test.wav
 '''
 # inspection SpellCheckingInspection
 
-TV_BREAK1 = 90          # Hockey TV commercial is 90 seconds
-TV_BREAK2 = 1080        # Hockey TV intermission break is 18 minutes
-TV_VOLUME = 60          # Hockey music play 66% of mserve volume level
+TV_BREAK1 = 90          # Hockey TV commercial break is 90 seconds
+TV_BREAK2 = 1080        # Hockey TV intermission is 18 minutes
+TV_VOLUME = 75          # Hockey TV mserve play music at 60% volume level
+# June 8, 2023 - Once saved at 60% it's automatically reloaded and 75 no effect
 TV_SOUND = "Firefox"    # Hockey broadcast is aired on Firefox browser
 
 # Number of seconds to Rewind or Fast Forward a song. Must be string
@@ -392,7 +396,7 @@ ARTWORK_FOR_LOW_RES = g.PROGRAM_DIR + "Be Creative 2 cropped.jpg"
 
 def make_sorted_list(start_dir, toplevel=None, idle=None):
     """ Build list of songs on storage device beginning at 'start_dir'
-        Insert '/(No Artist)' and or '/(No Album)' subdirectory names
+        Insert '/<No Artist>' and or '/<No Album>' subdirectory names
         Called at startup and by refresh_acc_times()
         Use DelayedTextBox for status updates on long-running processes
         which doesn't appear if process shorter than a second.
@@ -907,6 +911,9 @@ class PlayCommonSelf:
         self.pending_update_btn = None      # Update Playlist from checked Button
         self.pending_cancel_btn = None      # Cancel Playlist Update Button
 
+        ''' Set volume slider '''
+        self.vol_class = None
+
 
 class MusicTree(PlayCommonSelf):
     """ Create self.lib_tree = tk.Treeview() via CheckboxTreeview()
@@ -1205,6 +1212,10 @@ class MusicTree(PlayCommonSelf):
         edit_bar.add_command(label="Forget Location", font=(None, MED_FONT),
                              command=lambda: self.loc_forget(
                                  caller='Drop', mode='Forget'))
+        edit_bar.add_separator()
+        edit_bar.add_command(label="Volume for Hockey Commercials",
+                             font=(None, MED_FONT),
+                             command=self.set_tv_volume)
 
         mb.add_cascade(label="Edit", menu=edit_bar, font=(None, MED_FONT))
 
@@ -1238,6 +1249,8 @@ class MusicTree(PlayCommonSelf):
         self.lib_top.config(menu=mb)
         dtb.close()  # Close our startup messages delayed text box
 
+        self.lib_top.bind("<FocusIn>", self.handle_lib_top_focus)
+
         ''' Load last selections and begin playing with last song '''
         ext.t_end('no_print')  # May 24, 2023 - MusicTree() : 1.0563580990
 
@@ -1248,6 +1261,21 @@ class MusicTree(PlayCommonSelf):
             until self.close() is called.
         '''
         self.refresh_lib_top()
+
+    def handle_lib_top_focus(self, event):
+        """
+            Credit: https://stackoverflow.com/a/44615104/6929343
+
+        :param event: lib_top
+        :return: None
+        """
+        if self.vol_class and self.vol_class.vol_top:
+            self.vol_class.vol_top.focus_force()  # Get focus
+            self.vol_class.vol_top.lift()  # Raise in stacking order
+            #print("mserve.py handle_lib_top_focus() lift volume window:",
+            #      event.widget)
+
+        # TODO: Good time to change Play Button text (show play_top)
 
     def refresh_lib_top(self):
         """ Wait until clicks to do something in lib_tree (like play music)
@@ -1485,12 +1513,12 @@ class MusicTree(PlayCommonSelf):
             self.saved_selections.extend(self.pending_additions)
             self.playlist_paths.extend(insert_play_paths)
             dprint("Appending at end:", len(self.saved_selections),
-                  "self.pending_additions:", self.pending_additions)
+                   "self.pending_additions:", self.pending_additions)
         else:
             self.saved_selections[insert_point:insert_point] = self.pending_additions
             self.playlist_paths[insert_point:insert_point] = insert_play_paths
             dprint("Inserting at insert_point:", insert_point,
-                  " | self.pending_additions:", self.pending_additions)
+                   " | self.pending_additions:", self.pending_additions)
 
         if self.pending_add_cnt > 0:
             dprint("First addition insert self.playlist_paths.index[insert_play_paths[0]]:")
@@ -1501,6 +1529,7 @@ class MusicTree(PlayCommonSelf):
                 dprint(first_path)
             except ValueError:
                 first_ndx = self.playlist_paths.index(first_path)
+                # June 7, 2023 - What's going on here? first_ndx isn't being used.
 
         else:
             dprint("self.pending_add_cnt is zero:", self.pending_add_cnt)
@@ -1859,7 +1888,7 @@ class MusicTree(PlayCommonSelf):
                     song_number, len(str(len(self.saved_selections))))
             except ValueError:
                 # print('mserve.py toggle_select(): song not found iid:', song)
-                song_number = 0
+                song_number = 0  # Why isn't this value used?
                 number_str = "Adding"  # Number will be assigned when inserted
 
             self.lib_tree.set(song, "Selected", number_str)
@@ -3296,7 +3325,7 @@ class MusicTree(PlayCommonSelf):
         action = self.cmp_tree.item(iid)['values'][4]  # 6th treeview column
         src_mtime = self.cmp_tree.item(iid)['values'][5]
         trg_mtime = self.cmp_tree.item(iid)['values'][6]
-        # Extract real source path from treeview display e.g. strip (No Album)
+        # Extract real source path from treeview display e.g. strip <No Album>
         src_path = self.real_path(int(iid))
         # replace source topdir with target topdir for target full path
         trg_path = src_path.replace(START_DIR, self.cmp_target_dir)
@@ -3432,6 +3461,22 @@ class MusicTree(PlayCommonSelf):
                 text="All songs under " + parent + " will be checked.")
             if dialog.result != 'yes':
                 return
+
+        ''' ERROR if checking parent with <No Artist> or <No Album>  
+            Note design allows unchecking because previous to June 7, 2023 some
+            may have been checked or tri-state.
+            
+            WIP: still need to read up to parents of song, or Artist of Album.
+        '''
+        if self.lib_tree.tag_has("unchecked", item) and parent is not None\
+                and (NO_ARTIST_STR in self.lib_tree.item(item, 'text') or
+                     NO_ARTIST_STR in self.lib_tree.item(item, 'text')):
+            message.ShowInfo(
+                parent=self.lib_top, thread=self.refresh_play_top,
+                title="Song(s) invalid for playlist when " + NO_ARTIST_STR +
+                "\nor " + NO_ALBUM_STR + " exists.", icon='error',
+                text="Song(s) under " + parent + " cannot be included in playlist.")
+            return  # TODO lookup upwards from Song to parents for same message.
 
         # Call CheckboxTreeview function check (select/unselect) item.
         # May 29, 2023 - Review calling _box_click, can it call us instead?
@@ -3850,6 +3895,7 @@ $ wmctrl -l -p
     # noinspection PyUnusedLocal
     def restart(self, *args):
         self.close()
+        # TODO: Test with `m` passing sys.argv via "parameters" keyword.
         os.execl(sys.executable, sys.executable, *sys.argv)
 
     # noinspection PyUnusedLocal
@@ -4078,6 +4124,20 @@ $ wmctrl -l -p
         #self.load_last_selections()  # Version prior to May 25, 2023
         self.fast_play_startup()
 
+    def set_tv_volume(self):
+        """ Debugging - show monitors, tooltips and full metadata
+        """
+        if self.vol_class and self.vol_class.vol_top:
+            self.vol_class.vol_top.lift()
+            return
+
+        self.vol_class = Volume(parent=self.lib_top, tooltips=self.tt,
+                                thread=self.get_refresh_thread,
+                                save_callback=self.get_hockey_state)
+        #                        get_pp_state_callback=None)
+        #
+        # print("\nmserve.py - set_tv_volume:", TV_VOLUME)
+
     def show_debug(self):
         """ Debugging - show monitors, tooltips and full metadata
         """
@@ -4135,13 +4195,56 @@ $ wmctrl -l -p
         print("====================================\n")
         print("START_DIR:", START_DIR)
         print("pending_apply debug print flag DPRINT_ON:", DPRINT_ON)
-        print("Opened Location dictionary that never changes LODICT:")
+        print("\nOpened Location dictionary that never changes LODICT:")
         print(LODICT)
+
+        print("\nSQL - Sqlite3 Information")
+        print("====================================\n")
+
+        print("Sqlite3 Version:", sql.sqlite3.sqlite_version, "\n")
+        rows = sql.con.execute("SELECT * FROM sqlite_master;").fetchall()
+        for row in rows:
+            print(row, "\n")
+
+        # Need SQL version 3.22 for INTO option, current is 3.11
+        #sql.con.execute("VACUUM INTO '/run/user/1000/mserve library.db'")
+
+        if pulse_working:
+            ''' Fast method using pulse audio direct interface '''
+            print("\nPulse Audio - sink_input_list (sound sources)")
+            print("="*51, "\n")
+
+            for sink in pulse.sink_input_list():
+                print("sink:", sink, sink.proplist['application.name'])
+
+            print("\nPulse Audio - sink_list (sound cards)")
+            print("="*51, "\n")
+
+            for sink in pulse.sink_list():
+                print("sink:", sink)
+
+            print("\nPulse Audio - source_list (recording)")
+            print("="*51, "\n")
+
+            for sink in pulse.source_list():
+                print("sink:", sink)
+
+            print("\nPulse Audio - card_list.profile_list")
+            print("="*51, "\n")
+
+            card = pulse.card_list()[0]
+            print(card.profile_list)
+
+            print("\nPulse Audio - pulse.server_info().default_sink_name")
+            print("="*51, "\n")
+
+            print(pulse.server_info().default_sink_name)
 
         #print("\nFrames in self.lib_top (Toplevel) see toolkit.py list_widgets())")
         # Show frame widgets defined in library. Scan options are: "All", "Toplevel",
         # "Frame", "Label", "Button", "Treeview", "Scrollbar", "Menu", "Canvas" & "Other"
         #toolkit.list_widgets(self.lib_top, scan="Frame")  # Too much info. Needs work!
+
         thread = self.get_refresh_thread()
         message.ShowInfo(self.lib_top, "DEBUG - mserve.py",
                          "Check command line (CLI) for output", 
@@ -5018,7 +5121,7 @@ $ wmctrl -l -p
         self.hdr_top.rowconfigure(0, weight=1)
 
         ''' Set program icon in taskbar '''
-        img.taskbar_icon(self.hdr_top, 64, 'black', 'red', 'white', char='B')
+        img.taskbar_icon(self.hdr_top, 64, 'white', 'lightskyblue', 'black')
 
         ''' Bind <Escape> to close window '''
         self.hdr_top.bind("<Escape>", self.pretty_close)
@@ -5295,9 +5398,7 @@ $ wmctrl -l -p
         self.pending_tot_add_cnt = 0        # Total changes made without being
         self.pending_tot_del_cnt = 0        # written to disk with "Save Playlist"
 
-        thread = self.get_refresh_thread()
-
-        message.ShowInfo(title="Playlist saved.", thread=thread,
+        message.ShowInfo(title="Playlist saved.", thread=self.get_refresh_thread(),
                          text=str(len(self.saved_selections)) +
                          " songs in Playlist have been saved.\n\n" +
                          "Note that the Playlist is also saved\n" +
@@ -5446,7 +5547,7 @@ $ wmctrl -l -p
                 self.apply_open_state(Album, open_states)
 
     def apply_open_state(self, Id, opn_states_list):
-        """ Set the expanded/collapsed indicators (triangles) for
+        """ Set the expanded/collapsed indicators (chevrons) for
             artists and albums. The treeview iid all start with "I"
         """
         if not Id.startswith("I"):
@@ -5530,7 +5631,8 @@ $ wmctrl -l -p
             self.lib_tree_open_states = pickle.load(f)
             #print('len(self.lib_tree_open_states):', len(self.lib_tree_open_states))
             #print('self.lib_tree_open_states[:10]:', self.lib_tree_open_states[:10])  # DEBUG
-            # self.lib_tree_open_states: [(0, u'10cc', u'Artist'), (0, u'The Best of 10cc', u'Album'), (0, u'3 Doors Down',
+            # self.lib_tree_open_states: [(0, u'10cc', u'Artist'),
+            # (0, u'The Best of 10cc', u'Album'), (0, u'3 Doors Down',
 
         self.apply_all_open_states(self.lib_tree_open_states)
         """ May 30, 2023 - Below replaced by above
@@ -6000,6 +6102,7 @@ $ wmctrl -l -p
         self.sync_changed_score = False         # For warning messages
 
         ''' Gather data to paint VU Meter
+            TODO: June 6, 2023 - VU meters only work with nvi dia HDMI sound card source 
         '''
         # /dev/hull prevents ALSA errors from clearing screen with errors:
         #   ALSA lib pcm.c: (snd_pcm_open_no update) Unknown PCM cards.pcm.rear
@@ -6573,7 +6676,6 @@ $ wmctrl -l -p
     def pp_toggle(self, start_music=True):
         """ Pause/Play button pressed. Signal ffplay and set button text
         :param start_music: FF/Rewind button Next/Previous button used.
-        :param max_volume: When called from hockey_countdown will be 60
         """
         # print('pp_toggle() has been called:', ext.h(time.time()))
         if not self.play_top_is_active:
@@ -6587,38 +6689,37 @@ $ wmctrl -l -p
         if self.pp_state is "Playing":
             # Volume down in 10 steps of 7.5% with .05 sec in-between, end @ 25%
             # def step_volume(sink, p_start, p_stop, steps, interval, thread=None):
-            max_vol = self.max_volume_override()
-            step_volume(self.play_top_sink, max_vol, 25, 10, .05,
-                        thread=self.play_vu_meter)
+            # maximum volume is usually 100% but 60% or so during hockey commercials
+            step_volume(self.play_top_sink, self.max_volume_override(),
+                        25, 10, .05, thread=self.play_vu_meter)
             ext.stop_pid_running(self.play_top_pid)  # Pause the music
             self.secs_before_pause = get_curr_ffplay_secs(TMP_CURR_SONG)
             self.pp_state = "Paused"  # Was Playing now is Paused
             self.set_pp_button_text()
             if self.play_hockey_active:
                 set_tv_sound_levels(25, 100, thread=self.play_vu_meter)
-                # Restore TV sound
+                # Restore TV sound to 100%
         else:
             # Was paused so resume playing
             if self.play_hockey_active:
+                # Soften volume on tv to 25%
                 set_tv_sound_levels(100, 25, thread=self.play_vu_meter)
-                # Soften volume tv ads to 25%
-            # Volume at 25% turned up in 10 steps of .05 sec to 100%
-            max_vol = self.max_volume_override()
-            #if self.play_top_pid > 0:  # This test would work but not obvious why
+            # Volume at 25% turned up in 10 steps of .05 sec to maximum volume
             if start_music:
                 # When called from Next/Previous Song button, no song yet
                 ext.continue_pid_running(self.play_top_pid)  # Audio PID
                 self.current_song_t_start = time.time()
-                step_volume(self.play_top_sink, 25, max_vol, 10, .05,
-                            thread=self.play_vu_meter)
+                # maximum volume is usually 100% but 60% or so during hockey commercials
+                step_volume(self.play_top_sink, 25, self.max_volume_override(),
+                            10, .05, thread=self.play_vu_meter)
             self.pp_state = "Playing"  # Was Paused now is Playing
             self.set_pp_button_text()
 
     def max_volume_override(self):
         if self.play_hockey_active:
-            max_vol = TV_VOLUME
-            # Uncomment obvious debug tests below to really hear diff.
-            # max_vol = 30
+            max_vol = TV_VOLUME  # During hockey ads less than 100%
+            # Uncomment line below to really hear the difference
+            # max_vol = 30  # A real obvious low volume for testing
         else:
             max_vol = 100
         return max_vol
@@ -6647,27 +6748,33 @@ $ wmctrl -l -p
                 self.play_top.after(10)  # history list has more 0 levels
             self.play_vu_meter_blank()  # Fill with self.background
 
+    def get_pp_state_callback(self):
+        """ Hand off to called functions so they can get current pp_state
+            of "Playing" or "Paused". Could be 'None' if play_top closed.
+        """
+        return self.pp_state
+
     def song_rewind(self):
         """ Rewind song 10 seconds back. If Music paused, then begin playing.
             If current song secs is <12, then send restart song signal
         """
         if self.current_song_secs < float(REW_FF_SECS) + 2.0:
-            self.song_set_ndx('restart')
+            self.song_set_ndx('restart')  # Was less than 12 seconds so restart
             return
 
         new_time = self.current_song_secs - float(REW_FF_SECS)
-        self.song_ff_rew_common(new_time)
+        self.song_ff_rew_common(new_time)  # Kill song and start 10 seconds earlier
 
     def song_ff(self):
         """ Fast Forward song 10 seconds ahead. If Music paused, then begin playing.
             If current song secs + 15 second > duration, then send Next signal
         """
         if self.current_song_secs + float(REW_FF_SECS) + 5.0 > float(self.DurationSecs):
-            self.song_set_ndx('next')
+            self.song_set_ndx('next')  # Was less than 12 seconds left so next song.
             return
 
         start_secs = self.current_song_secs + float(REW_FF_SECS)
-        self.song_ff_rew_common(start_secs)
+        self.song_ff_rew_common(start_secs)  # Kill song and start 10 seconds later
 
     def song_ff_rew_common(self, start_secs):
         """ Shared function for for song_ff() and song_rew() functions """
@@ -6691,7 +6798,7 @@ $ wmctrl -l -p
         """ Set index to previous song, next song or restart song at start.
 
             When fast clicking next/previous button tests in other functions
-            will trap by testing:
+            will discover with test below and then abort long running function:
                 if not self.last_started == self.ndx:
                     return
 
@@ -6830,9 +6937,8 @@ $ wmctrl -l -p
             if self.play_hockey_remaining:
                 seconds = '%.1f' % self.play_hockey_remaining
                 minutes = '%.2f' % float(self.play_hockey_remaining / 60.0)
-            thread = self.get_refresh_thread()
             answer = message.AskQuestion(
-                self.play_top, thread=thread,
+                self.play_top, thread=self.get_refresh_thread(),
                 title="TV break in progress - mserve", confirm='no',
                 text="There are " + seconds + " seconds (" +
                      minutes + ") minutes remaining\n" +
@@ -6992,9 +7098,9 @@ $ wmctrl -l -p
         self.play_metadata(self.current_song_path)
         #global E_WIDTH
         E_WIDTH = 32
-        self.current_song_artist.set(ellipsis(self.Artist, E_WIDTH))
-        self.current_song_album.set(ellipsis(self.Album, E_WIDTH))
-        self.current_song_name.set(ellipsis(self.Title, E_WIDTH))
+        self.current_song_artist.set(make_ellipsis(self.Artist, E_WIDTH))
+        self.current_song_album.set(make_ellipsis(self.Album, E_WIDTH))
+        self.current_song_name.set(make_ellipsis(self.Title, E_WIDTH))
         self.saved_DurationSecs = self.DurationSecs
         self.saved_DurationMin = tmf.mm_ss(self.saved_DurationSecs)
         ext.t_end('no_print')
@@ -7320,11 +7426,11 @@ $ wmctrl -l -p
 
         self.Artist = self.metadata.get('ARTIST', "None")  # If not in dict, use "None"
         if self.Artist == "None":
-            # TODO: "(No Artist)" string substitution
+            # TODO: "<No Artist>" string substitution
             self.Artist = rpath[-3].encode('utf-8')  # .wav files have no metadata
         self.Album = self.metadata.get('ALBUM', "None")
         if self.Album == "None":
-            # TODO: "(No Album)" string substitution
+            # TODO: "<No Album>" string substitution
             self.Album = rpath[-2].encode('utf-8')
         self.Title = self.metadata.get('TITLE', "None")
         if self.Title == "None":
@@ -7351,7 +7457,6 @@ $ wmctrl -l -p
             else:
                 print('mserve.py play_metadata() path:', path)
                 print('mserve.py play_metadata() Missing START_DIR:', START_DIR)
-
         return self.metadata  # Not always used by caller.
     
     @staticmethod
@@ -8129,13 +8234,13 @@ $ wmctrl -l -p
             album/artist/99 song.ext
             isn't this the same as real_path()?
             
-            TODO: Should refuse to handle songs with "(No Album)"
+            TODO: Should refuse to handle songs with "<No Album>"
         """
         """ June 3, 2023 - Old version
         list_index = int(self.saved_selections[self.ndx])
         return sql.make_key(self.song_list[list_index])
         """
-        """ June 3, 2023 - New version strips out (No Album) directory """
+        """ June 3, 2023 - New version strips out <No Album> directory """
         return self.real_path(int(self.saved_selections[self.ndx]))[len(START_DIR):]
 
     def play_save_score_erase_time(self):
@@ -10644,11 +10749,11 @@ IndexError: list index out of range
 
     def real_path(self, ndx):
         """
-            Convert '/(NoArtist)/(No Album)/song.m4a' to: '/song.m4a'
+            Convert '/(NoArtist)/<No Album>/song.m4a' to: '/song.m4a'
             Regular '/Artist/Album/song.m4a' isn't changed.
         """
         rpath = self.song_list[ndx]
-        # Strip out /(No Artist) and /(No Album) strings added earlier
+        # Strip out /<No Artist> and /<No Album> strings added earlier
         rpath = rpath.replace(os.sep + NO_ARTIST_STR, '', 1)
         rpath = rpath.replace(os.sep + NO_ALBUM_STR, '', 1)
         return rpath
@@ -10853,28 +10958,16 @@ IndexError: list index out of range
         self.restore_lib_buttons()  # Restore Library buttons to default
 
         self.play_top.destroy()
+        self.pp_state = None
         #self.play_top = None  #Nonetype error, try reassigning and destroy first
 
     def get_resume(self):
         """
             Get last saved state of playing / paused and seconds progress into song.
         """
-
-        d = self.get_config_for_loc('resume')
-        ''' June 5, 2023 OLD CODE
-        if sql.hist_check(0, 'resume', location):
-            sql.hist_cursor.execute("SELECT * FROM History WHERE Id = ? LIMIT 1",
-                                    [sql.HISTORY_ID])
-            try:
-                d = dict(sql.hist_cursor.fetchone())
-            except TypeError:  # TypeError: 'NoneType' object is not iterable:
-                d = None
-            if d is None:
-                print('mserve.py get_resume() error sql.HISTORY_ID:', sql.HISTORY_ID)
-                return False
-        else:
+        d = get_config_for_loc('resume')
+        if d is None:
             return None
-        '''
 
         # print("Found SourceMaster:", d['SourceMaster'], "SourceDetail:", d['SourceDetail'])
         if d['SourceDetail'] != str(self.ndx):
@@ -10890,178 +10983,45 @@ IndexError: list index out of range
         """
             Save state of playing / paused and seconds progress into song.
         """
-        if NEW_LOCATION:
-            # print('WIP:', start_dir, "may point to topdir, Artist or Album")
-            pass
-
-        location = LODICT['iid']
-        # print("save_resume() location:", location)
-
-        if sql.hist_check(0, 'resume', location):
-            sql.hist_cursor.execute("SELECT * FROM History WHERE Id = ? LIMIT 1",
-                                    [sql.HISTORY_ID])
-            try:
-                d = dict(sql.hist_cursor.fetchone())
-            except TypeError:  # TypeError: 'NoneType' object is not iterable:
-                d = None
-            if d is None:
-                print('mserve.py save_resume() error sql.HISTORY_ID:', sql.HISTORY_ID)
-                return False
-        else:
-            # First time add the record self.pp_state
-            # Music Id is 0. As is Size, Count & Seconds
-            sql.hist_add(time.time(), 0, g.USER, 'resume', location, self.pp_state,
-                         str(self.ndx), self.current_song_path, 0, 0, self.current_song_secs,
-                         "Last song playing/paused when location closed")
-            sql.con.commit()
-            return True
-
-        ''' We have the existing history record, replace current song information
-            May 16 2023 - Note flaw in this code and other where g.USER is assumed same. 
-        '''
-        sql_cmd = "UPDATE History SET Time=?, SourceMaster=?, SourceDetail=?, \
-            Target=?, Seconds=? WHERE Id = ?"
-
-        sql.hist_cursor.execute(sql_cmd, (time.time(), self.pp_state, str(self.ndx),
-                                          self.current_song_path,
-                                          self.current_song_secs, sql.HISTORY_ID))
-        sql.con.commit()
-        return True
-
+        Comments = "Last song playing/paused when location closed"
+        save_config_for_loc('resume', self.pp_state, str(self.ndx),
+                                 self.current_song_path, Seconds=self.current_song_secs,
+                                 Comments=Comments)
 
     @staticmethod
-    def get_config_for_loc(Type):
-        """ Wrapper Action is auto assigned as location
-        """
-        if NEW_LOCATION:
-            return None
-
-        Action = LODICT['iid']
-        return sql.get_config(Type, Action)
-
-
-    @staticmethod
-    def save_config_for_loc(Type, SourceMaster="", SourceDetail="", Target="",
-                            Size=0, Count=0, Seconds=0.0, Comments=""):
-        """ Wrapper Action is auto assigned as location
-        """
-        if NEW_LOCATION:
-            return None
-        Action = LODICT['iid']
-        sql.save_config(
-            Type, Action, SourceMaster=SourceMaster, SourceDetail=SourceDetail,
-            Target=Target, Size=Size, Count=Count, Seconds=Seconds,
-            Comments=Comments)
-
-    def get_chron_state(self):
+    def get_chron_state():
         """
             Get last saved state of Show/Hide Chronology button
         """
-        d = self.get_config_for_loc('chron_state')
-        ''' June 5, 2023 OLD CODE
-        if sql.hist_check(0, 'chron_state', location):
-            sql.hist_cursor.execute("SELECT * FROM History WHERE Id = ? LIMIT 1",
-                                    [sql.HISTORY_ID])
-            try:
-                d = dict(sql.hist_cursor.fetchone())
-            except TypeError:  # TypeError: 'NoneType' object is not iterable:
-                d = None
-            if d is None:
-                print('mserve.py get_chron_state() error sql.HISTORY_ID:', sql.HISTORY_ID)
-                return None
-        else:
+        d = get_config_for_loc('chron_state')
+        if d is None:
             return None
-        '''
-        if d['SourceMaster'] == "Hide":
-            chron_state = d['SourceMaster']
-        elif d['SourceMaster'] == "Show":
-            chron_state = d['SourceMaster']
-        else:
-            print("mserve.py get_chron_state() d['SourceMaster'] invalid:",
-                  d['SourceMaster'])
-            chron_state = None
-
-        return chron_state
+        return d['SourceMaster']
 
     def save_chron_state(self):
         """
             Save state of Show/Hide Chronology button
         """
-        if NEW_LOCATION:
-            # print('WIP:', start_dir, "may point to topdir, Artist or Album")
-            pass
+        state = "Hide" if self.play_list_hide else "Show"
+        Comments = "Chronology (playlist) 'Show' or 'Hide'"
+        save_config_for_loc('chron_state', state, Comments=Comments)
 
-        location = LODICT['iid']  # L004, etc.
-
-        if self.play_list_hide:
-            state = "Hide"
-        else:
-            state = "Show"
-
-        if sql.hist_check(0, 'chron_state', location):
-            sql.hist_cursor.execute("SELECT * FROM History WHERE Id = ? LIMIT 1",
-                                    [sql.HISTORY_ID])
-
-            try:
-                d = dict(sql.hist_cursor.fetchone())
-            except TypeError:  # TypeError: 'NoneType' object is not iterable:
-                d = None
-            if d is None:
-                print('mserve.py save_chron_state() error sql.HISTORY_ID:', sql.HISTORY_ID)
-                return False
-        else:
-            # First time add the record self.play_list_hide
-            # Music Id is 0. As is Size, Count & Seconds
-            sql.hist_add(time.time(), 0, g.USER, 'chron_state', location, state,
-                         None, None, 0, 0, 0.0,
-                         "Chronology (playlist) shown or hidden?")
-            sql.con.commit()
-            return True
-
-        ''' We have the existing history record, replace current song information
-            May 16 2023 - Note flaw in this code and other where g.USER is assumed same. 
-        '''
-        sql_cmd = "UPDATE History SET Time=?, SourceMaster=? WHERE Id = ?"
-
-        sql.hist_cursor.execute(sql_cmd, (time.time(), state, sql.HISTORY_ID))
-        sql.con.commit()
-        return True
-
-    def get_hockey_state(self):
+    @staticmethod
+    def get_hockey_state():
         """
             Get last saved state for Hockey TV Commercial Buttons and Volume
         """
-        global TV_VOLUME
-        d = self.get_config_for_loc('hockey_state')
-        ''' June 5, 2023 OLD CODE
-        if sql.hist_check(0, 'hockey_state', location):
-            sql.hist_cursor.execute("SELECT * FROM History WHERE Id = ? LIMIT 1",
-                                    [sql.HISTORY_ID])
+        global TV_VOLUME  # mserve volume when TV commercial on air
 
-            try:
-                d = dict(sql.hist_cursor.fetchone())
-            except TypeError:  # TypeError: 'NoneType' object is not iterable:
-                d = None
-            if d is None:
-                print('mserve.py get_hockey_state() error sql.HISTORY_ID:',
-                      sql.HISTORY_ID)
-                return False
-        else:
+        d = get_config_for_loc('hockey_state')
+        if d is None:
             return False
-        '''
-        if d['SourceMaster'] == "On":
-            hockey_state = True
-        elif d['SourceMaster'] == "Off":
-            hockey_state = False
-        else:
-            print("mserve.py get_hockey_state() d['SourceMaster'] invalid:",
-                  d['SourceMaster'])
-            hockey_state = None
-
-        if d['Size'] is not None and 25 <= int(d['Size']) <= 100:
+        hockey_state = True if d['SourceMaster'] == "On" else False
+        if 25 <= int(d['Size']) <= 100:
             TV_VOLUME = int(d['Size'])  # TV_VOLUME from 25 to 100 is valid
         else:
-            print("mserve.py get_hockey_state() TV_VOLUME is invalid:", d['Size'])
+            print("mserve.py get_hockey_state() TV_VOLUME is invalid:",
+                  int(d['Size']))
 
         return hockey_state
 
@@ -11069,42 +11029,9 @@ IndexError: list index out of range
         """
             Save state for Hockey TV Commercial Buttons and Volume
         """
-        if NEW_LOCATION:
-            # print('WIP:', start_dir, "may point to topdir, Artist or Album")
-            pass
-
-        location = LODICT['iid']  # L004, etc.
-
-        if self.play_hockey_allowed:
-            state = "On"
-        else:
-            state = "Off"
-
-        if sql.hist_check(0, 'hockey_state', location):
-            sql.hist_cursor.execute("SELECT * FROM History WHERE Id = ? LIMIT 1",
-                                    [sql.HISTORY_ID])
-            d = dict(sql.hist_cursor.fetchone())
-            if d is None:
-                print('mserve.py save_hockey_state() error sql.HISTORY_ID:',
-                      sql.HISTORY_ID)
-                return False
-        else:
-            # First time add the record self.pp_state
-            # Music Id is 0. As is Size, Count & Seconds
-            sql.hist_add(time.time(), 0, g.USER, 'hockey_state', location,
-                         state, None, None, TV_VOLUME, 0, 0.0,
-                         "Hockey TV Commercial Buttons used?")
-            sql.con.commit()
-            return True
-
-        ''' We have the existing history record, replace current song information
-            May 16 2023 - Note flaw in this code and other where g.USER is assumed same. 
-        '''
-        sql_cmd = "UPDATE History SET Time=?, SourceMaster=?, Size=? WHERE Id = ?"
-
-        sql.hist_cursor.execute(sql_cmd, (time.time(), state, TV_VOLUME, sql.HISTORY_ID))
-        sql.con.commit()
-        return True
+        state = "On" if self.play_hockey_allowed else "Off"
+        Comments = "Hockey TV Commercial Buttons used?"
+        save_config_for_loc('hockey_state', state, Size=TV_VOLUME, Comments=Comments)
 
     # ==============================================================================
     #
@@ -11679,51 +11606,9 @@ IndexError: list index out of range
         line = cat3(line, ALBUM_PREFIX, self.lib_tree.item(album)['text'])
 
         ''' Build extended line using metadata for song in SQL Music Table '''
-        #path = self.real_path(int(playlist_no - 1))  # Remove (NO ARTIST), etc.
-        path = self.real_path(int(lib_tree_iid))  # Remove (NO ARTIST), etc.
+        #path = self.real_path(int(playlist_no - 1))  # Remove <No Artist>, etc.
+        path = self.real_path(int(lib_tree_iid))  # Remove <No Artist>, etc.
         sql_key = path[len(START_DIR):]  # Remove prefix from filename
-        ''' Version prior to June 3, 2023 
-        sql.cursor.execute("SELECT * FROM Music WHERE OsFileName = ?", [sql_key])
-        try:
-            d = dict(sql.cursor.fetchone())
-        except TypeError:  # TypeError: 'NoneType' object is not iterable:
-            d = None
-            print("Bad sql_key    :", sql_key)
-            print("  song_name    :", song_name)
-            print("    playlist_no:", playlist_no, "for path:", path)
-        '''
-        """
-            USING: `m ~/Music`:
-            
-Bad sql_key    : Faith No More/17 Last Cup Of Sorrow.m4a
-  song_name    : Last Cup Of Sorrow
-    playlist_no: 23 for path: /home/rick/Music/Faith No More/17 Last Cup Of Sorrow.m4a
-Bad sql_key    : Faith No More/18 Ashes To Ashes.m4a
-  song_name    : Ashes To Ashes
-    playlist_no: 37 for path: /home/rick/Music/Faith No More/18 Ashes To Ashes.m4a
-Bad sql_key    : Faith No More/04 Introduce Yourself.m4a
-  song_name    : Introduce Yourself
-    playlist_no: 84 for path: /home/rick/Music/Faith No More/04 Introduce Yourself.m4a
-Bad sql_key    : Faith No More/13 Be Aggressive.m4a
-  song_name    : Be Aggressive
-    playlist_no: 98 for path: /home/rick/Music/Faith No More/13 Be Aggressive.m4a
-Bad sql_key    : Faith No More/08 War Pigs.m4a
-  song_name    : War Pigs
-    playlist_no: 115 for path: /home/rick/Music/Faith No More/08 War Pigs.m4a
-Bad sql_key    : Faith No More/06 Epic.m4a
-  song_name    : Epic
-    playlist_no: 119 for path: /home/rick/Music/Faith No More/06 Epic.m4a
-Bad sql_key    : Faith No More/07 Falling To Pieces.m4a
-  song_name    : Falling To Pieces
-    playlist_no: 205 for path: /home/rick/Music/Faith No More/07 Falling To Pieces.m4a
-Bad sql_key    : Faith No More/02 We Care A Lot [Slash Version].m4a
-  song_name    : We Care A Lot [Slash Version]
-    playlist_no: 235 for path: /home/rick/Music/Faith No More/02 We Care A Lot [Slash Version].m4a
-Bad sql_key    : Faith No More/05 From Out Of Nowhere.m4a
-  song_name    : From Out Of Nowhere
-    playlist_no: 256 for path: /home/rick/Music/Faith No More/05 From Out Of Nowhere.m4a
-            
-        """
 
         ''' June 3, 2023 - Using new Blacklist '''
         d = sql.ofb.Select(sql_key)
@@ -11734,8 +11619,9 @@ Bad sql_key    : Faith No More/05 From Out Of Nowhere.m4a
         try:
             line = number_str + TITLE_PREFIX + d['MetaSongName'].encode("utf8")
         except AttributeError:  # 'NoneType' object has no attribute 'encode'
-            print("Bad song (sql_key):", sql_key)
-            print("d['Id']:", d['Id'])
+            # When playing a new location no SQL library information exists
+            #print("Bad song (sql_key):", sql_key)
+            #print("d['Id']:", d['Id'])
             return line, None  # No SQL Music Table Row exists, use short line
 
         line = line + ARTIST_PREFIX + d['MetaArtistName'].encode("utf8")
@@ -11767,21 +11653,6 @@ Bad sql_key    : Faith No More/05 From Out Of Nowhere.m4a
         if True is True:
             return line, d['LyricsTimeIndex']
 
-        ''' Build extended line using metadata of currently playing song 
-        #        self.Genre=self.metadata.get('genre', "None")
-        #        self.Track=self.metadata.get('track', "None")
-
-        line = number_str + TITLE_PREFIX + self.Title
-        line = line + ARTIST_PREFIX + self.Artist
-        line = line + ALBUM_PREFIX + self.Album
-        line = line + DATE_PREFIX + self.Date
-        line = line + CLOCK_PREFIX + self.Duration
-        # Replace "00:09:99" duration with "9:99" duration
-        line = line.replace("00:0", "")
-        line = line.replace("00:", "")  # Catch pink floyd Shine On 11 min song
-        line = line.replace(CLOCK_PREFIX + "0", CLOCK_PREFIX)  # Catch 1-9 hour
-        return line
-        '''
 
     @staticmethod
     def play_padded_number(song_number, number_digits,
@@ -11994,77 +11865,227 @@ class BatchSelect:
 class Volume:
     """ Usage:
 
-    vol = Volume(tk_toplevel, name="ffplay", title, text, tooltips=self.tt,
-                 thread=self.refresh_play_top)
-          - Opens window using last saved geometry, or tk_toplevel + 30x30
+    self.vol_class = Volume(parent, sink, title, text, tooltips=self.tt,
+                            thread=self.refresh_play_top,
+                            get_pp_state_callback=self.get_pp_state_callback)
+          - Coordinates / geometry is always lib_top geometry + padding.
+          - Music must be playing (ffplay) or at least a song paused.
+          - IS NOT USED: get_pp_state_callback=self.get_pp_state_callback
 
-    vol.set() - Sets volume level. Initially uses last settings for 'name'
-
-    vol.get() - Gets volume level using horizontal slider def get_resume
-
-    vol.save() -
-
-    vol.cancel() -
-
-    vol.change_name() - name may have been 'mserve' initially but now it could
-        'CBC Hockey' or something else esoteric.
-
-    vol.close()  # destroy window and save current geometry. Called internally
-        when <Escape> or Close Button pressed. Called externally when app
-        shuts down.
+    if self.vol_class.vol_top:
+        - Volume top level exists so lift() to top of stack
 
     """
 
-    def __init__(self, toplevel=None, name=None, title=None, text=None,
-                 tooltips=None, thread=None):
+    def __init__(self, parent=None, name="ffplay", title=None, text=None,
+                 tooltips=None, thread=None, save_callback=None):
         """
         """
         # root window is the parent window
-        self.toplevel = toplevel    # self.lib_tree
-        self.name = name            # Initially name is "ffplay"
+        self.parent = parent    # self.parent
+        self.vol_top = tk.Toplevel()
+        self.name = name            # ALSA / Pulse Audio sink number (str)
         self.title = title          # E.G. "Set volume for mserve"
         self.text = text            # "Adjust mserve volume to match other apps"
-        # Note volume doesn't change until next song begins. To test volume
-        # change click Next or Prev buttons in music player. Then press pause
-        # in mserve for TV broadcast volume level to restore. Repeat process
-        # until mserve volume matches volume of TV broadcast. Note when Play
-        # button is pressed in mserve all other applications have their volume
-        # turned down to 25%. This window will override that process in the
         self.tt = tooltips          # Tooltips pool for buttons
         self.thread = thread        # E.G. self.refresh_play_top()
-
         self.last_volume = None
+        self.last_sink = None
         self.curr_volume = None
-        self.play_top.minsize(width=BTN_WID * 10, height=PANEL_HGT * 10)
-        #self.play_top.geometry('+%d+%d' % (xy[0], xy[1]))
-        # June 1, 2021 new sql history
-        geom = monitor.get_window_geom('volume')
-        self.play_top.geometry(geom)
+        self.slider = None
+        self.sink_vol_wip = None
+        self.save_callback = save_callback
+        if self.save_callback is None:
+            toolkit.print_trace()
+            print("mserve.py Volume() class self.save_callback is 'None'")
+            return
+        else:
+            #print("Test self.save_callback():", self.save_callback)
+            pass
+
+        ''' Regular geometry is no good. Linked to lib_top is better '''
+        #geom = monitor.get_window_geom('volume')
+        #self.vol_top.geometry(geom)
+        #self.vol_top.minsize(width=BTN_WID * 10, height=PANEL_HGT * 10)
+        try:
+            xy = (self.parent.winfo_x() + PANEL_HGT * 3,
+                  self.parent.winfo_y() + PANEL_HGT * 3)
+        except AttributeError:  # MusicTree instance has no attribute 'winfo_x'
+            print("self.parent failed to get winfo_x")
+            xy = (100, 100)
+
+        self.vol_top.minsize(width=BTN_WID * 10, height=PANEL_HGT * 10)
+        self.vol_top.geometry('+%d+%d' % (xy[0], xy[1]))
+
+        self.vol_top_title = "Volume during TV Commercials - mserve"
+        self.vol_top.title(self.vol_top_title)
+        self.vol_top.configure(background="Gray")
+        self.vol_top.columnconfigure(0, weight=1)
+        self.vol_top.rowconfigure(0, weight=1)
+
+        ''' Set program icon in taskbar '''
+        img.taskbar_icon(self.vol_top, 64, 'white', 'lightskyblue', 'black')
+
+        ''' Create master frame '''
+        self.vol_frm = tk.Frame(self.vol_top, borderwidth=BTN_BRD_WID,
+                                relief=tk.RIDGE)
+        self.vol_frm.grid(column=0, row=0, sticky=tk.NSEW)
+        ms_font = (None, MON_FONTSIZE)
+
+        ''' Controls to resize image to fit frame '''
+        self.vol_frm.bind("<Configure>", self.on_resize)
+        self.start_w = self.vol_frm.winfo_reqheight()
+        self.start_h = self.vol_frm.winfo_reqwidth()
+
+        ''' Current song number '''
+        PAD_X = 5
+        self.current_song_number = tk.StringVar()
+        if not self.text:
+            self.text = "\nSet mserve volume during Hockey TV Commercials\n\n" + \
+                "When TV commercials appear during a hockey game,\n" + \
+                "you can click the commercial button and mserve\n" + \
+                "will play music for the duration of the commercials.\n\n" + \
+                "Sometimes the volume of the hockey game is lower than\n" + \
+                "normal and you have the system volume turned up.\n" + \
+                "In this case, you want to set mserve to a lower volume here. \n"
+        tk.Label(self.vol_frm, text=self.text, justify="left", font=ms_font)\
+            .grid(row=0, column=0, sticky=tk.W, padx=PAD_X)
+        tk.Label(self.vol_frm, text="", textvariable=self.current_song_number,
+                 font=ms_font).grid(row=0, column=2, sticky=tk.W)
+
+        ''' Volume Slider '''
+        self.slider = tk.Scale(self.vol_frm, from_=100, to=25, tickinterval=5,
+                               command=self.set_sink)
+        self.slider.grid(row=0, column=3, rowspan=3, padx=5, pady=5, sticky=tk.NS)
+
+
+        ''' Close and Apply Buttons '''
+        self.close_button = tk.Button(self.vol_frm, text="✘ Close",
+                                      width=BTN_WID2 - 6,
+                                      command=self.close)
+        self.close_button.grid(row=3, column=0, padx=5, pady=5, sticky=tk.W)
+        if self.tt:
+            self.tt.add_tip(self.close_button, "Close Volume Slider, ignore changes.",
+                            anchor="nw")
+        self.vol_top.bind("<Escape>", self.close)  # DO ONLY ONCE?
+        self.vol_top.protocol("WM_DELETE_WINDOW", self.close)
+
+        ''' Apply Button '''
+        self.apply_button = tk.Button(self.vol_frm, text="✔ Apply",
+                                      width=BTN_WID2 - 6,
+                                      command=self.apply)
+        self.apply_button.grid(row=3, column=3, padx=5, pady=5, sticky=tk.W)
+        if self.tt:
+            self.tt.add_tip(self.apply_button, "Save Volume Slider changes and exit.",
+                            anchor="ne")
+        self.vol_top.bind("<Return>", self.apply)  # DO ONLY ONCE?
+
+
+        ''' Read current volume & stored volume '''
+        self.last_volume, self.last_sink = self.get_volume()  # Reset this value when ending
+        if not self.read_vol():
+            print("Initialization of mserve in progress")
+            message.ShowInfo(self.parent, "Initialization of mserve in progress.",
+                             "Cannot adjust volume until mserve is run at least twice.",
+                             icon='error', thread=self.thread)
+            self.close()
+
+        if self.last_volume is None:
+            print("Cannot set volume with no sound playing")
+            message.ShowInfo(self.parent, "No Sound is playing.",
+                             "Cannot adjust volume until a song is playing.",
+                             icon='error', thread=self.thread)
+            self.close()
+
+        self.vol_top.update_idletasks()
+
+    def get_volume(self):
+        """ Get volume of 'ffplay' before we start
+        """
+        all_sinks = sink_master()
+        for entry in all_sinks:
+            sink, volume, app_name = entry
+            if app_name == self.name:
+                #print("get_volume():", volume)
+                return int(volume), sink
+            
+        return None, None
+    
+    def set_sink(self, value=None):
+        """
+            Called when slider changes value. Set sink volume to slider setting.
+            Credit: https://stackoverflow.com/a/19534919/6929343
+
+            "ffplay
+        """
+        if self.sink_vol_wip:
+            print("WIP")  # Never occurs. No matter how fast slider moved
+            return  # Haven't finished last volume setting
+
+        self.sink_vol_wip = True  # Adjust Volume Work is In Progress (WIP)
+
+        all_sinks = sink_list("ffplay")
+        if len(all_sinks) == 0 or all_sinks[0] == "":
+            self.sink_vol_wip = False  # Adjust Volume Work complete
+            return
+
+        sink = all_sinks[0]
+        # print("Setting '" + self.name + "' volume to:", value, "sink:", sink)
+        step_time, err = set_volume(sink, value)
+        if err:
+            print("Volume() class, set_sink() err:", err)
+        else:
+            self.curr_volume = value  # Record for saving later
+        self.sink_vol_wip = False  # Adjust Volume Work complete
+
+    def on_resize(self, *args):
+        """
+            Window resizing. Make slider bigger.
+        """
+        pass
 
     def read_vol(self):
         """
-            Get last saved volume.
+            Get last saved volume.  Based on get_hockey
         """
-        if sql.hist_check(0, 'volume', self.name):
-            sql.hist_cursor.execute("SELECT * FROM History WHERE Id = ?",
-                                    [sql.HISTORY_ID])
-            try:
-                d = dict(sql.hist_cursor.fetchone())
-            except TypeError:  # TypeError: 'NoneType' object is not iterable:
-                d = None
-            if d is None:
-                print('mserve.py Volume() get_geom() error sql.HISTORY_ID:',
-                      sql.HISTORY_ID)
-                return False
-        else:
+
+        self.curr_volume = 100  # mserve volume when TV commercial on air
+        d = get_config_for_loc('hockey_state')
+        if d is None:
             return None
 
-        # print("Found SourceMaster:", d['SourceMaster'], "SourceDetail:", d['SourceDetail'])
-        if d['SourceDetail'] != str(self.ndx):
-            print("mserve.py get_resume() Error SourceDetail:", d['SourceDetail'],
-                  "but self.ndx is:", self.ndx)
+        ''' Get hockey tv commercial volume '''
+        if 25 <= int(d['Size']) <= 100:
+            self.curr_volume = int(d['Size'])
+        if self.last_volume:
+            step_volume(self.last_sink, self.last_volume, self.curr_volume,
+                        10, .05, thread=self.thread)
+        self.slider.set(self.curr_volume)
 
         return True
+
+    def save_vol(self):
+        """
+            Save volume
+        """
+        ''' Reread hockey state in case user changed after set_tv_volume started '''
+        save_config_for_loc('hockey_state', Size=self.curr_volume)
+        self.save_callback()  # This resets global TV_VOLUME variable for us
+
+    def close(self, *args):
+        if self.tt:
+            self.tt.close(self.vol_top)
+        self.vol_top.destroy()
+        self.vol_top = None
+
+        ''' Adjust volume for playing mserve song back to "normal" '''
+        #curr_volume, curr_sink = self.get_volume()  # Current volume would be what we just saved.
+        # Problem: We don't take into consideration self.last_volume
+        #          If music was paused while self.vol_class() was open it's now 25%
+
+    def apply(self, *args):
+        self.save_vol()  # calls self.save_callback() which calls get_hockey_state()
+        self.close()
 
 
 # ==============================================================================
@@ -12072,6 +12093,28 @@ class Volume:
 #       MusicTree Functions that can be independent
 #
 # ==============================================================================
+
+def get_config_for_loc(Type):
+    """ Wrapper Action is auto assigned as location
+    """
+    if NEW_LOCATION:
+        return None
+
+    Action = LODICT['iid']
+    return sql.get_config(Type, Action)
+
+
+def save_config_for_loc(Type, SourceMaster="", SourceDetail="", Target="",
+                        Size=0, Count=0, Seconds=0.0, Comments=""):
+    """ Wrapper Action is auto assigned as location
+    """
+    if NEW_LOCATION:
+        return None
+    Action = LODICT['iid']
+    sql.save_config(
+        Type, Action, SourceMaster=SourceMaster, SourceDetail=SourceDetail,
+        Target=Target, Size=Size, Count=Count, Seconds=Seconds,
+        Comments=Comments)
 
 
 def ffplay_extra_opt(start, fade_in=3):
@@ -12090,7 +12133,7 @@ def ffplay_extra_opt(start, fade_in=3):
     return extra_opt
 
 
-def ellipsis(string, cutoff):
+def make_ellipsis(string, cutoff):
     """ Change: 'Long long long long' to: 'Long long...' """
     if len(string) > cutoff:
         return string[:cutoff - 3] + "..."
@@ -12301,7 +12344,7 @@ def step_volume(sink, p_start, p_stop, steps, interval, thread=None):
 
         Step volume up or down for Pulseaudio Input Sink #
         if p_stop > p_start we are going up, else we are going down
-        interval defines interval between steps and time to call pa adjusted
+        interval is time between steps when call to pa adjusts volume
     """
     # If a single sink is passed, convert it to list for conformity
     if isinstance(sink, str):
@@ -12312,6 +12355,11 @@ def step_volume(sink, p_start, p_stop, steps, interval, thread=None):
         sinks = [sink]  # Convert single sink string into list
     elif isinstance(sink, list):
         sinks = sink
+        for sink_entry in sinks:
+            if sink_entry is "":
+                toolkit.print_trace()
+                print("mserve.py step_volume(): Input Sink # is blank")
+                return
     else:
         print("mserve.py step_volume(): Input Sink # must be string or list")
         return
@@ -12321,12 +12369,7 @@ def step_volume(sink, p_start, p_stop, steps, interval, thread=None):
     perc = float(p_start) + adjust  # positive (up) or negative (down)
     for i in range(steps):
         t_start = time.time()
-        ''' Version without sink list June 4, 2023
-        job_time, err = set_volume(sink, int(perc))
-        if err is not None:
-            print("mserve.py step_volume():", i, "  | Error:", err)
-        '''
-        ''' June 4, 2023 - Use list of sinks changed in Unison '''
+        ''' June 4, 2023 - list of sinks (could be one entry) ramped in unison '''
         job_time = 0.0
         for sink_entry in sinks:
             step_time, err = set_volume(sink_entry, int(perc))
@@ -12346,7 +12389,7 @@ def step_volume(sink, p_start, p_stop, steps, interval, thread=None):
         perc += + adjust  # positive (up) or negative (down)
 
 
-pulse_error_cnt = 0
+pulse_error_cnt = 0  # Limit number of errors printed.
 
 
 def set_volume(target_sink, percent):
@@ -12386,6 +12429,7 @@ def set_volume(target_sink, percent):
     command_line_list.append(target_sink)
     command_line_list.append(str(percent) + '%')
     #command_str = " ".join(command_line_list)  # list to printable string
+    #print("command_str:", command_str)
 
     ext.t_init('set_volume() -- pactl set-sink-input-volume')
     pipe = sp.Popen(command_line_list, stdout=sp.PIPE, stderr=sp.PIPE)
@@ -12393,6 +12437,7 @@ def set_volume(target_sink, percent):
     job_time = ext.t_end('no_print')
     if text:
         print("standard output of set_volume() subprocess:")
+        print(text)
     if err:
         print("standard error of set_volume() subprocess:")
         print('set_volume() ERROR. sink:', target_sink, 'percent:', percent,
@@ -12466,7 +12511,8 @@ def storage_artwork(width, height):
 
     if not os.path.isfile(ARTWORK_FOR_LOW_RES):
         # Song has no artwork that ffmpeg can identify.
-        print("os.path.isfile(ARTWORK_FOR_LOW_RES) failed test")
+        print("mserve.py storage_artwork() os.path.isfile(ARTWORK_FOR_LOW_RES) " +
+              "failed test")
         return None, None
 
     original_art = Image.open(ARTWORK_FOR_LOW_RES)
@@ -12486,7 +12532,7 @@ def dprint(*args):
 
 # ==============================================================================
 #
-#       Miscellaneous Functions section + "__main__"
+#       Miscellaneous Functions
 #
 # ==============================================================================
 
@@ -12523,7 +12569,8 @@ def get_dir(parent, title, start):
 
 
 def load_last_location():
-    """ Open last location used.  DEPRECATED May 26, 2023. Keep for one year.
+    """ Open last location used.
+        June 6, 2023 - Made safe to be called multiple times.
     """
 
     global START_DIR, LODICT  # Never change LODICT after startup!
@@ -12545,7 +12592,7 @@ def load_last_location():
         return False
 
     # Set protected LODICT
-    LODICT = lc.item(iid)  # local SAVE loc dictionary
+    LODICT = lc.item(iid)  # local permanent copy of loc dictionary
     lc.set_location_filenames(LODICT['iid'])  # insert /L999/ into paths
     START_DIR = LODICT['topdir']  # Music Top directory
     # Display keep awake values
@@ -12668,22 +12715,63 @@ SORTED_LIST = []
 root = None  # Tkinter toplevel object. Can be passed by `m`
 
 
-def open_files(old_cwd, prg_path, parameters):
+def create_files():
+    """ g.USER_DATA_DIR/mserve doesn't exist. Create directory and files. 
     """
-        Create data directories if they don't exist.
 
+    # Create directory
+    try:
+        os.mkdir(g.USER_DATA_DIR)
+        print("Created directory:", g.USER_DATA_DIR)
+    except OSError:  # [Err no 17] File exists: '.../.local/share/mserve'
+        print("Could not create directory:", g.USER_DATA_DIR)
+        return False
+
+    # Open and Close will create SQL database
+    sql.open_db()
+    sql.close_db()
+    print("Created SQL database:", lc.FNAME_LIBRARY)
+
+    # create lc.FNAME_LOCATIONS
+    lc.read()  # If no file, creates empty lc.LIST
+    lc.write()  # LIST is empty and written as pickle
+
+    # create lc.FNAME_LAST_LOCATION is not needed
+
+
+def open_files(old_cwd, prg_path, parameters, toplevel=None):
+    """
         If no passed music directory, or if passed directory doesn't exist,
         use default location directory. If no default location directory,
         use the startup directory when 'm' or 'mserve.py' was called. If that
         directory doesn't contain music, or subdirectories with music then
         prompt for a music directory. If prompt cancelled then exit.
     """
-    global OLD_CWD  # Directory when 'm' or mserve.py was called
 
-    OLD_CWD = old_cwd  # When exiting system will restore cwd
+    global root  # named when main() called
+    global SORTED_LIST  # os.walk() results: artist/album/songs
+    global START_DIR  # Music directory. E.G. "/home/USER/Music
+    global NEW_LOCATION  # True=Unknown music directory in parameter #1
+    global LODICT  # Permanent copy of location dictionary never touched
 
     print("def open_files(old_cwd, prg_path, parameters):",
           old_cwd, prg_path, parameters)
+
+    ''' Has data directory been created? '''
+    if os.path.exists(g.USER_DATA_DIR):
+        ''' Sanity Checks 
+            TODO: Check individual files exist in DATA_DIR
+        '''
+        if os.path.isdir(g.USER_DATA_DIR):
+            print("g.USER_DATA_DIR exists:", g.USER_DATA_DIR)
+        else:
+            print("g.USER_DATA_DIR is a file but must be a directory:", 
+                  g.USER_DATA_DIR)
+            exit()
+    else:
+        print("g.USER_DATA_DIR must be created:", g.USER_DATA_DIR)
+        create_files()
+    print()
 
     ''' Was music_dir passed as parameter? '''
     try:
@@ -12693,63 +12781,68 @@ def open_files(old_cwd, prg_path, parameters):
         # Massage parameter 1 of ".", "..", "../Sibling", etc.
         music_dir = os.path.realpath(music_dir)
         os.chdir(hold_dir)  # Change back to mserve.py directory
+        use_location = False
     except IndexError:  # list index out of range
+        # Music directory not passed as parameter
         music_dir = None
+        use_location = True
 
-    print("music_dir:", music_dir)
-    ''' Does music_dir or it's subdirectories contain music files? '''
+    ''' Is passed music_dir in our known locations? '''
+    if music_dir is not None and lc.get_dict_by_dirname(music_dir):
+        use_location = True  # Override to use location found by dir name
+        print('mserve override parameter 1 to lc.DICT:', lc.DICT)
+        # Make passed Top Directory our last known location then load it
+        lc.save_mserve_location(lc.DICT['iid'])
 
-    """ 
-    Move some of code from main(), shown below, up here to open_files()
-    ===========================================================================
-
-    # Find location dictionary matching top directory passed as argument
-    try:
-        ''' mserve called with parameter to Top Directory '''
-        START_DIR = sys.argv[1]
-
-        # Massage parameter 1 of ".", "..", "../Sibling", etc.
-        # DOES NOT WORK WITH 'm' splash screen that changes working
-        # directory to where 'm' is located so that mserve.py can be called.
-        START_DIR = os.path.realpath(START_DIR)
-
-        ''' Is passed Top Directory in our known locations? '''
-        if lc.get_dict_by_dirname(START_DIR):
-            # print('mserve manually started with lc.DICT:', lc.DICT)
-            # Make passed Top Directory our last known location then load it
-            lc.save_mserve_location(lc.DICT['iid'])
-            load_last_location()
-        else:
-            # print('START_DIR not in location master file:', START_DIR)
-            LODICT['name'] = START_DIR  # Name required for title bar
-            NEW_LOCATION = True  # Don't use location master
-
-    except IndexError:
-        ''' No Parameter passed. Check for Last location file on disk '''
+    ''' create START_DIR, test location awake, check files exist '''
+    if use_location:
         if load_last_location():
-            # We successfully loaded last used location
-            pass
+            # If no optional `/` at end, add it for equal comparisons
+            if not START_DIR.endswith(os.sep):
+                START_DIR = START_DIR + os.sep
+            print("Last location read. START_DIR:", START_DIR)
+            return
         else:
-            # First time or no saved locations matching current directory
-            cwd = os.getcwd()
-            dir_path = os.path.dirname(os.path.realpath(__file__))
-            print('current directory:', cwd)
-            print('working path:', dir_path)
-            # Our user ID got initialized in location.py imported as lc.
-            # music_dir = os.sep + "home" + os.sep + lc.USER + os.sep + "Music"
-            music_dir = os.sep + "home" + os.sep + g.USER + os.sep + "Music"
-            # Prompt to get startup directory using /home/USER/Music as default
-            START_DIR = get_dir(root, "Select Music Directory", music_dir)
-            if START_DIR is None:
-                START_DIR = cwd
-            LODICT['name'] = START_DIR  # Name required for title bar
-            NEW_LOCATION = True
+            print("load_last_location() FAILED !!!!")
+            print("Proceeding to use music_dir")
 
-    # If no optional `/` at end, add it for equal comparisons
-    if not START_DIR.endswith(os.sep):
-        START_DIR = START_DIR + os.sep
+    ''' Does music_dir or it's subdirectories contain music files? 
     
-    """
+        DO THIS EARLIER. After Music Directory is set then look
+        if it's in location master.
+    
+    '''
+    # print('START_DIR not in location master file:', START_DIR)
+    LODICT['iid'] = 'new'  # June 6, 2023 - Something new to fit into code
+    LODICT['name'] = music_dir  # Name required for title bar
+    NEW_LOCATION = True  # Don't use location dictionary (LODICT) fields
+
+    print("Searching for songs in music_dir:", music_dir)
+
+    while True:
+        if music_dir is None:
+            music_dir = g.HOME
+        # Prompt to get startup directory using /home/USER as default
+        START_DIR = get_dir(root, "Select Music Directory", music_dir)
+        print("START_DIR:", START_DIR, type(START_DIR))
+        if isinstance(START_DIR, tuple):
+            print("Cancel selected from Select Music Directory dialog. Exiting.")
+            exit()
+
+        if START_DIR is None:
+            START_DIR = old_cwd
+        if not START_DIR.endswith(os.sep):
+            print("\nFile picker shortfall, adding / to end of:", START_DIR)
+            print()
+            START_DIR = START_DIR + os.sep
+        # TODO: def sorted_list
+        music_list = make_sorted_list(START_DIR, toplevel=toplevel)
+        print("len(music_list):", len(music_list), "in START_DIR:", START_DIR)
+        #print(music_list)
+        break
+
+
+    print("End of open_files()")
 
 
 def main(toplevel=None, mon_geom=None, cwd=None, parameters=None):
@@ -12771,6 +12864,7 @@ def main(toplevel=None, mon_geom=None, cwd=None, parameters=None):
 
     ''' cwd is saved and passed by "m" before calling mserve.py '''
     prg_path = os.path.dirname(os.path.realpath(__file__))
+    # prg_path is already available in g.PROGRAM_DIR so deprecate it.
     if cwd is None:
         ''' Change to working path - same code in m and mserve.py '''
         cwd = os.getcwd()
@@ -12811,9 +12905,10 @@ def main(toplevel=None, mon_geom=None, cwd=None, parameters=None):
     open_files(cwd, prg_path, parameters)  # Create application directory
     
     # Find location dictionary matching top directory passed as argument
+    """ June 8, 2023 This code now in open_files() function 
     try:
-        ''' mserve called with parameter to Top Directory '''
-        START_DIR = sys.argv[1]
+        ''' mserve called with parameter to Music Directory? '''
+        START_DIR = parameters[1]
 
         # Massage parm1 of ".", "..", "../Sibling", etc.
         START_DIR = os.path.realpath(START_DIR)
@@ -12853,13 +12948,14 @@ def main(toplevel=None, mon_geom=None, cwd=None, parameters=None):
     # If no optional `/` at end, add it for equal comparisons
     if not START_DIR.endswith(os.sep):
         START_DIR = START_DIR + os.sep
+    """
 
     # Build list of songs in the location
     ext.t_init('make_sorted_list()')
     SORTED_LIST = make_sorted_list(START_DIR, toplevel=toplevel)
     ext.t_end('no_print')  # May 24, 2023 - make_sorted_list(): 0.1631240845
 
-    # TODO: Use message.ShowInfo
+    # TODO: Use message.ShowInfo()  Perform this test when selecting start dir
     if len(SORTED_LIST) == 0:
         print('ERROR: Music Library appears empty !!!\n')
 

@@ -114,14 +114,6 @@ FNAME_LAST_PLAYLIST    = MSERVE_DIR + "last_playlist"        # Songs selected fo
 # replaced. It is simply used as base for creating new variable.
 FNAME_MOD_TIME        = MSERVE_DIR + "modification_time"
 
-#START_DIR = "" # in mserve for now....
-
-# Create our configuration directory if it doesn't exist already
-if not os.path.exists(MSERVE_DIR):
-    os.makedirs(MSERVE_DIR)
-    # print('Created directory:', MSERVE_DIR)
-
-
 ''' Global variables
 '''
 LIST = []                           # List of DICT entries
@@ -143,15 +135,25 @@ def create_subdirectory(iid):
             raise
 
 
+LAST_LOCATION_SET = False    
+
+
 def set_location_filenames(iid):
     """ Called when mserve first starts up """
     global FNAME_LAST_SELECTIONS, FNAME_LAST_OPEN_STATES
     global FNAME_LAST_PLAYLIST, FNAME_LAST_SONG_NDX
+    global LAST_LOCATION_SET
+
+    ''' Sanity check '''
+    if LAST_LOCATION_SET:
+        print("location.py set_location_filenames(iid) cannot be called twice!")
+        return
 
     FNAME_LAST_OPEN_STATES = set_one_filename(FNAME_LAST_OPEN_STATES, iid)
     FNAME_LAST_SONG_NDX    = set_one_filename(FNAME_LAST_SONG_NDX, iid)
-    #FNAME_LAST_SELECTIONS  = set_one_filename(FNAME_LAST_SELECTIONS, iid)
     FNAME_LAST_PLAYLIST    = set_one_filename(FNAME_LAST_PLAYLIST, iid)
+
+    LAST_LOCATION_SET = True
 
 
 def set_one_filename(filename, iid):
@@ -189,10 +191,16 @@ def rnm_one_filename(old_fname, iid, old):
 
 def read():
     global LIST
-    with open(FNAME_LOCATIONS, 'rb') as filehandle:
-        # read the data as binary data stream
-        LIST = pickle.load(filehandle)
-        filehandle.close()
+    LIST = []
+    try:
+        with open(FNAME_LOCATIONS, 'rb') as filehandle:
+            # read the data as binary data stream
+            LIST = pickle.load(filehandle)
+            filehandle.close()
+            return True
+    except IOError:  # [Err no 2] No such file or directory: '.../mserve/locations'
+        return False
+
     #print('location.read() LIST count:',len(LIST))    
 
 
@@ -360,12 +368,6 @@ def item(iid, **kwargs):
         else:
             print('location.item() invalid keyword passed:', key)
 
-    # april 23, 2023 - One time fix
-    if keyword_found:
-        if DICT['iid'] == "L004" and DICT['name'] == "Test ~/Documents":
-            print('L004 - Test ~/Documents was found.')
-            DICT['iid'] = "L005"
-
     if keyword_found is True:
         # Dec 5, 2020 - Why does this work when LIST isn't global?
         LIST[ndx] = DICT            # Update DICT entry in LIST
@@ -384,7 +386,7 @@ def validate_host(iid, toplevel=None):
 
 
 def get_dict_by_dirname(dirname):
-    global DICT                     # NOT confirmed if it needs to be here!
+    global DICT                     # mserve.py will reference as lc.DICT
     stripped_last = dirname.rstrip(os.sep)
     for i, DICT in enumerate(LIST):
         topdir = DICT['topdir'].rstrip(os.sep)
@@ -595,7 +597,7 @@ def test(iid, toplevel):
 
 
 def get_dir(parent, title, start):
-    """ Get directory name """
+    """ Get directory name. NOTE: June 6, 2023 - This function is in mserve.py already! """
     root.directory = filedialog.askdirectory(
         initialdir=start, parent=parent, title=title)
     return root.directory       # July 7, 2021 - used to be in brackets, didn't test

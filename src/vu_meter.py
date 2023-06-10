@@ -3,12 +3,17 @@
 
 #==============================================================================
 #
-#       vu_meter.py - Listen to microphone left/right and generate vu level
+#       vu_meter.py - Listen to microphone left/right and generate vu levels
 #
 #==============================================================================
 """
 
-FROM: https://github.com/kmein/vu-meter
+IMPORTANT: Use pavucontrol to create loopback from sound output to microphone:
+           https://wiki.ubuntu.com/record_system_sound
+
+
+CREDIT for VU Meter coding: https://github.com/kmein/vu-meter  The GitHub
+modules in "kmein/vu-meter", listed below, were combined into `vu-meter.py`:
 
 .gitignore          NOT INSTALLED
 LICENSE             NOT INSTALLED
@@ -25,8 +30,8 @@ ENHANCEMENTS:
     3) Reset maximal between songs (gap when 10 samples of zero strength)
     4) Remove console output and write values to ramdisk (/run/user/1000)
     5) Optional 'stereo' parameter to measure left & right channels
-    6) Utilize numpy which is usually auto-installed on distros
-    7) Include separate amplitude.py & vu_constants.py in main
+    6) Utilize numpy which is auto-installed on most Linux distros
+    7) Include separate amplitude.py & vu_constants.py in vu_meter.py
     8) Remove unused functions from Amplitude class
 
 """
@@ -40,12 +45,12 @@ if g.USER is None:
     g.init()
 
 import pyaudio
-import numpy as np              # January 24, 2021 support separate 2 channels
+import numpy as np              # January 24, 2021 support Left & Right channels
 import sys
 import math
 import struct
-#from amplitude import Amplitude
 
+#from amplitude import Amplitude  # No longer imported. Coded included below.
 RATE = 44100
 INPUT_BLOCK_TIME = 0.05
 INPUT_FRAMES_PER_BLOCK = int(RATE*INPUT_BLOCK_TIME)
@@ -118,6 +123,7 @@ def main():
     audio = pyaudio.PyAudio()
     reset_baseline_count = 0
     stream = None
+
     try:
         stream = audio.open(format=pyaudio.paInt16,
                             channels=2,

@@ -87,7 +87,7 @@ def main():
     canvas.create_image(0, 0, image=splash_image, anchor=tk.NW)
     #splash.update_idletasks()  # This is required for visibility
 
-    # Center splash screen on monitor and get monitor's geometry
+    # Center splash screen on monitor and get monitor geometry
     mon_dict = monitor.center(splash)
     #splash.wm_overrideredirect(1)  # June 13/20201 debug long press, move this to top.
     splash.update()  # This is required for visibility
