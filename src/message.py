@@ -318,7 +318,7 @@ class ShowInfo(simpledialog.Dialog, CommonSelf):
         w.pack(side=tk.LEFT, padx=5, pady=5)
 
         self.bind("<Return>", self.ok)
-        self.bind("<Escape>", self.ok)
+        self.bind("<Escape>", self.ok)  # ShowInfo has no "Cancel" button
 
         box.pack()
 
@@ -377,7 +377,7 @@ def wait_window_func(self):
         updating graphic animations at 30 fps
     """
     #print('wait_window() has started. self.thread is:', self.thread)
-    #print('Sleeping a second.  self.top_level is:', self.top_level)
+    #print('Sleeping 33ms.  self.top_level is:', self.top_level)
     if not self.thread:
         return
 

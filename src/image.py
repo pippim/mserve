@@ -1139,6 +1139,7 @@ class GoneFishing:
         """
         if self.shark_window_id_dec is None:
             print("image.py GoneFishing.shark_move() shark_window_id_dec is None")
+            # June 10, 2023 - Gazillion error messages for above
             return  # Failsafe
 
         if not self.on_y_axis and not self.on_x_axis:

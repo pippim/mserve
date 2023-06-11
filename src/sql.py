@@ -76,11 +76,13 @@ azlyrics link, azlyrics download time
 con = cursor = hist_cursor = None
 START_DIR_SEP  = None
 #MUSIC_ID  = None    # June 3, 2023 - Appears unused
-_START_DIR = _USER = _LODICT = None
+_START_DIR = _PRUNED_DIR = _PRUNED_COUNT = _USER = _LODICT = None
 
 
-def create_tables(SortedList, start_dir, pruned_subdirs, user, lodict):
+def create_tables(SortedList, start_dir, pruned_dir, pruned_count, user, lodict):
     """ Create SQL tables out of OS sorted music top directory
+
+        THIS IS VERY VERY UGLY... FIX ASAP
 
         if START_DIR = '/mnt/music/'
         then PRUNED_SUBDIRS = 0
@@ -100,8 +102,10 @@ def create_tables(SortedList, start_dir, pruned_subdirs, user, lodict):
     global START_DIR_SEP    # Count of / or \ separators in toplevel directory
     #global MUSIC_ID         # primary key into Music table used by History table
 
-    global _START_DIR, _USER, _LODICT
-    _START_DIR = start_dir  # Toplevel directory, EG /mnt/music/
+    global _START_DIR, _PRUNED_DIR, _PRUNED_COUNT, _USER, _LODICT
+    _START_DIR = start_dir  # Startup music directory, EG /mnt/music/Artist
+    _PRUNED_DIR = pruned_dir  # Toplevel directory, EG /mnt/music/
+    _PRUNED_COUNT = pruned_count  # How many directory levels pruned?
     _USER = user            # User ID to be stored on history records.
     _LODICT = lodict        # Location dictionary
 
@@ -111,19 +115,13 @@ def create_tables(SortedList, start_dir, pruned_subdirs, user, lodict):
     LastAlbum = ""
 
     START_DIR_SEP = start_dir.count(os.sep) - 1  # Number of / separators
-    #print('PRUNED_SUBDIRS:', pruned_subdirs)
-    START_DIR_SEP = START_DIR_SEP - pruned_subdirs
+    #print('PRUNED_SUBDIRS:', pruned_count)
+    START_DIR_SEP = START_DIR_SEP - pruned_count
 
     for i, os_name in enumerate(SortedList):
 
         # split /mnt/music/Artist/Album/Song.m4a into list
-        '''
-            Our sorted list may have removed subdirectory levels using:
-            
-            work_list = [w.replace(os.sep + NO_ALBUM_STR + os.sep, os.sep) \
-                 for w in work_list]
 
-        '''
         # TODO: Check of os_name in Music Table. If so continue loop
         #       Move this into mserve.py main loop and update access time in SQL.
         groups = os_name.split(os.sep)
@@ -144,10 +142,17 @@ def create_tables(SortedList, start_dir, pruned_subdirs, user, lodict):
         full_path = os_name
         full_path = full_path.replace(os.sep + NO_ARTIST_STR, '')
         full_path = full_path.replace(os.sep + NO_ALBUM_STR, '')
+        sql_key = full_path[len(_START_DIR):]
 
         ''' June 2, 2023 - Do not store songs with missing artist or album '''
         if os.sep + NO_ARTIST_STR in key or os.sep + NO_ALBUM_STR in key:
-            ofb.AddBlacklist(full_path[len(_START_DIR):])
+            ofb.AddBlacklist(sql_key)
+            continue
+
+        ''' June 10, 2023 - Do not store songs without two os.sep '''
+        if sql_key.count(os.sep) != 2:
+            #print("skipping sql_key without 2 separators:", sql_key)
+            ofb.AddBlacklist(sql_key)
             continue
 
         # os.stat gives us all of file's attributes
@@ -257,11 +262,14 @@ def open_db():
     hist_cursor = con.cursor()
 
     ''' Functions to fix errors in SQL database '''
-    #fd = FixData("Thu Jun 06 23:59:59 2023")  # Class for common fix functions
+    # fd = FixData("Thu Jun 10 23:59:59 2023")  # Class for common fix functions
 
     # Patch run Jun 02, 2023 with "update=True". 39 Music Ids deleted 3908->3946
     # Patch run Jun 07, 2023 with "update=True". 1 Music Ids deleted 2186->2186
-    #fd.del_music_ids(2186, 2186, update=False)
+    # Patch run Jun 10, 2023 with "update=True". 160 Music Ids deleted 3908->4067
+    # Jun 11, 2023 Duplicate "The Very Best Things". 14 Music Ids deleted 1092->1105
+    # Jun 11, 2023 Duplicate "The Very Best Things". 14 Music Ids deleted 1106->1119
+    # fd.del_music_ids(3939, 5000, update=False)  # Leave range 3939-5000 for awhile
 
     # Patch run May 23, 2023 with "update=True". 66 corrupt scrape-parm deleted
     #fd.fix_scrape_parm(update=False)
@@ -293,6 +301,7 @@ class OsFileNameBlacklist:
         USAGE:
 
         ofb = OsFileNameBlackList()
+        ofb.Select(key) get song from SQL directly or via whitelist
         ofb.CheckBlacklist(key) returns true if Blacklisted.
         ofb.CheckWhitelist(key) returns true if Blacklisted and a whitelist.
             key exists that is not 'None'. All blacklist keys have a
@@ -470,6 +479,7 @@ def get_lyrics(key):
         return None, None
     """
     """ June 3, 2023 - May get whitelisted version """
+    #print("sql.py get_lyrics(key):", key)
     d = ofb.Select(key)
     if d is None:
         return None, None
@@ -563,12 +573,12 @@ def update_metadata(key, artist, album, song, genre, tracknumber, date,
 
         e = ofb.Select(white_key)  # If white key works, use it in Whitelist
         if e is not None:
-            print("Found substitute key:", e['OsFileName'])
+            #print("Found substitute key:", e['OsFileName'])
             ofb.SetWhitelist(key, white_key)
             key = white_key  # Use white_key instead of passed key
-            d = e  # Substitute "None" for good dictionary
+            d = e  # Replace d (None) with e (good dictionary of valid SQL) 
         else:
-            print('sql.py update_metadata() error no music ID for:', key)
+            #print('sql.py update_metadata() error no music ID for:', key)
             return False
 
     # Are we adding a new 'init' or 'edit' history record?

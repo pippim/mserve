@@ -38,6 +38,8 @@
 #       Jun. 01 2023 - Music Library checkboxes batch update to Playlist.
 #       Jun. 03 2023 - Handle <No Album> in lib_tree paths used in SQL tables
 #       Jun. 05 2023 - No location when passing music directory parameter.
+#       Jun. 07 2023 - Many changes. E.G. step_volume() takes list of sinks.
+#       Jun. 09 2023 - Volume Slider for TV Hockey. Stanley=Vegas 2, Florida 1.
 
 # TODO:
 # -----------------------------------------------------------------------------
@@ -57,18 +59,18 @@
 
 #          'self.ndx'               -> 'self.curr_iid_ndx'
 #          'self.ndx'               -> 'self.play_curr_ndx'
-#          New Variable             -> 'self.play_curr_iid'     # self.saved_selections(self.ndx)
 #          'self.ndx'               -> 'self.play_ndx'
 #          'self.ndx'               -> 'self.seq_ndx'           #1
 #          'self.ndx'               -> 'self.iid_ndx'
 #          'self.ndx'               -> 'self.song_ndx'
 
+#          New Variable             -> 'self.play_curr_iid'     # self.saved_selections(self.ndx)
 
 #          'START_DIR'              -> 'MUSIC_DIR'
 
 #   Verify parameter #1 is directory. E.G. "START_DIR = sys.argv[1]"
-#       If not a directory, use last location and give error message.
-#       If no last location give critical error message and bail out.
+#       If START_DIR is not a directory, use last location with warning message.
+#       If no last location give error and select a good START_DIR.
 
 #   Move ~/.config/mserve/library.db to ~/.local/share/mserve/library.db
 #       New open_files() function that verifies "START_DIR" described above.
@@ -108,6 +110,19 @@
 #   Fine-tune time index Begin Sync - "Sync in progress..." doesn't end
 #       automatically. "Done" and "Rewind 5 seconds" buttons unresponsive.
 
+#   When 'dell' File Server goes to sleep, there are 4 errors not trapped:
+
+#       sql.update_metadata(): File below doesn't exist:
+#           OsFileName-The Tea Party/Tangents/03 The Messenger.m4a
+
+#       Waited > 2.5+ seconds, aborting start_ffplay() get sink
+
+#       File ".../mserve.py", line 7269, in update_lib_tree_song
+#           OSError: [Err no 2] No such file or directory:
+#               '/mnt/music/The Tea Party/Tangents/03 The Messenger.m4a
+
+#       The last song stops music but progress seconds go past duration
+
 # REVIEW:
 # -----------------------------------------------------------------------------
 #   self.song_set_ndx() so it no longer forces play. Initiated by
@@ -118,7 +133,10 @@
 #         play button still says "Play" and not "Paused.
 
 #   Remove START_DIR from all lists and prepend only when needed for
-#       real path construction. Half of memory saved and speed doubles.
+#       real path construction. Storage and memory saved and speed increases.
+#       Makes transition to using SQL based playlists easier. Code below is
+#       from make_sorted_list(start_dir, toplevel=None, idle=None):
+#       - work_path = os.path.join(subdir, work_f)
 
 #
 # =============================================================================
@@ -365,6 +383,7 @@ DIGIT_SPACE = " "             # UTF-8 (2007)
 
 ''' Music Library's top directory. E.G. /mnt/drive/home/user/Music/'''
 START_DIR = ""
+PRUNED_DIR = ""  # Same as START_DIR unless manually passing Music Artist
 
 # noinspection SpellCheckingInspection
 ''' TODO: Start up announcement at 75% volume
@@ -378,19 +397,18 @@ $ rm /tmp/test.wav
 
 TV_BREAK1 = 90          # Hockey TV commercial break is 90 seconds
 TV_BREAK2 = 1080        # Hockey TV intermission is 18 minutes
-TV_VOLUME = 75          # Hockey TV mserve play music at 60% volume level
-# June 8, 2023 - Once saved at 60% it's automatically reloaded and 75 no effect
+TV_VOLUME = 60          # Hockey TV mserve play music at 60% volume level
 TV_SOUND = "Firefox"    # Hockey broadcast is aired on Firefox browser
 
 # Number of seconds to Rewind or Fast Forward a song. Must be string
 REW_FF_SECS = "10"
 
-PRUNED_SUBDIRS = 0  # sys arg topdir = 0, artist = 1, album = 2
+PRUNED_COUNT = 0  # sys arg topdir = 0, artist = 1, album = 2
 COMPIZ_FISHING_STEPS = 100  # May 18, 2023 when 100 steps windows disappear
                             # for a few seconds & system freezes once.
 
-# When less than 300x300 or no artwork for song use this image file
-ARTWORK_FOR_LOW_RES = g.PROGRAM_DIR + "Be Creative 2 cropped.jpg"
+# When no artwork for song use this image file
+ARTWORK_SUBSTITUTE = g.PROGRAM_DIR + "Be Creative 2 cropped.jpg"
 # "Be Creative 2 cropped.png" is a 4.4 MB image 3120x3120
 
 
@@ -416,7 +434,8 @@ def make_sorted_list(start_dir, toplevel=None, idle=None):
 
     '''
 
-    global PRUNED_SUBDIRS  # When no topdir and artist or album used.
+    global PRUNED_COUNT  # When no topdir and artist or album used.
+    global PRUNED_DIR
 
     if NEW_LOCATION:
         # print('WIP:', start_dir, "may point to topdir, Artist or Album")
@@ -437,6 +456,8 @@ def make_sorted_list(start_dir, toplevel=None, idle=None):
 
     start_dir = unicode(start_dir)  # Get results in unicode
     # What's the difference between unicode() and .encode('utf-8')?
+    #   https://stackoverflow.com/questions/643694/
+    #   what-is-the-difference-between-utf-8-and-unicode
     for subdir, dirs, files in os.walk(start_dir, topdown=True):
 
         ''' Limit search to files in 3 levels (/Artist/Album/Songs) '''
@@ -494,7 +515,7 @@ def make_sorted_list(start_dir, toplevel=None, idle=None):
                 work_path = work_path.replace(os.sep, " " + os.sep)
                 work_list.append(work_path)
 
-    # Sort work list with ` /` then normalize to '/' and return it
+    # Sort work list with fake ' /' inserted. Then normalize back to '/'
     work_list.sort()
     work_list = [w.replace(" " + os.sep, os.sep) for w in work_list]
     dtb.close()
@@ -512,8 +533,34 @@ def make_sorted_list(start_dir, toplevel=None, idle=None):
         If 3 is zero, /No Album becomes Artist Name
                       Artist Name becomes dir_name - 1
     '''
+    PRUNED_DIR = START_DIR  # Needed to prune off /Artist Name/Album Name
+    PRUNED_COUNT = 0
+
     if depth_count[0] == 0 and depth_count[1] == 0 and depth_count[2] == 0:
         return work_list  # No songs, or started pointing at single song
+
+    if depth_count[1] == 0 and depth_count[2] == 0:
+        # No Artist & No Album encountered
+        PRUNED_COUNT = 2
+
+    if depth_count[1] > 0 and depth_count[2] == 0:
+        # No Album encountered
+        PRUNED_COUNT = 1
+
+    ''' Create the pseudo start directory '''
+    for i in range(0, PRUNED_COUNT):
+        #print("looping through prunes:", i)
+        PRUNED_DIR = PRUNED_DIR[:-1]  # Remove os.sep from end
+        last_sub_dir = PRUNED_DIR.rfind(os.sep)  # Find last os.sep
+        PRUNED_DIR = PRUNED_DIR[:last_sub_dir] + os.sep  # Shorten path
+
+    if PRUNED_COUNT > 0:
+        work_list = [w.replace(os.sep + NO_ALBUM_STR, '') for w in work_list]
+
+    if PRUNED_COUNT > 1:
+        work_list = [w.replace(os.sep + NO_ARTIST_STR, '') for w in work_list]
+
+    return work_list  # Started pointing at an album
 
     if depth_count[1] == 0 and depth_count[2] == 0:
         # print('BEFORE:', work_list)
@@ -524,8 +571,8 @@ def make_sorted_list(start_dir, toplevel=None, idle=None):
         work_list = [w.replace(os.sep + NO_ARTIST_STR + os.sep, os.sep)
                      for w in work_list]
         # print('AFTER:', work_list)
-        PRUNED_SUBDIRS = 2
-        return work_list  # No songs, or started pointing at single song
+        PRUNED_COUNT = 2
+        return work_list  # Started pointing at an album
 
     if depth_count[1] > 0 and depth_count[2] == 0:
         # More complex shifting Artist name to album name requires looping
@@ -534,10 +581,10 @@ def make_sorted_list(start_dir, toplevel=None, idle=None):
         work_list = [w.replace(os.sep + NO_ALBUM_STR + os.sep, os.sep)
                      for w in work_list]
         # print('AFTER:', work_list)
-        PRUNED_SUBDIRS = 1
-        return work_list  # No songs, or started pointing at single song
+        PRUNED_COUNT = 1
+        return work_list  # Started pointing at an artist
 
-    PRUNED_SUBDIRS = 0
+    PRUNED_COUNT = 0
     return work_list
 
 
@@ -789,6 +836,9 @@ class PlayCommonSelf:
         self.testrep_var = None             # Repeat test if awake # times. E.G. "50"
         self.mountcmd_var = None            # E.G. `sshfs "dell:/mnt/music/Users/Person/
                                             #   Music/iTunes/iTunes Media/Music/" /mnt/music`
+        # NOTE: On 'dell' file server run `sudo mount -t auto -v /dev/sb1 /mnt/music`
+        # 'dell' is running `/mnt/e/bin/ssh-activity` to stay awake when mserve running
+        # 'Phone' (Mobile) needs to mount sshfs
         self.activecmd_var = None           # Keep host awake. E.G. `ssh dell "touch /tmp/mserve"`
         self.activemin_var = None           # Send Keep awake command every x minutes. E.G. "10"
 
@@ -933,7 +983,6 @@ class MusicTree(PlayCommonSelf):
 
         # If we are started by splash screen get object, else it will be None
         self.splash_toplevel = toplevel
-        self.splash_removed = False  # Did we remove splash screen?
 
         # Create our tooltips pool (hover balloons)
         self.tt = toolkit.ToolTips()
@@ -1077,7 +1126,7 @@ class MusicTree(PlayCommonSelf):
                     B I G   T I C K E T   E V E N T
          
         Create Album/Artist/ OS Song filename Treeview '''
-        self.manually_checked = False  # Used for self.reverse/self.toggle
+        #self.manually_checked = False  # Used for self.reverse/self.toggle
         self.populate_lib_tree(dtb)
 
         ''' Treeview Scrollbars '''
@@ -1202,22 +1251,23 @@ class MusicTree(PlayCommonSelf):
         mb.add_cascade(label="File", menu=self.file_menu, font=(None, MED_FONT))
 
         # Edit Menu - Edit Location
-        edit_bar = tk.Menu(mb, tearoff=0)
-        edit_bar.add_command(label="Edit Location", font=(None, MED_FONT),
-                             command=lambda: self.loc_edit(
-                                 caller='Drop', mode='Edit'))
-        edit_bar.add_command(label="Compare Location", font=(None, MED_FONT),
-                             command=lambda: self.loc_compare(
-                                 caller='Drop', mode='Compare'))
-        edit_bar.add_command(label="Forget Location", font=(None, MED_FONT),
-                             command=lambda: self.loc_forget(
-                                 caller='Drop', mode='Forget'))
-        edit_bar.add_separator()
-        edit_bar.add_command(label="Volume for Hockey Commercials",
-                             font=(None, MED_FONT),
-                             command=self.set_tv_volume)
+        self.edit_menu = tk.Menu(mb, tearoff=0)
+        self.edit_menu.add_command(label="Edit Location", font=(None, MED_FONT),
+                                  command=lambda: self.loc_edit(
+                                  caller='Drop', mode='Edit'))
+        self.edit_menu.add_command(label="Compare Location", font=(None, MED_FONT),
+                                  command=lambda: self.loc_compare(
+                                  caller='Drop', mode='Compare'))
+        self.edit_menu.add_command(label="Forget Location", font=(None, MED_FONT),
+                                  command=lambda: self.loc_forget(
+                                  caller='Drop', mode='Forget'))
+        self.edit_menu.add_separator()
+        # Volume for Hocker Commercials state will be enabled by get_hockey_state()
+        self.edit_menu.add_command(label="Volume for Hockey Commercials",
+                                  font=(None, MED_FONT), state=tk.DISABLED,
+                                  command=self.set_tv_volume)
 
-        mb.add_cascade(label="Edit", menu=edit_bar, font=(None, MED_FONT))
+        mb.add_cascade(label="Edit", menu=self.edit_menu, font=(None, MED_FONT))
 
         # View menu - Show locations and SQL library
         view_bar = tk.Menu(mb, tearoff=0)
@@ -1260,7 +1310,10 @@ class MusicTree(PlayCommonSelf):
         ''' When fast_play_startup() ends we need to enter idle loop
             until self.close() is called.
         '''
-        self.refresh_lib_top()
+        while self.refresh_lib_top():  # Sleeps for 33ms
+            if self.lib_top is None:
+                break
+
 
     def handle_lib_top_focus(self, event):
         """
@@ -1272,8 +1325,10 @@ class MusicTree(PlayCommonSelf):
         if self.vol_class and self.vol_class.vol_top:
             self.vol_class.vol_top.focus_force()  # Get focus
             self.vol_class.vol_top.lift()  # Raise in stacking order
-            #print("mserve.py handle_lib_top_focus() lift volume window:",
-            #      event.widget)
+
+        if True is False:  # Make pyCharm happy :)
+            print("mserve.py handle_lib_top_focus() lift volume window:",
+                  event.widget)
 
         # TODO: Good time to change Play Button text (show play_top)
 
@@ -1282,25 +1337,36 @@ class MusicTree(PlayCommonSelf):
             NOTE: this would be a good opportunity for housekeeping
             TODO: Call refresh_acc_times() every 60 seconds
         """
-        while True:
-            if not self.lib_top:
-                # self.close() has set to None
-                break
-            # self.lib_top.update_idletasks()  # doesn't allow tree to scroll
-            if self.killer.kill_now:
-                # SIGTERM to shut down / reboot was received
-                print('\nmserve.py MusicTree (library) closed by SIGTERM')
-                self.close()
-                return  # Not required because this point never reached.
 
-            self.lib_top.update()  # process events in queue
+        ''' Is system shutting down? '''
+        if self.killer.kill_now:
+            # SIGTERM to shut down / reboot was received
+            print('\nmserve.py refresh_lib_top() closed by SIGTERM')
+            self.close()
+            return False  # Not required because this point never reached.
 
-            ''' Always give time slice to tooltips '''
-            root.update_idletasks()  # Check if needed.
-            self.tt.poll_tips()
+        ''' Always give time slice to tooltips '''
+        now = time.time()
+        #root.update_idletasks()
+        if not self.lib_top:
+            # self.close() has set to None
+            return False
+        self.tt.poll_tips()  # Takes a very small processor slice
+        self.lib_top.update()  # process events in queue. E.G. message.ShowInfo()
 
-            # What happens when Play is clicked and play_items() starts?
-            self.lib_top.after(50)
+        sleep = 33 - (int(time.time() - now))   # Strict 30 frames per second
+        sleep = 1 if sleep < 1 else sleep       # Sleep minimum 1 millisecond
+        ''' Are we already destroyed? '''
+        if not self.lib_top:
+            # self.close() has set to None
+            return False
+
+        self.lib_top.after(sleep)              # Sleep until next 30 fps time
+
+        return True  # Go back to caller as success
+
+
+
 
     def create_pending_frame(self, master_frame):
         """ WIP """
@@ -1407,8 +1473,13 @@ class MusicTree(PlayCommonSelf):
                        self.saved_selections[self.ndx])
             current_playing_ndx = self.ndx
         else:
-            current_playing_ndx = self.ndx  # When no play_top, self.ndx correct
-            current_playing_id = self.saved_selections[self.ndx]
+            ''' This could be fresh playlist with no self.saved_selections '''
+            if len(self.saved_selections) > 1:
+                current_playing_ndx = self.ndx  # When no play_top, self.ndx correct
+                current_playing_id = self.saved_selections[self.ndx]
+            else:
+                current_playing_ndx = None
+                current_playing_id = None
 
         # Older code would recreate self.saved_selections as tuple
         dprint("Checking type(self.saved_selections):", type(self.saved_selections))
@@ -1430,6 +1501,9 @@ class MusicTree(PlayCommonSelf):
 
         if new_song_count < 2:
             dprint("Playlist needs at least two songs.")
+            message.ShowInfo(self.lib_top, thread=self.get_refresh_thread(),
+                             icon='warning', title="Cannot apply changes.",
+                             text="Playlist needs at least two songs.")
             return
 
         ''' Step 2 - Delete songs from playlist '''
@@ -1490,7 +1564,9 @@ class MusicTree(PlayCommonSelf):
         if delete_play_ndx_list != delete_ndx_list:
             dprint("mserve.py pending_apply(): delete_play_ndx_list != delete_ndx_list")
 
-        self.ndx = current_playing_ndx - prior_to_current_count
+        if prior_to_current_count > 0:
+            # This test also solves problem when current_playing_ndx is None
+            self.ndx = current_playing_ndx - prior_to_current_count
 
         ''' Step 3 - Add songs to playlist '''
         dprint("\n''' Step 3 - Add songs to playlist '''")
@@ -1528,7 +1604,7 @@ class MusicTree(PlayCommonSelf):
                 dprint("First addition inserted self.playlist_paths.index:", first_ndx)
                 dprint(first_path)
             except ValueError:
-                first_ndx = self.playlist_paths.index(first_path)
+                dprint("First addition can't be inserted self.playlist_paths.index:", first_path)
                 # June 7, 2023 - What's going on here? first_ndx isn't being used.
 
         else:
@@ -1592,9 +1668,9 @@ class MusicTree(PlayCommonSelf):
         current_playing_id = self.saved_selections[self.ndx]
         dprint("current_playing_id:", current_playing_id)
         dprint("current_playing_ndx:", current_playing_ndx)
-        thread = self.get_refresh_thread()
+        #thread = self.get_refresh_thread()
         message.ShowInfo(
-            self.lib_top, thread=thread,
+            self.lib_top, thread=self.get_refresh_thread(),
             align='left', title="Playlist changes applied.",
             text="Changes to checkboxes in Music Library saved in memory.\n\n" +
                  "Playlist in memory has been updated with:\n" +
@@ -1622,7 +1698,7 @@ class MusicTree(PlayCommonSelf):
         ''' When called from pending_apply(), no message to display '''
         if ShowInfo:
             message.ShowInfo(
-                self.lib_top, thread=self.refresh_play_top,
+                self.lib_top, thread=self.get_refresh_thread(),
                 align='left', title="Playlist changes cancelled.",
                 text="Changes to checkboxes in Music Library reversed.\n" +
                      "Playlist in memory and storage remains unchanged.")
@@ -1649,9 +1725,9 @@ class MusicTree(PlayCommonSelf):
         CurrArtistId = ""  # When there are no albums?
 
         start_dir_sep = START_DIR.count(os.sep) - 1  # Number of / separators
-        global PRUNED_SUBDIRS
-        # print('PRUNED_SUBDIRS:', PRUNED_SUBDIRS)
-        start_dir_sep = start_dir_sep - PRUNED_SUBDIRS
+        global PRUNED_COUNT
+        # print('PRUNED_COUNT:', PRUNED_COUNT)
+        start_dir_sep = start_dir_sep - PRUNED_COUNT
 
         for i, os_name in enumerate(self.song_list):
 
@@ -1757,9 +1833,9 @@ class MusicTree(PlayCommonSelf):
         CurrArtistId = ""  # When there are no albums?
 
         start_dir_sep = START_DIR.count(os.sep) - 1  # Number of / separators
-        global PRUNED_SUBDIRS
-        # print('PRUNED_SUBDIRS:', PRUNED_SUBDIRS)
-        start_dir_sep = start_dir_sep - PRUNED_SUBDIRS
+        global PRUNED_COUNT
+        # print('PRUNED_COUNT:', PRUNED_COUNT)
+        start_dir_sep = start_dir_sep - PRUNED_COUNT
 
         for i, os_name in enumerate(self.song_list):
 
@@ -1888,7 +1964,6 @@ class MusicTree(PlayCommonSelf):
                     song_number, len(str(len(self.saved_selections))))
             except ValueError:
                 # print('mserve.py toggle_select(): song not found iid:', song)
-                song_number = 0  # Why isn't this value used?
                 number_str = "Adding"  # Number will be assigned when inserted
 
             self.lib_tree.set(song, "Selected", number_str)
@@ -2693,7 +2768,7 @@ class MusicTree(PlayCommonSelf):
         our_current_iid = LODICT['iid']
         if iid == our_current_iid:
             message.ShowInfo(
-                self.loc_top, thread=self.refresh_play_top,
+                self.loc_top, thread=self.get_refresh_thread(),
                 align='left', icon='warning', title="Location Error",
                 text="You cannot forget the location currently running.")
             return
@@ -2708,7 +2783,7 @@ class MusicTree(PlayCommonSelf):
                 "These actions cannot be undone!\n\n" + \
                 "Song files, lyrics and synchronization are NOT effected."
         answer = message.AskQuestion(
-            self.loc_top, thread=self.refresh_play_top, align='left',
+            self.loc_top, thread=self.get_refresh_thread(), align='left',
             icon='warning', title="Forget Location Confirmation", text=text)
         # print('answer.result:', answer.result)
         if answer.result is not 'yes':
@@ -3430,36 +3505,32 @@ class MusicTree(PlayCommonSelf):
         ''' Warning if status is tri-state, all will be selected. '''
         if self.lib_tree.tag_has("tristate", item):
             dialog = message.AskQuestion(
-                self.lib_top, thread=self.refresh_play_top,
+                self.lib_top, thread=self.get_refresh_thread(),
                 title="Discard custom unchecked?",
                 text="All songs under " + parent + " will be checked.\n" +
-                     "Some Songs are unchecked and will be reversed.")
+                     "Some Songs are unchecked and will be checked.")
             if dialog.result != 'yes':
+                print("User aborted.")
                 return
 
         ''' Warning if unchecking parent all children will be unchecked. '''
-        if self.lib_tree.tag_has("Artist", item):
-            parent = "Artist"
-        elif self.lib_tree.tag_has("Album", item):
-            parent = "Album"
-        else:
-            parent = None
-
-        ''' Warning if checking parent all children will be checked. '''
         if self.lib_tree.tag_has("checked", item) and parent is not None:
             dialog = message.AskQuestion(
-                parent=self.lib_top, thread=self.refresh_play_top,
+                parent=self.lib_top, thread=self.get_refresh_thread(),
                 title="Uncheck all songs below?",
                 text="All songs under " + parent + " will be unchecked.")
             if dialog.result != 'yes':
+                print("User aborted.")
                 return
 
+        ''' Warning if checking parent all children will be checked. '''
         if self.lib_tree.tag_has("unchecked", item) and parent is not None:
             dialog = message.AskQuestion(
-                parent=self.lib_top, thread=self.refresh_play_top,
+                parent=self.lib_top, thread=self.get_refresh_thread(),
                 title="Check all songs below?",
                 text="All songs under " + parent + " will be checked.")
             if dialog.result != 'yes':
+                print("User aborted.")
                 return
 
         ''' ERROR if checking parent with <No Artist> or <No Album>  
@@ -3472,7 +3543,7 @@ class MusicTree(PlayCommonSelf):
                 and (NO_ARTIST_STR in self.lib_tree.item(item, 'text') or
                      NO_ARTIST_STR in self.lib_tree.item(item, 'text')):
             message.ShowInfo(
-                parent=self.lib_top, thread=self.refresh_play_top,
+                parent=self.lib_top, thread=self.get_refresh_thread(),
                 title="Song(s) invalid for playlist when " + NO_ARTIST_STR +
                 "\nor " + NO_ALBUM_STR + " exists.", icon='error',
                 text="Song(s) under " + parent + " cannot be included in playlist.")
@@ -3481,7 +3552,8 @@ class MusicTree(PlayCommonSelf):
         # Call CheckboxTreeview function check (select/unselect) item.
         # May 29, 2023 - Review calling _box_click, can it call us instead?
         # noinspection PyProtectedMember
-        self.lib_tree._box_click(event)
+        self.lib_tree._box_click(event)  # Force check or uncheck to appear
+        self.lib_tree.update()  # June 10, 2023 - checking isn't showing on screen
 
         if self.lib_tree.tag_has("unchecked", item):
             self.process_unchecked(item)
@@ -3499,7 +3571,7 @@ class MusicTree(PlayCommonSelf):
     def process_unchecked(self, item):
         """ We just unchecked the item, update totals
         """
-        self.manually_checked = True  # Used for self.reverse/self.toggle
+        #self.manually_checked = True  # Used for self.reverse/self.toggle
         tags = self.lib_tree.item(item)['tags']
         if 'Artist' in tags or 'Album' in tags:
             self.set_all_parent(item, 'Del')
@@ -3508,7 +3580,7 @@ class MusicTree(PlayCommonSelf):
             self.reverse(item)
         else:
             print('process_unchecked() bad line type tag:', tags)
-        self.manually_checked = False
+        #self.manually_checked = False
 
     def process_checked(self, item):
         """ We just checked the item, update totals
@@ -3517,7 +3589,7 @@ class MusicTree(PlayCommonSelf):
                   song number in chron tree until restart.
         """
 
-        self.manually_checked = True  # Used for self.reverse/self.toggle
+        #self.manually_checked = True  # Used for self.reverse/self.toggle
         tags = self.lib_tree.item(item)['tags']
         if 'Artist' in tags or 'Album' in tags:
             self.set_all_parent(item, 'Add')
@@ -3526,7 +3598,7 @@ class MusicTree(PlayCommonSelf):
             self.reverse(item)
         else:
             print('process_checked() bad line type tag:', tags)
-        self.manually_checked = False
+        #self.manually_checked = False
 
     def set_all_parent(self, Id, action):
         """ ID can be an Artist or Album. action can be "Add" or "Del"
@@ -3552,7 +3624,9 @@ class MusicTree(PlayCommonSelf):
             selected = self.lib_tree.item(child)['values'][2]
             # NOTE: selected may soon be "Pending" in addition to "No. 999"
             if (selected == "" and action == "Add") or \
-                    (not selected == "" in tags and action == "Del"):
+                    (not selected == "" and action == "Del"):
+                # (not selected == "" in tags and action == "Del"):
+                # June 10, 2023 - Remove 'in tags' it's unknown?
                 self.pending_append(child, action)
                 self.reverse(child)
                 # count += 1
@@ -3569,13 +3643,13 @@ class MusicTree(PlayCommonSelf):
             print("mserve.py pending_append(" + item + ", action):" +
                   " has invalid action:", action)
 
-        '''' May have accidentally added and then deleted and vice versa '''
+        '''' Can create duplicates by add and then delete or vice versa '''
         self.pending_duplicates()
 
     def pending_duplicates(self):
         """ If song exists in pending_additions and pending_deletions
             remove the song from both lists. Duplicates occur when a song
-            is checked and then unchecked.
+            is checked and then unchecked or vice versa.
         """
         duplicates = []
         for song in self.pending_additions:
@@ -3722,7 +3796,7 @@ class MusicTree(PlayCommonSelf):
     def reverse(self, Id):
         """ WARNING: Called from multiple places """
         # Toggle song tag on/off. Only used for song, not parent
-        self.manually_checked = True
+        #self.manually_checked = True
         if Id.startswith("I"):
             print("mserve.py reverse(" + Id + "): should not be called.")
             return  # Parents are a no-go
@@ -3906,6 +3980,7 @@ $ wmctrl -l -p
         root.destroy()
 
         print('Restarting with new music library:', self.parm)
+        ''' Replace existing, or append first parameter with music directory '''
         if len(sys.argv) > 1:
             sys.argv[1] = self.parm
         else:
@@ -4062,13 +4137,10 @@ $ wmctrl -l -p
         SortedList2 = make_sorted_list(START_DIR, toplevel=self.lib_top)
         ext.t_end('no_print')  # 3907 songs =  0.1526460648
 
-        # Assign background animation thread for message boxes
-        thread = self.get_refresh_thread()
-
         if SORTED_LIST == SortedList2:
             # print('self.play_top_is_active:', self.play_top_is_active)
             message.ShowInfo(
-                self.lib_top, thread=thread,
+                self.lib_top, thread=self.get_refresh_thread(),
                 title="Refresh music library",
                 text="The same " + str(len(SORTED_LIST)) +
                      " songs are in the library.\n\n" +
@@ -4078,7 +4150,8 @@ $ wmctrl -l -p
             additions = list(set(SortedList2).difference(SORTED_LIST))
             deletions = list(set(SORTED_LIST).difference(SortedList2))
             answer = message.AskQuestion(
-                self.lib_top, thread=thread, align='left', icon='warning',
+                self.lib_top, thread=self.get_refresh_thread(), 
+                align='left', icon='warning',
                 title="Refresh music library - EXPERIMENTAL !!!",
                 text="Songs have changed in storage:\n" +
                      "\tAdditions:\t" + str(len(additions)) + "\n" +
@@ -4132,11 +4205,8 @@ $ wmctrl -l -p
             return
 
         self.vol_class = Volume(parent=self.lib_top, tooltips=self.tt,
-                                thread=self.get_refresh_thread,
+                                thread=self.get_refresh_thread(),
                                 save_callback=self.get_hockey_state)
-        #                        get_pp_state_callback=None)
-        #
-        # print("\nmserve.py - set_tv_volume:", TV_VOLUME)
 
     def show_debug(self):
         """ Debugging - show monitors, tooltips and full metadata
@@ -4159,17 +4229,20 @@ $ wmctrl -l -p
 
         print("\nCURRENT SONG self.lib_tree VARIABLES")
         print("====================================\n")
+
         song_iid = self.saved_selections[self.ndx]
         song = self.lib_tree.item(song_iid)['text']
         album_iid = self.lib_tree.parent(song_iid)
         album = self.lib_tree.item(album_iid)['text']
         artist_iid = self.lib_tree.parent(album_iid)
         artist = self.lib_tree.item(artist_iid)['text']
+
         print("self.ndx:", self.ndx, ' | Song iid:', song_iid, " |", song)
         print("tree values:", self.lib_tree.item(song_iid)['values'])
         print("Artist iid:", artist_iid, " |", artist,
               " | Album iid:", album_iid, " |", album)
         print("real_path:", self.real_path(int(song_iid)))
+        print("len(SORTED_LIST):", len(SORTED_LIST))
         print()
 
         lines = self.tt.line_dump()         # Show Tooltips in memory
@@ -4191,9 +4264,13 @@ $ wmctrl -l -p
             for i, entry in enumerate(sql.ofb.whites):
                 print(i, ":", entry)
 
-        print("\nGlobal VARIABLES")
+        print("\nGLOBAL VARIABLES")
         print("====================================\n")
         print("START_DIR:", START_DIR)
+        print("PRUNED_DIR:", PRUNED_DIR)
+        print("PRUNED_COUNT:", PRUNED_COUNT)
+        print("TV_VOLUME:", TV_VOLUME)
+
         print("pending_apply debug print flag DPRINT_ON:", DPRINT_ON)
         print("\nOpened Location dictionary that never changes LODICT:")
         print(LODICT)
@@ -4245,10 +4322,10 @@ $ wmctrl -l -p
         # "Frame", "Label", "Button", "Treeview", "Scrollbar", "Menu", "Canvas" & "Other"
         #toolkit.list_widgets(self.lib_top, scan="Frame")  # Too much info. Needs work!
 
-        thread = self.get_refresh_thread()
+        #thread = self.get_refresh_thread()
         message.ShowInfo(self.lib_top, "DEBUG - mserve.py",
                          "Check command line (CLI) for output", 
-                         thread=thread)
+                         thread=self.get_refresh_thread())
 
     # ==============================================================================
     #
@@ -4499,9 +4576,9 @@ $ wmctrl -l -p
         """
         if self.mus_search:
             self.mus_search.close()
-        thread = self.get_refresh_thread()
+        #thread = self.get_refresh_thread()
         answer = message.AskQuestion(
-            self.mus_top, thread=thread,
+            self.mus_top, thread=self.get_refresh_thread(),
             title="Songs with no Artwork confirmation - mserve", confirm='no',
             text="Every song file will be read which will take awhile.\n" +
                  "Missing metadata in SQL Music Table will be updated.\n" +
@@ -4531,9 +4608,9 @@ $ wmctrl -l -p
             "Metadata unchanged: " + "{:,}".\
             format(self.meta_scan.meta_data_unchanged) + "\n\n" + \
             "Click 'OK' to close. Then reload window for metadata refresh.\n"
-        thread = self.get_refresh_thread()
+        #thread = self.get_refresh_thread()
         message.ShowInfo(self.mus_top, "Update Metadata & Metadata Summary", text, 
-                         thread=thread)
+                         thread=self.get_refresh_thread())
 
     def missing_artwork_callback(self, values):
         """ Find Songs that have no artwork and update metadata
@@ -5197,8 +5274,9 @@ $ wmctrl -l -p
 
         text = "Total size:  " + "{:,}".format(total_size) + "\n" + \
                "Row count:  " + "{:,}".format(row_count)
-        thread = self.get_refresh_thread()
-        message.ShowInfo(view.toplevel, title, text, thread=thread)
+        #thread = self.get_refresh_thread()
+        message.ShowInfo(view.toplevel, title, text, 
+                         thread=self.get_refresh_thread())
 
     # noinspection PyUnusedLocal
     def pretty_close(self, *args):
@@ -5373,7 +5451,7 @@ $ wmctrl -l -p
                 # TODO: Clear checkboxes first.
                 #       Use BatchSelect - see fast_play_startup().
                 #       Apply checkboxes when done.
-                self.manually_checked = False
+                #self.manually_checked = False
                 self.toggle_select(iid, album, artist)
                 newly_selected += 1
 
@@ -5398,7 +5476,8 @@ $ wmctrl -l -p
         self.pending_tot_add_cnt = 0        # Total changes made without being
         self.pending_tot_del_cnt = 0        # written to disk with "Save Playlist"
 
-        message.ShowInfo(title="Playlist saved.", thread=self.get_refresh_thread(),
+        message.ShowInfo(title="Playlist saved.", 
+                         thread=self.get_refresh_thread(),
                          text=str(len(self.saved_selections)) +
                          " songs in Playlist have been saved.\n\n" +
                          "Note that the Playlist is also saved\n" +
@@ -5768,10 +5847,12 @@ $ wmctrl -l -p
         self.saved_selections = []  # Songs selected for playing
         self.filtered_selections = list(self.saved_selections)
 
-        ''' If parameter 1 is for random directory, we have no last location
-            So set variables to null and return early.
-        '''
         if NEW_LOCATION:
+            ''' If parameter 1 is for random directory, we have no last location
+                Variables have been set to null. Remove 'm' splash screen.
+            '''
+            if self.splash_toplevel:
+                self.splash_toplevel.withdraw()  # Remove splash screen
             return
 
         ''' Check for Last selections file on disk '''
@@ -6378,7 +6459,6 @@ $ wmctrl -l -p
         ''' Remove splash screen if we were called with it. '''
         if self.splash_toplevel:
             self.splash_toplevel.withdraw()  # Remove splash screen
-            self.splash_removed = True  # No more splash screen!
 
         root.update()
         #root.after(1000)  # Remove May 9, 2023. Why was a WHOLE SECOND here???
@@ -6408,8 +6488,9 @@ $ wmctrl -l -p
                      "Cannot toggle FF/Rewind buttons when hockey countdown running.\n\n" +
                      "Click the time remaining button and cancel countdown.\n")
             # Even though message appears on lib_top we know play_top has the thread
-            thread = self.get_refresh_thread()
-            message.ShowInfo(self.lib_top, text=quote, align='center', thread=thread,
+            #thread = self.get_refresh_thread()
+            message.ShowInfo(self.lib_top, text=quote, align='center', 
+                             thread=self.get_refresh_thread(),
                              title="Cannot toggle FF/Rewind Buttons Now - mserve")
             return
 
@@ -8151,10 +8232,15 @@ $ wmctrl -l -p
             # TODO: June 3, 2023 - MusicId can be 0 so we need to bail out
             if MusicId is None or MusicId == 0:
                 return
-            # Aug 12/2021 change 'USER' to 'g.USER' didn't test
             sql.hist_add(time.time(), MusicId, g.USER, 'scrape',
-                         'parm', artist, song, "", 0, 0, 0.0,
+                         'parm', artist.encode("utf-8"), song.encode("utf-8"),
+                         "", 0, 0, 0.0,
                          time.asctime(time.localtime(time.time())))
+            # June 10, 2023 - sqlite3.ProgrammingError: You must not use
+            # 8-bit bytestrings unless you use a text_factory that can
+            # interpret 8-bit bytestrings (like text_factory = str). It
+            # is highly recommended that you instead just switch your
+            # application to Unicode strings.  Add encode("utf-8")
             sql.con.commit()
             # Aug 25 fudge parameter list to skip no_parameters()
             parm = '"' + artist + ' ' + song + '" ' + str(MusicId)
@@ -8241,7 +8327,25 @@ $ wmctrl -l -p
         return sql.make_key(self.song_list[list_index])
         """
         """ June 3, 2023 - New version strips out <No Album> directory """
-        return self.real_path(int(self.saved_selections[self.ndx]))[len(START_DIR):]
+        #print("START_DIR:", START_DIR, "len(START_DIR):", len(START_DIR),
+        #      "PRUNED_COUNT:", PRUNED_COUNT)
+        # def open_files() is assigning START_DIR wrong
+        # make_sorted_list() can have single artist or single album passed
+        # in command line parameter 1
+        slice_from = len(START_DIR)  # Has / at end
+        pruned_dir = START_DIR  # Needed to prune off /Artist Name/Album Name
+        for i in range(0, PRUNED_COUNT):
+            #print("looping through prunes:", i)
+            pruned_dir = pruned_dir[:-1]  # Remove os.sep from end
+            last_sub_dir = pruned_dir.rfind(os.sep)  # Find last os.sep
+            pruned_dir = pruned_dir[:last_sub_dir] + os.sep  # Shorten path
+            slice_from = len(pruned_dir)  # Calculate new slice point
+            #print("New pruned_dir:", pruned_dir)
+
+        slice_from = len(PRUNED_DIR)  # Has / at end
+
+
+        return self.real_path(int(self.saved_selections[self.ndx]))[slice_from:]
 
     def play_save_score_erase_time(self):
         """ Preliminary lyrics save that WIPES OUT the lyrics time index """
@@ -8473,7 +8577,7 @@ $ wmctrl -l -p
             # If Pause/Play State is currently paused we can not synchronize
             # June 5/2021: change top level from self.play_top
             answer = message.AskQuestion(
-                self.lyrics_score_box, thread=self.refresh_play_top,
+                self.lyrics_score_box, thread=self.get_refresh_thread(),
                 title="Music is paused - mserve", confirm='no',
                 text="Left clicking synchronizes lyrics\n" +
                      "but only works when music is playing.\n" +
@@ -9003,7 +9107,7 @@ $ wmctrl -l -p
         # Give warning box when lyrics exist all will be lost!
         if len(self.lyrics_score) > 10:
             answer = message.AskQuestion(
-                self.play_top, thread=self.refresh_play_top,
+                self.play_top, thread=self.get_refresh_thread(),
                 title="Lyrics will scraped from web and replaced",
                 text="If you have edited these lyrics all changes will be lost!" +
                 "\n\nTIP: You can edit lyrics to copy and paste groups of lines.")
@@ -9032,7 +9136,7 @@ $ wmctrl -l -p
         # Give warning box when lyrics exist all will be lost!
         if len(self.lyrics_score) > 10:
             answer = message.AskQuestion(
-                self.play_top, thread=self.refresh_play_top,
+                self.play_top, thread=self.get_refresh_thread(),
                 title="Lyrics will pasted from clipboard",
                 text="If you edited these lyrics changes will be lost!\n\n" +
                      "TIP: Edit lyrics can copy and paste groups of lines.")
@@ -9210,7 +9314,7 @@ $ wmctrl -l -p
         # Confirm if > 20% of text has been deleted
         if percent < 0.8:
             answer = message.AskQuestion(
-                self.play_top, thread=self.refresh_play_top,
+                self.play_top, thread=self.get_refresh_thread(),
                 title="More than 20% of text deleted",
                 text="A large amount of text has been deleted!\n\n" +
                      "TIP: Deleting all text will web scrape lyrics again.")
@@ -10169,7 +10273,7 @@ IndexError: list index out of range
             return  # Already playing?
 
         answer = message.AskQuestion(
-            self.syn_top, thread=self.refresh_play_top,
+            self.syn_top, thread=self.get_refresh_thread(),
             title="Delete all time indices",
             text="All times will be permanently erased!!!\n\n" +
                  'To cancel time changes, click "Close" button instead.' +
@@ -10390,7 +10494,7 @@ IndexError: list index out of range
             return  # Error message already
         if first == last:
             answer = message.AskQuestion(
-                self.syn_top, thread=self.refresh_play_top,
+                self.syn_top, thread=self.get_refresh_thread(),
                 title="Merge lines together",
                 text="At least two lines must be selected to merge together." +
                      "\n\nThis will merge checked line and the line after it.")
@@ -10523,7 +10627,7 @@ IndexError: list index out of range
     def sync_three_abort(self, msg):
         """ Give chance to abort - allows one-liner in caller. """
         answer = message.AskQuestion(self.syn_top, text=msg,
-                                     thread=self.refresh_play_top,
+                                     thread=self.get_refresh_thread(),
                                      title="More than three lines checked")
         return answer.result != 'yes'
 
@@ -10552,7 +10656,7 @@ IndexError: list index out of range
         if self.sync_changed_score is False and \
                 self.work_time_list == self.new_time_list:
             answer = message.AskQuestion(
-                self.syn_top, thread=self.refresh_play_top,
+                self.syn_top, thread=self.get_refresh_thread(),
                 title="Lyrics have NOT been fine-tuned",
                 text="Saving time indices makes no sense.")
             if answer.result != 'yes':
@@ -10638,7 +10742,7 @@ IndexError: list index out of range
                  'NOTE: If lyrics contain errors, fix them before using this function.')
 
         message.ShowInfo(self.play_top, text=quote, align='left',
-                         thread=self.refresh_play_top(),
+                         thread=self.get_refresh_thread(),
                          title="Fine-tune time index instructions - mserve")
         return False
 
@@ -10657,7 +10761,7 @@ IndexError: list index out of range
             print('differences:', list(set(self.work_time_list) -
                                        set(self.new_time_list)))
             answer = message.AskQuestion(self.syn_top,
-                                         thread=self.refresh_play_top,
+                                         thread=self.get_refresh_thread(),
                                          title="Times have been fine-tuned",
                                          text="Changes will be lost!")
             if answer.result != 'yes':
@@ -10697,8 +10801,8 @@ IndexError: list index out of range
         self.play_current_song_art, self.play_resized_art = \
             ffmpeg_artwork(path, self.art_width, self.art_height)
 
-        if self.play_current_song_art is None and ARTWORK_FOR_LOW_RES:
-            # print("Getting ARTWORK_FOR_LOW_RES:", ARTWORK_FOR_LOW_RES)
+        if self.play_current_song_art is None and ARTWORK_SUBSTITUTE:
+            # print("Getting ARTWORK_SUBSTITUTE:", ARTWORK_SUBSTITUTE)
             self.play_current_song_art, self.play_resized_art = \
                 storage_artwork(self.art_width, self.art_height)
 
@@ -10763,7 +10867,7 @@ IndexError: list index out of range
             Get confirmation because this cannot be undone. 'yes'
         """
         dialog = message.AskQuestion(
-            self.play_top, thread=self.refresh_play_top,
+            self.play_top, thread=self.get_refresh_thread(),
             title="Shuffle song order confirmation",
             text="This will permanently change playlist song order!")
         if dialog.result != 'yes':
@@ -10853,8 +10957,8 @@ IndexError: list index out of range
             Existing items do not have their № updated (incremented)
         """
 
-        if not self.manually_checked:
-            return  # Used for self.reverse/self.toggle
+        #if not self.manually_checked:
+        #    return  # Used for self.reverse/self.toggle
 
         if not LIBRARY_SELECT_INSERT_PLAY_HERE:
             print("LIBRARY_SELECT_INSERT_PLAY_HERE must be true")
@@ -10985,8 +11089,8 @@ IndexError: list index out of range
         """
         Comments = "Last song playing/paused when location closed"
         save_config_for_loc('resume', self.pp_state, str(self.ndx),
-                                 self.current_song_path, Seconds=self.current_song_secs,
-                                 Comments=Comments)
+                            self.current_song_path, Seconds=self.current_song_secs,
+                            Comments=Comments)
 
     @staticmethod
     def get_chron_state():
@@ -11006,8 +11110,7 @@ IndexError: list index out of range
         Comments = "Chronology (playlist) 'Show' or 'Hide'"
         save_config_for_loc('chron_state', state, Comments=Comments)
 
-    @staticmethod
-    def get_hockey_state():
+    def get_hockey_state(self):
         """
             Get last saved state for Hockey TV Commercial Buttons and Volume
         """
@@ -11022,6 +11125,9 @@ IndexError: list index out of range
         else:
             print("mserve.py get_hockey_state() TV_VOLUME is invalid:",
                   int(d['Size']))
+
+        # Hockey volume can now be changed. Note description must MATCH EXACTLY
+        self.edit_menu.entryconfig("Volume for Hockey Commercials", state=tk.NORMAL)
 
         return hockey_state
 
@@ -11463,7 +11569,7 @@ IndexError: list index out of range
                      "Try again with different filter criteria.\n\n")
 
             message.ShowInfo(self.play_top, text=quote, align='left',
-                             thread=self.refresh_play_top(),
+                             thread=self.get_refresh_thread(),
                              title="Filter Playlist Failed - mserve")
             return
 
@@ -11866,7 +11972,7 @@ class Volume:
     """ Usage:
 
     self.vol_class = Volume(parent, sink, title, text, tooltips=self.tt,
-                            thread=self.refresh_play_top,
+                            thread=self.get_refresh_thread(),
                             get_pp_state_callback=self.get_pp_state_callback)
           - Coordinates / geometry is always lib_top geometry + padding.
           - Music must be playing (ffplay) or at least a song paused.
@@ -11959,7 +12065,7 @@ class Volume:
         self.slider.grid(row=0, column=3, rowspan=3, padx=5, pady=5, sticky=tk.NS)
 
 
-        ''' Close and Apply Buttons '''
+        ''' Close Button '''
         self.close_button = tk.Button(self.vol_frm, text="✘ Close",
                                       width=BTN_WID2 - 6,
                                       command=self.close)
@@ -11981,23 +12087,22 @@ class Volume:
         self.vol_top.bind("<Return>", self.apply)  # DO ONLY ONCE?
 
 
-        ''' Read current volume & stored volume '''
+        ''' Get current volume & Read stored volume '''
         self.last_volume, self.last_sink = self.get_volume()  # Reset this value when ending
         if not self.read_vol():
-            print("Initialization of mserve in progress")
             message.ShowInfo(self.parent, "Initialization of mserve in progress.",
-                             "Cannot adjust volume until mserve is run at least twice.",
+                             "Cannot adjust volume until playlist loaded into mserve.",
                              icon='error', thread=self.thread)
             self.close()
 
         if self.last_volume is None:
-            print("Cannot set volume with no sound playing")
             message.ShowInfo(self.parent, "No Sound is playing.",
                              "Cannot adjust volume until a song is playing.",
-                             icon='error', thread=self.thread)
+                             icon='warning', thread=self.thread)
             self.close()
 
-        self.vol_top.update_idletasks()
+        if self.vol_top:  # May have been closed above.
+            self.vol_top.update_idletasks()
 
     def get_volume(self):
         """ Get volume of 'ffplay' before we start
@@ -12024,7 +12129,7 @@ class Volume:
 
         self.sink_vol_wip = True  # Adjust Volume Work is In Progress (WIP)
 
-        all_sinks = sink_list("ffplay")
+        all_sinks = sink_list(self.name)
         if len(all_sinks) == 0 or all_sinks[0] == "":
             self.sink_vol_wip = False  # Adjust Volume Work complete
             return
@@ -12040,7 +12145,7 @@ class Volume:
 
     def on_resize(self, *args):
         """
-            Window resizing. Make slider bigger.
+            Window resizing. Adjust slider height to window height.
         """
         pass
 
@@ -12057,10 +12162,19 @@ class Volume:
         ''' Get hockey tv commercial volume '''
         if 25 <= int(d['Size']) <= 100:
             self.curr_volume = int(d['Size'])
+            #print("self.curr_volume 1:", self.curr_volume)  # 60
+
+        #print("self.curr_volume 2:", self.curr_volume)  # 60
         if self.last_volume:
+            hold = self.curr_volume  # June 10, 2023 - Create hold field
             step_volume(self.last_sink, self.last_volume, self.curr_volume,
                         10, .05, thread=self.thread)
+            #print("self.curr_volume 3:", self.curr_volume)  # 25
+            self.curr_volume = hold  # June 10, 2023 - Strange but true
+            #print("self.curr_volume 4:", self.curr_volume)  # 60
+
         self.slider.set(self.curr_volume)
+        self.vol_top.update_idletasks()
 
         return True
 
@@ -12069,20 +12183,26 @@ class Volume:
             Save volume
         """
         ''' Reread hockey state in case user changed after set_tv_volume started '''
-        save_config_for_loc('hockey_state', Size=self.curr_volume)
+        d = get_config_for_loc('hockey_state')
+        # If we don't rewrite fields they get blanked out. Action=Location
+        save_config_for_loc('hockey_state', d['SourceMaster'], Size=self.curr_volume,
+                            Comments=d['Comments'])
         self.save_callback()  # This resets global TV_VOLUME variable for us
 
+    # noinspection PyUnusedLocal
     def close(self, *args):
         if self.tt:
             self.tt.close(self.vol_top)
         self.vol_top.destroy()
-        self.vol_top = None
+        #print("self.vol_top after .destroy()", self.vol_top)
+        self.vol_top = None  # Indicate volume slider is closed
 
         ''' Adjust volume for playing mserve song back to "normal" '''
         #curr_volume, curr_sink = self.get_volume()  # Current volume would be what we just saved.
         # Problem: We don't take into consideration self.last_volume
         #          If music was paused while self.vol_class() was open it's now 25%
 
+    # noinspection PyUnusedLocal
     def apply(self, *args):
         self.save_vol()  # calls self.save_callback() which calls get_hockey_state()
         self.close()
@@ -12509,13 +12629,13 @@ def storage_artwork(width, height):
         Use image file as artwork for song.
     """
 
-    if not os.path.isfile(ARTWORK_FOR_LOW_RES):
+    if not os.path.isfile(ARTWORK_SUBSTITUTE):
         # Song has no artwork that ffmpeg can identify.
-        print("mserve.py storage_artwork() os.path.isfile(ARTWORK_FOR_LOW_RES) " +
+        print("mserve.py storage_artwork() os.path.isfile(ARTWORK_SUBSTITUTE) " +
               "failed test")
         return None, None
 
-    original_art = Image.open(ARTWORK_FOR_LOW_RES)
+    original_art = Image.open(ARTWORK_SUBSTITUTE)
     resized_art = original_art.resize(
         (width, height), Image.ANTIALIAS)
     return ImageTk.PhotoImage(resized_art), resized_art
@@ -12774,6 +12894,7 @@ def open_files(old_cwd, prg_path, parameters, toplevel=None):
     print()
 
     ''' Was music_dir passed as parameter? '''
+    music_dir = None  # Just to make pycharm "happy:)"
     try:
         music_dir = parameters[1]
         hold_dir = os.getcwd()
@@ -12784,13 +12905,14 @@ def open_files(old_cwd, prg_path, parameters, toplevel=None):
         use_location = False
     except IndexError:  # list index out of range
         # Music directory not passed as parameter
+        print("Invalid Music Directory passed:", music_dir)
         music_dir = None
         use_location = True
 
     ''' Is passed music_dir in our known locations? '''
     if music_dir is not None and lc.get_dict_by_dirname(music_dir):
         use_location = True  # Override to use location found by dir name
-        print('mserve override parameter 1 to lc.DICT:', lc.DICT)
+        print('mserve override:", music_dir, "to location:', lc.DICT['iid'])
         # Make passed Top Directory our last known location then load it
         lc.save_mserve_location(lc.DICT['iid'])
 
@@ -12831,6 +12953,7 @@ def open_files(old_cwd, prg_path, parameters, toplevel=None):
 
         if START_DIR is None:
             START_DIR = old_cwd
+            print("START_DIR forced to old_cwd, should not happen:", old_cwd)
         if not START_DIR.endswith(os.sep):
             print("\nFile picker shortfall, adding / to end of:", START_DIR)
             print()
@@ -12841,6 +12964,13 @@ def open_files(old_cwd, prg_path, parameters, toplevel=None):
         #print(music_list)
         break
 
+    ''' Replace existing, or append first parameter with massaged (realpath) 
+        music directory. This is needed for mserve restart. 
+    '''
+    if len(sys.argv) > 1:
+        sys.argv[1] = music_dir
+    else:
+        sys.argv.append(music_dir)
 
     print("End of open_files()")
 
@@ -12973,7 +13103,7 @@ def main(toplevel=None, mon_geom=None, cwd=None, parameters=None):
     # Temporarily create SQL music tables until search button created.
     # TODO: How to create music tables when location hasn't been defined yet?
     ext.t_init('sql.create_tables()')
-    sql.create_tables(SORTED_LIST, START_DIR, PRUNED_SUBDIRS, g.USER, LODICT)
+    sql.create_tables(SORTED_LIST, START_DIR, PRUNED_DIR, PRUNED_COUNT, g.USER, LODICT)
     ext.t_end('no_print')  # sql.create_tables(): 0.1092669964
         # May 24, 2023 -  sql.create_tables(): 0.1404261589
         # June 3, 2023 -  sql.create_tables(): 0.0638458729
