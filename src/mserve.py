@@ -537,7 +537,7 @@ def make_sorted_list(start_dir, toplevel=None, idle=None):
     PRUNED_COUNT = 0
 
     if depth_count[0] == 0 and depth_count[1] == 0 and depth_count[2] == 0:
-        return work_list  # No songs, or started pointing at single song
+        return work_list, depth_count  # No songs, or started pointing at single song
 
     if depth_count[1] == 0 and depth_count[2] == 0:
         # No Artist & No Album encountered
@@ -560,7 +560,7 @@ def make_sorted_list(start_dir, toplevel=None, idle=None):
     if PRUNED_COUNT > 1:
         work_list = [w.replace(os.sep + NO_ARTIST_STR, '') for w in work_list]
 
-    return work_list  # Started pointing at an album
+    return work_list, depth_count  # Started pointing at an album
 
     if depth_count[1] == 0 and depth_count[2] == 0:
         # print('BEFORE:', work_list)
@@ -4134,7 +4134,7 @@ $ wmctrl -l -p
         global SORTED_LIST
         # Build list of songs
         ext.t_init("make_sorted_list(START_DIR, toplevel=self.lib_top)")
-        SortedList2 = make_sorted_list(START_DIR, toplevel=self.lib_top)
+        SortedList2, depth_count = make_sorted_list(START_DIR, toplevel=self.lib_top)
         ext.t_end('no_print')  # 3907 songs =  0.1526460648
 
         if SORTED_LIST == SortedList2:
@@ -4671,8 +4671,8 @@ $ wmctrl -l -p
 
         """
         # Note: Metadata may be none for artist, album, song_name, genre, etc.
-        columns = ["time", "row_id", "music_id", "type", "action",
-                   "master", "detail", "target", "size", "count", "comments"]
+        columns = ["time", "row_id", "music_id", "type", "action", "master",
+                   "detail", "target", "size", "count", "seconds", "comments"]
         toolkit.select_dict_columns(columns, history_dict)
         # toolkit.print_dict_columns(history_dict)
 
@@ -6577,18 +6577,22 @@ $ wmctrl -l -p
                 # 📺 | television (U+1F4FA) @ Graphic
                 #self.play_hockey_active = False  # U+1f3d2 🏒
                 self.com_button = tk.Button(self.play_btn, text="📺  Commercial",
-                                            width=BTN_WID2 + 1, command=lambda
+                                            anchor=tk.CENTER,
+                                            width=BTN_WID2 + 3, command=lambda
                                             s=self: s.start_hockey(TV_BREAK1))
                 self.com_button.grid(row=0, column=col, padx=2, sticky=tk.W)
-                self.tt.add_tip(self.com_button, "Play music for 90 seconds.\n" +
+                self.tt.add_tip(self.com_button, "Play music for " +
+                                str(TV_BREAK1) + " seconds.\n" +
                                 "Turn down TV volume whilst playing.", anchor="sw")
             elif name == "Int":
                 ''' Hockey Intermission Button '''
                 self.int_button = tk.Button(self.play_btn, text="🏒  Intermission",
-                                            width=BTN_WID2 + 1, command=lambda
+                                            anchor=tk.CENTER,
+                                            width=BTN_WID2 + 3, command=lambda
                                             s=self: s.start_hockey(TV_BREAK2))
                 self.int_button.grid(row=0, column=col, padx=2, sticky=tk.W)
-                self.tt.add_tip(self.int_button, "Play music for 18 minutes.\n" +
+                self.tt.add_tip(self.int_button, "Play music for " +
+                                str(TV_BREAK2) + " seconds.\n" +
                                 "Turn down TV volume whilst playing.", anchor="se")
             elif name == "Rew":
                 ''' Rewind Button -10 sec '''
@@ -7095,14 +7099,14 @@ $ wmctrl -l -p
         if elapsed < self.play_hockey_secs:
             remaining = int(self.play_hockey_secs - elapsed)
             if remaining == self.play_hockey_remaining:
-                # We don't want to update every 1/10th seconds
+                # We don't want to update every 1/33rd second
                 return
             self.play_hockey_remaining = remaining
             int_str = com_str = "🏒  Remaining: " + str(remaining)
         else:
             # All finished now repaint original hockey buttons
-            com_str = "🏒  Commercial"
-            int_str = "🏒  Intermission"
+            com_str = "📺  Commercial"  # TODO: Make global constants
+            int_str = "🏒  Intermission"  # E.G.  COM_BTN_STR
             if self.gone_fishing is not None:
                 self.gone_fishing.close()
             self.gone_fishing = None  # So global close doesn't try
@@ -11115,6 +11119,7 @@ IndexError: list index out of range
             Get last saved state for Hockey TV Commercial Buttons and Volume
         """
         global TV_VOLUME  # mserve volume when TV commercial on air
+        global TV_BREAK1, TV_BREAK2, TV_SOUND
 
         d = get_config_for_loc('hockey_state')
         if d is None:
@@ -11125,6 +11130,14 @@ IndexError: list index out of range
         else:
             print("mserve.py get_hockey_state() TV_VOLUME is invalid:",
                   int(d['Size']))
+
+        # Initial versions didn't have these fields initialized
+        if d['Count'] > 10:
+            TV_BREAK1 = d['Count']
+        if d['Seconds'] > 10:
+            TV_BREAK2 = int(d['Seconds'])
+        if d['SourceDetail'] != "":
+            TV_SOUND = d['SourceDetail']
 
         # Hockey volume can now be changed. Note description must MATCH EXACTLY
         self.edit_menu.entryconfig("Volume for Hockey Commercials", state=tk.NORMAL)
@@ -11137,7 +11150,9 @@ IndexError: list index out of range
         """
         state = "On" if self.play_hockey_allowed else "Off"
         Comments = "Hockey TV Commercial Buttons used?"
-        save_config_for_loc('hockey_state', state, Size=TV_VOLUME, Comments=Comments)
+        save_config_for_loc('hockey_state', state, TV_SOUND, Size=TV_VOLUME,
+                            Count=TV_BREAK1, Seconds=float(TV_BREAK2),
+                            Comments=Comments)
 
     # ==============================================================================
     #
@@ -12043,10 +12058,9 @@ class Volume:
         self.start_w = self.vol_frm.winfo_reqheight()
         self.start_h = self.vol_frm.winfo_reqwidth()
 
-        ''' Current song number '''
+        ''' Instructions '''
         PAD_X = 5
-        self.current_song_number = tk.StringVar()
-        if not self.text:
+        if not self.text:  # If text wasn't passed as a parameter use default
             self.text = "\nSet mserve volume during Hockey TV Commercials\n\n" + \
                 "When TV commercials appear during a hockey game,\n" + \
                 "you can click the commercial button and mserve\n" + \
@@ -12055,21 +12069,36 @@ class Volume:
                 "normal and you have the system volume turned up.\n" + \
                 "In this case, you want to set mserve to a lower volume here. \n"
         tk.Label(self.vol_frm, text=self.text, justify="left", font=ms_font)\
-            .grid(row=0, column=0, sticky=tk.W, padx=PAD_X)
-        tk.Label(self.vol_frm, text="", textvariable=self.current_song_number,
-                 font=ms_font).grid(row=0, column=2, sticky=tk.W)
+            .grid(row=0, column=0, columnspan=3, sticky=tk.W, padx=PAD_X)
+
+        ''' Input fields: TV_BREAK1, TV_BREAK2 and TV_SOUND '''
+        self.commercial_secs = tk.IntVar()
+        self.intermission_secs = tk.IntVar()
+        self.tv_application = tk.StringVar()
+        tk.Label(self.vol_frm, text="Commercial seconds:",
+                 font=ms_font).grid(row=1, column=0, sticky=tk.W)
+        tk.Entry(self.vol_frm, textvariable=self.commercial_secs,
+                 font=ms_font).grid(row=1, column=1, sticky=tk.W)
+        tk.Label(self.vol_frm, text="Intermission seconds:",
+                 font=ms_font).grid(row=2, column=0, sticky=tk.W)
+        tk.Entry(self.vol_frm, textvariable=self.intermission_secs,
+                 font=ms_font).grid(row=2, column=1, sticky=tk.W)
+        tk.Label(self.vol_frm, text="TV application name:",
+                 font=ms_font).grid(row=3, column=0, sticky=tk.W)
+        tk.Entry(self.vol_frm, textvariable=self.tv_application,
+                 font=ms_font).grid(row=3, column=1, sticky=tk.W)
 
         ''' Volume Slider '''
         self.slider = tk.Scale(self.vol_frm, from_=100, to=25, tickinterval=5,
                                command=self.set_sink)
-        self.slider.grid(row=0, column=3, rowspan=3, padx=5, pady=5, sticky=tk.NS)
+        self.slider.grid(row=0, column=3, rowspan=4, padx=5, pady=5, sticky=tk.NS)
 
 
         ''' Close Button '''
         self.close_button = tk.Button(self.vol_frm, text="✘ Close",
                                       width=BTN_WID2 - 6,
                                       command=self.close)
-        self.close_button.grid(row=3, column=0, padx=5, pady=5, sticky=tk.W)
+        self.close_button.grid(row=4, column=0, padx=5, pady=5, sticky=tk.W)
         if self.tt:
             self.tt.add_tip(self.close_button, "Close Volume Slider, ignore changes.",
                             anchor="nw")
@@ -12080,12 +12109,11 @@ class Volume:
         self.apply_button = tk.Button(self.vol_frm, text="✔ Apply",
                                       width=BTN_WID2 - 6,
                                       command=self.apply)
-        self.apply_button.grid(row=3, column=3, padx=5, pady=5, sticky=tk.W)
+        self.apply_button.grid(row=4, column=3, padx=5, pady=5, sticky=tk.W)
         if self.tt:
             self.tt.add_tip(self.apply_button, "Save Volume Slider changes and exit.",
                             anchor="ne")
         self.vol_top.bind("<Return>", self.apply)  # DO ONLY ONCE?
-
 
         ''' Get current volume & Read stored volume '''
         self.last_volume, self.last_sink = self.get_volume()  # Reset this value when ending
@@ -12104,13 +12132,15 @@ class Volume:
         if self.vol_top:  # May have been closed above.
             self.vol_top.update_idletasks()
 
-    def get_volume(self):
+    def get_volume(self, name=None):
         """ Get volume of 'ffplay' before we start
         """
+        if name is None:
+            name = self.name
         all_sinks = sink_master()
         for entry in all_sinks:
             sink, volume, app_name = entry
-            if app_name == self.name:
+            if app_name == name:
                 #print("get_volume():", volume)
                 return int(volume), sink
             
@@ -12164,6 +12194,10 @@ class Volume:
             self.curr_volume = int(d['Size'])
             #print("self.curr_volume 1:", self.curr_volume)  # 60
 
+        self.commercial_secs.set(d['Count'])
+        self.intermission_secs.set(int(d['Seconds']))
+        self.tv_application.set(d['SourceDetail'])
+
         #print("self.curr_volume 2:", self.curr_volume)  # 60
         if self.last_volume:
             hold = self.curr_volume  # June 10, 2023 - Create hold field
@@ -12185,9 +12219,29 @@ class Volume:
         ''' Reread hockey state in case user changed after set_tv_volume started '''
         d = get_config_for_loc('hockey_state')
         # If we don't rewrite fields they get blanked out. Action=Location
-        save_config_for_loc('hockey_state', d['SourceMaster'], Size=self.curr_volume,
+        try:
+            d['Count'] = self.commercial_secs.get()
+            d['Size'] = float(self.intermission_secs.get())
+        except ValueError:
+            message.ShowInfo(self.vol_top, "Invalid Seconds Entered.",
+                             "Commercial or Intermission contains non-digit(s).",
+                             icon='error', thread=self.thread)
+            return False
+
+        d['SourceDetail'] = self.tv_application.get()
+        _volume, sink = self.get_volume(name=d['SourceDetail'])
+        if sink is None:
+            message.ShowInfo(self.vol_top, "Invalid TV Application Name.",
+                             "The name entered is not a valid running application.",
+                             icon='error', thread=self.thread)
+            return False
+
+        save_config_for_loc('hockey_state', d['SourceMaster'], d['SourceDetail'],
+                            Size=self.curr_volume,
+                            Count=d['Count'], Seconds=d['Seconds'],
                             Comments=d['Comments'])
         self.save_callback()  # This resets global TV_VOLUME variable for us
+        return True
 
     # noinspection PyUnusedLocal
     def close(self, *args):
@@ -12204,8 +12258,8 @@ class Volume:
 
     # noinspection PyUnusedLocal
     def apply(self, *args):
-        self.save_vol()  # calls self.save_callback() which calls get_hockey_state()
-        self.close()
+        if self.save_vol():  # calls self.save_callback() which calls get_hockey_state()
+            self.close()
 
 
 # ==============================================================================
@@ -12897,6 +12951,7 @@ def open_files(old_cwd, prg_path, parameters, toplevel=None):
     music_dir = None  # Just to make pycharm "happy:)"
     try:
         music_dir = parameters[1]
+        print("mserve.py open_files() using music_dir:", music_dir)
         hold_dir = os.getcwd()
         os.chdir(old_cwd)  # Temporarily change to original directory
         # Massage parameter 1 of ".", "..", "../Sibling", etc.
@@ -12905,14 +12960,15 @@ def open_files(old_cwd, prg_path, parameters, toplevel=None):
         use_location = False
     except IndexError:  # list index out of range
         # Music directory not passed as parameter
-        print("Invalid Music Directory passed:", music_dir)
+        print("mserve.py open_files() using last location")
         music_dir = None
         use_location = True
 
     ''' Is passed music_dir in our known locations? '''
     if music_dir is not None and lc.get_dict_by_dirname(music_dir):
         use_location = True  # Override to use location found by dir name
-        print('mserve override:", music_dir, "to location:', lc.DICT['iid'])
+        print('mserve.py open_files() Overriding music_dir:', music_dir,
+              'to location:', lc.DICT['iid'])
         # Make passed Top Directory our last known location then load it
         lc.save_mserve_location(lc.DICT['iid'])
 
@@ -12922,11 +12978,12 @@ def open_files(old_cwd, prg_path, parameters, toplevel=None):
             # If no optional `/` at end, add it for equal comparisons
             if not START_DIR.endswith(os.sep):
                 START_DIR = START_DIR + os.sep
-            print("Last location read. START_DIR:", START_DIR)
+            print('mserve.py open_files() Last location read. START_DIR:',
+                  START_DIR)
             return
         else:
-            print("load_last_location() FAILED !!!!")
-            print("Proceeding to use music_dir")
+            print("mserve.py open_files() load_last_location() FAILED !!!!")
+            print("Proceeding to use music_dir:", music_dir)
 
     ''' Does music_dir or it's subdirectories contain music files? 
     
@@ -12939,28 +12996,43 @@ def open_files(old_cwd, prg_path, parameters, toplevel=None):
     LODICT['name'] = music_dir  # Name required for title bar
     NEW_LOCATION = True  # Don't use location dictionary (LODICT) fields
 
-    print("Searching for songs in music_dir:", music_dir)
+    print("mserve.py open_files() Searching for songs in music_dir:", music_dir)
 
     while True:
         if music_dir is None:
             music_dir = g.HOME
         # Prompt to get startup directory using /home/USER as default
         START_DIR = get_dir(root, "Select Music Directory", music_dir)
-        print("START_DIR:", START_DIR, type(START_DIR))
+        print("mserve.py open_files() START_DIR:", START_DIR, type(START_DIR))
         if isinstance(START_DIR, tuple):
-            print("Cancel selected from Select Music Directory dialog. Exiting.")
+            print("mserve.py open_files() Cancel selected from" +\
+                  " Select Music Directory dialog. Exiting.")
             exit()
 
         if START_DIR is None:
             START_DIR = old_cwd
-            print("START_DIR forced to old_cwd, should not happen:", old_cwd)
+            print("mserve.py open_files() START_DIR forced to old_cwd," + \
+                  " should not happen:", old_cwd)
         if not START_DIR.endswith(os.sep):
-            print("\nFile picker shortfall, adding / to end of:", START_DIR)
+            print("\nmserve.py open_files() File picker shortfall, adding" +\
+                  " / to end of:", START_DIR)
             print()
             START_DIR = START_DIR + os.sep
-        # TODO: def sorted_list
-        music_list = make_sorted_list(START_DIR, toplevel=toplevel)
-        print("len(music_list):", len(music_list), "in START_DIR:", START_DIR)
+        # Check how many songs
+        music_list, depth_count = make_sorted_list(START_DIR, toplevel=toplevel)
+        if depth_count[0] == 0 and depth_count[1] == 0 and depth_count[2] == 0:
+            text = "Music Library appears empty !!!\n\n" + \
+                   "    " + START_DIR + "\n\n" + \
+                   "No songs were found in target directory nor the\n" + \
+                   "next three subdirectory levels under the target.\n\n" + \
+                   "Verify the directory name and try again."
+            message.ShowInfo(root, title="No music files found.", text=text,
+                             align='left', icon='error')
+            continue
+
+        print("mserve.py open_files() len(music_list):",
+              len(music_list), "in START_DIR:", START_DIR)
+        print(depth_count)
         #print(music_list)
         break
 
@@ -13082,23 +13154,27 @@ def main(toplevel=None, mon_geom=None, cwd=None, parameters=None):
 
     # Build list of songs in the location
     ext.t_init('make_sorted_list()')
-    SORTED_LIST = make_sorted_list(START_DIR, toplevel=toplevel)
+    SORTED_LIST, depth_count = make_sorted_list(START_DIR, toplevel=toplevel)
+    print(depth_count)
     ext.t_end('no_print')  # May 24, 2023 - make_sorted_list(): 0.1631240845
 
     # TODO: Use message.ShowInfo()  Perform this test when selecting start dir
     if len(SORTED_LIST) == 0:
-        print('ERROR: Music Library appears empty !!!\n')
-
-        print('       If this is a remote host check connection by listing')
-        print('       files on mount point.\n')
-
-        print('       If you run command below and get the error below:')
-        print('         $ sshfs "host:/mnt/music/" /mnt/music')
-        print('         fuse: bad mount point `/mnt/music`: ' +
-              'Transport endpoint is not connected\n')
-
-        print('       Then unmount the point with:')
-        print('         $ sudo umount -l /mnt/music')
+        text = "Music Library appears empty !!!\n\n" + \
+               "    " + START_DIR + "\n\n" + \
+               "If this is a remote host check connection by listing\n" + \
+               "files on mount point.\n\n" + \
+               "If you run command below and get the error below:\n" +\
+               "    $ sshfs 'host:/mnt/music/' /mnt/music\n" + \
+               "    fuse: bad mount point `/mnt/music`: " + \
+               "Transport endpoint is not connected\n\n" + \
+               "Then unmount the point with:\n" + \
+               "    $ sudo umount -l /mnt/music'"
+        print('\nmserve.py main() ERROR:\n')
+        print(text)  # Print to console and show message on screen at 100, 100
+        message.ShowInfo(root, title="No music files found.", text=text,
+                         align='left', icon='error')
+        # NOTE: Tempting to exit now but need to proceed to select different location.
 
     # Temporarily create SQL music tables until search button created.
     # TODO: How to create music tables when location hasn't been defined yet?
