@@ -40,9 +40,28 @@
 #       Jun. 05 2023 - No location when passing music directory parameter.
 #       Jun. 07 2023 - Many changes. E.G. step_volume() takes list of sinks.
 #       Jun. 09 2023 - Volume Slider for TV Hockey. Stanley=Vegas 2, Florida 1.
+#       Jun. 11 2023 - Add TV_BREAK and SOUND. Stanley Cup=Vegas 3, Panthers 1.
+#       Jun. 13 2023 - Develop Playlists() class
 
 # TODO:
 # -----------------------------------------------------------------------------
+
+#   Old format of storing playlists per location will be kept however, they
+#       will now be called "favorites". Anything called "playlist" will mean
+#       songs stored in SQL History Configuration under Type=Playlist, Action=
+#       Playlist Name, SourceMaster=Init/Edit/Remove, SourceDetail=locale date,
+#       Target=JSON list of sorted Music IDs, Size=MB selected, Count=song
+#       count, Seconds=Total Play Time, Comments=<User Notes>
+
+#       When mserve loads up it will always use "Favorites".
+
+#       New Playlist = easy way of playing just one artist or album.
+#       Append Playlist -> Renamed to Favorites, greyed out if already in use.
+#       Open Playlist = picker to pick saved playlist.
+#       Save Playlist As = Get unique name and notes then save. Greyed out
+#           until new songs added to playlist.
+#       NOTE: If changes made to favorite. All options greyed out until the
+#           changes to favorites are saved.
 
 #   When renaming keep in mind future programming for playlist maintenance. For
 #       example, might need "act_playlist_paths", "new_playlist_paths", "old_",
@@ -145,7 +164,7 @@
 """
 
 CALL:
-    mserve "/mnt/music/Users/Person/Music/iTunes/iTunes Media/Music/"
+    m "/mnt/music/Users/Person/Music/iTunes/iTunes Media/Music/"
 
 REQUIRES:
     sudo apt install compiz                  # for Hockey (smooth shark move)
@@ -228,6 +247,9 @@ from __future__ import print_function  # Must be first import
 from __future__ import with_statement  # Error handling for file opens
 
 # from __future__ import unicode_literals     # Unicode errors fix
+
+import warnings
+warnings.simplefilter('default')
 
 try:
     import tkinter as tk
@@ -562,31 +584,6 @@ def make_sorted_list(start_dir, toplevel=None, idle=None):
 
     return work_list, depth_count  # Started pointing at an album
 
-    if depth_count[1] == 0 and depth_count[2] == 0:
-        # print('BEFORE:', work_list)
-        # print('replacing: '+NO_ALBUM_STR+' with: '+back_dir1)
-        work_list = [w.replace(os.sep + NO_ALBUM_STR + os.sep, os.sep)
-                     for w in work_list]
-        # print('replacing: '+NO_ARTIST_STR+' with: '+back_dir2)
-        work_list = [w.replace(os.sep + NO_ARTIST_STR + os.sep, os.sep)
-                     for w in work_list]
-        # print('AFTER:', work_list)
-        PRUNED_COUNT = 2
-        return work_list  # Started pointing at an album
-
-    if depth_count[1] > 0 and depth_count[2] == 0:
-        # More complex shifting Artist name to album name requires looping
-        # print('BEFORE:', work_list)
-        # print('replacing: '+NO_ALBUM_STR+' with: '+back_dir1)
-        work_list = [w.replace(os.sep + NO_ALBUM_STR + os.sep, os.sep)
-                     for w in work_list]
-        # print('AFTER:', work_list)
-        PRUNED_COUNT = 1
-        return work_list  # Started pointing at an artist
-
-    PRUNED_COUNT = 0
-    return work_list
-
 
 # ==============================================================================
 #
@@ -622,6 +619,7 @@ class PlayCommonSelf:
         # Below called with "python vu_meter.py stereo 2>/dev/null"
         self.vu_meter_pid = None            # Linux Process ID for vu_meter.py
         self.play_top_title = None          # Playing Selected Songs - mserve
+        # FUTURE: "Playlist: Xxx Xxx - mserve"
         self.play_frm = None                # play_top master frame
         self.play_frm_bg = None             # "self.play_resized_art.get pixel((3,"
         self.lyrics_on_right_side = True    # Is not on bottom
@@ -962,7 +960,16 @@ class PlayCommonSelf:
         self.pending_cancel_btn = None      # Cancel Playlist Update Button
 
         ''' Set volume slider '''
-        self.vol_class = None
+        self.vol_class = None               # = Volume()
+
+        ''' Playlists stored in SQL database '''
+        self.playlists = None               # = Playlists()
+
+        ''' Menu bars: File, Edit, View + space + playlist information '''
+        self.file_menu = None
+        self.edit_menu = None
+        self.view_menu = None
+        self.playlist_bar = None
 
 
 class MusicTree(PlayCommonSelf):
@@ -1008,8 +1015,10 @@ class MusicTree(PlayCommonSelf):
         ''' Mount window at popup location '''
         self.lib_top.minsize(width=BTN_WID * 10, height=PANEL_HGT * 4)
         #self.lib_top.geometry('%dx%d+%d+%d' % (_w, _h, _root_xy[0], _root_xy[1]))
+        ext.t_init("monitor.get_window_geom('library')")
         geom = monitor.get_window_geom('library')
         self.lib_top.geometry(geom)
+        ext.t_end('print')  # June 13, 2023 - 0.0002460480
 
         self.lib_top.configure(background="Gray")
         self.lib_top.columnconfigure(0, weight=1)
@@ -1219,90 +1228,16 @@ class MusicTree(PlayCommonSelf):
         self.last_inotify_time = None  # Last time bubble message sent
         self.refresh_acc_times(first_time=True)  # Update last access time every 60 seconds
 
-        ''' Menu bars: File, Edit, View, Search, About '''
-        mb = tk.Menu(self.lib_top)
-        self.file_menu = tk.Menu(mb, tearoff=0)
-        self.file_menu.add_command(label="New Location", font=(None, MED_FONT),
-                                   command=lambda: self.loc_add_new(caller='Drop',
-                                                                    mode='Add'))
-        self.file_menu.add_command(label="Open Location & Play", font=(None, MED_FONT),
-                                   command=lambda: self.loc_open_play(caller='Drop'))
-        self.file_menu.add_separator()
-        self.file_menu.add_command(label="New Playlist", font=(None, MED_FONT),
-                                   command=self.new_items)
-        self.file_menu.add_command(label="Append Playlist", font=(None, MED_FONT),
-                                   command=self.append_items)
-        self.file_menu.add_command(label="Open Playlist", font=(None, MED_FONT),
-                                   command=self.load_items)
-        # UTF-8 3 dots U+2026 …
-        self.file_menu.add_command(label="Save Playlist as…", font=(None, MED_FONT),
-                                   command=self.save_items)
-        self.file_menu.add_separator()
-        self.file_menu.add_command(label="Save Play and Restart", font=(None, MED_FONT),
-                                   command=self.restart)
-        self.file_menu.add_command(label="Save Play and Exit", font=(None, MED_FONT),
-                                   command=self.close)
-        self.file_menu.add_separator()
-        self.file_menu.add_command(label="Save Playlist", font=(None, MED_FONT),
-                                   command=self.write_playlist_to_disk, state=tk.DISABLED)
-        self.file_menu.add_command(label="Exit without saving Playlist", font=(None, MED_FONT),
-                                   command=self.exit_without_save, state=tk.DISABLED)
+        ''' Create self.playlists '''
+        self.playlists = Playlists(self.lib_top, rebuild_menu_bar=self.build_lib_menu)
+        self.build_lib_menu()  # Menu bar with File-Edit-View dropdown submenus
 
-        mb.add_cascade(label="File", menu=self.file_menu, font=(None, MED_FONT))
-
-        # Edit Menu - Edit Location
-        self.edit_menu = tk.Menu(mb, tearoff=0)
-        self.edit_menu.add_command(label="Edit Location", font=(None, MED_FONT),
-                                  command=lambda: self.loc_edit(
-                                  caller='Drop', mode='Edit'))
-        self.edit_menu.add_command(label="Compare Location", font=(None, MED_FONT),
-                                  command=lambda: self.loc_compare(
-                                  caller='Drop', mode='Compare'))
-        self.edit_menu.add_command(label="Forget Location", font=(None, MED_FONT),
-                                  command=lambda: self.loc_forget(
-                                  caller='Drop', mode='Forget'))
-        self.edit_menu.add_separator()
-        # Volume for Hocker Commercials state will be enabled by get_hockey_state()
-        self.edit_menu.add_command(label="Volume for Hockey Commercials",
-                                  font=(None, MED_FONT), state=tk.DISABLED,
-                                  command=self.set_tv_volume)
-
-        mb.add_cascade(label="Edit", menu=self.edit_menu, font=(None, MED_FONT))
-
-        # View menu - Show locations and SQL library
-        view_bar = tk.Menu(mb, tearoff=0)
-        view_bar.add_command(label="Show Location", font=(None, MED_FONT),
-                             command=lambda: self.show_location(
-                                 caller='Drop', mode='Show'))
-        # NOTE: following is option #1 when tear off = 0
-        self.play_hockey_allowed = self.get_hockey_state()
-        if self.play_hockey_allowed:
-            text = "Enable FF/Rewind buttons"
-        else:
-            text = "Use TV Commercial buttons"
-        view_bar.add_command(label=text, font=(None, MED_FONT),
-                             command=lambda: self.toggle_hockey(view_bar))
-        view_bar.add_separator()  # If countdown running, don't show options
-
-        view_bar.add_command(label="SQL Music", font=(None, MED_FONT),
-                             command=self.show_sql_music)
-        view_bar.add_command(label="SQL History", font=(None, MED_FONT),
-                             command=self.show_sql_hist)
-        view_bar.add_separator()
-        view_bar.add_command(label="Debug Information", font=(None, MED_FONT),
-                             command=self.show_debug)
-
-        mb.add_cascade(label="View", menu=view_bar, font=(None, MED_FONT))
-
-        # About Menu - www.pippim.com - Packages required and locations / versions
-
-        self.lib_top.config(menu=mb)
         dtb.close()  # Close our startup messages delayed text box
-
         self.lib_top.bind("<FocusIn>", self.handle_lib_top_focus)
+        ext.t_end('print')  # May 24, 2023 - MusicTree() : 1.0563580990
+        # June 13, 2023 - MusicTree() init__(toplevel...): 1.3379859924
 
         ''' Load last selections and begin playing with last song '''
-        ext.t_end('no_print')  # May 24, 2023 - MusicTree() : 1.0563580990
 
         #self.load_last_selections()  # Create self.saved_selections[] and play all
         self.fast_play_startup()  # Read SORTED_LIST from make_sorted_list
@@ -1315,22 +1250,200 @@ class MusicTree(PlayCommonSelf):
                 break
 
 
-    def handle_lib_top_focus(self, event):
+    def build_lib_menu(self):
         """
+        Menu bars: File, Edit, View + space + playlist information
+        Called from self.playlists.rebuild_menu_bar() self.playlists.status
+        """
+        # self.lib_top.config(menu="")  # Destroy last version
+        mb = tk.Menu(self.lib_top)
+
+        self.file_menu = tk.Menu(mb, tearoff=0)
+        self.file_menu.add_command(label="New Location", font=(None, MED_FONT),
+                                   command=lambda: self.loc_add_new(caller='Drop',
+                                                                    mode='Add'))
+        self.file_menu.add_command(label="Open Location & Play", font=(None, MED_FONT),
+                                   command=lambda: self.loc_open_play(caller='Drop'))
+        self.file_menu.add_separator()
+
+        self.file_menu.add_command(label="New Playlist", font=(None, MED_FONT),
+                                   command=self.playlists.new, state=tk.DISABLED)
+        self.file_menu.add_command(label="Copy Playlist", font=(None, MED_FONT),
+                                   command=self.playlists.copy, state=tk.DISABLED)
+        self.file_menu.add_command(label="Open Playlist", font=(None, MED_FONT),
+                                   command=self.playlists.open, state=tk.DISABLED)
+        self.file_menu.add_command(label="Save Playlist", font=(None, MED_FONT),
+                                   command=self.playlists.save, state=tk.DISABLED)
+        self.file_menu.add_command(label="Save Playlist as…", font=(None, MED_FONT),
+                                   command=self.playlists.save_as, state=tk.DISABLED)
+        self.file_menu.add_separator()  # NOTE: UTF-8 3 dots U+2026 …
+
+        self.file_menu.add_command(label="Save Play and Restart", font=(None, MED_FONT),
+                                   command=self.restart)
+        self.file_menu.add_command(label="Save Play and Exit", font=(None, MED_FONT),
+                                   command=self.close)
+        self.file_menu.add_separator()
+
+        self.file_menu.add_command(label="Save Favorites", font=(None, MED_FONT),
+                                   command=self.write_playlist_to_disk, state=tk.DISABLED)
+        self.file_menu.add_command(label="Exit without saving Favorites", font=(None, MED_FONT),
+                                   command=self.exit_without_save, state=tk.DISABLED)
+
+        mb.add_cascade(label="File", menu=self.file_menu, font=(None, MED_FONT))
+
+        # Edit Menu - Edit Location
+        self.edit_menu = tk.Menu(mb, tearoff=0)
+        self.edit_menu.add_command(label="Edit Location", font=(None, MED_FONT),
+                                   command=lambda: self.loc_edit(
+                                   caller='Drop', mode='Edit'))
+        self.edit_menu.add_command(label="Compare Location", font=(None, MED_FONT),
+                                   command=lambda: self.loc_compare(
+                                   caller='Drop', mode='Compare'))
+        self.edit_menu.add_command(label="Forget Location", font=(None, MED_FONT),
+                                   command=lambda: self.loc_forget(
+                                   caller='Drop', mode='Forget'))
+        self.edit_menu.add_separator()
+        # Volume for Hocker Commercials state will be enabled by get_hockey_state()
+        self.edit_menu.add_command(label="Volume for Hockey Commercials",
+                                   font=(None, MED_FONT), state=tk.DISABLED,
+                                   command=self.set_tv_volume)
+
+        mb.add_cascade(label="Edit", menu=self.edit_menu, font=(None, MED_FONT))
+
+        # View menu - Show locations and SQL library
+        self.view_menu = tk.Menu(mb, tearoff=0)
+        self.view_menu.add_command(label="Show Location", font=(None, MED_FONT),
+                                   command=lambda: self.show_location(
+                                   caller='Drop', mode='Show'))
+        # NOTE: following is option #1 when tear off = 0
+        self.play_hockey_allowed = self.get_hockey_state()
+        if self.play_hockey_allowed:
+            text = "Enable FF/Rewind buttons"
+        else:
+            text = "Use TV Commercial buttons"
+        self.view_menu.add_command(label=text, font=(None, MED_FONT),
+                                   command=self.toggle_hockey)
+        self.view_menu.add_separator()  # If countdown running, don't show options
+
+        self.view_menu.add_command(label="SQL Music", font=(None, MED_FONT),
+                                   command=self.show_sql_music)
+        self.view_menu.add_command(label="SQL History", font=(None, MED_FONT),
+                                   command=self.show_sql_hist)
+        self.view_menu.add_separator()
+        self.view_menu.add_command(label="Debug Information", font=(None, MED_FONT),
+                                   command=self.show_debug)
+
+        mb.add_cascade(label="View", menu=self.view_menu, font=(None, MED_FONT))
+
+        # FUTURE About Menu - www.pippim.com -
+        # Packages required and locations / versions
+
+        # Space between real menubar and Playlist text
+        fake_bar = tk.Menu(mb, tearoff=0)
+        mb.add_cascade(label=" " * 30,
+                       menu=fake_bar, font=(None, MED_FONT))
+
+        # Show Favorites is running. When changing playlist unpost and add new one.
+        self.playlist_bar = tk.Menu(mb, tearoff=0)
+        if self.playlists.name is not None:
+            label = self.playlsits.name
+        else:
+            label = LODICT['iid'] + " - Default"
+        mb.add_cascade(label="Playlist: " + label,
+                       foreground="Black", background="Gold",
+                       menu=self.playlist_bar, font=(None, MED_FONT))
+
+        self.lib_top.config(menu=mb)  # June 12, 2023 (menu="") destroys it.
+
+        ''' Enable File Menu options depending on playlists.state
+                self.file_menu.add_command(label="New Playlist",
+                self.file_menu.add_command(label="Copy Playlist",
+                self.file_menu.add_command(label="Open Playlist",
+                self.file_menu.add_command(label="Save Playlist",
+                self.file_menu.add_command(label="Save Playlist as…",
+        
+                None = New, Copy and Open active options
+                'new' = Save playlist and Save as... active options
+                'open' = Save playlist and Save as... active options
+                'save' = no active options
+                'save_as' = no active options
+                'copy' = no active options
+                'copy_to' = no active options
+                'copy_from' = no active options
+        '''
+        if self.playlists.state is None:
+            self.file_menu.entryconfig("New Playlist", state=tk.NORMAL)
+            self.file_menu.entryconfig("Copy Playlist", state=tk.NORMAL)
+            self.file_menu.entryconfig("Open Playlist", state=tk.NORMAL)
+
+        if self.playlists.state == 'new' or self.playlists.state == 'open':
+            self.file_menu.entryconfig("Save Playlist", state=tk.NORMAL)
+            self.file_menu.entryconfig("Save Playlist as…", state=tk.NORMAL)
+
+
+    def handle_lib_top_focus(self, _event):
+        """
+            When Volume Slider is active it always stays above Music
+            Library (lib_top) no matter what is clicked. Volume Slider
+            is mounted relative to top-left corner of lib_top and
+            doesn't use saved geometry under it's own name.
+
             Credit: https://stackoverflow.com/a/44615104/6929343
 
-        :param event: lib_top
+        :param _event: Ignored
         :return: None
         """
-        if self.vol_class and self.vol_class.vol_top:
-            self.vol_class.vol_top.focus_force()  # Get focus
-            self.vol_class.vol_top.lift()  # Raise in stacking order
+        if self.vol_class and self.vol_class.top:
+            self.vol_class.top.focus_force()  # Get focus
+            self.vol_class.top.lift()  # Raise in stacking order
 
-        if True is False:  # Make pyCharm happy :)
-            print("mserve.py handle_lib_top_focus() lift volume window:",
-                  event.widget)
+        if self.playlists.top:
+            self.playlists.top.focus_force()  # Get focus
+            self.playlists.top.lift()  # Raise in stacking order
 
-        # TODO: Good time to change Play Button text (show play_top)
+        # TODO: Good time to change Play Button text (Show library)
+        """  
+
+        def clear_buttons(self):
+            # self.lib_tree_btn1 ["text"] = ""     # Close button
+            # Unicode Character “🎵” (U+1F3B5)
+            self.lib_tree_btn2["text"] = "🎵  Show library"  # Play button
+            self.play_on_top = True
+            # self.lib_tree_btn3 ["text"] = ""     # Save button
+            # self.lib_tree_btn4 ["text"] = ""     # Load button
+            # self.lib_tree_btn5 ["text"] = ""     # Export button
+            # self.lib_tree_btn6 ["text"] = ""     # Import button
+    
+        def restore_lib_buttons(self):
+            self.lib_tree_btn1["text"] = self.close_text
+            self.lib_tree_btn2["text"] = self.play_text
+            self.tt.set_text(self.lib_tree_btn2, "Play selected songs.")
+            self.lib_tree_btn3["text"] = self.save_text
+            self.lib_tree_btn4["text"] = self.load_text
+            self.lib_tree_btn5["text"] = self.rebuild_text
+            self.lib_tree_btn6["text"] = self.import_text
+
+
+        if self.play_top_is_active:  # Are we already playing songs?
+            
+            if self.play_on_top:
+                # If we had the focus, give it up
+                self.play_on_top = False
+                self.lib_tree_btn2["text"] = "🎵  Show playing"
+                self.tt.set_text(self.lib_tree_btn2, "Lift songs playing window up.")
+                self.lib_top.focus_force()  # Get focus
+                self.lib_top.lift()  # Raise in stacking order
+            else:
+                # If we didn't have focus, take it
+                self.play_on_top = True
+                self.lib_tree_btn2["text"] = "🎵  Show library"
+                self.tt.set_text(self.lib_tree_btn2, "Lift music library window up.")
+                self.play_top.focus_force()  # Get focus
+                self.play_top.lift()  # Raise in stacking order
+            # root.update()
+            self.lib_tree.update_idletasks()
+            return  # Don't start playing again
+        """
 
     def refresh_lib_top(self):
         """ Wait until clicks to do something in lib_tree (like play music)
@@ -1340,17 +1453,13 @@ class MusicTree(PlayCommonSelf):
 
         ''' Is system shutting down? '''
         if self.killer.kill_now:
-            # SIGTERM to shut down / reboot was received
             print('\nmserve.py refresh_lib_top() closed by SIGTERM')
             self.close()
             return False  # Not required because this point never reached.
-
         ''' Always give time slice to tooltips '''
         now = time.time()
-        #root.update_idletasks()
         if not self.lib_top:
-            # self.close() has set to None
-            return False
+            return False  # self.close() has set to None
         self.tt.poll_tips()  # Takes a very small processor slice
         self.lib_top.update()  # process events in queue. E.G. message.ShowInfo()
 
@@ -1358,15 +1467,9 @@ class MusicTree(PlayCommonSelf):
         sleep = 1 if sleep < 1 else sleep       # Sleep minimum 1 millisecond
         ''' Are we already destroyed? '''
         if not self.lib_top:
-            # self.close() has set to None
-            return False
-
+            return False  # self.close() has set to None
         self.lib_top.after(sleep)              # Sleep until next 30 fps time
-
         return True  # Go back to caller as success
-
-
-
 
     def create_pending_frame(self, master_frame):
         """ WIP """
@@ -1723,6 +1826,7 @@ class MusicTree(PlayCommonSelf):
         LastAlbum = ""
         CurrAlbumId = ""  # When there are no albums?
         CurrArtistId = ""  # When there are no albums?
+        level_count = [0, 0, 0]  # Count of Artists, Albums, Songs
 
         start_dir_sep = START_DIR.count(os.sep) - 1  # Number of / separators
         global PRUNED_COUNT
@@ -1751,6 +1855,7 @@ class MusicTree(PlayCommonSelf):
                 #  0=Access, 1=Size, 2=Selected Size, 3=StatTime, 4=StatSize,
                 #  5=Count, 6=Seconds, 7=SelSize, 8=SelCount, 9=SelSeconds
                 # Dec 28 2020 - Selected Size is now Song Sequence Number
+                level_count[0] += 1  # Increment artist count
                 CurrArtistId = self.lib_tree.insert("", "end", text=Artist,
                                                     tags=("Artist",
                                                           "unchecked"), open=True,
@@ -1770,6 +1875,7 @@ class MusicTree(PlayCommonSelf):
                 LastAlbum = ""  # Force subtotal break for Album
 
             if Album != LastAlbum:
+                level_count[1] += 1  # Increment album count
                 CurrAlbumId = self.lib_tree.insert(CurrArtistId, "end",
                                                    text=Album, tags=("Album",
                                                                      "unchecked"),
@@ -1783,6 +1889,7 @@ class MusicTree(PlayCommonSelf):
                 LastAlbum = Album
 
             ''' Build full song path from song_list[] '''
+            level_count[2] += 1  # Increment song count
             full_path = os_name
             full_path = full_path.replace(os.sep + NO_ARTIST_STR, '')
             full_path = full_path.replace(os.sep + NO_ALBUM_STR, '')
@@ -2182,9 +2289,9 @@ class MusicTree(PlayCommonSelf):
                     FIXED NOW I THINK because this function was broken:
                                 lc.save_mserve_location(iid)
 
-                    FIXED AGAIN (Nov 12) because 'return' added above.
+                    FIXED AGAIN (Nov 12 2020) because 'return' added above.
 
-                    Nov 12 - About 10 to 15 minutes after resuming got bubble
+                    Nov 12 2020 - About 10 to 15 minutes after resuming got bubble
                     message: Library has changed and files need refreshing. Then
                     on command line:
 
@@ -3510,7 +3617,6 @@ class MusicTree(PlayCommonSelf):
                 text="All songs under " + parent + " will be checked.\n" +
                      "Some Songs are unchecked and will be checked.")
             if dialog.result != 'yes':
-                print("User aborted.")
                 return
 
         ''' Warning if unchecking parent all children will be unchecked. '''
@@ -3520,7 +3626,6 @@ class MusicTree(PlayCommonSelf):
                 title="Uncheck all songs below?",
                 text="All songs under " + parent + " will be unchecked.")
             if dialog.result != 'yes':
-                print("User aborted.")
                 return
 
         ''' Warning if checking parent all children will be checked. '''
@@ -3530,7 +3635,6 @@ class MusicTree(PlayCommonSelf):
                 title="Check all songs below?",
                 text="All songs under " + parent + " will be checked.")
             if dialog.result != 'yes':
-                print("User aborted.")
                 return
 
         ''' ERROR if checking parent with <No Artist> or <No Album>  
@@ -3997,7 +4101,7 @@ $ wmctrl -l -p
             self.gone_fishing.close()       # Shark eating man animation
             self.gone_fishing = None
 
-        if self.cmp_top_is_active:          # Editing Locations?
+        if self.cmp_top_is_active:          # Comparing Locations?
             self.cmp_close()                # Extreme lags when running 'diff'
         if self.play_top_is_active:         # Is music playing?
             self.play_close()
@@ -4011,6 +4115,11 @@ $ wmctrl -l -p
             self.mus_close()
         if self.his_top_is_active:          # Viewing SQL History Table?
             self.his_close()
+        if self.vol_class and self.vol_class.top:
+            self.vol_class.close()          # Adjusting Volume during TV commercials?
+        if self.playlists.top:
+            self.playlists.close()          # Playlists Class was opened at start
+
         if encoding.RIP_CD_IS_ACTIVE:       # Ripping CD currently active?
             encoding.RIP_CD_IS_ACTIVE = False
 
@@ -4200,8 +4309,8 @@ $ wmctrl -l -p
     def set_tv_volume(self):
         """ Debugging - show monitors, tooltips and full metadata
         """
-        if self.vol_class and self.vol_class.vol_top:
-            self.vol_class.vol_top.lift()
+        if self.vol_class and self.vol_class.top:
+            self.vol_class.top.lift()
             return
 
         self.vol_class = Volume(parent=self.lib_top, tooltips=self.tt,
@@ -4211,23 +4320,72 @@ $ wmctrl -l -p
     def show_debug(self):
         """ Debugging - show monitors, tooltips and full metadata
         """
-        print("\nmserve.py - Debug Information\n=============================\n")
+        print("\nmserve.py - mon = monitor.py.Monitors()")
+        print("=======================================\n")
         mon = monitor.Monitors()            # Monitors class list of dicts
-        print("mon.gdk_screen:", mon.gdk_screen)
+
+        print("\nmon.screen_width x mon.screen_height:",
+              mon.screen_width, "x", mon.screen_height, "\n")
+
+        print("Number of monitors - mon.get_n_monitors():", mon.get_n_monitors())
         for m in mon.monitors_list:
             print(m)
             
-        print('Primary:', mon.primary_monitor)
-        active_win = mon.get_active_window()  #
-        print('Active Window Number:', active_win.number)
-        print(active_win.name)
+        print('\nPrimary - mon.primary_monitor:', mon.primary_monitor)
+
+        print('\n"active_win" - Active Window Tuple - mon.get_active_window():')
+        active_win = mon.get_active_window()  # Get tuple
+        '''
+        Window = namedtuple('Window', 'number, name, x, y, width, height')
+        x_id, window_name, geom.xp, geom.yp, geom.widthp, geom.heightp) 
+        '''
+        print('active_win.number:', active_win.number)
+        print('active_win. x + y + Width x Height:',
+              active_win.x, "+", active_win.y, "+", active_win.width,
+              "x", active_win.height)
+        print('active_win.name:', active_win.name)
         print()
 
         print("sys.getfilesystemencoding()", sys.getfilesystemencoding())
-        print("os.environ", os.environ)
-        print()
+        #print("os.environ", os.environ)  # Environment is long long long
 
-        print("\nCURRENT SONG self.lib_tree VARIABLES")
+        print("\nAll Windows - mon.get_all_windows():")
+        print("====================================\n")
+        for i, window in enumerate(mon.get_all_windows()):
+            if window.x > mon.screen_width or window.y > mon.screen_height:
+                ''' When second monitor loses power '''
+                print("\nERROR: Window is off screen at x+y:",
+                      window.x, "+", window.y)
+                print("  ", window)
+                if window.x > mon.screen_width:
+                    adj_x = mon.screen_width - window.x - 500
+                else:
+                    adj_x = 0
+                if window.y > mon.screen_height:
+                    adj_y = mon.screen_height - window.y - 500
+                else:
+                    adj_y = 0
+                print("     Adjust to edge -500 amount:", adj_x, "+", adj_y)
+                new_x = window.x + adj_x
+                new_y = window.y + adj_y
+                print("        New coordinates:", new_x, "+", new_y, "\n")
+                str_win = str(window.number)  # should remove L in python 2.7.5+
+                int_win = int(str_win)  # https://stackoverflow.com/questions
+                hex_win = hex(int_win)  # /5917203/python-trailing-l-problem
+                # Move window to lower right - 500x500
+                os.popen('xdotool windowmove ' + hex_win + ' ' +
+                         str(new_x) + ' ' + str(new_y))
+                # TODO: Gets moved to dead zone where no monitor exists
+                # ERROR: Window is off screen at x+y: 2330 + 3317
+                #    Window(number=81788938L, name='Python 3', x=2330, y=3317, width=1300, height=902)
+                #      Adjust to edge -500 amount: 0 + -577
+                #         New coordinates: 2330 + 2740
+                # TODO: Use shark_move to more accurate original coordinates.
+                #       Currently instantly appears at lower right -500x-500
+            else:
+                print(window)
+
+        print("\nCURRENT SONG self.lib_tree variables")
         print("====================================\n")
 
         song_iid = self.saved_selections[self.ndx]
@@ -4243,7 +4401,16 @@ $ wmctrl -l -p
               " | Album iid:", album_iid, " |", album)
         print("real_path:", self.real_path(int(song_iid)))
         print("len(SORTED_LIST):", len(SORTED_LIST))
+        print('len(self.lib_tree.tag_has("Artist")):',
+              len(self.lib_tree.tag_has("Artist")))
+        print('len(self.lib_tree.tag_has("Album")):',
+              len(self.lib_tree.tag_has("Album")))
+        print('len(self.lib_tree.tag_has("Song")):',
+              len(self.lib_tree.tag_has("Song")))
         print()
+
+        print("\nTOOLTIPS - tt.line_dump()")
+        print("====================================\n")
 
         lines = self.tt.line_dump()         # Show Tooltips in memory
         print(*lines, sep='\n')
@@ -4255,11 +4422,11 @@ $ wmctrl -l -p
                 print(i, ":", self.metadata[i])
 
         if sql.ofb.blacks is not None:
-            print("\nBlacklisted songs")
+            print("\nSQL Blacklisted songs")
             print("====================================\n")
             for i, entry in enumerate(sql.ofb.blacks):
                 print(i, ":", entry)
-            print("\nWhitelist substitutes")
+            print("\nSQL Whitelist substitutes")
             print("====================================\n")
             for i, entry in enumerate(sql.ofb.whites):
                 print(i, ":", entry)
@@ -5827,6 +5994,10 @@ $ wmctrl -l -p
             # print('Continue playing with song#:', self.ndx)
             self.play_items()
 
+    #
+    #   fast_play_startup() replaces load_last_selections()
+    #
+
     def fast_play_startup(self):
 
         """ Load last playlist from ~/.../mserve/L999/last_playlist
@@ -5895,7 +6066,7 @@ $ wmctrl -l -p
             # (0, u'The Best of 10cc', u'Album'), (0, u'3 Doors Down',
         ext.t_end('no_print')
 
-        ext.t_end('no_print')  # End OPEN FILES
+        ext.t_end('print')  # Jun 13, 2023 - OPEN FILES: 0.0121288300
 
         ext.t_init('Build self.saved_selections in playlist order')
         spam_count = 0
@@ -5910,9 +6081,11 @@ $ wmctrl -l -p
                 continue
             iid = str(ndx)
             self.saved_selections.append(iid)
-        ext.t_end('no_print')
+        ext.t_end('print')  # Jun 13, 2023 - self.saved_selections 0.1488709450
 
+        ext.t_init('set_all_checks_and_selects')
         self.set_all_checks_and_selects()
+        ext.t_end('print')  # Jun 13, 2023 - checks_and_selects: 0.4508948326
         """
         
         self.set_all_checks_and_selects() replaces commented code below
@@ -6010,8 +6183,9 @@ $ wmctrl -l -p
 
         ''' Selected songs can be filtered by having time index or by Artist '''
         self.filtered_selections = list(self.saved_selections)  # Deep copy
-        ext.t_end('no_print')
-        ext.t_end('no_print')  # May 24, 2023 - load_last_selections(): 1.6982600689
+        ext.t_end('print')  # Jun 13, 2023 - Wrap up: 0.0000181198
+        ext.t_end('print')  # May 24, 2023 - load_last_selections(): 1.6982600689
+        # Jun 13, 2023 - fast_play_startup() All Steps: 0.6094801426
 
         if len(self.saved_selections) >= 2:
             # Continue playing where we left off
@@ -6053,7 +6227,9 @@ $ wmctrl -l -p
 
     def set_all_checks_and_selects(self):
         """ Called from self.pending_reset() and self.fast_play_startup()
+            BatchSelect() class for single update to parents' total selected.
             Before calling all items must be "unchecked" and "songsel" blanked.
+            self.saved_selections and self.lib_tree_open_states must be set.
         """
 
         ''' Set opened states for Artists and Albums, play number for Songs '''
@@ -6061,7 +6237,7 @@ $ wmctrl -l -p
 
         not_selected_count = 0
         selected_count = 0
-        ext.t_init('Merge three processes together')
+        ext.t_init('Set open/closed, add BatchSelect totals')
         for Artist in self.lib_tree.get_children():  # Read all artists
             self.apply_open_state(Artist, self.lib_tree_open_states)
             for Album in self.lib_tree.get_children(Artist):  # Read all albums
@@ -6072,21 +6248,17 @@ $ wmctrl -l -p
                         ndx = self.saved_selections.index(Song)  # Song in playlist?
                     except ValueError:
                         not_selected_count += 1
-                        if not_selected_count < 1:
-                            # Not an error - simply here for future debugging
+                        if not_selected_count < 1:  # Change from 1 to debug
                             print('Skipping - Not in playlist:', full_path)
                         continue
-
-                    selected_count += 1
-
                     ''' Set song checkbox tags in music library treeview '''
+                    selected_count += 1
                     number_str = self.play_padded_number(
                         str(ndx+1), len(str(len(self.playlist_paths))))
                     adj_list = bs.add_select(Song, Album, Artist, number_str)
                     # Update treeview columns with selected size, count and seconds
-                    # May 30, 2023 - was self.tree_col_range_add()
                     self.tree_col_range_replace(Song, 8, adj_list)  # Column number passed
-        ext.t_end('no_print')
+        ext.t_end('print')  # Jun 13, 2023 - open/closed and BatchSelect: 0.3233859539
 
         ext.t_init('Apply totals to Artists & Albums + set checkbox')
         for Artist in self.lib_tree.get_children():  # Read all Artists
@@ -6108,7 +6280,7 @@ $ wmctrl -l -p
         adj_list = bs.get_totals('lib_top_totals')
         self.tree_title_zero_selected()
         self.tree_title_range_add(8, adj_list)  # Pass start index
-        ext.t_end('no_print')
+        ext.t_end('print')  # Jun 13, 2023 - Artists & Albums + set checkbox: 0.1274099350
 
     # ==============================================================================
     #
@@ -6478,7 +6650,7 @@ $ wmctrl -l -p
         self.play_top_pid = 0  # Can only be one
         self.play_top_sink = ""  # That's all folks... Until play is reopened
 
-    def toggle_hockey(self, view_bar):
+    def toggle_hockey(self):
         """ Swap buttons between Hockey Commercial & Hockey Intermission and
             Rewind & Fast Forward
             If Hockey countdown is already running, disallow
@@ -6497,9 +6669,9 @@ $ wmctrl -l -p
         self.play_hockey_allowed = not self.play_hockey_allowed  # Flip switch
         # Code is duplicated
         if self.play_hockey_allowed:
-            view_bar.entryconfigure(1, label="Enable FF/Rewind buttons")
+            self.view_menu.entryconfigure(1, label="Enable FF/Rewind buttons")
         else:
-            view_bar.entryconfigure(1, label="Use TV Commercial buttons")
+            self.view_menu.entryconfigure(1, label="Use TV Commercial buttons")
 
         self.tt.close(self.play_btn)  # Remove old tooltip buttons in play_btn frame
         self.play_btn.grid_forget()
@@ -6582,7 +6754,7 @@ $ wmctrl -l -p
                                             s=self: s.start_hockey(TV_BREAK1))
                 self.com_button.grid(row=0, column=col, padx=2, sticky=tk.W)
                 self.tt.add_tip(self.com_button, "Play music for " +
-                                str(TV_BREAK1) + " seconds.\n" +
+                                sec_min_str(TV_BREAK1) + ".\n" +
                                 "Turn down TV volume whilst playing.", anchor="sw")
             elif name == "Int":
                 ''' Hockey Intermission Button '''
@@ -6592,7 +6764,7 @@ $ wmctrl -l -p
                                             s=self: s.start_hockey(TV_BREAK2))
                 self.int_button.grid(row=0, column=col, padx=2, sticky=tk.W)
                 self.tt.add_tip(self.int_button, "Play music for " +
-                                str(TV_BREAK2) + " seconds.\n" +
+                                sec_min_str(TV_BREAK2) + ".\n" +
                                 "Turn down TV volume whilst playing.", anchor="se")
             elif name == "Rew":
                 ''' Rewind Button -10 sec '''
@@ -7005,7 +7177,8 @@ $ wmctrl -l -p
 
     def start_hockey(self, secs):
         """ Commercial Button or Intermission Button was pressed.
-            If pressed once, then "Time Remaining" countdown button pressed.
+            If pressed once, Gone Fishing called and countdown begins.
+            When pressed second time, Option to end countdown is presented
         """
 
         ''' Synchronizing lyrics to time index controls music '''
@@ -7013,81 +7186,58 @@ $ wmctrl -l -p
             self.sync_time_index_lift()  # Raise window focus to top
             # Popup message needed advising button is disabled
             # Make function: if check_sync_in_progress: return
+            # Better yet, self.syn_top should remove all buttons on other
+            #   windows!
             return
 
-        if self.play_hockey_active:
-            # Are we already counting down commercial or intermission?
-            seconds = ""            # For PyCharm syntax checking
-            minutes = ""            # For PyCharm syntax checking
-            if self.play_hockey_remaining:
-                seconds = '%.1f' % self.play_hockey_remaining
-                minutes = '%.2f' % float(self.play_hockey_remaining / 60.0)
+        ''' Want to end countdown? - second time button click '''
+        if self.play_hockey_active:  # Already counting down?
             answer = message.AskQuestion(
                 self.play_top, thread=self.get_refresh_thread(),
                 title="TV break in progress - mserve", confirm='no',
-                text="There are " + seconds + " seconds (" +
-                     minutes + ") minutes remaining\n" +
-                     "in commercial/intermission.\n\n" +
-                     "Do you want to resume TV?")
-
+                text="There are " + sec_min_str(self.play_hockey_remaining) +
+                     "\nremaining in commercial/intermission.\n\n" +
+                     "Do you want to pause music and restore TV sound?")
             if answer.result != 'yes':
-                # Keep hockey countdown going
-                return
+                return  # Keep hockey countdown going
 
-            # End hockey countdown
-            self.play_hockey_t_start = 0.0
-            #self.hockey_countdown(999999)
-            return
+            self.play_hockey_t_start = 0.0  # Elapsed time calc variable
+            return  # End hockey countdown
 
+        ''' Initialization to start countdown - first time button click '''
         self.play_hockey_active = True
         self.play_hockey_t_start = time.time()
         self.play_hockey_secs = secs  # Commercial = 90 seconds
         self.play_hockey_remaining = self.play_hockey_secs
 
-        ''' Was at bottom after gone fishing. Move higher to test'''
+        ''' Music is usually paused so start playing '''
         if self.pp_state is "Paused":
-            self.pp_toggle()  # Play music
+            self.pp_toggle()  # Play music Sets TV sound volume to 25% automatically
         else:  # Was already playing when commercial button pressed? Weird situation
             # Soften volume tv ads to 25%
             set_tv_sound_levels(100, 25, thread=self.play_vu_meter)
-            # TODO: If Music was already playing sound would have been 100%?
 
-        ''' GoneFishing gobbles up big screen with shark 
-        
-            BIG PROBLEM May 18, 2023 system locks up. journal ctl -xe -b-2:
-            May 18 18:51:25 alien kernel: compiz[4681]: segfault at 68 ip 00007fa0c6cb796e sp 00007f ff e6
-            
-            NOTE: Caused by 'gsettings' disabling and enabling 'place' window feature.
-            Disable this functionality in image.py for now.
-        '''
+        ''' GoneFishing gobbles up big screen with shark '''
         ext.t_init('Gone Fishing')
         self.gone_fishing = img.GoneFishing(self.play_top)
         # TODO: After hockey ends, remove "Always on Top" attribute from play_top
         ext.t_end('no_print')  # Time was: 1.3247601986
 
-        #self.gone_fishing.plot_move(100)  # More steps = greater compiz success
         self.gone_fishing.plot_move(COMPIZ_FISHING_STEPS)
-        # May 18, 2023 - Compiz doing weird things.
-        # Screens will clear all windows for a few seconds when 100 steps are used.
-        # Complete system lockup on May 18, 2023. Change steps to 200.
+        ''' May 18, 2023 - Compiz doing weird things so create COMPIZ_FISHING_STEPS
+            Screens will clear all windows for a few seconds when 100 steps are used.
+            Complete system lockup on May 18, 2023. Change steps to 200.
 
-        self.print_hockey()
+            System locks up. journal ctl -xe -b-2:
+            May 18 18:51:25 alien kernel: compiz[4681]: segfault at 68 ip 00007fa0c6cb796e sp 00007f ff e6
 
-    def print_hockey(self):
-        if True is True:  # Change to: 'True is False' to print out debug information
-            return
-        print("self.print_hockey() self.pp_state", self.pp_state)
-        print("self.print_hockey() self.play_hockey_remaining", self.play_hockey_remaining)
-        print("self.print_hockey() self.gone_fishing:", self.gone_fishing)
+            NOTE: Caused by 'gsettings' disabling and enabling 'place' window feature.
+            Disable this functionality in image.py for now. '''
 
     def hockey_countdown(self, elapsed):
         """
             Update time remaining for commercials or intermission
         """
-        if True is False:  # Change to: 'True is True' to print out debug information
-            print("hockey_countdown(elapsed):", elapsed)
-            self.print_hockey()
-
         if not self.play_top_is_active:
             return  # Play window closed?
         if not self.play_hockey_active:
@@ -7116,7 +7266,6 @@ $ wmctrl -l -p
 
         self.com_button['text'] = com_str
         self.int_button['text'] = int_str
-        #root.update()  # June 3, 2023 - Comment out
 
     # ==============================================================================
     #
@@ -8321,34 +8470,10 @@ $ wmctrl -l -p
 
     def play_make_sql_key(self):
         """ Create key to read Music index by OsFileName which is
-            album/artist/99 song.ext
-            isn't this the same as real_path()?
-            
-            TODO: Should refuse to handle songs with "<No Album>"
+            album/artist/99 song.ext.  PRUNED_DIR usually same as START_DIR
+            except when called manually with path to Artist Name or Album Name
         """
-        """ June 3, 2023 - Old version
-        list_index = int(self.saved_selections[self.ndx])
-        return sql.make_key(self.song_list[list_index])
-        """
-        """ June 3, 2023 - New version strips out <No Album> directory """
-        #print("START_DIR:", START_DIR, "len(START_DIR):", len(START_DIR),
-        #      "PRUNED_COUNT:", PRUNED_COUNT)
-        # def open_files() is assigning START_DIR wrong
-        # make_sorted_list() can have single artist or single album passed
-        # in command line parameter 1
-        slice_from = len(START_DIR)  # Has / at end
-        pruned_dir = START_DIR  # Needed to prune off /Artist Name/Album Name
-        for i in range(0, PRUNED_COUNT):
-            #print("looping through prunes:", i)
-            pruned_dir = pruned_dir[:-1]  # Remove os.sep from end
-            last_sub_dir = pruned_dir.rfind(os.sep)  # Find last os.sep
-            pruned_dir = pruned_dir[:last_sub_dir] + os.sep  # Shorten path
-            slice_from = len(pruned_dir)  # Calculate new slice point
-            #print("New pruned_dir:", pruned_dir)
-
         slice_from = len(PRUNED_DIR)  # Has / at end
-
-
         return self.real_path(int(self.saved_selections[self.ndx]))[slice_from:]
 
     def play_save_score_erase_time(self):
@@ -11984,17 +12109,17 @@ class BatchSelect:
 # ==============================================================================
 
 class Volume:
-    """ Usage:
+    """ Usage by caller:
 
-    self.vol_class = Volume(parent, sink, title, text, tooltips=self.tt,
+    self.vol_class = Volume(parent, name, title, text, tooltips=self.tt,
                             thread=self.get_refresh_thread(),
-                            get_pp_state_callback=self.get_pp_state_callback)
+                            save_callback=self.save_callback)
           - Coordinates / geometry is always lib_top geometry + padding.
-          - Music must be playing (ffplay) or at least a song paused.
-          - IS NOT USED: get_pp_state_callback=self.get_pp_state_callback
+          - Music must be playing (name=ffplay) or at least a song paused.
+          - save_callback=function that will reread new variables saved.
 
-    if self.vol_class.vol_top:
-        - Volume top level exists so lift() to top of stack
+    if self.vol_class and self.vol_class.top:
+        - Volume top level exists so lift() overtop of self.lib_top
 
     """
 
@@ -12002,20 +12127,20 @@ class Volume:
                  tooltips=None, thread=None, save_callback=None):
         """
         """
-        # root window is the parent window
+        # self-ize parameter list
         self.parent = parent    # self.parent
-        self.vol_top = tk.Toplevel()
         self.name = name            # ALSA / Pulse Audio sink number (str)
         self.title = title          # E.G. "Set volume for mserve"
         self.text = text            # "Adjust mserve volume to match other apps"
         self.tt = tooltips          # Tooltips pool for buttons
-        self.thread = thread        # E.G. self.refresh_play_top()
+        self.thread = thread        # E.G. self.get_refresh_thread()
+        self.save_callback = save_callback
+
         self.last_volume = None
         self.last_sink = None
         self.curr_volume = None
         self.slider = None
         self.sink_vol_wip = None
-        self.save_callback = save_callback
         if self.save_callback is None:
             toolkit.print_trace()
             print("mserve.py Volume() class self.save_callback is 'None'")
@@ -12025,9 +12150,7 @@ class Volume:
             pass
 
         ''' Regular geometry is no good. Linked to lib_top is better '''
-        #geom = monitor.get_window_geom('volume')
-        #self.vol_top.geometry(geom)
-        #self.vol_top.minsize(width=BTN_WID * 10, height=PANEL_HGT * 10)
+        self.top = tk.Toplevel()
         try:
             xy = (self.parent.winfo_x() + PANEL_HGT * 3,
                   self.parent.winfo_y() + PANEL_HGT * 3)
@@ -12035,20 +12158,18 @@ class Volume:
             print("self.parent failed to get winfo_x")
             xy = (100, 100)
 
-        self.vol_top.minsize(width=BTN_WID * 10, height=PANEL_HGT * 10)
-        self.vol_top.geometry('+%d+%d' % (xy[0], xy[1]))
-
-        self.vol_top_title = "Volume during TV Commercials - mserve"
-        self.vol_top.title(self.vol_top_title)
-        self.vol_top.configure(background="Gray")
-        self.vol_top.columnconfigure(0, weight=1)
-        self.vol_top.rowconfigure(0, weight=1)
+        self.top.minsize(width=BTN_WID * 10, height=PANEL_HGT * 10)
+        self.top.geometry('+%d+%d' % (xy[0], xy[1]))
+        self.top.title("Volume during TV Commercials - mserve")
+        self.top.configure(background="Gray")
+        self.top.columnconfigure(0, weight=1)
+        self.top.rowconfigure(0, weight=1)
 
         ''' Set program icon in taskbar '''
-        img.taskbar_icon(self.vol_top, 64, 'white', 'lightskyblue', 'black')
+        img.taskbar_icon(self.top, 64, 'white', 'lightskyblue', 'black')
 
         ''' Create master frame '''
-        self.vol_frm = tk.Frame(self.vol_top, borderwidth=BTN_BRD_WID,
+        self.vol_frm = tk.Frame(self.top, borderwidth=BTN_BRD_WID,
                                 relief=tk.RIDGE)
         self.vol_frm.grid(column=0, row=0, sticky=tk.NSEW)
         ms_font = (None, MON_FONTSIZE)
@@ -12102,8 +12223,8 @@ class Volume:
         if self.tt:
             self.tt.add_tip(self.close_button, "Close Volume Slider, ignore changes.",
                             anchor="nw")
-        self.vol_top.bind("<Escape>", self.close)  # DO ONLY ONCE?
-        self.vol_top.protocol("WM_DELETE_WINDOW", self.close)
+        self.top.bind("<Escape>", self.close)  # DO ONLY ONCE?
+        self.top.protocol("WM_DELETE_WINDOW", self.close)
 
         ''' Apply Button '''
         self.apply_button = tk.Button(self.vol_frm, text="✔ Apply",
@@ -12113,7 +12234,7 @@ class Volume:
         if self.tt:
             self.tt.add_tip(self.apply_button, "Save Volume Slider changes and exit.",
                             anchor="ne")
-        self.vol_top.bind("<Return>", self.apply)  # DO ONLY ONCE?
+        self.top.bind("<Return>", self.apply)  # DO ONLY ONCE?
 
         ''' Get current volume & Read stored volume '''
         self.last_volume, self.last_sink = self.get_volume()  # Reset this value when ending
@@ -12129,8 +12250,8 @@ class Volume:
                              icon='warning', thread=self.thread)
             self.close()
 
-        if self.vol_top:  # May have been closed above.
-            self.vol_top.update_idletasks()
+        if self.top:  # May have been closed above.
+            self.top.update_idletasks()
 
     def get_volume(self, name=None):
         """ Get volume of 'ffplay' before we start
@@ -12208,7 +12329,7 @@ class Volume:
             #print("self.curr_volume 4:", self.curr_volume)  # 60
 
         self.slider.set(self.curr_volume)
-        self.vol_top.update_idletasks()
+        self.top.update_idletasks()
 
         return True
 
@@ -12223,7 +12344,7 @@ class Volume:
             d['Count'] = self.commercial_secs.get()
             d['Size'] = float(self.intermission_secs.get())
         except ValueError:
-            message.ShowInfo(self.vol_top, "Invalid Seconds Entered.",
+            message.ShowInfo(self.top, "Invalid Seconds Entered.",
                              "Commercial or Intermission contains non-digit(s).",
                              icon='error', thread=self.thread)
             return False
@@ -12231,7 +12352,7 @@ class Volume:
         d['SourceDetail'] = self.tv_application.get()
         _volume, sink = self.get_volume(name=d['SourceDetail'])
         if sink is None:
-            message.ShowInfo(self.vol_top, "Invalid TV Application Name.",
+            message.ShowInfo(self.top, "Invalid TV Application Name.",
                              "The name entered is not a valid running application.",
                              icon='error', thread=self.thread)
             return False
@@ -12246,10 +12367,10 @@ class Volume:
     # noinspection PyUnusedLocal
     def close(self, *args):
         if self.tt:
-            self.tt.close(self.vol_top)
-        self.vol_top.destroy()
-        #print("self.vol_top after .destroy()", self.vol_top)
-        self.vol_top = None  # Indicate volume slider is closed
+            self.tt.close(self.top)
+        self.top.destroy()
+        #print("self.top after .destroy()", self.top)
+        self.top = None  # Indicate volume slider is closed
 
         ''' Adjust volume for playing mserve song back to "normal" '''
         #curr_volume, curr_sink = self.get_volume()  # Current volume would be what we just saved.
@@ -12264,7 +12385,362 @@ class Volume:
 
 # ==============================================================================
 #
-#       MusicTree Functions that can be independent
+#       Playlist() class.
+#
+# ==============================================================================
+
+class Playlists:
+    """ Usage:
+
+        self.playlists = Playlists(parent, name, title, text, tooltips=self.tt,
+                                   thread=self.get_refresh_thread(),
+                                   rebuild_menu_bar=self.build_lib_menu)
+              - Geometry in Type-'window', action-'pls_top'.
+              - rebuild_menu_bar will look at self.playlists.status
+                None = New, Copy and Open active options
+                'new' = Save playlist and Save as... active options
+                'open' = Save playlist and Save as... active options
+                'save' = no active options
+                'save_as' = no active options
+                'copy' = no active options
+                'copy_to' = no active options
+                'copy_from' = no active options
+
+        if self.playlists and self.playlists.pls_top:
+            - Volume top level exists so lift() to top of stack
+
+    History Record Formats
+
+        Type-Playlist, Action-P999999, Master-L999, Detail-Playlist Name,
+            Target-JSON list of sorted Music IDs, Size=MB, Count=# Songs,
+            Seconds=Total Duration, Comments=Playlist Description
+
+        Type-P999999, Action-'resume', Master-'playing'/'paused'...
+
+        Type-P999999, Action-'chron_state', Master-'show'/'hide'...
+
+        Type-P999999, Action-'hockey_state', Master-'on'/'off'...
+
+        Type-P999999, Action-<Artist Name>, Master-<Image Pil>
+
+
+    Functions:
+
+        - show() - Show existing Playlists in treeview
+        - new() - Prompt for Playlist Name and Description, clear checkboxes
+        - open(P999999) - Pick existing Playlist and set checkboxes
+        - save() - Save changes made to Playlist
+        - save_as() - Save changes under new Playlist Name and Description
+        - copy_to(P999999, L999) - Copy Playlist to location, deleting any orphans
+        - copy_from(P999999, L999) - Copy Playlist from location, deleting orphans
+        - delete_all(P999999) - Delete entire Playlist
+        - delete_song(P999999, M999999) - Delete one song from Playlist
+        - add_song(P999999, M999999, ndx) - Add song to Playlist
+
+Create playlists on iPhone
+
+In the Music app , you can organize music into playlists that you can share with your friends.
+
+Note: You can’t create playlists in the Apple Music Voice Plan. For more information, see the Apple Support article How to use Apple Music Voice.
+Create playlists to organize your music
+
+    To create a new playlist, do any of the following:
+
+        Tap Library, tap Playlists, then tap New Playlist.
+
+        Touch and hold a song, album, or playlist; tap Add to a Playlist; then tap New Playlist.
+
+        On the Now Playing screen, tap the More button, tap Add to a Playlist, then tap New Playlist.
+
+    To more easily identify the playlist later, enter a name and description.
+
+    To give your playlist cover art, tap the Camera button, then take a photo or choose an image from your photo library.
+
+    To add music to the playlist, tap Add Music, then tap Listen Now, Browse, Library, or the search field.
+
+    Choose or search for music, then tap the Add button to add it to the playlist.
+
+Tip: If you want to add songs to your library when you add them to a playlist, go to Settings  > Music, then turn on Add Playlist Songs.
+Edit a playlist you created on iPhone
+
+Tap the playlist, tap the More button, tap Edit, then do any of the following:
+
+    Add more songs: Tap Add Music, then choose music.
+
+    You can also touch and hold an item (song, album, playlist, or music video), tap Add to a Playlist, then choose a playlist.
+
+    Delete a song: Tap the Delete button, then tap Delete. Deleting a song from a playlist doesn’t delete it from your library.
+
+    Change the song order: Drag the Reorder button next to a song.
+
+Changes you make to your music library are updated across all your devices when Sync Library is turned on in Music settings. If you’re not an Apple Music subscriber, the changes appear in your music library the next time you sync with your computer.
+Sort a playlist
+
+    Tap a playlist, then tap the More button at the top right of the screen.
+
+    Tap Sort By, then choose an option—Playlist Order, Title, Artist, Album, or Release Date.
+
+Delete a playlist
+
+Touch and hold the playlist, then tap Delete from Library.
+
+You can also tap the playlist, tap the More button, then tap Delete from Library.
+
+
+    """
+
+    def __init__(self, parent=None, name=None, title=None, text=None,
+                 tooltips=None, thread=None, rebuild_menu_bar=None):
+        """
+            TODO: How to change self.play_top_title text when playlist changes?
+        """
+        ''' self-ize parameter list '''
+        self.parent = parent  # FOR NOW self.parent MUST BE: lib_top
+        self.name = name  #
+        self.title = title  # E.G. "Playlists"
+        self.text = text  #
+        self.tt = tooltips  # Tooltips pool for buttons
+        self.thread = thread  # E.G. self.get_refresh_thread()
+        self.rebuild_menu_bar = rebuild_menu_bar
+        ''' Playlist work fields '''
+        self.last_playlist = None
+        self.last_sink = None
+        self.curr_playlist = None
+        self.artwork = None  # Artwork for the current playlist
+        self.sink_playlist_wip = None
+        self.state = None  # 'new', 'open', 'save', 'save_as', 'view'
+        ''' Input fields: TV_BREAK1, TV_BREAK2 and TV_SOUND '''
+        self.top = None  # tk.Toplevel
+        self.frame = None  # tk.Frame inside self.top
+        self.scr_name = tk.StringVar()
+        self.scr_description = tk.StringVar()
+        self.scr_location = tk.StringVar()
+        self.artwork = None
+        self.close_button = None
+        self.apply_button = None
+        ''' Controls to resize image to fit frame '''
+        self.start_w = None
+        self.start_h = None
+
+    def full_window(self, name=None):
+        """ Mount full window
+        """
+        ''' Regular geometry is good '''
+        self.top = tk.Toplevel()  # Playlists top level
+        geom = monitor.get_window_geom('pls_top')
+        self.top.geometry(geom)
+        self.top.minsize(width=BTN_WID * 10, height=PANEL_HGT * 10)
+        name = name if name is not None else "Playlists"
+        self.top.title(name + " - mserve")
+        self.top.configure(background="Gray")
+        self.top.columnconfigure(0, weight=1)
+        self.top.columnconfigure(1, weight=3)
+        self.top.rowconfigure(0, weight=1)
+        ''' Set program icon in taskbar '''
+        img.taskbar_icon(self.top, 64, 'white', 'lightskyblue', 'black')
+        ''' Create master frame '''
+        self.frame = tk.Frame(self.top, borderwidth=BTN_BRD_WID,
+                              relief=tk.RIDGE)
+        self.frame.grid(column=0, row=0, sticky=tk.NSEW)
+        ms_font = (None, MON_FONTSIZE)
+        ''' Controls to resize image to fit frame '''
+        self.frame.bind("<Configure>", self.on_resize)
+        self.start_w = self.frame.winfo_reqheight()
+        self.start_h = self.frame.winfo_reqwidth()
+        ''' Instructions '''
+        if not self.text:  # If text wasn't passed as a parameter use default
+            self.text = "\nNo Playlists have been created yet.\n\n" + \
+                        "After Playlists have been created, they will\n" + \
+                        "appear in this spot.\n\n" + \
+                        "You can create a playlist by selecting\n" + \
+                        "the 'New Playlist' option or 'Copy Playlist'\n" + \
+                        "option from the 'File' dropdown menu bar.\n"
+        tk.Label(self.frame, text=self.text, justify="left", font=ms_font) \
+            .grid(row=0, column=0, columnspan=3, sticky=tk.W, padx=5)
+        tk.Label(self.frame, text="Playlist name:",
+                 font=ms_font).grid(row=1, column=0, sticky=tk.W, padx=5)
+        tk.Entry(self.frame, textvariable=self.scr_name,
+                 font=ms_font).grid(row=1, column=1, sticky=tk.W, padx=5)
+        tk.Label(self.frame, text="Playlist description:",
+                 font=ms_font).grid(row=2, column=0, sticky=tk.W, padx=5)
+        tk.Entry(self.frame, textvariable=self.scr_description,
+                 font=ms_font).grid(row=2, column=1, sticky=tk.W, padx=5)
+        tk.Label(self.frame, text="Device location:",
+                 font=ms_font).grid(row=3, column=0, sticky=tk.W, padx=5)
+        tk.Entry(self.frame, textvariable=self.scr_location, state='readonly',
+                 font=ms_font).grid(row=3, column=1, sticky=tk.W, padx=5,
+                                    pady=5)
+        self.scr_location.set(LODICT['iid'] + " - " + LODICT['name'])
+        ''' Artwork '''
+        # self.name_var.set(... state=self.state self.state =
+        #self.artwork = tk.Scale(self.frame, from_=100, to=25, tickinterval=5,
+        #                        command=self.set_sink)
+        #self.artwork.grid(row=0, column=3, rowspan=4, padx=5, pady=5, sticky=tk.NS)
+        ''' Close Button '''
+        self.close_button = tk.Button(self.frame, text="✘ Close",
+                                      width=BTN_WID2 - 6,
+                                      command=self.close)
+        self.close_button.grid(row=4, column=0, padx=5, pady=5, sticky=tk.W)
+        if self.tt:
+            self.tt.add_tip(self.close_button, "Close Volume Slider, ignore changes.",
+                            anchor="nw")
+        self.top.bind("<Escape>", self.close)  # DO ONLY ONCE?
+        self.top.protocol("WM_DELETE_WINDOW", self.close)
+        ''' Apply Button '''
+        self.apply_button = tk.Button(self.frame, text="✔ Apply",
+                                      width=BTN_WID2 - 6,
+                                      command=self.apply)
+        self.apply_button.grid(row=4, column=3, padx=5, pady=5, sticky=tk.W)
+        if self.tt:
+            self.tt.add_tip(self.apply_button, "Save Volume Slider changes and exit.",
+                            anchor="ne")
+        self.top.bind("<Return>", self.apply)  # DO ONLY ONCE?
+
+        ''' Refresh screen '''
+        if self.top:  # May have been closed above.
+            self.top.update_idletasks()
+
+    def get_playlist(self, name=None):
+        """ Get volume of 'ffplay' before we start
+        """
+        if name is None:
+            name = self.name
+        all_sinks = sink_master()
+        for entry in all_sinks:
+            sink, volume, app_name = entry
+            if app_name == name:
+                # print("get_playlist():", volume)
+                return int(volume), sink
+
+        return None, None
+
+    def new(self):
+        """
+            Called by lib_top File Menubar "New Playlist"
+        """
+        self.state = 'new'
+        self.rebuild_menu_bar()
+        self.full_window("New Playlist")
+
+    def copy(self):
+        """
+            Called by lib_top File Menubar "Copy Playlist"
+        """
+        self.state = 'copy'
+        self.rebuild_menu_bar()
+        self.full_window("Copy Playlist")
+
+    def open(self):
+        """
+            Called by lib_top File Menubar "Open Playlist"
+        """
+        self.state = 'open'
+        self.rebuild_menu_bar()
+        self.full_window("Open Playlist")
+
+    def save(self):
+        """
+            Called by lib_top File Menubar "Save Playlist"
+        """
+        self.state = 'save'
+        self.rebuild_menu_bar()
+
+    def save_as(self):
+        """
+            Called by lib_top File Menubar "Save Playlist As..."
+        """
+        self.state = 'save_as'
+        self.rebuild_menu_bar("Save Playlist as…")
+
+    def on_resize(self, *args):
+        """
+            Window resizing. Adjust treeview height to window height.
+        """
+        pass
+
+    def scr_get(self):
+        """ Get Playlist Name & Description from window """
+        pass
+
+    def read_playlist(self):
+        """
+            Get last saved volume.  Based on get_hockey
+        """
+
+        self.curr_playlist = 100  # mserve volume when TV commercial on air
+        d = get_config_for_loc('hockey_state')
+        if d is None:
+            return None
+
+        ''' Get hockey tv commercial volume '''
+        if 25 <= int(d['Size']) <= 100:
+            self.curr_playlist = int(d['Size'])
+            # print("self.curr_playlist 1:", self.curr_playlist)  # 60
+
+        self.scr_name.set(d['Count'])
+        self.scr_description.set(d['Seconds'])
+        self.scr_location.set(d['SourceDetail'])
+
+        self.top.update_idletasks()
+
+        return True
+
+    def save_playlist(self):
+        """
+            Save volume
+        """
+        ''' Reread hockey state in case user changed after set_tv_playlist started '''
+        d = get_config_for_loc('hockey_state')
+        # If we don't rewrite fields they get blanked out. Action=Location
+        try:
+            d['Count'] = self.scr_name.get()
+            d['Size'] = float(self.scr_description.get())
+        except ValueError:
+            message.ShowInfo(self.top, "Invalid Seconds Entered.",
+                             "Commercial or Intermission contains non-digit(s).",
+                             icon='error', thread=self.thread)
+            return False
+
+        d['SourceDetail'] = self.scr_location.get()
+        _playlist, sink = self.get_playlist(name=d['SourceDetail'])
+        if sink is None:
+            message.ShowInfo(self.top, "Invalid TV Application Name.",
+                             "The name entered is not a valid running application.",
+                             icon='error', thread=self.thread)
+            return False
+        return True
+
+    # noinspection PyUnusedLocal
+    def close(self, *args):
+        if self.tt:
+            self.tt.close(self.top)
+        if self.top:
+            geom = monitor.get_window_geom_string(self.top, leave_visible=False)
+            monitor.save_window_geom('pls_top', geom)
+            self.top.destroy()
+        # print("self.top after .destroy()", self.top)
+        self.top = None  # Indicate volume slider is closed
+
+        ''' Adjust volume for playing mserve song back to "normal" '''
+        # curr_playlist, curr_sink = self.get_playlist()  # Current volume would be what we just saved.
+        # Problem: We don't take into consideration self.last_playlist
+        #          If music was paused while self.vol_class() was open it's now 25%
+
+    # noinspection PyUnusedLocal
+    def apply(self, *args):
+        """ Work out mode and update database. """
+        self.scr_get()
+        print("\nstate : ", self.state, "  | scr_name : ", self.scr_name.get(),
+              "  | scr_description : ", self.scr_description.get())
+        print("scr_location : ", self.scr_location.get())
+        # Location Key is split()[0]
+        print("Location Key is split()[0] : ", self.scr_location.get().split()[0])
+        self.close()
+
+
+# ==============================================================================
+#
+#       Independent (Stand Alone) Functions
 #
 # ==============================================================================
 
@@ -12312,6 +12788,13 @@ def make_ellipsis(string, cutoff):
     if len(string) > cutoff:
         return string[:cutoff - 3] + "..."
     return string
+
+
+def sec_min_str(seconds):
+    sec_str = '%.0f' % seconds
+    min_str = '%.0f' % (seconds / 60)
+    rem_str = '%02d' % (seconds % 60)
+    return sec_str + " seconds (" + min_str + " min: " + rem_str + " sec)"
 
 
 def start_ffplay(song, tmp_name, extra_opt):
@@ -12948,7 +13431,7 @@ def open_files(old_cwd, prg_path, parameters, toplevel=None):
     print()
 
     ''' Was music_dir passed as parameter? '''
-    music_dir = None  # Just to make pycharm "happy:)"
+    #music_dir = None  # Just to make pycharm "happy:)"
     try:
         music_dir = parameters[1]
         print("mserve.py open_files() using music_dir:", music_dir)
@@ -13005,16 +13488,16 @@ def open_files(old_cwd, prg_path, parameters, toplevel=None):
         START_DIR = get_dir(root, "Select Music Directory", music_dir)
         print("mserve.py open_files() START_DIR:", START_DIR, type(START_DIR))
         if isinstance(START_DIR, tuple):
-            print("mserve.py open_files() Cancel selected from" +\
+            print("mserve.py open_files() Cancel selected from" +
                   " Select Music Directory dialog. Exiting.")
             exit()
 
         if START_DIR is None:
             START_DIR = old_cwd
-            print("mserve.py open_files() START_DIR forced to old_cwd," + \
+            print("mserve.py open_files() START_DIR forced to old_cwd," +
                   " should not happen:", old_cwd)
         if not START_DIR.endswith(os.sep):
-            print("\nmserve.py open_files() File picker shortfall, adding" +\
+            print("\nmserve.py open_files() File picker shortfall, adding" +
                   " / to end of:", START_DIR)
             print()
             START_DIR = START_DIR + os.sep

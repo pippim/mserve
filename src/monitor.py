@@ -8,6 +8,8 @@
 #       Check out: https://www.pythoncheatsheet.org/
 #             and: https://python-future.org/compatible_idioms.html
 #
+#       Jun. 14, 2023 - Build list of all windows. To find those off-screen
+#
 # ==============================================================================
 
 """
@@ -202,10 +204,8 @@ class Monitors:
             primary = SCREEN.get_primary_monitor()
             GNOME = 3.18
 
-        self.screen_width = SCREEN.width    # Should equal self.desk_width
-                                            # But contains 'gi.FunctionInfo(width)'
-        self.screen_height = SCREEN.height  # Should equal self.desk_height
-                                            # But contains 'gi.FunctionInfo(height)'
+        self.screen_width = SCREEN.width()    # Screen width (all monitors)
+        self.screen_height = SCREEN.height()  # 3240 not equal to desk_height: 5760
         self.gdk_gnome_version = GNOME      # Traditional for outside
 
         self.monitors_list = []             # List of dictionaries w/monitor
@@ -255,6 +255,9 @@ class Monitors:
             y2 = geometry.y + geometry.height
             if y2 > self.desk_height:
                 self.desk_height = x2
+
+        ''' Variables needed for get_all_windows '''
+        self.windows_list = []             # List of named tuples
 
         # Wrap up
         if self.screen_width != self.desk_width:
@@ -314,8 +317,40 @@ class Monitors:
         # noinspection PyArgumentList
         self.found_window = Window(x_id, window_name, geom.xp, geom.yp,
                                    geom.widthp, geom.heightp)
-        return self.found_window 
+        return self.found_window
 
+        # noinspection PyUnusedLocal
+
+    def get_all_windows(self):
+        """
+            Jun. 14, 2023 - Build list of all windows. To find those off-screen
+
+        """
+        import gi
+        gi.require_version('Wnck', '3.0')
+        from gi.repository import Wnck
+        screen = Wnck.Screen.get_default()
+        screen.force_update()  # recommended per Wnck documentation
+        self.windows_list = []  # empty existing list
+        # loop all windows
+        for window in screen.get_windows():
+            geom = window.get_geometry()  # Includes decorations
+            window_name = window.get_name()
+            x_id = window.get_xid()
+            Window = namedtuple('Window', 'number, name, x, y, width, height')
+            # noinspection PyArgumentList
+            self.found_window = Window(x_id, window_name, geom.xp, geom.yp,
+                                       geom.widthp, geom.heightp)
+            self.windows_list.append(self.found_window)
+            # A lot more attributes are available see:
+            # https://lazka.github.io/pgi-docs/Wnck-3.0/classes/Window.html#Wnck.Window.get_screen
+
+        # clean up Wnck (saves resources, check documentation)
+        window = None  # Although pycharm flags as error,
+        screen = None  # these are important else crash!!
+        Wnck.shutdown()
+        return self.windows_list
+    
     def get_active_monitor(self):
         """
             First find the active window. Then find what monitor it is on and
@@ -401,6 +436,8 @@ class Monitors:
 
 def get_monitors():
     """
+        # OLDER CODE: Eventually yanked out.
+
         Get list of monitors in Gnome Desktop
 
         TODO: Flush displays / pending events first?
@@ -462,7 +499,6 @@ def get_monitors():
         monitors.append(mon)
 
     return monitors
-
 
 
 def center(window):
@@ -699,7 +735,7 @@ def get_window_geom(name):
         _h = int(1080 * .75)
         _root_xy = (100, 100)  # Temporary hard-coded coordinates
         default_geom = '%dx%d+%d+%d' % (_w, _h, _root_xy[0], _root_xy[1])
-    elif name == 'playlist':  # mserve.py
+    elif name == 'playlist':  # mserve.py - Playing selected songs
         xy = (130, 130)
         default_geom = '+%d+%d' % (xy[0], xy[1])
     elif name == 'backups':  # bserve.py
@@ -720,7 +756,7 @@ def get_window_geom(name):
     elif name == 'sql_history':  # mserve.py
         xy = (130, 130)
         default_geom = '+%d+%d' % (xy[0], xy[1])
-    elif name == 'volume':  # mserve.py  NEVER USED - Fixed Anchor to lib_top instead
+    elif name == 'pls_top':  # mserve.py - Playlist maintenance toplevel window
         xy = (130, 130)
         default_geom = '+%d+%d' % (xy[0], xy[1])
     else:

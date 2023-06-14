@@ -878,6 +878,34 @@ class GoneFishing:
         NOTE: Beginning of __init__ code copied from mmm mainline. mmm needs
               upgrading to take advantage of classes.
 
+        TODO: 
+
+    wmctrl -lG
+        
+    0x00a00007  0 2621 491  643  175  alien Ubuntu
+    0x02c00002 -1 5355 24   410  1392 alien conky (alien)
+    0x03800002  0 -5890 -3340 5790 3240 alien XdndCollectionWindowImp
+    0x03800009  0 -165 -1156 65   1056 alien unity-launcher
+    0x0380001e  0 0    0    1920 24   alien unity-panel
+    0x03800025  0 1920 0    3840 24   alien unity-panel
+    0x03800033  0 -420 -300 320  200  alien unity-dash
+    0x03800034  0 -420 -300 320  200  alien Hud
+F   0x03400003  0 5966 6660 1742 884  alien ffprobe preserve last access time - Google Search — Mozilla Firefox
+    0x03400021  0 24   296  1890 774  alien Subscriptions - YouTube — Mozilla Firefox
+    0x03a0000a  0 0    0    5790 3240 alien Desktop
+    0x04e0000a  0 2330 3345 1300 874  alien Python 3
+    0x04e00115  0 3500 128  1300 874  alien mserve
+F   0x0480004d  0 6327 3424 1377 855  alien website – mserve.md
+    0x04800054  0 2719 620  1657 1495 alien mserve – ~/python/mserve.py
+T   0x04e0158e  0 5827 6664 1300 874  alien rick@alien: ~
+P   0x03a01399  0 5895 6553 1268 672  alien programs
+    0x05600036  0 1969 324  1447 810    N/A Multiple Monitors Manager - mmm
+    0x038002e8  0 3870 2160 1920 24   alien unity-panel
+
+F = Firefox
+T = Gnome Terminal
+P = PyCharm
+
     """
 
     def __init__(self, parent, ms_font=(None, WIN_FONTSIZE * 4)):
@@ -1330,7 +1358,6 @@ active-plugins "['core', 'composite', 'opengl', 'regex', 'mousepoll',
 
         return last_window, last_geom
 
-
     def win_remove_above(self):
         """  If window 'above' (Always on Top in Ubuntu-speak) toggle it off.
              Note: _NET_WM_STATE_FULLSCREEN could be checked but is not yet...
@@ -1363,7 +1390,6 @@ active-plugins "['core', 'composite', 'opengl', 'regex', 'mousepoll',
 
         self.trg_was_above = None
 
-
     @staticmethod
     def win_remove_below(win_hex):
         """  If the source window was below (probably always) make it above the
@@ -1389,7 +1415,6 @@ active-plugins "['core', 'composite', 'opengl', 'regex', 'mousepoll',
                      ' -b toggle,above')
 
         self.src_was_below = None
-
 
     def trg_check_full_screen(self):
         """  The target window can stay maximized for undecorated windows only. We need to get
@@ -1478,7 +1503,6 @@ active-plugins "['core', 'composite', 'opengl', 'regex', 'mousepoll',
                               "len(res):", len(res), "type:", type(res))
                 break
 
-
     def trg_restore_full_screen(self):
         """  Revert the "always on top" (above) state.
         """
@@ -1490,7 +1514,6 @@ active-plugins "['core', 'composite', 'opengl', 'regex', 'mousepoll',
                       " -b toggle" + self.toggle_str + ")  res:", res)
 
         self.trg_was_above = None
-
 
     def close(self, full_close=True):
         """ Put music player back where it was.
@@ -1542,7 +1565,6 @@ active-plugins "['core', 'composite', 'opengl', 'regex', 'mousepoll',
         if self.place_in_plugins:
             self.set_gsettings(self.old_compiz_plugins)  # Old is restored twice
             self.place_in_plugins = False
-
 
     @staticmethod
     def refresh_gtk():
