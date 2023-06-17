@@ -279,6 +279,7 @@ import threading
 import sys
 import os
 import shutil
+import json  # For List conversions to SQL
 import time
 import datetime
 
@@ -1018,7 +1019,7 @@ class MusicTree(PlayCommonSelf):
         ext.t_init("monitor.get_window_geom('library')")
         geom = monitor.get_window_geom('library')
         self.lib_top.geometry(geom)
-        ext.t_end('print')  # June 13, 2023 - 0.0002460480
+        ext.t_end('no_print')  # June 13, 2023 - 0.0002460480
 
         self.lib_top.configure(background="Gray")
         self.lib_top.columnconfigure(0, weight=1)
@@ -1027,6 +1028,12 @@ class MusicTree(PlayCommonSelf):
         ''' Set program icon in taskbar '''
         # Move to main()
         # img.taskbar_icon(self.lib_top, 64, 'white', 'lightskyblue', 'black')
+
+        ''' Create self.playlists '''
+        self.playlists = Playlists(self.lib_top, apply_callback=self.apply_playlists,
+                                   enable_lib_menu=self.enable_lib_menu, tooltips=self.tt,
+                                   display_lib_title=self.display_lib_title)
+        self.build_lib_menu()  # Menu bar with File-Edit-View dropdown submenus
 
         ''' Window Title bar. E.G.
             AW17R3  🎵 757 songs, 279 selected  🖸 6626.3 MB used, 2602.1 MB selected - mserve
@@ -1039,18 +1046,36 @@ class MusicTree(PlayCommonSelf):
         #                           Play    Space  Size  Secs  sCount
         self.lib_top_totals[0] = LODICT['name']
         self.lib_top_totals[1] = ""  # Playlist name makes title too long
+        self.lib_top_playlist_name = ""  # appended to lib_top.title after totals
 
         ''' Create frames '''
         master_frame = tk.Frame(self.lib_top, bg="Olive", relief=tk.RIDGE)
         master_frame.grid(sticky=tk.NSEW)
         master_frame.columnconfigure(0, weight=1)
-        master_frame.rowconfigure(0, weight=1)
+        master_frame.rowconfigure(0, weight=0)  # Status bar frame
+        master_frame.rowconfigure(1, weight=1)  # treeview frame
 
-        # Create a frame for the treeview and scrollbar(s).
+        ''' Expanding/collapsing information centre Frame '''
+        # noinspection SpellCheckingInspection
+        self.banner_frm = tk.Frame(master_frame, bg="skyblue3", height=7)
+        self.banner_frm.grid(row=0, column=0, sticky=tk.NSEW)
+        self.banner_btn = None  # will be built in next line
+        self.build_banner_btn()  # Create thin horizontal ruler w/tooltip
+        #self.banner = BannerMessage(self.banner_frm, self.banner_btn,
+        #                            self.build_banner_btn, self.build_banner_canvas,
+        #                            self.tt)
+        """ Usage:
+
+            self.banner = BannerMessage(
+                self.banner_frm, self.banner_btn, self.build_banner_btn,
+                self.build_banner_canvas, self.tt):
+        """
+
+        ''' CheckboxTreeview Frame '''
         frame2 = tk.Frame(master_frame)
         tk.Grid.rowconfigure(frame2, 0, weight=1)
         tk.Grid.columnconfigure(frame2, 0, weight=1)
-        frame2.grid(row=0, column=0, sticky=tk.NSEW)
+        frame2.grid(row=1, column=0, sticky=tk.NSEW)  # June 15/23 was row=0
 
         ''' CheckboxTreeview List Box, Columns and Headings '''
         self.lib_tree = \
@@ -1228,14 +1253,10 @@ class MusicTree(PlayCommonSelf):
         self.last_inotify_time = None  # Last time bubble message sent
         self.refresh_acc_times(first_time=True)  # Update last access time every 60 seconds
 
-        ''' Create self.playlists '''
-        self.playlists = Playlists(self.lib_top, rebuild_menu_bar=self.build_lib_menu)
-        self.build_lib_menu()  # Menu bar with File-Edit-View dropdown submenus
-
         dtb.close()  # Close our startup messages delayed text box
         self.lib_top.bind("<FocusIn>", self.handle_lib_top_focus)
-        ext.t_end('print')  # May 24, 2023 - MusicTree() : 1.0563580990
-        # June 13, 2023 - MusicTree() init__(toplevel...): 1.3379859924
+        ext.t_end('no_print')  # May 24, 2023 - MusicTree() : 1.0563580990
+        # June 13, 2023 -    MusicTree() init__(toplevel...): 1.3379859924
 
         ''' Load last selections and begin playing with last song '''
 
@@ -1249,15 +1270,76 @@ class MusicTree(PlayCommonSelf):
             if self.lib_top is None:
                 break
 
+    def build_banner_btn(self):
+        """ Called from init in MusicTree() class and BannerMessage() class
+        """
+        # noinspection SpellCheckingInspection
+        self.banner_btn = tk.Button(self.banner_frm, height=0, bg="skyblue3")
+        self.banner_btn.pack()  # Old School works better this time for...
+        self.banner_btn.place(height=7, width=7000)  # ...height of 7 override
+        # The banner_btn tooltip is deleted when button (ruler line) is clicked
+        # on. A new tooltip type 'piggy_back' is added and instantly invoked to
+        # expand frame which stays for 60 seconds and then collapses. Then the
+        # banner_btn is reinstated. Other functions can invoke banner_message
+        # and have it fade after 10 seconds. If mouse is moved outside of
+        # banner message the window collapses immediately. Move code below to
+        # new function self.banner_btn_tooltip() to call from a few places.
+        text = "▼ ▲ ▼ ▲  Expanding/Collapsing Information Centre  ▲ ▼ ▲ ▼ \n\n" +\
+            "Click this ruler line and it expands to a large frame with\n" +\
+            "details of the current playlist's name, description, song\n" +\
+            "count, file sizes, etc. Details about the music library and\n" +\
+            "current playing song are also displayed."
+        self.tt.add_tip(self.banner_btn, text=text, anchor="sc",
+                        visible_delay=150, fade_out_span=149)
+
+
+    def build_lib_top_playlist_name(self):
+        """ name goes into lib_top.title()
+            self.playlists.name is inside Playlists() class
+        """
+        if self.playlists.name is not None:
+            #self.lib_top_playlist_name = self.playlists.name
+            self.lib_top_playlist_name = self.playlists.name.encode("utf-8")
+            # Fix error message: tcl error > FFFF
+            #    "  ☰ " + self.lib_top_playlist_name + " - mserve")
+            # TclError: character U+1f3b5 is above the range(U + 0000 - U + FFFF) allowed by Tcl
+            #   NOTE: “🎵” U+1F3B5 Musical Note Unicode Character
+            #self.lib_top_playlist_name = toolkit.normalize_tcl(self.playlists.name)
+            # "Rainy Days" becomes "Rain? Da?s".
+            # June 17, 2023 patch normalize_tcl() to support "vwxyz" instead of "?"
+            #print("build_lib_top_playlist_name() self.playlists.name:",
+            #      self.playlists.name)  # Playlist "Rainy Days"
+            #print("build_lib_top_playlist_name() self.lib_top_playlist_name:",
+            #      self.lib_top_playlist_name)  # becomes "Rain? Da?s"
+        else:
+            self.lib_top_playlist_name = LODICT['iid'] + " - Default Favorites"
 
     def build_lib_menu(self):
         """
         Menu bars: File, Edit, View + space + playlist information
-        Called from self.playlists.rebuild_menu_bar() self.playlists.status
+        Designed to be called from self.playlists.build_lib_menu()
+        ABANDON second calls because they take 1.0 seconds to run. Only
+        call once during self.lib_top window creation. Alternate method for
+        status messages must be used. - June 15, 2023.
         """
-        # self.lib_top.config(menu="")  # Destroy last version
+        ext.t_init('self.lib_top.config(menu="")')
+        #self.lib_top.config(menu=None)  # Destroy last version
+        ext.t_end('no_print')  # 0.0000929832
+        ext.t_init('mb = tk.Menu(self.lib_top)')
         mb = tk.Menu(self.lib_top)
+        ext.t_end('no_print')  # 0.0001151562
+        ext.t_init('lib_top.config(menu=mb)')
+        # .config(menu=) used to be at end of function. Moving to top has no effect
+        # Still first run is:  0.0247361660 seconds (Which still seems too long)
+        # Subsequent runs are: 0.9895310402 seconds (Which is horribly long!)
+        #                      1.0078911781
+        #                      0.9450080395
+        #                      0.9970889091
+        self.lib_top.config(menu=mb)  # This takes a full second to run
+        #self.lib_top['menu'] = mb  # Also takes a full second to run
+        ext.t_end('no_print')
 
+        ext.t_init('self.file_menu = tk.Menu(mb)')
         self.file_menu = tk.Menu(mb, tearoff=0)
         self.file_menu.add_command(label="New Location", font=(None, MED_FONT),
                                    command=lambda: self.loc_add_new(caller='Drop',
@@ -1266,12 +1348,14 @@ class MusicTree(PlayCommonSelf):
                                    command=lambda: self.loc_open_play(caller='Drop'))
         self.file_menu.add_separator()
 
-        self.file_menu.add_command(label="New Playlist", font=(None, MED_FONT),
-                                   command=self.playlists.new, state=tk.DISABLED)
-        self.file_menu.add_command(label="Copy Playlist", font=(None, MED_FONT),
-                                   command=self.playlists.copy, state=tk.DISABLED)
         self.file_menu.add_command(label="Open Playlist", font=(None, MED_FONT),
-                                   command=self.playlists.open, state=tk.DISABLED)
+                                   command=self.playlists_open, state=tk.DISABLED)
+        self.file_menu.add_command(label="New Playlist", font=(None, MED_FONT),
+                                   command=self.playlists_new, state=tk.DISABLED)
+        self.file_menu.add_command(label="Rename Playlist", font=(None, MED_FONT),
+                                   command=self.playlists.rename, state=tk.DISABLED)
+        self.file_menu.add_command(label="Delete Playlist", font=(None, MED_FONT),
+                                   command=self.playlists.delete, state=tk.DISABLED)
         self.file_menu.add_command(label="Save Playlist", font=(None, MED_FONT),
                                    command=self.playlists.save, state=tk.DISABLED)
         self.file_menu.add_command(label="Save Playlist as…", font=(None, MED_FONT),
@@ -1290,8 +1374,10 @@ class MusicTree(PlayCommonSelf):
                                    command=self.exit_without_save, state=tk.DISABLED)
 
         mb.add_cascade(label="File", menu=self.file_menu, font=(None, MED_FONT))
+        ext.t_end('no_print')  # 0.0009999275
 
         # Edit Menu - Edit Location
+        ext.t_init('self.edit_menu = tk.Menu(mb)')
         self.edit_menu = tk.Menu(mb, tearoff=0)
         self.edit_menu.add_command(label="Edit Location", font=(None, MED_FONT),
                                    command=lambda: self.loc_edit(
@@ -1309,7 +1395,9 @@ class MusicTree(PlayCommonSelf):
                                    command=self.set_tv_volume)
 
         mb.add_cascade(label="Edit", menu=self.edit_menu, font=(None, MED_FONT))
+        ext.t_end('no_print')  # 0.0004191399
 
+        ext.t_init('self.view_menu = tk.Menu(mb)')
         # View menu - Show locations and SQL library
         self.view_menu = tk.Menu(mb, tearoff=0)
         self.view_menu.add_command(label="Show Location", font=(None, MED_FONT),
@@ -1334,26 +1422,41 @@ class MusicTree(PlayCommonSelf):
                                    command=self.show_debug)
 
         mb.add_cascade(label="View", menu=self.view_menu, font=(None, MED_FONT))
+        ext.t_end('no_print')  # 0.0006351471
 
+        """ CANCELLED CODE
+        ext.t_init('fake_bar = tk.Menu(mb)')
         # FUTURE About Menu - www.pippim.com -
         # Packages required and locations / versions
 
         # Space between real menubar and Playlist text
-        fake_bar = tk.Menu(mb, tearoff=0)
+        #fake_bar = tk.Menu(mb)
+        fake_bar = tk.Menu(mb)
         mb.add_cascade(label=" " * 30,
                        menu=fake_bar, font=(None, MED_FONT))
+        ext.t_end('print')  # 0.0001649857
 
+        ext.t_init('self.playlist_bar = tk.Menu(mb)')
         # Show Favorites is running. When changing playlist unpost and add new one.
-        self.playlist_bar = tk.Menu(mb, tearoff=0)
+        self.playlist_bar = tk.Menu(mb)
+
+        # Setup in self.lib_top_playlist_name
         if self.playlists.name is not None:
-            label = self.playlsits.name
+            label = self.playlists.name
         else:
-            label = LODICT['iid'] + " - Default"
+            label = LODICT['iid'] + " - Default Favorites"
         mb.add_cascade(label="Playlist: " + label,
                        foreground="Black", background="Gold",
                        menu=self.playlist_bar, font=(None, MED_FONT))
-
-        self.lib_top.config(menu=mb)  # June 12, 2023 (menu="") destroys it.
+        # binding enter/leave doesn't work for tk.Menu widgets
+        #self.playlist_bar.bind("<Enter>", self.on_enter)
+        #self.playlist_bar.bind("<Leave>", self.on_leave)
+        ext.t_end('print')  # 0.0001678467
+        """
+        ext.t_init('self.lib_top.config(menu=mb)')
+        #self.lib_top.config(menu=mb)  # This takes a full second to run
+        #self.lib_top['menu'] = mb  # Also takes a full second to run
+        ext.t_end('no_print')
 
         ''' Enable File Menu options depending on playlists.state
                 self.file_menu.add_command(label="New Playlist",
@@ -1371,22 +1474,101 @@ class MusicTree(PlayCommonSelf):
                 'copy_to' = no active options
                 'copy_from' = no active options
         '''
+        self.enable_lib_menu()
+
+    def enable_lib_menu(self):
+        """
+        Called from build_lib_menu() and passed to self.playlists to manually
+        set options.
+        :return: None
+        """
+        ext.t_init('self.file_menu.entry config("Open Playlist", state=tk.NORMAL)')
+        self.file_menu.entryconfig("Open Playlist", state=tk.DISABLED)
+        self.file_menu.entryconfig("New Playlist", state=tk.DISABLED)
+        self.file_menu.entryconfig("Rename Playlist", state=tk.DISABLED)
+        self.file_menu.entryconfig("Delete Playlist", state=tk.DISABLED)
+        self.file_menu.entryconfig("Save Playlist", state=tk.DISABLED)
+        self.file_menu.entryconfig("Save Playlist as…", state=tk.DISABLED)
+
+        if self.playlists.top:  # If top level is open, everything disabled.
+            return
+
         if self.playlists.state is None:
-            self.file_menu.entryconfig("New Playlist", state=tk.NORMAL)
-            self.file_menu.entryconfig("Copy Playlist", state=tk.NORMAL)
             self.file_menu.entryconfig("Open Playlist", state=tk.NORMAL)
+            self.file_menu.entryconfig("New Playlist", state=tk.NORMAL)
+            self.file_menu.entryconfig("Rename Playlist", state=tk.NORMAL)
+            self.file_menu.entryconfig("Delete Playlist", state=tk.NORMAL)
 
         if self.playlists.state == 'new' or self.playlists.state == 'open':
             self.file_menu.entryconfig("Save Playlist", state=tk.NORMAL)
             self.file_menu.entryconfig("Save Playlist as…", state=tk.NORMAL)
+        ext.t_end('no_print')  # 0.0001311302
 
+    def apply_playlists(self):
+        """ Called from Playlists() class after changes have been applied """
+        self.play_close()
+        self.clear_lib_tree()
+        # June 16 2023 - All selections have been cleared and NEW_LOCATION
+        # flag is True. Backup made to ~/Documents/mserve backup/mserve
+        '''
+        Select "Open Playlist" and then "Road Tunes" name:
+        
+          File "/home/rick/python/mserve.py", line 8676, in play_save_time_index
+            sql.update_lyrics(self.play_make_sql_key(), save,
+          File "/home/rick/python/mserve.py", line 8642, in play_make_sql_key
+            return self.real_path(int(self.saved_selections[self.ndx]))[slice_from:]
+        IndexError: list index out of range
+        
+        '''
+    def playlists_open(self):
+        """ Open a playlist.
+            Mount window to prompt for specific playlist.
+            Later versions will have pick list right off menu if count < 10
+            Close play_top if running already.
+            set NEW_LOCATION so save_location functions don't run.
+        """
+        self.playlists.open()
+        # TODO: Create callback to close play_top and lib_top selections
+
+    def playlists_new(self):
+        """ Create a new playlist.
+            Mount window to prompt for new playlist name.
+            Close play_top if running already.
+            set NEW_LOCATION so save_location functions don't run.
+        """
+        self.playlists.new()
+        # TODO: How to wait for Apply button?
+
+    def clear_lib_tree(self):
+        """ Clear lib_top.tree of all selections.
+            Reset self.saved_selections to playlists.act_music_ids.
+            set NEW_LOCATION so save_location functions don't run.
+        """
+        global NEW_LOCATION
+        NEW_LOCATION = True  # TEMPORARY to prevent location saves
+
+        self.ndx = 0  # TODO: After 'resume' created set ndx
+        self.saved_selections = []
+        self.playlist_paths = []  # June 15, 2023 - Was Favorites only
+        self.clear_all_checks_and_selects()  # Clear in lib_tree music library
+        # Rebuild playlist_paths using Music Ids
+        for music_id in self.playlists.act_id_list:
+            d = sql.music_get_row(music_id)
+            if d is None:
+                print("mserve.py clear_lib_tree() ERROR music_id missing:",
+                      music_id)
+                continue
+            self.playlist_paths.append(PRUNED_DIR + d['OsFileName'])
+            self.saved_selections.append(str(music_id))
+
+        self.set_all_checks_and_selects()
+        ''' Restore previous open states when we first opened grid '''
+        self.apply_all_open_states(self.lib_tree_open_states)
 
     def handle_lib_top_focus(self, _event):
         """
-            When Volume Slider is active it always stays above Music
-            Library (lib_top) no matter what is clicked. Volume Slider
-            is mounted relative to top-left corner of lib_top and
-            doesn't use saved geometry under it's own name.
+            When Volume() Slider or Playlists() windows are active,
+            always stays above Music Library (lib_top).
 
             Credit: https://stackoverflow.com/a/44615104/6929343
 
@@ -1462,12 +1644,12 @@ class MusicTree(PlayCommonSelf):
             return False  # self.close() has set to None
         self.tt.poll_tips()  # Takes a very small processor slice
         self.lib_top.update()  # process events in queue. E.G. message.ShowInfo()
-
         sleep = 33 - (int(time.time() - now))   # Strict 30 frames per second
         sleep = 1 if sleep < 1 else sleep       # Sleep minimum 1 millisecond
         ''' Are we already destroyed? '''
         if not self.lib_top:
             return False  # self.close() has set to None
+        ''' sleep remaining time until 33ms expires '''
         self.lib_top.after(sleep)              # Sleep until next 30 fps time
         return True  # Go back to caller as success
 
@@ -1740,14 +1922,14 @@ class MusicTree(PlayCommonSelf):
         self.file_menu.add_command(label="Exit without saving Playlist", font=(None, MED_FONT),
                              command=self.exit_without_save, state=tk.DISABLED)        
         """
-        self.file_menu.entryconfig("Save Playlist", state=tk.NORMAL)
-        self.file_menu.entryconfig("Exit without saving Playlist", state=tk.NORMAL)
+        self.file_menu.entryconfig("Save Favorites", state=tk.NORMAL)
+        self.file_menu.entryconfig("Exit without saving Favorites", state=tk.NORMAL)
 
         ''' Rebuild chronology treeview '''
-        #print("self.pp_state BEFORE calling self.play_chron_create():", self.pp_state)
+        #print("self.pp_state BEFORE calling self.populate_chron_tree():", self.pp_state)
         if self.play_top_is_active:  # Play window open?
-            self.play_chron_create()  # Rebuild with new songs & without removed songs
-        #print("self.pp_state AFTER calling self.play_chron_create():", self.pp_state)
+            self.populate_chron_tree()  # Rebuild with new songs & without removed songs
+        #print("self.pp_state AFTER calling self.populate_chron_tree():", self.pp_state)
         # When applying deletions, pause is reversed and starts playing from song start?
         
         ''' Call reset which reads playlist in memory and applies to lib_tree'''
@@ -1920,6 +2102,8 @@ class MusicTree(PlayCommonSelf):
             self.tree_col_range_replace(str(i), 6,
                                         [1, 0, 0, 0, 0])
 
+        self.display_lib_title()  # Was called thousands of times above.
+
     def fast_lib_tree_create(self, delayed_textbox):
 
         """ 
@@ -2025,6 +2209,8 @@ class MusicTree(PlayCommonSelf):
                 values=(ftime, fsize, '', float(stat.st_atime), stat.st_size, 1, 0, 0, 0, 0))
             self.tree_col_range_replace(str(i), 6, [1, 0, 0, 0, 0])
 
+        self.display_lib_title()  # Was called thousands of times above.
+
         ''' Calculate columns for Artists and Albums with no songs '''
         # ext.t_init('Calculate all Artists and Albums')
         for artist in self.lib_tree.get_children():
@@ -2084,6 +2270,8 @@ class MusicTree(PlayCommonSelf):
         self.tree_col_range_add(album, 8, adj_list, tagsel='album_sel')
         self.tree_col_range_add(artist, 8, adj_list, tagsel='artist_sel')
         self.tree_title_range_add(8, adj_list)  # Pass start index
+        self.display_lib_title()  # Was called thousands of times above.
+
 
     def tree_col_range_replace(self, iid, numb, init_list, tagsel=None):
         """ Initialize treeview columns to list of values
@@ -2210,37 +2398,37 @@ class MusicTree(PlayCommonSelf):
             " 🖸 "  # big space + UTF-8 (1f5b8) + normal space
             " 📅 "   # big space + UTF-8 (1f4c5) + normal space
             " 🕑 "  # big space + UTF-8 (1f551) + normal space
+            📋 CLIPBOARD (U+1F4CB)
         """
         if selected_count > 0:
             # Format for at least one song selected
-            self.lib_top_totals[2] = "  🎵 " + str(song_count) + ' songs, ' + \
+            self.lib_top_totals[2] = "  🎵 " + str(song_count) + ' songs, ' + \
                                      str(selected_count) + ' selected  '
-            self.lib_top_totals[3] = "  🖸 " + str(all_sizes) + " " + \
+            self.lib_top_totals[3] = "  🖸 " + str(all_sizes) + " " + \
                                      CFG_DIVISOR_UOM + " used, " + str(all_selected) + \
                                      " " + CFG_DIVISOR_UOM + ' selected'
         else:
             # Format for NO songs selected
             self.lib_top_totals[2] = "  🎵 " + str(song_count) + ' songs  '
-            self.lib_top_totals[3] = "  🖸  " + str(all_sizes) + " " + \
+            self.lib_top_totals[3] = "  🖸 " + str(all_sizes) + " " + \
                                      CFG_DIVISOR_UOM + " used"
 
+    def display_lib_title(self):
+        """ Call when lib_top_totals are built and when playlist name changes """
+        self.build_lib_top_playlist_name()
+        #print("self.lib_top_playlist_name:", self.lib_top_playlist_name)
+        # NOTE called thousands of times. Should only be once right?
         self.lib_top.title(self.lib_top_totals[0] + self.lib_top_totals[1] +
                            self.lib_top_totals[2] + self.lib_top_totals[3] +
-                           " - mserve")
+                           "  ☰ " + self.lib_top_playlist_name + " - mserve")
 
-    '''
-    def tree_title__add(self, ndx, val):
-        """ Add a value to single index.
-            Not efficient but created for conformity with other add functions.
-        """
-        self.lib_top_totals[ndx] = self.lib_top_totals[ndx] + add_list[i]
-    '''
 
     # ==============================================================================
     #
     #       MusicTree Processing - Location and Dropdown Menu options
     #
     # ==============================================================================
+
 
     def loc_close(self):
         #def loc_close(self, *args):
@@ -4337,7 +4525,7 @@ $ wmctrl -l -p
         active_win = mon.get_active_window()  # Get tuple
         '''
         Window = namedtuple('Window', 'number, name, x, y, width, height')
-        x_id, window_name, geom.xp, geom.yp, geom.widthp, geom.heightp) 
+        x_id, window_name, geom.xp, geom.yp, geom.width p, geom.height p) 
         '''
         print('active_win.number:', active_win.number)
         print('active_win. x + y + Width x Height:',
@@ -4408,6 +4596,10 @@ $ wmctrl -l -p
         print('len(self.lib_tree.tag_has("Song")):',
               len(self.lib_tree.tag_has("Song")))
         print()
+
+        print("len(self.playlist_paths):", len(self.playlist_paths))
+        print("sys.get size of(self.playlist_paths):",
+              sys.getsizeof(self.playlist_paths))
 
         print("\nTOOLTIPS - tt.line_dump()")
         print("====================================\n")
@@ -4543,7 +4735,7 @@ $ wmctrl -l -p
         ''' SQL Music Table View is now active '''
         self.mus_top_is_active = True
         self.mus_top = tk.Toplevel()
-        self.mus_top.title("SQL Music - mserve")
+        self.mus_top.title("SQL Music Table - mserve")
 
         ''' Set program icon in taskbar '''
         img.taskbar_icon(self.mus_top, 64, 'white', 'lightskyblue', 'black')
@@ -4846,14 +5038,13 @@ $ wmctrl -l -p
         ''' SQL History Table View is now active '''
         self.his_top_is_active = True
         self.his_top = tk.Toplevel()
-        self.his_top.title("SQL History - mserve")
+        self.his_top.title("SQL History Table - mserve")
 
         ''' Set program icon in taskbar '''
         img.taskbar_icon(self.his_top, 64, 'white', 'lightskyblue', 'black')
 
         ''' Mount window at popup location '''
         self.his_top.minsize(width=g.WIN_MIN_WIDTH, height=g.WIN_MIN_HEIGHT)
-        # What if there is no saved geometry?
         geom = monitor.get_window_geom('sql_history')
         self.his_top.geometry(geom)
 
@@ -5628,8 +5819,8 @@ $ wmctrl -l -p
         """ Save playlist using save_last_selections. Also saves current song ndx.
         """
         # disable the two options that could have brought us here
-        self.file_menu.entryconfig("Save Playlist", state=tk.DISABLED)
-        self.file_menu.entryconfig("Exit without saving Playlist", state=tk.DISABLED)
+        self.file_menu.entryconfig("Save Favorites", state=tk.DISABLED)
+        self.file_menu.entryconfig("Exit without saving Favorites", state=tk.DISABLED)
 
         if len(self.saved_selections) <= 1:
             # Same message in multiple places. Move to own function. Perhaps at top
@@ -5641,7 +5832,7 @@ $ wmctrl -l -p
 
         self.save_last_selections()
         self.pending_tot_add_cnt = 0        # Total changes made without being
-        self.pending_tot_del_cnt = 0        # written to disk with "Save Playlist"
+        self.pending_tot_del_cnt = 0        # written to disk with "Save Favorites"
 
         message.ShowInfo(title="Playlist saved.", 
                          thread=self.get_refresh_thread(),
@@ -6066,7 +6257,7 @@ $ wmctrl -l -p
             # (0, u'The Best of 10cc', u'Album'), (0, u'3 Doors Down',
         ext.t_end('no_print')
 
-        ext.t_end('print')  # Jun 13, 2023 - OPEN FILES: 0.0121288300
+        ext.t_end('no_print')  # Jun 13, 2023 - OPEN FILES: 0.0121288300
 
         ext.t_init('Build self.saved_selections in playlist order')
         spam_count = 0
@@ -6081,11 +6272,11 @@ $ wmctrl -l -p
                 continue
             iid = str(ndx)
             self.saved_selections.append(iid)
-        ext.t_end('print')  # Jun 13, 2023 - self.saved_selections 0.1488709450
+        ext.t_end('no_print')  # Jun 13, 2023 - self.saved_selections 0.1488709450
 
         ext.t_init('set_all_checks_and_selects')
         self.set_all_checks_and_selects()
-        ext.t_end('print')  # Jun 13, 2023 - checks_and_selects: 0.4508948326
+        ext.t_end('no_print')  # Jun 13, 2023 - checks_and_selects: 0.4508948326
         """
         
         self.set_all_checks_and_selects() replaces commented code below
@@ -6183,8 +6374,8 @@ $ wmctrl -l -p
 
         ''' Selected songs can be filtered by having time index or by Artist '''
         self.filtered_selections = list(self.saved_selections)  # Deep copy
-        ext.t_end('print')  # Jun 13, 2023 - Wrap up: 0.0000181198
-        ext.t_end('print')  # May 24, 2023 - load_last_selections(): 1.6982600689
+        ext.t_end('no_print')  # Jun 13, 2023 - Wrap up: 0.0000181198
+        ext.t_end('no_print')  # May 24, 2023 - load_last_selections(): 1.6982600689
         # Jun 13, 2023 - fast_play_startup() All Steps: 0.6094801426
 
         if len(self.saved_selections) >= 2:
@@ -6227,6 +6418,8 @@ $ wmctrl -l -p
 
     def set_all_checks_and_selects(self):
         """ Called from self.pending_reset() and self.fast_play_startup()
+            June 15, 2023 - called from self.clear_lib_tree() from
+            self.playlists_open()
             BatchSelect() class for single update to parents' total selected.
             Before calling all items must be "unchecked" and "songsel" blanked.
             self.saved_selections and self.lib_tree_open_states must be set.
@@ -6258,7 +6451,7 @@ $ wmctrl -l -p
                     adj_list = bs.add_select(Song, Album, Artist, number_str)
                     # Update treeview columns with selected size, count and seconds
                     self.tree_col_range_replace(Song, 8, adj_list)  # Column number passed
-        ext.t_end('print')  # Jun 13, 2023 - open/closed and BatchSelect: 0.3233859539
+        ext.t_end('no_print')  # Jun 13, 2023 - open/closed and BatchSelect: 0.3233859539
 
         ext.t_init('Apply totals to Artists & Albums + set checkbox')
         for Artist in self.lib_tree.get_children():  # Read all Artists
@@ -6280,7 +6473,8 @@ $ wmctrl -l -p
         adj_list = bs.get_totals('lib_top_totals')
         self.tree_title_zero_selected()
         self.tree_title_range_add(8, adj_list)  # Pass start index
-        ext.t_end('print')  # Jun 13, 2023 - Artists & Albums + set checkbox: 0.1274099350
+        self.display_lib_title()  # Was called thousands of times above.
+        ext.t_end('no_print')  # Jun 13, 2023 - Artists & Albums + set checkbox: 0.1274099350
 
     # ==============================================================================
     #
@@ -6604,23 +6798,20 @@ $ wmctrl -l -p
         self.lyrics_score_scroll_y.grid(row=0, column=1, rowspan=2, sticky='ns')
         self.lyrics_score_box['yscrollcommand'] = self.lyrics_score_scroll_y.set
 
-        """ place_play_buttons() replaces Commercial button with Rewind button and
+        """ build_play_buttons() replaces Commercial button with Rewind button and
             replaces Intermission button with Fast Forward button. 
         """
-        self.place_play_buttons()  # Placement varies if Hockey enabled
+        self.build_play_buttons()  # Placement varies if Hockey enabled
 
-        ''' Frame for Playlist (Chronology) '''
-        self.F4 = tk.Frame(self.play_top, bg="Black", borderwidth=BTN_BRD_WID,
+        ''' F4 Frame for Playlist (Chronology) '''
+        self.F4 = tk.Frame(self.play_top, borderwidth=BTN_BRD_WID,
                            relief=tk.GROOVE)
-        self.F4.configure(background="Gray")
+        #self.F4.configure(background="Black")  # No effect
         self.F4.grid(row=8, column=0, sticky=tk.NSEW)
-        # Leave empty row #6 for F3 frame (was row=7)
         self.play_frm.grid_rowconfigure(8, weight=1)
-        # Leave empty row #6 for F3 frame (parameter was 7)
         self.F4.grid_rowconfigure(0, weight=1)
         self.F4.grid_columnconfigure(0, weight=1)  # Note weight to stretch
-        self.play_chron_tree()  # Treeview in play order
-        # self.F4.grid_remove()  # Defaults to show
+        self.build_chronology()  # Treeview in play order
 
         ''' Start at first listbox entry selected '''
         self.play_top_pid = 0  # Can only be one
@@ -6676,12 +6867,12 @@ $ wmctrl -l -p
         self.tt.close(self.play_btn)  # Remove old tooltip buttons in play_btn frame
         self.play_btn.grid_forget()
         self.play_btn.destroy()
-        self.place_play_buttons()
+        self.build_play_buttons()
         # TODO: Below is a shortcut. Better methodology required.
         self.play_top.lift()
         self.play_on_top = True
 
-    def place_play_buttons(self):
+    def build_play_buttons(self):
         """ Create frame for play_top buttons.
             Dynamically create buttons depending on 'play_hockey_allowed' state.
         """
@@ -6795,7 +6986,7 @@ $ wmctrl -l -p
                        "double the size of spinning artwork."
                 self.tt.add_tip(self.chron_button, text, anchor="se")
             else:
-                print("mserve.py place_play_buttons() Bad button name:", name)
+                print("mserve.py build_play_buttons() Bad button name:", name)
 
         if self.pp_state is "Paused":  # Initially defined as if playing
             self.set_pp_button_text()  # Button text reflects match play/pause state
@@ -11008,7 +11199,7 @@ IndexError: list index out of range
         shuffle(L)  # randomize list
         self.ndx = L.index(Id)  # restore old index
         self.saved_selections = tuple(L)  # convert list back into tuple
-        self.play_chron_create()  # Rebuild with new sort order
+        self.populate_chron_tree()  # Rebuild with new sort order
         sql.hist_add_shuffle('edit', 'shuffle', self.saved_selections)
 
     def play_remove(self, iid):
@@ -11067,7 +11258,7 @@ IndexError: list index out of range
         L.remove(iid)
         self.saved_selections = tuple(L)  # convert list back into tuple
         if self.play_top_is_active:  # Play window open?
-            self.play_chron_create()  # Rebuild without removed song
+            self.populate_chron_tree()  # Rebuild without removed song
 
     def play_insert(self, iid):
         """ Song has been checked. Insert it into sorted playlist.
@@ -11120,7 +11311,7 @@ IndexError: list index out of range
             self.song_set_ndx(self.ndx)  # Start playing next song, ndx + 1
             # Remove red highlighting 'play_sel' of old song 'red'
             # If tagged as currently playing, remove it.
-            self.play_chron_create()  # Rebuild with new song
+            self.populate_chron_tree()  # Rebuild with new song
 
     def kill_song(self):
         """ WARNING: Called from multiple places """
@@ -11157,6 +11348,9 @@ IndexError: list index out of range
     def play_close(self, *args):
         # TODO: last_selections aren't being saved. When clicking play again
         #       shuffle order and last song index are lost.
+
+        if not self.play_top_is_active:
+            return  # play_close() already run.
 
         # Reverse filters so proper song index is saved
         if self.chron_filter is not None:
@@ -11513,7 +11707,7 @@ IndexError: list index out of range
     #
     # ==============================================================================
 
-    def play_chron_tree(self, sbar_width=12):
+    def build_chronology(self, sbar_width=12):
         """ Chronology treeview List Box, Columns and Headings
 
             TODO:   Right click on Chrono Tree and Library brings up same
@@ -11522,9 +11716,15 @@ IndexError: list index out of range
                         - Kid 3
                         - Sample middle 10 seconds (change function?)
         """
+        #style = ttk.Style(self.F4)
+        #style.configure("black.Treeview", background="black")
         self.chron_tree = ttk.Treeview(self.F4, show=('tree',), selectmode="none")
+        #self.chron_tree.configure(style="black.Treeview")
+        # https://stackoverflow.com/a/43834987/6929343
+        # black background isn't working
         self.chron_tree.column("#0", minwidth=900, stretch=tk.YES)
         self.chron_tree.grid(row=0, column=0, sticky=tk.NSEW)
+        #self.chron_tree.rowconfigure(0, weight=1)  # Doesn't fix background prob.
 
         ''' Chronology Treeview Scrollbars '''
         # Create a vertical scrollbar linked to the frame.
@@ -11532,6 +11732,11 @@ IndexError: list index out of range
                                 command=self.chron_tree.yview)
         v_scroll.grid(row=0, column=1, sticky=tk.NS)
         self.chron_tree.configure(yscrollcommand=v_scroll.set)
+        # horizontal scrollbar useless when only column #0 is used.
+        #h_scroll = tk.Scrollbar(self.F4, orient=tk.HORIZONTAL, width=sbar_width,
+        #                        command=self.chron_tree.xview)
+        #h_scroll.grid(row=1, column=0, sticky=tk.EW)
+        #self.chron_tree.configure(xscrollcommand=h_scroll.set)
 
         ''' Chronology treeview Colors '''
         self.chron_tree.tag_configure('normal', background='Black',
@@ -11551,14 +11756,15 @@ IndexError: list index out of range
             tool_type="canvas_button", anchor="nw")
 
         ''' Populate chronology treeview '''
-        self.play_chron_create()
+        self.populate_chron_tree()
 
     def chron_tree_left_click(self, event):
         """
-            NOT USED
+            NOT USED - Binding goes directly to chron_tree_right_click()
+            Even still, have to left click twice for it to work sometimes.
         """
         item = self.chron_tree.identify_row(event.y)
-        print('def chron_tree_left_click(self, event):', item)
+        print('mserve.py chron_tree_left_click(self, event):', item)
 
     def chron_tree_right_click(self, event):
         """ Drop down menu:
@@ -11568,8 +11774,11 @@ IndexError: list index out of range
                 Filter songs by artist, with time index, over 5 minutes
         """
         item = self.chron_tree.identify_row(event.y)
-        # print('def chron_tree_right_click(self, event):', item)
-        Id = int(item)
+        print('def chron_tree_right_click(self, event):', item)
+        try:
+            Id = int(item)
+        except ValueError: # invalid literal for int() with base 10: ''
+            return  # Fake row
 
         # Needed for Kid3
         self.mouse_x, self.mouse_y = event.x_root, event.y_root
@@ -11748,7 +11957,7 @@ IndexError: list index out of range
         self.chron_org_ndx = None  # Check not "None" when closing to restore
         self.chron_filter = None
         # List is built numbered backwards with kept items at bottom numbered forwards
-        self.play_chron_create()  # Now totally rebuild from scratch
+        self.populate_chron_tree()  # Now totally rebuild from scratch
         self.song_set_ndx(self.ndx)  # Force play and screen update
         #print("restoring original self.ndx:", self.ndx)
 
@@ -11775,7 +11984,7 @@ IndexError: list index out of range
         iid = self.saved_selections[Id - 1]  # Create treeview ID
         self.kid3_song(iid)
 
-    def play_chron_create(self):
+    def populate_chron_tree(self):
         """ Populate playlist chronology treeview listbox
         """
 
@@ -11796,13 +12005,27 @@ IndexError: list index out of range
                 self.chron_tree.insert('', 'end', iid=i + 1, text=line, values=values,
                                        tags=("normal",))
             except tk.TclError:
-                bad_msg = "mserve.py play_chron_create() bad line:"
+                bad_msg = "mserve.py populate_chron_tree() bad line:"
                 print(bad_msg, line)
                 try:
                     self.chron_tree.insert('', 'end', iid=i + 1, text=bad_msg +
                                            " " + str(i + 1), tags=("normal",))
                 except Exception as err:
                     print('Update Failed: \nError: %s' % (str(err)))
+
+        ''' Create empty rows when row count < 10 '''
+        row_count = len(self.chron_tree.get_children())
+        fake_rows = self.chron_tree.tag_has("empty")  # existing number fake rows
+        needed_rows = 10 - row_count
+        needed_rows = 0 if needed_rows < 0 else needed_rows
+        if needed_rows > len(fake_rows):
+            add_cnt = needed_rows - len(fake_rows)
+            for _ in range(add_cnt):
+                self.chron_tree.insert('', 'end', tags=("normal", "empty"))
+        elif len(fake_rows) > needed_rows:
+            del_cnt = len(fake_rows) - needed_rows
+            for i, _ in enumerate(range(del_cnt)):
+                self.chron_tree.delete(fake_rows[i])
 
         ''' Highlight current song
         
@@ -12023,6 +12246,7 @@ class BatchSelect:
 
     adj_list = bs.get_totals('lib_top_totals')
     self.tree_title_range_add(8, adj_list)  # Pass start index
+    self.display_lib_title()  # Was called thousands of times above.
 
     """
 
@@ -12172,6 +12396,9 @@ class Volume:
         self.vol_frm = tk.Frame(self.top, borderwidth=BTN_BRD_WID,
                                 relief=tk.RIDGE)
         self.vol_frm.grid(column=0, row=0, sticky=tk.NSEW)
+        self.vol_frm.columnconfigure(0, weight=1)
+        self.vol_frm.columnconfigure(1, weight=5)
+        self.vol_frm.rowconfigure(0, weight=1)
         ms_font = (None, MON_FONTSIZE)
 
         ''' Controls to resize image to fit frame '''
@@ -12208,13 +12435,10 @@ class Volume:
                  font=ms_font).grid(row=3, column=0, sticky=tk.W)
         tk.Entry(self.vol_frm, textvariable=self.tv_application,
                  font=ms_font).grid(row=3, column=1, sticky=tk.W)
-
         ''' Volume Slider '''
         self.slider = tk.Scale(self.vol_frm, from_=100, to=25, tickinterval=5,
                                command=self.set_sink)
         self.slider.grid(row=0, column=3, rowspan=4, padx=5, pady=5, sticky=tk.NS)
-
-
         ''' Close Button '''
         self.close_button = tk.Button(self.vol_frm, text="✘ Close",
                                       width=BTN_WID2 - 6,
@@ -12225,7 +12449,6 @@ class Volume:
                             anchor="nw")
         self.top.bind("<Escape>", self.close)  # DO ONLY ONCE?
         self.top.protocol("WM_DELETE_WINDOW", self.close)
-
         ''' Apply Button '''
         self.apply_button = tk.Button(self.vol_frm, text="✔ Apply",
                                       width=BTN_WID2 - 6,
@@ -12235,7 +12458,6 @@ class Volume:
             self.tt.add_tip(self.apply_button, "Save Volume Slider changes and exit.",
                             anchor="ne")
         self.top.bind("<Return>", self.apply)  # DO ONLY ONCE?
-
         ''' Get current volume & Read stored volume '''
         self.last_volume, self.last_sink = self.get_volume()  # Reset this value when ending
         if not self.read_vol():
@@ -12394,20 +12616,21 @@ class Playlists:
 
         self.playlists = Playlists(parent, name, title, text, tooltips=self.tt,
                                    thread=self.get_refresh_thread(),
-                                   rebuild_menu_bar=self.build_lib_menu)
+                                   display_lib_title=self.display_lib_title)
               - Geometry in Type-'window', action-'pls_top'.
-              - rebuild_menu_bar will look at self.playlists.status
-                None = New, Copy and Open active options
-                'new' = Save playlist and Save as... active options
-                'open' = Save playlist and Save as... active options
-                'save' = no active options
-                'save_as' = no active options
-                'copy' = no active options
-                'copy_to' = no active options
-                'copy_from' = no active options
+              - build_lib_menu will look at self.playlists.status
 
-        if self.playlists and self.playlists.pls_top:
-            - Volume top level exists so lift() to top of stack
+        Functions:
+            new(self):
+            rename(self):
+            delete(self):
+            open(self):
+            save(self):
+            save_as(self):
+            use_favorites(self):
+        
+        if self.playlists.pls_top:
+            - Playlists top level exists so lift() to top of stack
 
     History Record Formats
 
@@ -12439,46 +12662,61 @@ class Playlists:
 
 Create playlists on iPhone
 
-In the Music app , you can organize music into playlists that you can share with your friends.
+In the Music app , you can organize music into playlists that you can share
+ with your friends.
 
-Note: You can’t create playlists in the Apple Music Voice Plan. For more information, see the Apple Support article How to use Apple Music Voice.
+Note: You can’t create playlists in the Apple Music Voice Plan. For more
+information, see the Apple Support article How to use Apple Music Voice.
 Create playlists to organize your music
 
     To create a new playlist, do any of the following:
 
         Tap Library, tap Playlists, then tap New Playlist.
 
-        Touch and hold a song, album, or playlist; tap Add to a Playlist; then tap New Playlist.
+        Touch and hold a song, album, or playlist; tap Add to a Playlist;
+        then tap New Playlist.
 
-        On the Now Playing screen, tap the More button, tap Add to a Playlist, then tap New Playlist.
+        On the Now Playing screen, tap the More button, tap Add to a
+        Playlist, then tap New Playlist.
 
     To more easily identify the playlist later, enter a name and description.
 
-    To give your playlist cover art, tap the Camera button, then take a photo or choose an image from your photo library.
+    To give your playlist cover art, tap the Camera button, then take a photo
+     or choose an image from your photo library.
 
-    To add music to the playlist, tap Add Music, then tap Listen Now, Browse, Library, or the search field.
+    To add music to the playlist, tap Add Music, then tap Listen Now, Browse,
+    Library, or the search field.
 
     Choose or search for music, then tap the Add button to add it to the playlist.
 
-Tip: If you want to add songs to your library when you add them to a playlist, go to Settings  > Music, then turn on Add Playlist Songs.
+Tip: If you want to add songs to your library when you add them to a playlist,
+     go to Settings  > Music, then turn on Add Playlist Songs.
+
 Edit a playlist you created on iPhone
 
 Tap the playlist, tap the More button, tap Edit, then do any of the following:
 
     Add more songs: Tap Add Music, then choose music.
 
-    You can also touch and hold an item (song, album, playlist, or music video), tap Add to a Playlist, then choose a playlist.
+    You can also touch and hold an item (song, album, playlist, or music video),
+     tap Add to a Playlist, then choose a playlist.
 
-    Delete a song: Tap the Delete button, then tap Delete. Deleting a song from a playlist doesn’t delete it from your library.
+    Delete a song: Tap the Delete button, then tap Delete. Deleting a song
+    from a playlist doesn't delete it from your library.
 
     Change the song order: Drag the Reorder button next to a song.
 
-Changes you make to your music library are updated across all your devices when Sync Library is turned on in Music settings. If you’re not an Apple Music subscriber, the changes appear in your music library the next time you sync with your computer.
+Changes you make to your music library are updated across all your devices when
+Sync Library is turned on in Music settings. If you’re not an Apple Music
+subscriber, the changes appear in your music library the next time you sync
+with your computer.
+
 Sort a playlist
 
     Tap a playlist, then tap the More button at the top right of the screen.
 
-    Tap Sort By, then choose an option—Playlist Order, Title, Artist, Album, or Release Date.
+    Tap Sort By, then choose an option—Playlist Order, Title, Artist, Album,
+    or Release Date.
 
 Delete a playlist
 
@@ -12486,46 +12724,81 @@ Touch and hold the playlist, then tap Delete from Library.
 
 You can also tap the playlist, tap the More button, then tap Delete from Library.
 
-
     """
 
-    def __init__(self, parent=None, name=None, title=None, text=None,
-                 tooltips=None, thread=None, rebuild_menu_bar=None):
+    def __init__(self, parent=None, text=None,
+                 apply_callback=None, enable_lib_menu=None,
+                 tooltips=None, thread=None, display_lib_title=None):
         """
             TODO: How to change self.play_top_title text when playlist changes?
         """
         ''' self-ize parameter list '''
         self.parent = parent  # FOR NOW self.parent MUST BE: lib_top
-        self.name = name  #
-        self.title = title  # E.G. "Playlists"
-        self.text = text  #
+        self.name = None  # Playlist name that is being played right now
+        self.old_name = None  # Name before we changed it
+        self.text = text  # Text replacing treeview when no playlists on file
+        self.apply_callback = apply_callback
+        self.enable_lib_menu = enable_lib_menu
         self.tt = tooltips  # Tooltips pool for buttons
         self.thread = thread  # E.G. self.get_refresh_thread()
-        self.rebuild_menu_bar = rebuild_menu_bar
-        ''' Playlist work fields '''
-        self.last_playlist = None
-        self.last_sink = None
-        self.curr_playlist = None
-        self.artwork = None  # Artwork for the current playlist
-        self.sink_playlist_wip = None
+        self.display_lib_title = display_lib_title  # Rebuild lib_top menubar
+
+        ''' All Playlists work fields - Set on program start and saving changes '''
+        self.all_numbers = []  # "P000001", "P000002", etc... can be holes
+        self.all_names = []  # Names matching all_numbers
+        self.all_descriptions = []  # Descriptions matching all_numbers
+        self.names_for_loc = []  # Names sorted for this location
+        self.names_all_loc = []  # Names sorted for all locations
+
+        ''' Current Playlist work fields - History Record format '''
+        self.act_row_id = None  # History record number
+        self.act_number_str = None  # E.G. "P000001"
+        self.act_loc_id = None  # E.G. "L004"
+        self.act_name = None  # E.G. "Oldies"
+        self.act_id_list = []  # Sorted in play order
+        self.act_size = 0  # Size of all song files
+        self.act_count = 0  # len(self.music_id_list)
+        self.act_secs = 0.0  # Duration of all songs
+        self.act_description = None  # E.G. "Songs from 60's & 70's
+
+        ''' Miscellaneous Playlist work fields '''
         self.state = None  # 'new', 'open', 'save', 'save_as', 'view'
-        ''' Input fields: TV_BREAK1, TV_BREAK2 and TV_SOUND '''
+        self.input_active = False  # Can enter Playlist Name & Description
+
+        ''' Input Window and fields '''
         self.top = None  # tk.Toplevel
         self.frame = None  # tk.Frame inside self.top
-        self.scr_name = tk.StringVar()
+        self.his_view = None  # SQL Hist tk.Treeview managed by Data Dictionary
+
+        self.fld_name = None  # Field tk.Entry for toggling readonly state
+        self.fld_description = None
+        self.scr_name = tk.StringVar()  # Input fields
         self.scr_description = tk.StringVar()
         self.scr_location = tk.StringVar()
-        self.artwork = None
+
+        self.fld_count = None  # Field display only
+        self.fld_size = None
+        self.fld_seconds = None
+
+        self.artwork = None  # Not used
         self.close_button = None
         self.apply_button = None
         ''' Controls to resize image to fit frame '''
         self.start_w = None
         self.start_h = None
+        ''' Find all existing playlists '''
+        self.build_playlists()  # Build working fields for all playlists
 
-    def full_window(self, name=None):
+    def create_window(self, name=None):
         """ Mount full window
+            All functions call this function.
+            :param name: "New Playlist", "Open Playlist", etc.
         """
-        ''' Regular geometry is good '''
+        ''' Save current name to old_name to make decisions if changed. '''
+        self.old_name = self.name
+        ''' Turn off lib_top's menu bar'''
+        #self.parent.configure(menu="")
+        ''' Unlike Volume(), regular geometry is good for Playlists() '''
         self.top = tk.Toplevel()  # Playlists top level
         geom = monitor.get_window_geom('pls_top')
         self.top.geometry(geom)
@@ -12534,16 +12807,20 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         self.top.title(name + " - mserve")
         self.top.configure(background="Gray")
         self.top.columnconfigure(0, weight=1)
-        self.top.columnconfigure(1, weight=3)
         self.top.rowconfigure(0, weight=1)
+        ''' After top created, disable all File Menu options for playlists '''
+        self.enable_lib_menu()
         ''' Set program icon in taskbar '''
         img.taskbar_icon(self.top, 64, 'white', 'lightskyblue', 'black')
         ''' Create master frame '''
         self.frame = tk.Frame(self.top, borderwidth=BTN_BRD_WID,
                               relief=tk.RIDGE)
-        self.frame.grid(column=0, row=0, sticky=tk.NSEW)
+        self.frame.grid(sticky=tk.NSEW)
+        self.frame.columnconfigure(0, weight=1)
+        self.frame.columnconfigure(1, weight=3)  # Data entry fields
+        self.frame.rowconfigure(0, weight=1)
         ms_font = (None, MON_FONTSIZE)
-        ''' Controls to resize image to fit frame '''
+        ''' Controls to resize image (FUTURE self.artwork) to fit frame '''
         self.frame.bind("<Configure>", self.on_resize)
         self.start_w = self.frame.winfo_reqheight()
         self.start_h = self.frame.winfo_reqwidth()
@@ -12555,102 +12832,262 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                         "You can create a playlist by selecting\n" + \
                         "the 'New Playlist' option or 'Copy Playlist'\n" + \
                         "option from the 'File' dropdown menu bar.\n"
-        tk.Label(self.frame, text=self.text, justify="left", font=ms_font) \
-            .grid(row=0, column=0, columnspan=3, sticky=tk.W, padx=5)
+
+        if len(self.all_numbers) == 0:
+            # No playlists have been created yet
+            tk.Label(self.frame, text=self.text, justify="left", font=ms_font) \
+                .grid(row=0, column=0, columnspan=3, sticky=tk.W, padx=5)
+        else:
+            self.populate_his_tree()  # Paint treeview of playlists
+        ''' Playlist Name is readonly except for 'new' and 'rename' '''
         tk.Label(self.frame, text="Playlist name:",
                  font=ms_font).grid(row=1, column=0, sticky=tk.W, padx=5)
-        tk.Entry(self.frame, textvariable=self.scr_name,
-                 font=ms_font).grid(row=1, column=1, sticky=tk.W, padx=5)
+        self.fld_name = tk.Entry(self.frame, textvariable=self.scr_name, 
+                                 state='readonly', font=ms_font)
+        self.fld_name.grid(row=1, column=1, sticky=tk.W, padx=5, pady=5)
+        self.scr_name.set("")  # Clear left over from last invocation
+        ''' Playlist Description is readonly except for 'new' and 'rename' '''
         tk.Label(self.frame, text="Playlist description:",
                  font=ms_font).grid(row=2, column=0, sticky=tk.W, padx=5)
-        tk.Entry(self.frame, textvariable=self.scr_description,
-                 font=ms_font).grid(row=2, column=1, sticky=tk.W, padx=5)
+        self.fld_description = tk.Entry(
+            self.frame, textvariable=self.scr_description, state='readonly',
+            font=ms_font)
+        self.fld_description.grid(row=2, column=1, sticky=tk.W, padx=5, pady=5)
+        self.scr_description.set("")  # Clear left over from last invocation
+        ''' Device Location is always readonly '''
         tk.Label(self.frame, text="Device location:",
                  font=ms_font).grid(row=3, column=0, sticky=tk.W, padx=5)
         tk.Entry(self.frame, textvariable=self.scr_location, state='readonly',
                  font=ms_font).grid(row=3, column=1, sticky=tk.W, padx=5,
                                     pady=5)
         self.scr_location.set(LODICT['iid'] + " - " + LODICT['name'])
+        ''' TODO: Add Size, Count and Seconds '''
+        self.input_active = False
         ''' Artwork '''
         # self.name_var.set(... state=self.state self.state =
-        #self.artwork = tk.Scale(self.frame, from_=100, to=25, tickinterval=5,
+        #self.artwork = tk.Scale(self.frame, from_=100, to=25, tick interval=5,
         #                        command=self.set_sink)
-        #self.artwork.grid(row=0, column=3, rowspan=4, padx=5, pady=5, sticky=tk.NS)
+        #self.artwork.grid(row=0, column=3, row span=4, pad x=5, pad y=5, sticky=tk.NS)
         ''' Close Button '''
         self.close_button = tk.Button(self.frame, text="✘ Close",
-                                      width=BTN_WID2 - 6,
-                                      command=self.close)
+                                      width=BTN_WID2 - 6, command=self.close)
         self.close_button.grid(row=4, column=0, padx=5, pady=5, sticky=tk.W)
-        if self.tt:
-            self.tt.add_tip(self.close_button, "Close Volume Slider, ignore changes.",
-                            anchor="nw")
+        self.tt.add_tip(self.close_button, "Ignore changes and return.",
+                        anchor="nw")
         self.top.bind("<Escape>", self.close)  # DO ONLY ONCE?
         self.top.protocol("WM_DELETE_WINDOW", self.close)
+        ''' Song Count display only field '''
+        tk.Label(self.frame, text="Song count:",
+                 font=ms_font).grid(row=1, column=2, sticky=tk.W, padx=5)
+        self.fld_count = tk.Label(self.frame, text="0", font=ms_font)
+        self.fld_count.grid(row=1, column=3, sticky=tk.E, padx=5)
+        ''' File sizes display only field '''
+        tk.Label(self.frame, text="File sizes:",
+                 font=ms_font).grid(row=2, column=2, sticky=tk.W, padx=5)
+        self.fld_size = tk.Label(self.frame, text="0", font=ms_font)
+        self.fld_size.grid(row=2, column=3, sticky=tk.E, padx=5)
+        ''' File sizes display only field '''
+        tk.Label(self.frame, text="Music Duration:",
+                 font=ms_font).grid(row=3, column=2, sticky=tk.W, padx=5)
+        self.fld_seconds = tk.Label(self.frame, text="0", font=ms_font)
+        self.fld_seconds.grid(row=3, column=3, sticky=tk.E, padx=5)
         ''' Apply Button '''
-        self.apply_button = tk.Button(self.frame, text="✔ Apply",
-                                      width=BTN_WID2 - 6,
-                                      command=self.apply)
+        action = name.split(" Playlist")[0]
+        self.apply_button = tk.Button(self.frame, text="✔ " + action,
+                                      width=BTN_WID2 - 6, command=self.apply)
         self.apply_button.grid(row=4, column=3, padx=5, pady=5, sticky=tk.W)
-        if self.tt:
-            self.tt.add_tip(self.apply_button, "Save Volume Slider changes and exit.",
-                            anchor="ne")
+        self.tt.add_tip(self.apply_button, action + " Playlist and return.",
+                        anchor="ne")
         self.top.bind("<Return>", self.apply)  # DO ONLY ONCE?
-
         ''' Refresh screen '''
         if self.top:  # May have been closed above.
             self.top.update_idletasks()
 
-    def get_playlist(self, name=None):
-        """ Get volume of 'ffplay' before we start
+    def build_playlists(self):
+        """ Get ALL configuration history rows for Type = 'playlist'
+            Create sorted list of names for current location. Called
+            each time Playlists.function() used.
         """
-        if name is None:
-            name = self.name
-        all_sinks = sink_master()
-        for entry in all_sinks:
-            sink, volume, app_name = entry
-            if app_name == name:
-                # print("get_playlist():", volume)
-                return int(volume), sink
+        ''' Lists already declared in Init but must reset between calls 
+            Put this into newly created CommonSelf()
+        '''
+        self.all_numbers = []  # "P000001", "P000002", etc... can be holes
+        self.all_names = []  # Names matching all_numbers
+        self.all_descriptions = []  # Descriptions matching all_numbers
+        self.names_for_loc = []  # Names sorted for this location
+        self.names_all_loc = []  # Names sorted for all locations
+        ''' Read all playlists from SQL History Table into work lists '''
+        for row in sql.hist_cursor.execute("SELECT * FROM History " +
+                                           "INDEXED BY TypeActionIndex " +
+                                           "WHERE Type = ?", ('playlist',)):
+            d = dict(row)
+            self.make_act_from_hist(d)
+            self.all_numbers.append(self.act_number_str)
+            self.all_names.append(self.act_name)
+            self.names_all_loc.append(self.act_name)
+            if self.act_loc_id == LODICT['iid']:
+                self.names_for_loc.append(self.act_name)
 
-        return None, None
+        self.names_all_loc.sort()
+        self.names_for_loc.sort()
+
+    def populate_his_tree(self):
+        """
+            Use custom Data Dictionary routines for managing treeview.
+        """
+        history_dict = sql.history_treeview()  # Heart of Data Dictionary
+        ''' Data Dictionary Field Names '''
+        columns = ["detail", "comments", "count", "size", "seconds"]
+        toolkit.select_dict_columns(columns, history_dict)
+        # TODO make row_id column hidden
+        # toolkit.print_dict_columns(history_dict)  # Uncomment to debug
+        ''' Create treeview frame with scrollbars '''
+        tree_frame = tk.Frame(self.frame, bg="olive", relief=tk.RIDGE)
+        tree_frame.grid(sticky=tk.NSEW, columnspan=4)
+        tree_frame.columnconfigure(0, weight=1)
+        tree_frame.rowconfigure(0, weight=1)
+        self.his_view = toolkit.DictTreeview(
+            history_dict, self.top, tree_frame, columns=columns,
+            highlight_callback=self.highlight_callback)
+        ''' Override generic column heading names for Playlist usage '''
+        self.his_view.tree.heading('detail', text='Playlist Name')
+        self.his_view.tree.heading('comments', text='Playlist Description')
+        self.his_view.tree.heading('count', text='# Songs')
+        self.his_view.tree.heading('size', text='File Bytes')
+        self.his_view.tree.heading('seconds', text='Duration')
+        self.his_view.tree["displaycolumns"] = columns  # hide row_id
+        ''' Treeview select item with button clicks '''
+        # Need to import more stuff before moving columns work?
+        #toolkit.MoveTreeviewColumn(self.top, self.his_view.tree,
+        #                           row_release=self.his_button_3_click)
+        self.his_view.tree.bind("<Button-1>", self.his_button_click)
+        self.his_view.tree.bind("<Button-3>", self.his_button_click)
+
+        ''' For some reason, memory of last hist_view.tree still exists 
+            return ttk.Treeview.insert(self, parent, index, iid, **kw)
+              File "/usr/lib/python2.7/lib-tk/ttk.py", line 1337, in insert
+                "-id", iid, *opts)
+            TclError: Item P000001 already exists
+        '''
+        #self.his_view.tree.delete(*self.his_view.tree.get_children())
+
+        ''' Loop through sorted lists, reread history and insert in tree '''
+        for name in self.names_for_loc:  # Sorted alphabetically
+            ndx = self.all_names.index(name)  # In key order P000001, P000002, etc.
+            number_str = self.all_numbers[ndx]
+            d = sql.get_config('playlist', number_str)  # Must be here
+            self.his_view.insert("", d, iid=number_str, tags="unchecked")
+
+    def his_button_click(self, event):
+        """ Left button clicked to drill down on SQL History treeview line.
+            Short click to retrieve and display gmail message header.
+            Click and hold changes cursor to hand and allows column to
+            be moved in the treeview.
+        """
+        number_str = self.his_view.tree.identify_row(event.y)
+        if self.state == "new" or self.state == "save_as":
+            # cannot use enable_input because rename needs to pick old name first
+            text = "Cannot pick an old playlist when creating a new playlist."
+            message.ShowInfo(self.top, "Existing playlists for reference only!",
+                             text, icon='warning', thread=self.thread)
+        else:
+            # FOR NOW. It might be nice to recall existing name to amend
+            self.read_playlist(number_str)
+
+    def highlight_callback(self, number_str):
+        """
+        As lines are highlighted in treeview, this function is called.
+        :param number_str: Playlist number used as iid inside treeview
+        :return: None
+        """
+        #print("number_str:", number_str)
+        pass
 
     def new(self):
         """
-            Called by lib_top File Menubar "New Playlist"
+            Indirectly called by lib_top File Menubar "New Playlist"
+
+            When 'new', 'open', 'rename' or 'save_as' is used, update
+            self.name with playlist name and call display_lib_title()
+            to put name into title bar.
+
+            Call BannerMessage() to bubble message playlist information
         """
         self.state = 'new'
-        self.rebuild_menu_bar()
-        self.full_window("New Playlist")
+        self.create_window("New Playlist")
+        self.enable_input()
 
-    def copy(self):
+    def enable_input(self):
         """
-            Called by lib_top File Menubar "Copy Playlist"
+            Turn on input fields for 'new', 'rename' and 'save_as'
         """
-        self.state = 'copy'
-        self.rebuild_menu_bar()
-        self.full_window("Copy Playlist")
+        self.input_active = True
+        self.fld_name['state'] = 'normal'  # Allow input
+        self.fld_description['state'] = 'normal'  # Allow input
+
+    def rename(self):
+        """
+            Called by lib_top File Menubar "Rename Playlist"
+
+            When 'new', 'open', 'rename' or 'save_as' is used, update
+            self.name with playlist name and call display_lib_title()
+            to put name into title bar.
+        """
+        self.state = 'rename'
+        self.create_window("Rename Playlist")
+        self.enable_input()
+
+    def delete(self):
+        """
+            Called by lib_top File Menubar "Delete Playlist"
+        """
+        self.state = 'delete'
+        self.create_window("Delete Playlist")
 
     def open(self):
         """
-            Called by lib_top File Menubar "Open Playlist"
+            Indirectly called by lib_top File Menubar "Open Playlist"
+
+            When 'new', 'open', 'rename' or 'save_as' is used, update
+            self.name with playlist name and call display_lib_title()
+            to put name into title bar.
+
+            Call BannerMessage() to bubble message playlist information
         """
         self.state = 'open'
-        self.rebuild_menu_bar()
-        self.full_window("Open Playlist")
+        self.create_window("Open Playlist")
 
     def save(self):
         """
             Called by lib_top File Menubar "Save Playlist"
         """
         self.state = 'save'
-        self.rebuild_menu_bar()
 
     def save_as(self):
         """
             Called by lib_top File Menubar "Save Playlist As..."
+
+            When 'new', 'open', 'rename' or 'save_as' is used, update
+            self.name with playlist name and call display_lib_title()
+            to put name into title bar.
+
+            Call BannerMessage() to bubble message playlist information
         """
         self.state = 'save_as'
-        self.rebuild_menu_bar("Save Playlist as…")
+        self.create_window("Save Playlist as…")
+        self.enable_input()
+
+    def use_favorites(self):
+        """
+            Called by lib_top File Menubar "Use favorites (no playlist)"
+
+            Blank out self.name and call display_lib_title()
+            which forces Favorites into title bar when self.name is blank.
+
+            Call BannerMessage() to bubble message playlist information
+        """
+        self.state = 'save_as'
+        self.create_window("Save Playlist as…")
 
     def on_resize(self, *args):
         """
@@ -12658,57 +13095,147 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         """
         pass
 
-    def scr_get(self):
-        """ Get Playlist Name & Description from window """
-        pass
-
-    def read_playlist(self):
+    def read_playlist(self, number_str):
         """
-            Get last saved volume.  Based on get_hockey
+            Get specified playlist number string into work fields
         """
-
-        self.curr_playlist = 100  # mserve volume when TV commercial on air
-        d = get_config_for_loc('hockey_state')
+        d = sql.get_config('playlist', number_str)
         if d is None:
             return None
 
-        ''' Get hockey tv commercial volume '''
-        if 25 <= int(d['Size']) <= 100:
-            self.curr_playlist = int(d['Size'])
-            # print("self.curr_playlist 1:", self.curr_playlist)  # 60
+        ''' Current Playlist work fields - History Record format '''
+        self.make_act_from_hist(d)
 
-        self.scr_name.set(d['Count'])
-        self.scr_description.set(d['Seconds'])
-        self.scr_location.set(d['SourceDetail'])
+        # TEMPORARY, THESE SHOULD BE RELOCATED
+        self.scr_name.set(d['SourceDetail'])
+        self.scr_description.set(d['Comments'])
+        self.scr_location.set(d['SourceMaster'])
 
         self.top.update_idletasks()
 
         return True
 
-    def save_playlist(self):
+    def make_act_from_hist(self, d):
+        """ The 'Type' is always 'playlist'
         """
-            Save volume
+        self.act_row_id = d['Id']  # History record number
+        self.act_number_str = d['Action']  # E.G. "P000001"
+        self.act_loc_id = d['SourceMaster']  # E.G. "L004"
+        self.act_name = d['SourceDetail']  # E.G. "Oldies"
+        self.act_id_list = json.loads(d['Target'])  # Sorted in play order
+        self.act_size = d['Size']  # Size of all song files
+        self.act_count = d['Count']  # len(self.music_id_list)
+        self.act_secs = d['Seconds']  # Duration of all songs
+        self.act_description = d['Comments']  # E.G. "Songs from 60's & 70's
+
+    def edit_playlist(self):
         """
-        ''' Reread hockey state in case user changed after set_tv_playlist started '''
-        d = get_config_for_loc('hockey_state')
-        # If we don't rewrite fields they get blanked out. Action=Location
-        try:
-            d['Count'] = self.scr_name.get()
-            d['Size'] = float(self.scr_description.get())
-        except ValueError:
-            message.ShowInfo(self.top, "Invalid Seconds Entered.",
-                             "Commercial or Intermission contains non-digit(s).",
-                             icon='error', thread=self.thread)
+            Edit Playlist in current (active / "act_") work fields
+
+            Type-'playlist', Action-P999999, Master-L999, Detail-Playlist Name,
+                Target-JSON list of sorted Music IDs, Size=MB, Count=# Songs,
+                Seconds=Total Duration, Comments=Playlist Description
+
+        """
+        ''' If we are adding new or renaming get what was entered'''
+        new_name = self.scr_name.get()
+        new_description = self.scr_description.get()
+        if self.state == 'new':
+            # Set old_name and old description for comparisons below
+            self.act_name = ""
+            self.act_description = ""
+
+        if new_name == "":
+            if self.input_active:
+                text = "Enter a unique name for the playlist."
+            else:
+                text = "First click on a playlist entry."
+            message.ShowInfo(self.top, "Name cannot be blank!",
+                             text, icon='Error', thread=self.thread)
             return False
 
-        d['SourceDetail'] = self.scr_location.get()
-        _playlist, sink = self.get_playlist(name=d['SourceDetail'])
-        if sink is None:
-            message.ShowInfo(self.top, "Invalid TV Application Name.",
-                             "The name entered is not a valid running application.",
-                             icon='error', thread=self.thread)
-            return False
+        if new_description == "" and self.input_active:
+            text = "Enter a playlist description gives more functionality\n" +\
+                "in other Music Players such as iPhone."
+            message.ShowInfo(self.top, "Description is blank?",
+                             text, icon='Warning', thread=self.thread)
+
+        if self.input_active:
+            ''' Same name cannot exist in this location '''
+            if new_name in self.names_for_loc and \
+                    new_name != self.act_name:
+                print("Name must be unique for location ")
+                return False
+            if new_name in self.names_all_loc and \
+                    new_name != self.act_name:
+                print("Warning Name in another location. Are you sure?")
+
+        if self.state == 'new':
+            # Passed all tests so create new number string
+            if len(self.all_numbers) > 0:
+                last_str = self.all_numbers[-1]  # Grab last number
+                val = int(last_str[1:]) + 1  # increment to next available
+                self.act_number_str = "P" + str(val).zfill(6)
+            else:
+                self.act_number_str = "P000001"  # Very first playlist
+            self.act_loc_id = LODICT['iid']
+            self.act_id_list = []  # Empty list
+            self.act_size = 0  # Size of all song files
+            self.act_count = 0  # len(self.music_id_list)
+            self.act_secs = 0.0  # Duration of all songs
+            # TODO set self.name to playlist name
+
+        if self.input_active:
+            # All act_fields initialized in .new() function. Add extras
+            self.act_name = new_name
+            self.act_description = new_description
+
+        if self.state == 'open':
+            print("Opening Playlist with", self.act_count, "songs.",
+                  "Row Id:", self.act_row_id)
+            print("self.act_description:", self.act_description,
+                  "new_description:", new_description)
+            # TODO set self.name to playlist name
+
+        if self.state == 'delete':
+            print("Deleting Playlist with", self.act_count, "songs.",
+                  "Row Id:", self.act_row_id,
+                  "Are you sure?")
+            print("self.act_description:", self.act_description,
+                  "new_description:", new_description)
+            return True
+
+        if self.state == 'save':
+            # TODO: get total songs, size and seconds into act_fields
+            pass
+
+        if self.state == 'save_as':
+            pass
+
         return True
+
+    def save_playlist(self):
+        """
+            Save Playlist in current (active / "act_") work fields
+
+            Type-'playlist', Action-P999999, Master-L999, Detail-Playlist Name,
+                Target-JSON list of sorted Music IDs, Size=MB, Count=# Songs,
+                Seconds=Total Duration, Comments=Playlist Description
+
+        """
+        ''' Current Playlist work fields - History Record format '''
+        sql.save_config('playlist', self.act_number_str, self.act_loc_id,
+                        self.act_name, json.dumps(self.act_id_list),
+                        self.act_size, self.act_count, self.act_secs,
+                        self.act_description)
+
+    def delete_playlist(self):
+        """
+            Delete Playlist using History Row ID
+        """
+        sql.hist_cursor.execute("DELETE FROM History WHERE Id = ?",
+                                [self.act_row_id])
+        sql.con.commit()
 
     # noinspection PyUnusedLocal
     def close(self, *args):
@@ -12719,30 +13246,111 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             monitor.save_window_geom('pls_top', geom)
             self.top.destroy()
         # print("self.top after .destroy()", self.top)
-        self.top = None  # Indicate volume slider is closed
-
-        ''' Adjust volume for playing mserve song back to "normal" '''
-        # curr_playlist, curr_sink = self.get_playlist()  # Current volume would be what we just saved.
-        # Problem: We don't take into consideration self.last_playlist
-        #          If music was paused while self.vol_class() was open it's now 25%
+        self.top = None  # Indicate Playlist Maintenance is closed
+        self.state = None  # TEMPORARY - Needs to be more granular
+        ''' After top created, disable all File Menu options for playlists '''
+        self.enable_lib_menu()
 
     # noinspection PyUnusedLocal
     def apply(self, *args):
-        """ Work out mode and update database. """
-        self.scr_get()
-        print("\nstate : ", self.state, "  | scr_name : ", self.scr_name.get(),
-              "  | scr_description : ", self.scr_description.get())
-        print("scr_location : ", self.scr_location.get())
-        # Location Key is split()[0]
-        print("Location Key is split()[0] : ", self.scr_location.get().split()[0])
+        """ Validate, Analyze mode (state), update database appropriately. """
+        if self.edit_playlist() is False:
+            return
+
+        if self.state == 'delete':
+            self.delete_playlist()
+            # TODO: What if deleting currently playing playlist?
+        elif self.state == 'open':
+            self.name = self.act_name  # Tell parent name of playlist
+            self.apply_callback()  # Tell parent to start running playlist
+            # TODO: Need to give back old name and new name. If they are
+            #       different then old name is closed if playing. If they
+            #       are the same then we only renamed description? If old
+            #       name is blank then close favorites and open new name.
+            #       If new name is blank, then we were just renaming and
+            #       not touching existing playlist.
+        elif self.state == 'new':
+            self.save_playlist()  # Save brand new playlist
+            self.name = self.act_name  # Tell parent name of playlist
+            self.apply_callback()  # Tell parent to start editing playlist
+        else:
+            self.save_playlist()  # Save, Save As, Rename
+            self.name = self.old_name  # This is cryptic
+
+        self.build_playlists()  # Rebuild playlist changes (resource greedy)
+        # Why not apply_callback() at this point instead?
+        self.display_lib_title()  # Important that self.name is ACCURATE
         self.close()
 
 
 # ==============================================================================
 #
+#       BannerMessage() class.
+#
+# ==============================================================================
+
+class BannerMessage:
+    """ Usage:
+
+        self.banner = BannerMessage(
+            self.banner_frm, self.banner_btn, self.build_banner_btn,
+            self.build_banner_canvas, self.tt):
+
+        Overview:
+
+        Remove manual tooltip for banner button destroyed
+            self.tt.close(self.banner_btn)
+            self.banner_btn.destroy()
+
+        Create frame that can be expanded:
+            self.info_frm = tk.Frame(self.banner_frm, height=0, bg="sky blue3")
+            self.info_frm.pack()  # Old School works better this time for...
+            self.info_frm.place(height=7, width=7000)  # ...height of 7 override
+            self.tt.add_tip(self.info_frm, tool_type='piggy_back')
+
+        Force frame creation & expansion (fade-in):
+            self.tt.log_event('enter', frame, frame_x, frame_y)
+
+        Force frame collapse & removal (fade-out):
+            self.tt.log_event('leave', frame, frame_x, frame_y)
+
+        Create bindings for <Enter> and <Leave> frame
+            If leaving before fade-out finished, log leave
+            If entering frame do nothing because tt already thinks it's entered
+
+        Monitor fade-in & fade-out
+            update_alpha(tt_perc, tt_dict)
+        
+    """
+
+    def __init__(self, banner_frm=None, banner_btn=None, build_banner_btn=None,
+                 tooltips=None):
+        """
+            
+        """
+        ''' self-ize parameter list '''
+        self.banner_frm = banner_frm
+        self.banner_btn = banner_btn
+        self.build_banner_btn = build_banner_btn
+        self.tt = tooltips
+
+    def update_alpha(self, alpha, tt_dict):
+        """
+        Called from Tooltips whenever fading-in or fading-out alpha changes
+
+        :param alpha: % fading-in or fading-out from 0.0 to .99999
+        :param tt_dict: Tooltips dictionary for widget status
+        :return: None
+        """
+        pass
+        
+        
+# ==============================================================================
+#
 #       Independent (Stand Alone) Functions
 #
 # ==============================================================================
+
 
 def get_config_for_loc(Type):
     """ Wrapper Action is auto assigned as location

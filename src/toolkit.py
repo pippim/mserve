@@ -9,6 +9,7 @@
 #       Jul. 25 2022 - Begin systray development - GNOME cross platform.
 #       Jul. 30 2022 - Expand find_column() with:  elif self.find_op == '>=':
 #       Apr. 15 2023 - Move in normalize_tcl() from bserve.py for mserve.py.
+#       Jun. 15 2023 - New Tooltip anchor "sc" South Centered for banner_btn
 #
 #==============================================================================
 
@@ -148,15 +149,17 @@ def list_widgets(level, scan="All"):
         else:
             # This instance doesn't match but drill down and return
             print("\t No match scanning for:", scan, k, v)
-            # toplevels(v, scan=scan)
+            # top levels(v, scan=scan)
             list_widgets(v, scan=scan)
             WIDGET_COUNT += 1
             error_found = True
-            print_it = True
 
-        if not print_it:
+        if print_it is False:
             continue
 
+        if error_found is True:
+            pass
+        
         print('\t Geometry  :', v.winfo_geometry(),
               "x-offset:", v.winfo_x(), "y-offset:", v.winfo_y())
 
@@ -294,14 +297,57 @@ def normalize_tcl(s):
     for i, ss in enumerate(re.split(astral, s)):
         if not i % 2:
             new_s += ss
+        # Patch June 17, 2023 for test results published below
+        elif ss == "v":
+            new_s += u"v"
+        elif ss == "w":
+            new_s += u"w"
+        elif ss == "x":
+            new_s += u"x"
+        elif ss == "y":
+            new_s += u"y"
+        elif ss == "z":
+            new_s += u"z"
+        # end of June 17, 2023 patch
         else:
             new_s += '?'
 
     return new_s
 
 
+'''
+TclError: character U+1f3b5 is above the range (U+0000-U+FFFF) allowed by Tcl
+Results prior to patch made June 17, 2023. Note sometimes you can avoid using
+noramlize_tcl() function by using .encode('utf-8') See "Rainy Days" playlist
+name handling in 'mserve.py build_lib_top_playlist_name()' function.
+'''
+'''
+test = "abcdefghijklmnopqrstuvwxyz"
+result = normalize_tcl(test)
+print("test  :", test)      # test  : abcdefghijklmnopqrstuvwxyz
+print("result:", result)    # result: abcdefghijklmnopqrstu?????
+test2 = test.encode("utf-8")
+result = normalize_tcl(test2)
+print("test2 :", test2)     # test2 : abcdefghijklmnopqrstuvwxyz
+print("result:", result)    # result: abcdefghijklmnopqrstu?????
+test3 = test.decode("utf-8")
+result = normalize_tcl(test3)
+print("test3 :", test3)     # test3 : abcdefghijklmnopqrstuvwxyz
+print("result:", result)    # result: abcdefghijklmnopqrstu?????
+test = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+result = normalize_tcl(test)
+print("test  :", test)      # test  : ABCDEFGHIJKLMNOPQRSTUVWXYZ
+print("result:", result)    # result: ABCDEFGHIJKLMNOPQRSTUVWXYZ
+test = "0123456789`~!@#$%^&*()_+-=[]{};:',.<>/?"
+result = normalize_tcl(test)
+print("test  :", test)      # test  : 0123456789`~!@#$%^&*()_+-=[]{};:',.<>/?
+print("result:", result)    # result: 0123456789`~!@#$%^&*()_+-=[]{};:',.<>/?
+'''
+
+
 def unique_key(key, dictionary):
     new_key = key
+    i = 0  # To make PyCharm happy :)
     for i in range(1, 100):
         existing = dictionary.get(new_key)
         if existing is None:
@@ -459,7 +505,7 @@ class DictTreeview:
         filtering which rows are displayed for tree.insert() operations.
     """
     def __init__(self, tree_dict, toplevel, master_frame, show='headings', columns=(),
-                 sbar_width=12):
+                 sbar_width=12, highlight_callback=None):
 
         self.toplevel = toplevel
         self.master_frame = master_frame    # Master frame for treeview frame
@@ -577,6 +623,8 @@ class DictTreeview:
         if self.col_count < 20:
             print('columns:', self.columns)
 
+        self.highlight_callback = highlight_callback
+
     def insert(self, parent_iid="", row=None, iid="", tags="unchecked"):
         """ Insert new row into treeview.
             NOTE: Formatting integers "{:,}" and floats "{0:,.0f}"
@@ -677,6 +725,9 @@ class DictTreeview:
         tree.tk.call(tree, "tag", "remove", "highlight")
         tree.tk.call(tree, "tag", "add", "highlight", item)
         self.last_row = item
+
+        if self.highlight_callback:
+            self.highlight_callback(item)
 
     def leave(self, event):
         """
@@ -822,20 +873,22 @@ def unselect_dict_columns(columns, dict_list):
     """ Unselect columns.
         Returns nothing because dict_list is changed in place.
 
-        :param  columns list or tuple of column names in gmail message header
+        :param  columns list or tuple of column names to unselect
         :param  dict_list is list of dictionaries
 
     """
     unselect_dict_all(dict_list)
-    curr = 1
 
     # TODO: after removing a column rest must be renumbered !!!
     for column in columns:
         for i, d in enumerate(dict_list):
             if d['column'] == column:
+                ''' June 15, 2023 - appears this never ever worked
                 d['select_order'] = curr
                 dict_list[i] = d
                 curr += 1
+                '''
+                d['select_order'] = 0
                 break
 
 
@@ -1465,8 +1518,7 @@ def gnome_screenshot(geom):
 #                .close(), .reset_widget_colors() and .poll_tips()
 #
 #   Aug 16/2021 - Copied from message.py which will be kept intact for
-#                 tool tips that do not fade in/out. Only it will be reverted
-#                 to former state.
+#                 tool tips that do not fade in/out.
 #
 # ==============================================================================
 
@@ -1565,7 +1617,13 @@ class ToolTips(CommonTip):
 
                 self.tt.poll_tips()
 
-        When polling is impractical, fade in and fade out are disabled by:
+            June 15, 2023 - Allow piggy backing on Tooltips() technology:
+
+                self.tt.add_tip(widget_name, type='piggy_back',
+                                class=class_name)
+                WHERE: the class_name has methods inside.
+
+        When polling is impractical, fade in and fade out can be disabled by:
 
             VISIBLE_DELAY = 0
             VISIBLE_SPAN = 0
@@ -1838,6 +1896,9 @@ class ToolTips(CommonTip):
 
             becomes: .140408240130024.#140408240130024#140408237557160.
                       #140408240130024#140408237557160#140408237557952
+
+            Suf. W: .0024                       .7160 .57952
+            Suf. M: .0024 .#30024 #7160 .#30024 #7160 #57952
         """
         if '#' not in str(event_widget):
             return event_widget  # Normal widget formatting
@@ -1868,13 +1929,14 @@ class ToolTips(CommonTip):
     def add_tip(self, widget, text='Pass text here', tool_type='button',
                 visible_delay=VISIBLE_DELAY, visible_span=VISIBLE_SPAN,
                 extra_word_span=EXTRA_WORD_SPAN, fade_in_span=FADE_IN_SPAN,
-                fade_out_span=FADE_OUT_SPAN, anchor="sw"):
+                fade_out_span=FADE_OUT_SPAN, anchor="sw", pb_class=None):
 
         CommonTip.__init__(self)            # Initialize all tip instances
 
         self.widget = widget                # .140599674917592.140599679077192.140599679077336
         self.text = text                    # "This button \n does that."
         self.tool_type = tool_type          # 'button' or 'canvas_button' or 'menu'
+        self.pb_class = pb_class            # Piggy-back class with needed functions
 
         self.visible_delay = visible_delay
         self.visible_span = visible_span
@@ -1883,16 +1945,17 @@ class ToolTips(CommonTip):
         self.fade_out_span = fade_out_span
         self.anchor = anchor
 
-        # All widget bound to same three functions
-        self.widget.bind('<Enter>', self.enter)
-        self.widget.bind('<Leave>', self.leave)
-        self.widget.bind('<Motion>', self.motion)
+        # All widgets except "piggy_back" are bound to three common functions
+        if self.tool_type is not 'piggy_back':
+            self.widget.bind('<Enter>', self.enter)
+            self.widget.bind('<Leave>', self.leave)
+            self.widget.bind('<Motion>', self.motion)
         if self.tool_type is 'button':
             self.widget.bind("<ButtonPress-1>", self.on_press)
             self.widget.bind("<ButtonRelease-1>", self.on_release)
             self.name = self.widget['text']  # Button text
-        else:
-            self.name = self.tool_type  # No Button text so use type
+        if self.name is None:
+            self.name = self.tool_type  # Not a Button or no text in button
 
         # Add tip dictionary to tips list
         self.fields_to_dict()
@@ -1953,7 +2016,7 @@ class ToolTips(CommonTip):
 
         # Read event log list backwards to avoid unnecessary steps, eg leave after enter
         # means we don't have to do enter step. Empty log list when done.
-        self.process_log_list()         # Incomplete...
+        self.process_log_list()
 
         for self.tips_index, self.dict in enumerate(self.tips_list):
             self.dict_to_fields()
@@ -2043,7 +2106,10 @@ class ToolTips(CommonTip):
                 return
 
             if self.window_visible is False:
-                self.create_tip_window()
+                if self.tool_type is 'piggy_back':
+                    pass  # create callback
+                else:
+                    self.create_tip_window()
                 self.window_visible = True
                 self.window_fading_in = True
 
@@ -2064,6 +2130,13 @@ class ToolTips(CommonTip):
         # At this point we are simply waiting to fade in or fade out
 
     def update_alpha(self, alpha):
+        """
+        When tool_type is 'piggy_back', use callback. Else set window alpha.
+        :param alpha: Fractional value between 0 and 100% complete
+        :return: None
+        """
+        if self.tool_type is 'piggy_back':
+            pass
         if alpha != self.current_alpha:
             self.tip_window.attributes("-alpha", alpha)
             self.current_alpha = alpha
@@ -2076,6 +2149,21 @@ class ToolTips(CommonTip):
                      widget_nw[1])
         widget_sw = (widget_nw[0], widget_nw[1] + self.widget.winfo_height())
         widget_se = (widget_ne[0], widget_sw[1])
+
+        ''' June 15, 2023 - mserve fake ruler can be 7000 px wide on 1000 frame 
+            Patch code to support new anchor "sc" (South Centered)
+        '''
+        parent_name = self.widget.winfo_parent()
+        # noinspection PyProtectedMember
+        parent = self.widget._nametowidget(parent_name)
+        parent_nw = (parent.winfo_rootx(), parent.winfo_rooty())
+        parent_ne = (parent.winfo_rootx() + parent.winfo_width(),
+                     parent_nw[1])
+        if widget_ne[0] > parent_ne[0]:
+            d_print("toolkit.py Tooltips() create_tip_window() Override fake:")
+            d_print("     widget_ne:", widget_ne, "with parent_ne:", parent_ne)
+            # Above: widget_ne: (9442, 169) parent_ne: (4043, 169)
+            widget_ne = parent_ne
 
         x = self.widget.winfo_rootx() + 20
         y = self.widget.winfo_rooty() + self.widget.winfo_height() + 10
@@ -2092,8 +2180,8 @@ class ToolTips(CommonTip):
         self.window_mouse_xy = self.current_mouse_xy
 
         # Invert tooltip colors from current widget album art colors.
-        #if self.tool_type is 'button' or self.tool_type is 'menu':
-        if self.tool_type is not 'canvas_button':
+        #if self.tool_type is not 'canvas_button':  # comment June 15/23
+        if self.tool_type is 'button' or self.tool_type is 'menu':
             self.fg = self.widget["background"]
             self.bg = self.widget["foreground"]
         else:
@@ -2111,18 +2199,19 @@ class ToolTips(CommonTip):
         # https://stackoverflow.com/a/52123172/6929343
         self.tip_window.wm_attributes('-type', 'tooltip')  # only works X11 and not all distros
 
-        #print('created self.tip_window:', self.tip_window)
-        #print('w.wm_geometry("+%d+%d" % (x, y)):', "+%d+%d" % (x, y))
+        d_print('created self.tip_window:', self.tip_window)
+        d_print('w.wm_geometry("+%d+%d" % (x, y)):', "+%d+%d" % (x, y))
 
-        ''' Below MAC code Throws py charm error: access to protected 'tw._w'
+        ''' Below MAC code Throws py charm error: access to protected 'tw._w' '''
         try:
             # For Mac OS
+            # noinspection PyProtectedMember
             tw.tk.call("::tk::unsupported::MacWindowStyle",
                        "style", tw._w,
                        "help", "noActivates")
-        except tk.TclError:
+        except NameError:  # global name 'tw' is not defined
             pass
-        '''
+
         # TODO: Create Frame for border color. Then place label into frame. See:
         #       https://www.geeksforgeeks.org/how-to-change-border-color-in-tkinter-widget/
         border_color = tk.Frame(self.tip_window, background=self.fg)
@@ -2137,7 +2226,6 @@ class ToolTips(CommonTip):
         self.tip_window.update_idletasks()
         self.window_geom = self.tip_window.wm_geometry()
         self.override_window_geom(widget_nw, widget_ne, widget_se, widget_sw)
-        # TODO: Adjust geometry based on SW, SE, NW or NE flag relation to parent widget.
         d_print('tip_window created at:', "+%d+%d" % (x, y), 'for:', self.widget)
 
     def override_window_geom(self, nw, ne, se, sw):
@@ -2152,21 +2240,32 @@ class ToolTips(CommonTip):
         """
         w, h, old_x, old_y = re.split(r'\D+', self.window_geom)
         # print('tip_window started at:', self.window_geom, 'w:', w, 'h:', h)
+        w = int(w)
+        h = int(h)
+        # June 15/23 - Widget's width to calculate center
+        wid_w = ne[0] - nw[0]
+        #print("wid_w:", wid_w)  # 7000 for mserve.py fake self.banner_btn
         x = y = 0  # Bogus defaults to make pycharm error checker happy.
 
         if self.anchor == "nw":
             x = nw[0]
-            y = nw[1] - int(h) - 20  # 20 px gives distance from edge
+            y = nw[1] - h - 20  # 20 px gives distance from edge
         elif self.anchor == "ne":
-            x = ne[0] - int(w)
-            y = nw[1] - int(h) - 20  # 20 px gives distance from edge
+            x = ne[0] - w
+            y = nw[1] - h - 20  # 20 px gives distance from edge
         elif self.anchor == "se":
-            x = se[0] - int(w)
+            x = se[0] - w
             y = se[1] + 20   # 20 px gives distance from edge
         elif self.anchor == "sw":
             x = sw[0]
             y = sw[1] + 20   # 20 px gives distance from edge 20
+        elif self.anchor == "sc":  # South Centered
+            off = (wid_w - w) / 2
+            off = off if off > 0 else 0
+            x = sw[0] + off
+            y = sw[1] + 20  # 20 px gives distance from edge 20
         else:
+            print_trace()
             print('Bad self.anchor value:', self.anchor)
             exit()
         self.tip_window.wm_geometry("+%d+%d" % (x, y))
@@ -2212,43 +2311,44 @@ class ToolTips(CommonTip):
         print('toolkit.py ERROR: toggle_position(): tip not found')
         exit()
 
-    def enter(self, _event):
+    def enter(self, event):
         """
+        Mouse has entered widget bounding box.
         """
-        d_print('ENTER:', str(_event.widget)[-4:], _event.x, _event.y)
-        self.log_event('enter', _event.widget, _event.x, _event.y)
+        d_print('ENTER:', str(event.widget)[-4:], event.x, event.y)
+        # print("scope of event:", event)  # scope of event: <Tkinter.Event instance at 0x7ffb7aec6dd0>
+        self.log_event('enter', event.widget, event.x, event.y)
 
-    def leave(self, _event):
+    def leave(self, event):
         """
         Enter has 500 ms delay so leave may come before tooltip displayed.
 
         TEST: When leaving early button remains "active" so force to "normal".
         """
-        d_print('LEAVE:', str(_event.widget)[-4:], _event.x, _event.y)
-        self.log_event('leave', _event.widget, _event.x, _event.y)
+        d_print('LEAVE:', str(event.widget)[-4:], event.x, event.y)
+        self.log_event('leave', event.widget, event.x, event.y)
 
-    # noinspection PyMethodMayBeStatic
-    def motion(self, _event):
+    def motion(self, event):
         """ Mouse is panning over widget.
-            Consider moving tooltip window along x-axis
+            Keep windows steady traveling along x-axis.
             This generates a lot of noise when printing debug information...
         """
-        #d_print('MOVES:', str(_event.widget)[-4:], _event.x, _event.y)
-        self.log_event('motion', _event.widget, _event.x, _event.y)
+        #d_print('MOVES:', str(event.widget)[-4:], event.x, event.y)
+        self.log_event('motion', event.widget, event.x, event.y)
         return
 
-    def on_press(self, _event):
+    def on_press(self, event):
         """ Widget type is button and it was just pressed """
-        d_print('PRESS:', str(_event.widget)[-4:], _event.x, _event.y)
-        self.log_event('press', _event.widget, _event.x, _event.y)
+        d_print('PRESS:', str(event.widget)[-4:], event.x, event.y)
+        self.log_event('press', event.widget, event.x, event.y)
 
-    def on_release(self, _event):
+    def on_release(self, event):
         """ Widget type is button and mouse click was just released.
             A leave event is automatically generated but we may no longer
             be in the same widget.
         """
-        d_print('REL_S:', str(_event.widget)[-4:], _event.x, _event.y)
-        self.log_event('release', _event.widget, _event.x, _event.y)
+        d_print('REL_S:', str(event.widget)[-4:], event.x, event.y)
+        self.log_event('release', event.widget, event.x, event.y)
 
     def close(self, widget):
         """ When window closes all tooltips in it must be removed.
@@ -2275,7 +2375,7 @@ class ToolTips(CommonTip):
             self.dict['window_geom'] = self.window_geom                 # 17
         """
 
-        lines = list()  # PyCharm error of lines = []
+        lines = list()  # PyCharm error when using 'lines = []'
         lines.append('Tooltips Line Dump - ' +
                      str(len(self.tips_list)) + ' Tip Dictionaries')
         lines.append('Tip#  Suf.  Name - Text')
@@ -2311,18 +2411,18 @@ class TrayIcon:
         https://stackoverflow.com/a/37983084/6929343
     """
 
-    def __init__(self, appid, icon, menu):
+    def __init__(self, app_id, icon, menu):
         self.menu = menu
 
-        APPIND_SUPPORT = 1
+        APP_IND_SUPPORT = 1
         try:
             from gi.repository import AppIndicator3
-        except:
-            APPIND_SUPPORT = 0
+        except ImportError:
+            APP_IND_SUPPORT = 0
 
-        if APPIND_SUPPORT == 1:
+        if APP_IND_SUPPORT == 1:
             self.ind = AppIndicator3.Indicator.new(
-                appid, icon, AppIndicator3.IndicatorCategory.APPLICATION_STATUS)
+                app_id, icon, AppIndicator3.IndicatorCategory.APPLICATION_STATUS)
             self.ind.set_status(AppIndicator3.IndicatorStatus.ACTIVE)
             self.ind.set_menu(self.menu)
         else:
@@ -2340,22 +2440,27 @@ class TrayIcon2:
         https://stackoverflow.com/a/31820169/6929343
 
         TODO: upgrade to Python3 / Gtk3: https://askubuntu.com/a/1289725/307523
-            gir1.2-appindicator
-            gir1.2-appindicator3
-            gir1.2-ayatanaappindicator
-            gir1.2-ayatanaappindicator3
+            gir1.2-app indicator
+            gir1.2-app indicator3
+            gir1.2-ay at an a app indicator
+            gir1.2-ay at ana a pp indicator3
 
         April 9, 2023 - NOT USED.
     """
-    def init(self):
-
+    @staticmethod
+    def init():
+        # noinspection SpellCheckingInspection
         iconPath = {"Windows": os.path.expandvars("%PROGRAMFILES%/MyProgram/icon.png"),
                     "Linux": "/usr/share/icons/myprogramicon.png"}
         if platform.system() == "Linux":
             import gtk
-            import appindicator  # Ubuntu apt-get install python-appindicator
+            import appindicator  # Ubuntu apt-get install python-app indicator
+        else:
+            print("Unsupported platform:", platform.system())
+            return
 
         # Create an application indicator
+        # noinspection PyBroadException
         try:
             gtk.gdk.threads_init()
             gtk.threads_enter()
@@ -2384,6 +2489,7 @@ class TrayIcon2:
             pass
 
         # Run the app indicator on the main thread.
+        # noinspection PyBroadException
         try:
 
             t = threading.Thread(target=gtk.main)
@@ -2398,19 +2504,19 @@ class TrayIcon2:
 
 
     @staticmethod
-    def AboutApp(a1, a2):
+    def AboutApp(_a1, _a2):
         gtk.threads_enter()
         dialog = gtk.Dialog("About",
                             None,
                             gtk.DIALOG_MODAL | gtk.DIALOG_DESTROY_WITH_PARENT,
                             (gtk.STOCK_OK, gtk.RESPONSE_ACCEPT))
-        label = gtk.Label("My Program v0.0.1, (C)opyright ME 2015. All rights reserved.")
+        label = gtk.Label("My Program v0.0.1, Copyright ME 2015. All rights reserved.")
         dialog.vbox.pack_start(label)
         label.show()
         label2 = gtk.Label("example.com\n\nFor more support contact me@gmail.com")
         label2.show()
         dialog.action_area.pack_end(label2)
-        response = dialog.run()
+        dialog.run()
         dialog.destroy()
         gtk.threads_leave()
 

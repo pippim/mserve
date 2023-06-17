@@ -119,7 +119,8 @@ def vert_gradient(draw, rect, color_func, color_palette):
 
 # Deviation from original answer, function with text drawing feature
 def make_image(text, image_w=200, image_h=200):
-    """ Make image of blue, green, red overlapping gradients
+    """ Make image of blue, green, red overlapping gradients vertically
+        Draw text in middle
     """
     color_palette = [BLUE, GREEN, RED]
     region = Rect(0, 0, image_w, image_h)
@@ -152,6 +153,19 @@ def make_image(text, image_w=200, image_h=200):
     shifted_image = shift_image(image, 'down', image_w, image_h, .1)
     shifted_image.show()
     """
+
+    return image
+
+
+def ruler_image(image_w=800, image_h=10):
+    """ Make image of blue, green, red overlapping gradients horizontally
+    """
+    color_palette = [BLUE, GREEN, RED]
+    region = Rect(0, 0, image_w, image_h)
+    img_x, img_y = region.max.x+1, region.max.y+1
+    image = Image.new("RGB", (img_x, img_y), WHITE)
+    draw = ImageDraw.Draw(image)
+    hor_gradient(draw, region, gradient_color, color_palette)
 
     return image
 
@@ -735,6 +749,7 @@ class RoundedButton(tk.Canvas):
         '''
 
     def register_pool(self):
+        """ June 15 2023 - Appears to be unused """
         self.pool = pool
 
 
@@ -811,6 +826,7 @@ class RoundedRectangle(RoundedButton):
         #print('font_width, font_height, text_x, text_y:',
         #      font_width, font_height, text_x, text_y)
         self.text = text
+        """ June 15 2023 - self.create_text() s/b global create_text() instead  """
         self.create_text((text_x, text_y), text=self.text, tags="text_color",
                          # font=(family, text_size, "italic", "bold"), fill='white')
                          font=(family, text_size), fill='white')
@@ -835,6 +851,7 @@ class RoundedRectangle(RoundedButton):
         self.pool = None
 
     def register_tooltip(self, tooltip, pool=None):
+        """ June 15 2023 - Appears to be unused """
         self.tooltip = tooltip
         self.pool = pool
 

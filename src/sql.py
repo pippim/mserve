@@ -2131,6 +2131,134 @@ def history_treeview():
     return history_treeview_list
 
 
+def playlist_treeview():
+    """ Define Data Dictionary treeview columns for history table.  Snippet:
+        ("column", "time"), ("heading", "Time"), ("sql_table", "History"),
+        ("column", "music_id"), ("heading", "Music ID"), ("sql_table", "History"),
+        ("column", "user"), ("heading", "User"), ("sql_table", "History"),
+        ("column", "type"), ("heading", "Type"), ("sql_table", "History"),
+        ("column", "action"), ("heading", "Action"), ("sql_table", "History"),
+        ("column", "master"), ("heading", "Master"), ("sql_table", "History"),
+        ("column", "detail"), ("heading", "Detail"), ("sql_table", "History"),
+        ("column", "target"), ("heading", "Target"), ("sql_table", "History"),
+        ("column", "size"), ("heading", "Size"), ("sql_table", "History"),
+        ("column", "count"), ("heading", "Count"), ("sql_table", "History"),
+        ("column", "comments"), ("heading", "Comments"), ("sql_table", "History"),
+        ("column", "seconds"), ("heading", "Seconds"), ("sql_table", "History"),
+        ("column", "row_id"), ("heading", "Row ID"), ("sql_table", "History"),
+        ("column", "reason"), ("heading", "Reason"), ("sql_table", "calc"),
+
+    """
+
+    playlist_treeview_list = [
+
+      OrderedDict([
+        ("column", "time"), ("heading", "Time"), ("sql_table", "History"),
+        ("var_name", "Time"), ("select_order", 0), ("unselect_order", 1),
+        ("key", False), ("anchor", "w"), ("instance", float),
+        ("format", "date"), ("display_width", 300),
+        ("display_min_width", 200), ("display_long", None), ("stretch", 0)]),
+
+      OrderedDict([
+        ("column", "music_id"), ("heading", "Music ID"), ("sql_table", "History"),
+        ("var_name", "MusicId"), ("select_order", 0), ("unselect_order", 2),
+        ("key", False), ("anchor", "e"), ("instance", int), ("format", "{:,}"),
+        ("display_width", 100), ("display_min_width", 80),
+        ("display_long", None), ("stretch", 0)]),  # 0=NO, 1=YES
+
+      OrderedDict([
+        ("column", "user"), ("heading", "User"), ("sql_table", "History"),
+        ("var_name", "User"), ("select_order", 0), ("unselect_order", 3),
+        ("key", False), ("anchor", "w"), ("instance", str), ("format", None),
+        ("display_width", 150), ("display_min_width", 120),
+        ("display_long", None), ("stretch", 1)]),  # 0=NO, 1=YES
+
+      OrderedDict([
+        ("column", "type"), ("heading", "Type"), ("sql_table", "History"),
+        ("var_name", "Type"), ("select_order", 0), ("unselect_order", 4),
+        ("key", False), ("anchor", "w"), ("instance", str), ("format", None),
+        ("display_width", 80), ("display_min_width", 60),
+        ("display_long", None), ("stretch", 1)]),
+
+      OrderedDict([
+        ("column", "action"), ("heading", "Action"), ("sql_table", "History"),
+        ("var_name", "Action"), ("select_order", 0), ("unselect_order", 5),
+        ("key", False), ("anchor", "w"), ("instance", str),
+        ("format", None), ("display_width", 80),
+        ("display_min_width", 60), ("display_long", None), ("stretch", 1)]),
+
+      OrderedDict([
+        ("column", "master"), ("heading", "Master"), ("sql_table", "History"),
+        ("var_name", "SourceMaster"), ("select_order", 0), ("unselect_order", 6),
+        ("key", False), ("anchor", "w"), ("instance", str), ("format", None),
+        ("display_width", 150), ("display_min_width", 100),
+        ("display_long", None), ("stretch", 1)]),
+
+      OrderedDict([
+        ("column", "detail"), ("heading", "Detail"), ("sql_table", "History"),
+        ("var_name", "SourceDetail"), ("select_order", 0), ("unselect_order", 7),
+        ("key", False), ("anchor", "w"), ("instance", str), ("format", None),
+        ("display_width", 150), ("display_min_width", 100),
+        ("display_long", None), ("stretch", 1)]),  # 0=NO, 1=YES
+
+      OrderedDict([
+        ("column", "target"), ("heading", "Target"), ("sql_table", "History"),
+        ("var_name", "Target"), ("select_order", 0), ("unselect_order", 8),
+        ("key", False), ("anchor", "w"), ("instance", str), ("format", None),
+        ("display_width", 300), ("display_min_width", 200),
+        ("display_long", None), ("stretch", 1)]),
+
+      OrderedDict([
+        ("column", "size"), ("heading", "Size"), ("sql_table", "History"),
+        ("var_name", "Size"), ("select_order", 0), ("unselect_order", 9),
+        ("key", False), ("anchor", "e"), ("instance", int), ("format", "{:,}"),
+        ("display_width", 100), ("display_min_width", 80),
+        ("display_long", None), ("stretch", 1)]),
+
+      OrderedDict([
+        ("column", "count"), ("heading", "Count"), ("sql_table", "History"),
+        ("var_name", "Count"), ("select_order", 0), ("unselect_order", 10),
+        ("key", False), ("anchor", "e"), ("instance", int), ("format", "{:,}"),
+        ("display_width", 80), ("display_min_width", 60),
+        ("display_long", None), ("stretch", 1)]),
+
+      OrderedDict([
+        ("column", "comments"), ("heading", "Comments"), ("sql_table", "History"),
+        ("var_name", "Comments"), ("select_order", 0), ("unselect_order", 11),
+        ("key", False), ("anchor", "w"), ("instance", str), ("format", None),
+        ("display_width", 160), ("display_min_width", 140),
+        ("display_long", None), ("stretch", 1)]),
+
+      OrderedDict([
+        ("column", "seconds"), ("heading", "Seconds"), ("sql_table", "History"),
+        ("var_name", "Seconds"), ("select_order", 0), ("unselect_order", 12),
+        ("key", False), ("anchor", "e"), ("instance", float), ("format", "{0:,.4f}"),
+        ("display_width", 140), ("display_min_width", 80),
+        ("display_long", None), ("stretch", 1)]),
+
+      OrderedDict([
+        ("column", "row_id"), ("heading", "Row ID"), ("sql_table", "History"),
+        ("var_name", "Id"), ("select_order", 0), ("unselect_order", 13),
+        ("key", True), ("anchor", "e"), ("instance", int), ("format", "{:,}"),
+        ("display_width", 80), ("display_min_width", 60),
+        ("display_long", None), ("stretch", 1)]),
+
+      OrderedDict([
+        ("column", "reason"), ("heading", "Reason"), ("sql_table", "calc"),
+        ("var_name", "reason"), ("select_order", 0), ("unselect_order", 14),
+        ("key", False), ("anchor", "w"), ("instance", str), ("format", None),
+        ("display_width", 160), ("display_min_width", 140),
+        ("display_long", None), ("stretch", 1)])
+    ]
+
+    ''' Future retention is calculated in order of Monthly, Weekly, Daily. 
+        Last year retention is same as Future but Yearly test inserted first.
+        The newest backup will always be classified as Monthly until tomorrow.
+    '''
+
+    return playlist_treeview_list
+
+
 def update_history(scraped_dict):
     """ NOT USED """
     for i, website in enumerate(scraped_dict):
