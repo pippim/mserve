@@ -710,13 +710,7 @@ def music_id_for_song(key):
     # Get the MusicID matching song file's basename
     d = ofb.Select(key)
     if d is None:
-        return 0
-    #cursor.execute("SELECT Id FROM Music WHERE OsFileName = ?", [key])
-    #try:
-    #    row = dict(cursor.fetchone())
-    #except TypeError:  # TypeError: 'NoneType' object is not iterable:
-    #    print("sql.py music_id_for_song(key) key not found:", key)
-    #    return 0
+        return 0  # Doesn't exist and is now blacklisted
 
     if d['Id'] == 0:
         print('music_id_for_song(key) error music ID is 0:', key)
