@@ -6,9 +6,10 @@
 #
 #           import image as img
 #
+#   Jun. 19 2023 - Reduce triangle (chevrons) clicking errors with white space.
+#
 #==============================================================================
 
-# identical imports in mserve
 from __future__ import print_function       # Must be first import
 from __future__ import with_statement       # Error handling for file opens
 
@@ -326,9 +327,9 @@ def make_checkboxes(hgt, out_c, fill_c, chk_c):
 
 def make_triangles(triangle_list, hgt, out_c, fill_c):
 
-    """ Make triangles for open, close and empty tree parent
+    """ Make triangles (chevrons) for open, close and empty tree parent
     """
-    width = hgt
+    width = int(hgt * 1.8)  # Padding right of triangle reduces clicking errors
     im_open, im_close, im_empty = triangle_raw_images(hgt, out_c, fill_c)
     triangle_list.append(ImageTk.PhotoImage(im_open))   # assign to passed
     triangle_list.append(ImageTk.PhotoImage(im_close))  # list to stop GC -
@@ -366,6 +367,34 @@ def make_triangles(triangle_list, hgt, out_c, fill_c):
                       ]
            })])
 
+    ''' June 19, 2023 - Attempt 'indent' to put more space between triangles
+        and checkboxes in order to prevent accidental clicking. See:
+        https://stackoverflow.com/questions/61280744/
+        tkinter-how-to-adjust-treeview-indentation-size-and-indicator-arrow-image
+        
+        Marginal success. Old format:
+        1
+         12
+           121
+           122
+         13
+          131
+        
+        New format.
+        
+        1
+            12
+                 121
+                 122
+            13
+                 131
+
+        However it only indents entire row and doesn't put whitespace between
+        triangle (chevron) and checkbox.
+    '''
+    #print("style.configure('Treeview', indent=50)")
+    style.configure('Treeview', indent=63)
+
 
 def triangle_raw_images(hgt, out_c, fill_c):
 
@@ -390,19 +419,37 @@ def triangle_raw_images(hgt, out_c, fill_c):
     """
     """
 
-    # passed hgt = 21
+    # Following comments when passed hgt = 17
     wid = hgt                                       # square image
     hgt_off = 4                                     # top & bottom whitespace
-    wxy = (0, hgt_off,)                             # west point x=0, y=4
-    exy = (wid-1, hgt_off,)                         # east point x=20, y=4
-    sxy = (int((hgt-1)/2), hgt-hgt_off,)            # south point x=10, y=17
+    # TODO: June 19, 2023 - calculate an even number above instead of hard code
+    #print("hgt:", hgt, "hgt_off:", hgt_off)
+    wxy = (0, hgt_off, )                                # x=0, y=4
+    #print("wxy:", wxy)
+    exy = (wid - 2, hgt_off, )                          # x=15, y=4
+    #print("exy:", exy)
+    sxy = (int((hgt - 1) / 2), hgt - hgt_off / 2, )     # x=8, y=15
+    #print("sxy:", sxy)
+
+    wxy2 = (hgt_off / 2, hgt_off / 2, )                 # x=2, y=2
+    #print("wxy2:", wxy2)
+    exy2 = (wid - 2, int((wid - 1) / 2), )              # x=15, y=8
+    #print("exy2:", exy2)
+    sxy2 = (hgt_off / 2, hgt - hgt_off / 2, )           # x=2, y=15
+    #print("sxy2:", sxy2)
 
     # custom indicator images
-    im_open = Image.new('RGBA', (wid, hgt), (0, 0, 0, 0))
-    im_empty = Image.new('RGBA', (wid, hgt), (0, 0, 0, 0))
+    im_open = Image.new('RGBA', (wid + wid, hgt), (0, 0, 0, 0))
+    im_empty = Image.new('RGBA', (wid + wid, hgt), (0, 0, 0, 0))
+    im_close = Image.new('RGBA', (wid + wid, hgt), (0, 0, 0, 0))  # June 19, 2023
     draw = ImageDraw.Draw(im_open)
     draw.polygon([wxy, exy, sxy], outline=out_c, fill=fill_c)
-    im_close = im_open.rotate(90)
+    #im_close = im_open.rotate(90)  # June 19, 2023 draw separately to experiment
+    draw = ImageDraw.Draw(im_close)
+    draw.polygon([wxy2, exy2, sxy2], outline=out_c, fill=fill_c)
+
+    # June 19, 2023 - Some funky tests below "What if?..."
+    #im_open = im_close.rotate(90)  # Make up chevron instead of down chevron
 
     return im_open, im_close, im_empty
 

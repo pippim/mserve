@@ -14,6 +14,7 @@ import time
 import datetime
 
 # Common routines used by many programs put here
+import toolkit
 
 # Program timings for OS calls and functions or loops
 TIME_LIST = []  # list of tuples name, start time
@@ -173,6 +174,7 @@ def kill_pid_running(active_pid):
         os.kill(active_pid, 9)      # 0 is status check, 9 kills
         return True                 # pid killed
     except OSError:
+        toolkit.print_trace()
         print("kill_pid_running() ERROR: os.kill failed")
         return 0                    # pid has finished
 
@@ -189,7 +191,8 @@ def stop_pid_running(active_pid):
         # Get error: os.p open("kill -s SIGSTOP " + self.play_top_pid)
         return True                 # pid stopped
     except OSError:
-        print("stop_pid_running() ERROR: os.kill failed")
+        toolkit.print_trace()
+        print("stop_pid_running() ERROR: os.kill failed to STOP job")
         return 0                    # pid has finished
 
 
@@ -205,7 +208,8 @@ def continue_pid_running(active_pid):
         # Get error: os.p open("kill -s SIGSTOP " + self.play_top_pid)
         return True                 # pid continued
     except OSError:
-        print("continue_pid_running() ERROR: os.kill failed")
+        toolkit.print_trace()
+        print("continue_pid_running() ERROR: os.kill failed to CONT job")
         return 0                    # pid has finished
 
 

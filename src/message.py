@@ -306,7 +306,7 @@ class ShowInfo(simpledialog.Dialog, CommonSelf):
         return body_func(self)
 
     def buttonbox(self):
-        """add standard button box for ShowInformation.
+        """ add standard button box for ShowInformation.
 
         override with sole "OK" button bound to both Enter and Escape
         """
@@ -453,7 +453,7 @@ class AskQuestion(simpledialog.Dialog, CommonSelf):
 
         BUGS:
         April 24, 2023 - When 'no' click was returning: 139944643864048.139944641065544
-
+        June 18, 2023  - When 'yes' clicked self.result = 'None' - thread was none !
     """
 
     def __init__(self, parent, title=None, text=None, confirm='yes',
@@ -463,6 +463,9 @@ class AskQuestion(simpledialog.Dialog, CommonSelf):
         CommonSelf.__init__(self, parent, text=text, confirm=confirm,
                             align=align, thread=thread, icon=icon)
         simpledialog.Dialog.__init__(self, parent, title=title)
+        if thread is None:
+            toolkit.print_trace()
+            print("message.py, AskQuestion() thread is none, Yes won't work")
         '''
         When encoding.py was popping up question to manually enter disc id
         cursor was being forced into web browser to copy the new disc id at
@@ -507,8 +510,8 @@ TclError: grab failed: another application has grab
         w = tk.Button(box, text="No", width=10, command=self.cancel)
         w.pack(side=tk.LEFT, padx=5, pady=5)
 
-        self.bind("<Return>", self.ok)
-        self.bind("<Escape>", self.cancel)
+        self.bind("<Return>", self.ok)  # June 18, 2023 not working for self.ok()
+        self.bind("<Escape>", self.cancel)  # June 18, 2023 working properly
 
         box.pack()
 
@@ -525,7 +528,7 @@ TclError: grab failed: another application has grab
         self.update_idletasks()
 
         try:
-            self.apply()
+            self.apply()  # There is no apply() for AskQuestion or ShowInfo
         finally:
             self.cancel()
         self.result = "yes"
@@ -630,7 +633,7 @@ class AskString(simpledialog.Dialog, CommonSelf):
         self.update_idletasks()
 
         try:
-            self.apply()
+            self.apply()  # There is no apply() for AskQuestion or ShowInfo
         finally:
             self.cancel()
         self.result = "yes"

@@ -2074,7 +2074,7 @@ def history_treeview():
         ("display_width", 300), ("display_min_width", 200),
         ("display_long", None), ("stretch", 1)]),
 
-      OrderedDict([
+      OrderedDict([  # Offset 8 cheating in mserve.py Playlists() populate_his_tree
         ("column", "size"), ("heading", "Size"), ("sql_table", "History"),
         ("var_name", "Size"), ("select_order", 0), ("unselect_order", 9),
         ("key", False), ("anchor", "e"), ("instance", int), ("format", "{:,}"),

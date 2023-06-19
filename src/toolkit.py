@@ -408,6 +408,14 @@ def tv_tag_remove(tv, iid, old, strict=False):
         return False
 
 
+def tv_tag_remove_all(tv, old):
+    """ Remove tag from all items """
+    items = tv.tag_has(old)
+    for item in items:
+        tv_tag_remove(tv, item, old, strict=True)
+    return items
+
+
 # ==============================================================================
 #
 #       CustomScrolledText class - scrollable text with tag highlighting
@@ -649,7 +657,12 @@ class DictTreeview:
             elif self.col_count == 20:
                 print('column count reached:', self.col_count)
 
-            if data_dict['format'] == "date":
+            # TODO: New format "MB" for Megabytes
+            if data_dict['format'] == "MB":
+                values.append(human_mb(unmasked_value))
+            elif data_dict['format'] == "days":
+                values.append(days(unmasked_value))
+            elif data_dict['format'] == "date":
                 # times are stored in epoch (seconds since January 1, 1970)
                 # Tue Jun 25 10:09:52 2019
                 #values.append(time.asctime(time.localtime(unmasked_value)))
@@ -690,6 +703,7 @@ class DictTreeview:
 
         # Loop through all columns in treeview
         for col in self.columns:
+            # June 18, 2023 - No need to Loop through all columns in treeview, just go direct.
             # Get data dictionary for current column
             data_dict = get_dict_column(col, self.tree_dict)
             # Does data dictionary column name match search name?
@@ -759,6 +773,7 @@ class DictTreeview:
 
         # Loop through all columns in treeview
         for col in self.columns:
+            # June 18, 2023 - No need to Loop through all columns in treeview, just go direct.
             # Get data dictionary for current column
             data_dict = get_dict_column(col, self.tree_dict)
             # Does data dictionary column name match search name?
@@ -809,6 +824,7 @@ class DictTreeview:
 
         # If column number past last column it's an error
         for col in self.columns:
+            # June 18, 2023 - No need to Loop through all columns in treeview, just go direct.
             # Get data dictionary for current column
             #         self.column_widths = []             # The width of each treeview column
             data_dict = get_dict_column(col, self.tree_dict)
@@ -826,6 +842,23 @@ class DictTreeview:
         print('values:', values)
         return None
 
+    def change_column_format(self, new_format, search):
+        """
+            :param format: New format. E.G. "MB"
+            :param search: column name, E.G. "size"
+            :returns None
+        """
+
+        # No need to Loop through all columns in treeview, just go direct.
+        data_dict = get_dict_column(search, self.tree_dict)
+        if data_dict is None:
+            print_trace()
+            print("Bad search column:", search)
+            return
+        if data_dict['column'] == search:
+            data_dict['format'] = new_format
+            save_dict_column(search, self.tree_dict, data_dict)
+
     def is_attached(self, msgId):
         return self.attached[msgId] is True
 
@@ -836,6 +869,7 @@ class DictTreeview:
         return self.attached[msgId] is None
 
 
+# TODO: June 18, 2023 review moving these functions into class.
 def select_dict_all(dict_list):
     for curr in range(1, len(dict_list)):
         for d in dict_list:
@@ -898,6 +932,15 @@ def get_dict_column(column, dict_list):
     for d in dict_list:
         if d['column'] == column:
             return d
+    return None
+
+
+def save_dict_column(column, dict_list, new_dict):
+    """ Return data dictionary for search column
+    """
+    for i, d in enumerate(dict_list):
+        if d['column'] == column:
+            dict_list[i] = new_dict
 
 
 def print_dict_columns(dict_list):
@@ -929,6 +972,30 @@ def print_dict_columns(dict_list):
               d['display_long'])
         print('  stretch      :', d['stretch'], '\t\tkey              :',
               d['key'])
+
+
+def human_mb(size, decimals=1, uom="MB"):
+    """ Change '99,999,999' bytes to '99.9 MB'
+        Called by MusicTree() class and Playlists() class
+    """
+    converted = float(size) / float(1000000)
+    rounded = round(converted, decimals)
+    rounded = '{:n}'.format(rounded)  # Test will locale work for float?
+    return rounded + " " + uom
+
+
+def days(seconds):
+    """ Change '86772' seconds to '1 day, 6 min'
+        Called by MusicTree() class and Playlists() class
+    """
+    tim = int(seconds)
+    m = tim / 60 % 60
+    h = tim / 3600 % 24
+    d = tim / 86400
+    r = str(m) + " min"
+    if h > 0: r = str(h) + " hr, " + r
+    if d > 0: r = str(d) + " day, " + r
+    return r
 
 
 class SearchText:
