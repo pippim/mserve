@@ -11,6 +11,9 @@
 #       Apr. 15 2023 - Move in normalize_tcl() from bserve.py for mserve.py.
 #       Jun. 15 2023 - New Tooltip anchor "sc" South Centered for banner_btn
 #
+#       TODO: As tip window is fading in, button click is not registered so
+#             tip window stays up for normal duration
+#
 #==============================================================================
 
 # identical imports in mserve
@@ -41,6 +44,7 @@ except ImportError:  # Python 2
 # print ("Python version: ", PYTHON_VER)
 
 # For MoveTreeviewColumn
+from PIL import Image, ImageTk
 from collections import namedtuple
 from os import popen
 
@@ -51,7 +55,7 @@ from collections import OrderedDict, namedtuple
 
 import global_variables as g
 import external as ext      # Time formatting routines
-import image as img
+import image as img         # Pippim image.py module
 import re                   # w, h, old_x, old_y = re.split(r'\D+', geom)
 import traceback            # To display call stack (functions that got us here)
 
@@ -1574,6 +1578,7 @@ def gnome_screenshot(geom):
     w = Gdk.get_default_root_window()
     pb = Gdk.pixbuf_get_from_window(w, *geom)
     desk_pixels = pb.read_pixel_bytes().get_data()
+    # June 19, 2023 - Error 'Image' was never imported. Add above.
     raw_img = Image.frombytes('RGB', (geom.w, geom.h), desk_pixels,
                               'raw', 'RGB', pb.get_rowstride(), 1)
     return raw_img
@@ -1611,7 +1616,7 @@ if VISIBLE_DELAY < FADE_OUT_SPAN:
 
 class CommonTip:
     """ Variables common to ToolTips__init__() and add_tip()
-        Must appear before first reference (ShowInfo)
+        Must appear before first reference (E.G. message.ShowInfo crashes)
     """
     def __init__(self):
 
@@ -1655,6 +1660,10 @@ class CommonTip:
         self.normal_text_color = None   # self.widget.itemcget(...)       # 26
         self.normal_button_color = None  # .itemcget("button_color"...)   # 27
         self.anchor = None              # tooltip anchor point on widget  # 28
+
+        self.pb_alpha = None            # Update 'piggy_back' with alpha percent
+        self.pb_leave = None            # Tell 'piggy_back' mouse left widget
+        self.pb_close = None            # Tell 'piggy_back' tip_window closed
 
 
 class ToolTips(CommonTip):
@@ -1754,6 +1763,9 @@ class ToolTips(CommonTip):
         self.normal_text_color = self.dict['normal_text_color']     # 26
         self.normal_button_color = self.dict['normal_button_color']  # 27
         self.anchor = self.dict['anchor']                           # 28
+        self.pb_alpha = self.dict['pb_alpha']                       # 29
+        self.pb_leave = self.dict['pb_leave']                       # 30
+        self.pb_close = self.dict['pb_close']                       # 31
 
 
     def fields_to_dict(self):
@@ -1786,6 +1798,9 @@ class ToolTips(CommonTip):
         self.dict['normal_text_color'] = self.normal_text_color     # 26
         self.dict['normal_button_color'] = self.normal_button_color  # 27
         self.dict['anchor'] = self.anchor                           # 28
+        self.dict['pb_alpha'] = self.pb_alpha                       # 29
+        self.dict['pb_leave'] = self.pb_leave                       # 30
+        self.dict['pb_close'] = self.pb_close                       # 31
 
 
     def log_event(self, action, widget, x, y):
@@ -1872,8 +1887,9 @@ class ToolTips(CommonTip):
             self.window_fading_in and self.window_fading_out already 
             setup so just need self.wait_time.
         '''
-        if self.log_nt.action == 'leave':
-            # Leaving widget
+        # if self.log_nt.action == 'leave':  # June 20, 2023 test
+        if self.log_nt.action == 'leave' or self.log_nt.action == 'press':
+            # Leaving widget - June 20, 2023 treat button press as leave
             self.leave_time = self.log_nt.time
             prt_time = datetime.utcnow().strftime("%M:%S.%f")[:-2]
             d_print(prt_time, 'leaving widget: ', str(self.widget)[-4:])
@@ -1996,14 +2012,17 @@ class ToolTips(CommonTip):
     def add_tip(self, widget, text='Pass text here', tool_type='button',
                 visible_delay=VISIBLE_DELAY, visible_span=VISIBLE_SPAN,
                 extra_word_span=EXTRA_WORD_SPAN, fade_in_span=FADE_IN_SPAN,
-                fade_out_span=FADE_OUT_SPAN, anchor="sw", pb_class=None):
+                fade_out_span=FADE_OUT_SPAN, anchor="sw", 
+                pb_alpha=None, pb_leave=None, pb_close=None):
 
         CommonTip.__init__(self)            # Initialize all tip instances
 
         self.widget = widget                # .140599674917592.140599679077192.140599679077336
         self.text = text                    # "This button \n does that."
         self.tool_type = tool_type          # 'button' or 'canvas_button' or 'menu'
-        self.pb_class = pb_class            # Piggy-back class with needed functions
+        self.pb_alpha = pb_alpha            # Piggy-back callback when alpha changes
+        self.pb_leave = pb_leave            # Piggy-back callback when mouse leaves widget
+        self.pb_close = pb_close            # Piggy-back callback when tip destroyed
 
         self.visible_delay = visible_delay
         self.visible_span = visible_span
@@ -2094,6 +2113,9 @@ class ToolTips(CommonTip):
     def process_tip(self):
         """ Check if window should be created or destroyed.
             Check if we are fading in or fading out and set alpha.
+
+            TODO: As tip window is fading in, button click is not registered so
+                  tip window stays up for normal duration
         """
         if not self.widget.winfo_exists():
             # If parent closed, tool tip is irrelevant. bserve bup_view close
@@ -2134,6 +2156,11 @@ class ToolTips(CommonTip):
             zero_alpha_time = fade_out_time + float(self.fade_out_span) / 1000
             if self.now > zero_alpha_time:
                 # We've finished fading out
+                if self.pb_close:
+                    self.reset_tip()  # pb_close will probably destroy tip next...
+                    self.pb_close()  # Tell "piggy_back" to destroy it's frame
+                    return
+
                 if self.tip_window is None:
                     print('process_tip(): self.tip_window does not exist')
                     print('self.now:', self.now, 'zero_alpha_time:', zero_alpha_time)
@@ -2202,11 +2229,15 @@ class ToolTips(CommonTip):
         :param alpha: Fractional value between 0 and 100% complete
         :return: None
         """
-        if self.tool_type is 'piggy_back':
-            pass
+
         if alpha != self.current_alpha:
-            self.tip_window.attributes("-alpha", alpha)
-            self.current_alpha = alpha
+            if callable(self.pb_alpha):
+                ''' There is no tip window to transition. Inform 'piggy_back' '''
+                self.pb_alpha(alpha, self.dict)
+            else:
+                ''' Adjust tip window alpha (transparency) during fade-in/out '''
+                self.tip_window.attributes("-alpha", alpha)
+            self.current_alpha = alpha  # Save to prevent spamming same alpha
 
     def create_tip_window(self):
 
@@ -2255,7 +2286,11 @@ class ToolTips(CommonTip):
             self.fg = None
             self.bg = None
 
-        #self.tip_window = tw = tk.Toplevel(self.widget)
+        ''' Time to bail-out if "piggy_back" tool_type '''
+        if self.tool_type is 'piggy_back':
+            return
+
+        #self.tip_window = tw = tk.Toplevel(self.widget)  # Original weird code...
         self.tip_window = tk.Toplevel(self.widget)
         self.tip_window.wm_overrideredirect(1)   # Undecorated
         self.tip_window.wm_geometry("+%d+%d" % (x, y))
@@ -2360,7 +2395,8 @@ class ToolTips(CommonTip):
 
     def toggle_position(self, widget):
         """ If tip window's position is below widget, set above. 
-            If above, then set below.
+            If above, then set below. Used when button bar moves to middle
+            of window to bottom and vice versa. E.G. mserve chronology.
         """
         for self.tips_index, self.dict in enumerate(self.tips_list):
             if self.dict['widget'] == widget:
@@ -2394,6 +2430,8 @@ class ToolTips(CommonTip):
         """
         d_print('LEAVE:', str(event.widget)[-4:], event.x, event.y)
         self.log_event('leave', event.widget, event.x, event.y)
+        if self.pb_leave:
+            self.pb_leave()  # Let "piggy_back" know mouse left parent widget
 
     def motion(self, event):
         """ Mouse is panning over widget.
