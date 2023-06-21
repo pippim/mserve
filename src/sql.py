@@ -1338,7 +1338,9 @@ class Authorization:
 
 
 class Webscrape:
-    """ not used """
+    """
+                    not used - Future Class for webscrape.py
+    """
     def __init__(self, music_id):
         # All columns in history row, except primary ID auto assigned.
         self.MusicId = music_id

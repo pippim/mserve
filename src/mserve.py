@@ -1160,6 +1160,7 @@ class MusicTree(PlayCommonSelf):
         # search shortcut: tt_leave
         self.info = InfoCentre(self.lib_top, self.lib_tree, self.banner_frm,
                                self.banner_btn, self.build_banner_btn, self.tt)
+        self.info.cast("mserve started")
 
         ''' Treeview select item - custom select processing '''
         self.lib_tree_open_states = []  # State of collapsed/expanded artists & albums
@@ -1320,6 +1321,7 @@ class MusicTree(PlayCommonSelf):
             "count, file sizes, etc. Details about the music library and\n" +\
             "current playing song are also displayed."
         self.tt.add_tip(self.banner_btn, text=text, anchor="sc",
+                        visible_span=1000, extra_word_span=100,
                         visible_delay=150, fade_out_span=149)
         # button click
         #command = lambda: self.test_tt("Hi There!")
@@ -1437,8 +1439,10 @@ class MusicTree(PlayCommonSelf):
         ext.t_end('no_print')  # 0.0004191399
 
         ext.t_init('self.view_menu = tk.Menu(mb)')
-        # View menu - Show locations and SQL library
+        # View menu - Show locations and SQL library  #command=lambda: self.info.test_tt("Hello")
         self.view_menu = tk.Menu(mb, tearoff=0)
+        self.view_menu.add_command(label="Information Centre", font=(None, MED_FONT),
+                                   command=lambda: self.info.test_tt("Hello"))
         self.view_menu.add_command(label="Show Location", font=(None, MED_FONT),
                                    command=lambda: self.show_location(
                                    caller='Drop', mode='Show'))
@@ -1991,9 +1995,9 @@ class MusicTree(PlayCommonSelf):
         str_del_cnt = str(self.pending_del_cnt)  # reset() will destroy values
         add_del_str = ""
         if str_add_cnt != "0":
-            add_del_str += " - " + str_add_cnt + " New song(s) added.\n"
+            add_del_str += "\t- " + str_add_cnt + " New song(s) added.\n"
         if str_del_cnt != "0":
-            add_del_str += " - " + str_del_cnt + " Song(s) removed.\n"
+            add_del_str += "\t- " + str_del_cnt + " Song(s) removed.\n"
 
         self.pending_reset(ShowInfo=False)  # Set tree open/close states
         self.lib_tree.update_idletasks()
@@ -2004,6 +2008,11 @@ class MusicTree(PlayCommonSelf):
         dprint("current_playing_ndx:", current_playing_ndx)
 
         # NEED to broadcast with InfoCentre
+        text = "Playlist changes applied to memory but not saved to storage yet.\n\n" +\
+            add_del_str + "\n"
+
+        #self.info.cast(text)
+
         message.ShowInfo(
             self.lib_top, thread=self.get_refresh_thread(),
             align='left', title="Playlist changes applied.",
@@ -4527,11 +4536,12 @@ $ wmctrl -l -p
             cursor (so to speak) to first changed song (open parents).
             Called from lib_tree's "🗘 Refresh library" button.
         """
+        self.info.cast("Rebuild music library - scan for new songs")
 
         if self.playlists.name is not None:
-            # Good place for our little test :)
-            if callable(self.info.test_tt):
-                self.info.test_tt("how ya doin?")
+            # No need for self.info.cast()
+            self.info.cast("Rebuild music library - Only works when Favorites playing",
+                           'error', 'open')
             message.ShowInfo(
                 self.lib_top, thread=self.get_refresh_thread(),
                 title="Support for Playlists not finished.",
@@ -4539,9 +4549,6 @@ $ wmctrl -l -p
                      "Playlist is open. Close playlist and use Favorites.\n\n" +
                      "The Refresh Library function checks for new song files which is\n" +
                      "a process automatically performed during mserve startup anyway.")
-            if callable(self.info.test_tt):
-                print("len(self.info.test_results):", len(self.info.test_results))
-                print(self.info.test_results)
             return
 
         global SORTED_LIST
@@ -4619,7 +4626,8 @@ $ wmctrl -l -p
 
         self.vol_class = Volume(parent=self.lib_top, tooltips=self.tt,
                                 thread=self.get_refresh_thread(),
-                                save_callback=self.get_hockey_state)
+                                save_callback=self.get_hockey_state,
+                                playlists=self.playlists)
 
     def show_debug(self):
         """ Debugging - show monitors, tooltips and full metadata
@@ -4798,6 +4806,23 @@ $ wmctrl -l -p
         # Show frame widgets defined in library. Scan options are: "All", "Toplevel",
         # "Frame", "Label", "Button", "Treeview", "Scrollbar", "Menu", "Canvas" & "Other"
         #toolkit.list_widgets(self.lib_top, scan="Frame")  # Too much info. Needs work!
+
+        print("\n\n=======================================")
+        print("\nInformation Centre - self.info.dict[] =")
+        # print("---------------------------------------\n")  # Too Busy with lines?
+        print()  # Substitute for busy lines above
+        print("--- KEY ---\t  --- VALUE ---\n")
+        for key in self.info.dict:
+            if isinstance(self.info.dict[key], list):
+                all_entries = self.info.dict[key]  # pattern or trace
+                if len(all_entries) != 0:  # If zero, drop down to print regular line
+                    print("['" + key + "']\t:", self.info.dict[key][0])
+                    continue  # TODO: for entry in all_entries:
+
+            print("['" + key + "']\t:", self.info.dict[key])  # regular line
+
+        print("\n=======================================\n")
+
 
         #thread = self.get_refresh_thread()
         message.ShowInfo(self.lib_top, "DEBUG - mserve.py",
@@ -11625,6 +11650,8 @@ IndexError: list index out of range
 
     def get_config_for_loc(self, Type):
         """ Wrapper Action is auto assigned as location or playlist number string
+            TODO:   Same function in MusicTree() class and Volume() class.
+                    Awkward that Volume() class needs to be passed Playlists().
         """
         if NEW_LOCATION:
             return None
@@ -11637,7 +11664,9 @@ IndexError: list index out of range
 
     def save_config_for_loc(self, Type, SourceMaster="", SourceDetail="", Target="",
                             Size=0, Count=0, Seconds=0.0, Comments=""):
-        """ Wrapper Action is auto assigned as location
+        """ Wrapper Action is auto assigned as location or playlist number string
+            TODO:   Same function in MusicTree() class and Volume() class.
+                    Awkward that Volume() class needs to be passed Playlists().
         """
         if NEW_LOCATION:
             return None
@@ -12583,7 +12612,7 @@ class Volume:
     """
 
     def __init__(self, parent=None, name="ffplay", title=None, text=None,
-                 tooltips=None, thread=None, save_callback=None):
+                 tooltips=None, thread=None, save_callback=None, playlists=None):
         """
         """
         # self-ize parameter list
@@ -12594,6 +12623,7 @@ class Volume:
         self.tt = tooltips          # Tooltips pool for buttons
         self.thread = thread        # E.G. self.get_refresh_thread()
         self.save_callback = save_callback
+        self.playlists = playlists
 
         self.last_volume = None
         self.last_sink = None
@@ -12748,7 +12778,8 @@ class Volume:
 
     def read_vol(self):
         """
-            Get last saved volume.  Based on get_hockey
+            Get last saved volume.  Based on get_hockey. If nothing found
+            set defaults.
         """
 
         self.curr_volume = 100  # mserve volume when TV commercial on air
@@ -12808,6 +12839,38 @@ class Volume:
             Count=d['Count'], Seconds=d['Seconds'], Comments=d['Comments'])
         self.save_callback()  # This resets global TV_VOLUME variable for us
         return True
+
+    def get_config_for_loc(self, Type):
+        """ Wrapper Action is auto assigned as location or playlist number string
+            TODO:   Same function in MusicTree() class and Volume() class.
+                    Awkward that Volume() class needs to be passed Playlists().
+        """
+        if NEW_LOCATION:
+            return None
+
+        if self.playlists.name is not None:
+            Action = self.playlists.act_number_str
+        else:
+            Action = LODICT['iid']
+        return sql.get_config(Type, Action)
+
+    def save_config_for_loc(self, Type, SourceMaster="", SourceDetail="", Target="",
+                            Size=0, Count=0, Seconds=0.0, Comments=""):
+        """ Wrapper Action is auto assigned as location or playlist number string
+            TODO:   Same function in MusicTree() class and Volume() class.
+                    Awkward that Volume() class needs to be passed Playlists().
+        """
+        if NEW_LOCATION:
+            return None
+        if self.playlists.name is not None:
+            Action = self.playlists.act_number_str
+        else:
+            Action = LODICT['iid']
+
+        sql.save_config(
+            Type, Action, SourceMaster=SourceMaster, SourceDetail=SourceDetail,
+            Target=Target, Size=Size, Count=Count, Seconds=Seconds,
+            Comments=Comments)
 
     # noinspection PyUnusedLocal
     def close(self, *args):
@@ -13761,62 +13824,9 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
 class InfoCentre:
     """ Usage:
 
-            self.banner = InfoCentre(
-                self.banner_frm, self.banner_btn, self.build_banner_btn,
-                self.build_banner_canvas, self.tt):
-
-        OR: ???
-
             self.info = InfoCentre(
                 self.banner_frm, self.banner_btn, self.build_banner_btn,
                 self.build_banner_canvas, self.tt, title_font, text_font):
-
-        Exposed Functions:
-        
-            self.info.test("message")
-                Simple test to feed Tooltips engine and track times and values
-                to a list which can then be printed.
-
-            self.info.new_msg(title, text, align)
-
-            self.info.click()
-                Banner button was clicked, show last message in memory.
-
-            self.info.set_fonts(title_font, text_font)
-
-            self.info.set_color(text_pattern, fg, bg)
-
-            self.info.set_tabs()
-
-        IPC Functions:
-        
-            _alpha_update(alpha, dict) - receive alpha from Tooltips()
-            _leave() - receive leave instruction from Tooltips() 
-
-        Overview:
-
-        Remove manual tooltip for banner button destroyed
-            self.tt.close(self.banner_btn)
-            self.banner_btn.destroy()
-
-        Create frame that can be expanded:
-            self.info_frm = tk.Frame(self.banner_frm, height=0, bg="sky blue3")
-            self.info_frm.pack()  # Old School works better this time for...
-            self.info_frm.place(height=7, width=7000)  # ...height of 7 override
-            self.tt.add_tip(self.info_frm, tool_type='piggy_back')
-
-        Force frame creation & expansion (fade-in):
-            self.tt.log_event('enter', frame, frame_x, frame_y)
-
-        Force frame collapse & removal (fade-out):
-            self.tt.log_event('leave', frame, frame_x, frame_y)
-
-        Create bindings for <Enter> and <Leave> frame
-            If leaving before fade-out finished, log leave
-            If entering frame do nothing because tt already thinks it's entered
-
-        Monitor fade-in & fade-out
-            update_alpha(tt_perc, tt_dict)
         
     """
 
@@ -13833,7 +13843,14 @@ class InfoCentre:
         self.build_banner_btn = build_banner_btn
         self.tt = tooltips
 
-        ''' Working fields '''
+        ''' Common variables '''
+        self.frame = None
+        self.text = None
+        self.height = None  # Fraction 33% of lib_top height
+        self.width = None  # Full width of lib_top
+        self.song_playing = None  # To shift lib_tree so current song is highlighted
+
+        ''' Working fields primarily for testing '''
         self.test = None
         self.test_text = None
         self.test_label = None
@@ -13843,16 +13860,188 @@ class InfoCentre:
         self.start_time = None  # Time test started
         self.time = None  # Time message was received
         self.last_delta_time = 0.0
+        self.original_sleep = None  # Override sleep time for polling tooltips
 
-        self.frame = None
-        self.text = None
-        self.height = None  # Fraction 33% of lib_top height
-        self.width = None  # Full width of lib_top
-        self.song_playing = None  # To shift lib_tree so current song is highlighted
 
         ''' Track old and new y-axis position to keep same rows displayed '''
         #self.old_y_top = self.old_y_end = 0.0
 
+        # NEED to broadcast with InfoCentre
+        #text = "Playlist changes applied to memory but not saved to storage yet.\n\n" +\
+        #    add_del_str + "\n"
+
+        #self.info.cast(text)  # The text is cast into expanding frame and brief period
+        # the frame collapses.  The casts are read by click on ruler bar button or
+        # from View dropdown menu pick "Information Centre" option which is the same
+        # self.info.view() function.
+
+        # After reading a cast it is moved into cast history. A timestamp is auto-added to
+        # all casts.
+
+        #self.info.fact(text)  # facts which appears after last .splash
+        # Then older .splash appear after .facts with most recent to oldest .splash for
+        # the session.  .splashes are lost on restart.  After last splash is read it goes
+        # into the history splash bucket but appears at top because it's the most recent.
+        # A number of facts can be posted by fact type. When a new fact it posted if the
+        # same type exists it is moved into splash history. A timestamp is auto-added to
+        # all facts.
+
+        # After reading, some facts are moved into fact history. For example "New Playlist"
+        # is historic but "Open Playlist" is trivial and only needs to be viewed once.
+
+        # Other facts are already stored in SQL History Table such as lyric scraping
+        # and CD encoding.
+
+        # facts are not cast when published. User must click on ruler bar button or
+        # from View dropdown menu pick "Information Centre" option which is the same
+        # function as a button click
+
+        #self.info.view()  # The view function never fades out until user moves mouse out
+        # of the region or picks the close button
+        # Then older .splash appear after .facts with most recent to oldest .splash for
+        # the session.  .splashes are lost on restart.  After last splash is read it goes
+        # into the history splash bucket but appears at top because it's the most recent.
+        # A number of facts can be posted by fact type. When a new fact it posted if the
+        # same type exists it is moved into splash history.
+
+        ''' Information Dictionary '''
+        self.dict = OrderedDict()  # Use View Dropdown Menu - Show Debug to view contents
+
+        self.list = []  # list of self.dict. Newest first: self.list.insert(0, self.dict)
+
+    def new_dict(self, new_type, text, severity=None, action=None):
+        """
+        Create a new dictionary
+        :param new_type: 'cast' or 'fact' 
+        :param severity: 'info', 'warning', 'error'
+        :param action: 'open', 'update', 'add', 'delete', 'rename'
+        :param text: Formatted text suitable for tk.Text widget format.
+        :return now: time dictionary created 
+        """
+        now = time.time()
+        self.dict = \
+            OrderedDict([
+                ("time", now), ("source", []), ("type", "cast"), ("severity", "info"),
+                ("action", ""), ("text", ""), ("patterns", []), ("view_time", 0.0)])
+        # time: micro-seconds (epoch) serves as unique key
+        # source: program name, class name, print_trace() results
+        # type: 'cast', 'fact'
+        # severity: 'info', 'warning', 'error'
+        # action: 'add', 'update', 'rename', 'delete', 'open'
+        #   NOTE: 'run' is currently considered to be same as 'open'
+        # text: "mserve START-UP:\n\t999 Artists\n\t999 Albums\n\t 9,999 Songs"
+        # patterns: [("Added", "white", "green"), ("Deleted", "red", "grey")]
+        #   PROBLEM: highlighting applies to all messages in Text
+        # view_time: 0.0 = False. After viewing, some info_type+action deleted
+
+        self.dict['type'] = new_type
+        self.dict['source'] = toolkit.get_trace()  # TODO: filter results
+        #self.dict['source'] = ["mserve.py"]  # Temporary until trace is filtered
+        if severity is None:
+            severity = 'info'
+        if action is None:
+            action = 'open'
+        self.dict['severity'] = severity
+        self.dict['action'] = action
+        self.dict['text'] = text
+        return now
+
+    def cast(self, text, severity=None, action=None):
+        """
+        Briefly display message in expanding/collapsing Information Centre.
+        If user interested they can use view() function to slowly read message.
+        After reading, most messages are deleted, but some are kept in session history.
+
+        :param severity: 'info', 'warning', 'error'
+        :param action: 'open', 'update', 'add', 'delete', 'rename'
+        :param text: Formatted text suitable for tk.Text widget format.
+        :return: time assigned to information centre entry. Can be used to find again
+        """
+        ''' 
+            PROCESSING STEPS:
+                Queue operation if previous cast is still active.
+                Create dictionary
+                Insert dictionary in list
+                Call splash function
+        '''
+
+        # TODO: Recursive call if first cast is still active.
+
+        time_stamp = self.new_dict('cast', text, severity, action)
+        self.list.insert(0, self.new_dict)
+        # self.dict remains in memory for all functions to "see"
+        self.splash()
+        return time_stamp  # time_stamp can be used by caller to massage text
+
+    def splash(self):
+        """
+            "Splash" a message by expanding/collapsing information centre panel
+            self.dict is populated with all variables caller sent
+
+        :return self.dict['time']: Time assigned to transaction
+        """
+        ''' Get current lib_top coordinates and current playing song '''
+        # During init there was no size for window
+        self.height = int(self.lib_top.winfo_height() / 3)
+        self.width = self.lib_top.winfo_width()
+        self.song_playing = self.lib_tree.tag_has("play_sel")
+        # print("song_playing:", self.song_playing)
+
+        ''' Recycled code needs local variables defined '''
+        text = self.dict['text']
+
+        ''' June 21, 2023 - test work fields, leave for now '''
+        self.test = True
+        self.msg_recv = text  # Formatted text (with \n, \t) to be displayed
+        # print("Caller says:", self.msg_recv)
+        self.test_results = []  # Empty last test
+        self.start_time = time.time()  # To calculate total elapsed time
+        self.last_delta_time = self.start_time  # To calculate ms between calls
+
+        ''' Destroy banner button in Tooltips() and banner button '''
+        self.tt.close(self.banner_btn)
+        self.banner_btn.destroy()  # Real Estate commandeered for splash
+
+        ''' Build new frame and Text widget. Add to Tooltips() '''
+        self.frame = tk.Frame(self.banner_frm, bg="black", height=7)
+        self.frame.grid()
+        self.test_text = tk.Text(self.frame, bg="black", height=self.height,
+                                 width=self.width, fg="gold", font=(None, MON_FONTSIZE))
+        self.test_text.place(height=self.height, width=self.width, x=40, y=10)
+        self.test_text.config(highlightthickness=0, borderwidth=0)
+
+        self._str_to_text_frame(text)
+        # Limitation: 'visible_delay' must be greater than 'fade_out_span'
+        self.tt.add_tip(
+            self.test_text, text=text, anchor="sc", tool_type="piggy_back",
+            pb_alpha=self.tt_alpha, pb_leave=self.tt_leave, pb_ready=self.tt_ready,
+            pb_close=self.tt_close, visible_span=1000, extra_word_span=100,
+            fade_in_span=300, visible_delay=401, fade_out_span=400
+        )
+        ''' ALL OPTIONS:
+def add_tip(self, widget, text='Pass text here', tool_type='button',
+    visible_delay=VISIBLE_DELAY, visible_span=VISIBLE_SPAN,
+    extra_word_span=EXTRA_WORD_SPAN, fade_in_span=FADE_IN_SPAN,
+    fade_out_span=FADE_OUT_SPAN, anchor="sw", 
+    pb_alpha=None, pb_leave=None, pb_close=None):
+
+VISIBLE_SPAN = 5000     # ms balloon tip remains on screen (5 sec/line)
+EXTRA_WORD_SPAN = 500   # 1/2 second per word if > VISIBLE_SPAN
+FADE_IN_SPAN = 500      # 1/4 second to fade in
+FADE_OUT_SPAN = 400     # 1/5 second to fade out
+        '''
+
+        ''' Send fake event to Tooltips() as if mouse hovers over parent widget '''
+        self.tt.log_event('enter', self.test_text, 10, 5)  # x=10, y=5
+
+        ''' Need to update for first yview test in tt_alpha '''
+        # self.lib_tree.update_idletasks()  # Without this, yview stays same
+        # print("Start:", self.lib_tree.yview())
+
+        ''' Track old and new y-axis position to keep same rows displayed '''
+        # self.old_y_top, self.old_y_end = self.lib_tree.yview()
+
+        return self.dict['time']
 
     def test_tt(self, text):
         """
@@ -13862,7 +14051,9 @@ class InfoCentre:
         :return: None
         """
         global SLEEP_PAUSED
+        self.original_sleep = SLEEP_PAUSED
         SLEEP_PAUSED = 20  # Was 33. Setting to 20 gives 29 to 41 during fade out.
+
         # During init there was no size for window
         self.height = int(self.lib_top.winfo_height() / 3)
         self.width = self.lib_top.winfo_width()
@@ -13878,7 +14069,7 @@ class InfoCentre:
 
         ''' Destroy banner button in Tooltips() '''
         self.tt.close(self.banner_btn)
-        self.banner_btn.destroy()  # Need to destroy frame instead and rebuild.
+        self.banner_btn.destroy()  # Destroy banner button. Real Estate commadered for splash
 
         ''' Build new frame and Text widget. Add to Tooltips() '''
         self.frame = tk.Frame(self.banner_frm, bg="black", height=7)
@@ -14055,10 +14246,10 @@ FADE_OUT_SPAN = 400     # 1/5 second to fade out
         self.build_banner_btn()
         self.test = False
 
-
-        global SLEEP_PAUSED
-        SLEEP_PAUSED = 33
-
+        if self.original_sleep is not None:
+            global SLEEP_PAUSED
+            SLEEP_PAUSED = self.original_sleep
+            self.original_sleep = None
 
         
 # ==============================================================================

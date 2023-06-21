@@ -65,6 +65,10 @@ def print_trace():
         print(line.strip())
 
 
+def get_trace():
+    return traceback.format_stack()
+
+
 '''
 List all objects in play next song
 https://stackoverflow.com/questions/60978666/get-list-of-toplevels-on-tkinter
