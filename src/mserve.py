@@ -450,6 +450,12 @@ COMPIZ_FISHING_STEPS = 100  # May 18, 2023 when 100 steps windows disappear
 ARTWORK_SUBSTITUTE = g.PROGRAM_DIR + "Be Creative 2 cropped.jpg"
 # "Be Creative 2 cropped.png" is a 4.4 MB image 3120x3120
 
+# June 20, 2023 - Losing average of 4ms per sleep loop when play_top paused
+#   Created new SLEEP_XXX constants but also create 'self.last_sleep_time'
+SLEEP_PAUSED = 33           # play_top open but music paused
+SLEEP_PLAYING = 33          # play_top is playing music
+SLEEP_NO_PLAY = 33          # play_top closed, refresh_lib_top() running
+
 
 def make_sorted_list(start_dir, toplevel=None, idle=None):
     """ Build list of songs on storage device beginning at 'start_dir'
@@ -992,6 +998,9 @@ class PlayCommonSelf:
         self.view_menu = None
         self.playlist_bar = None
 
+        ''' last_sleep_time for mor accurate 30 frames per second (fps) '''
+        self.last_sleep_time = time.time()
+
 
 class MusicTree(PlayCommonSelf):
     """ Create self.lib_tree = tk.Treeview() via CheckboxTreeview()
@@ -1080,18 +1089,12 @@ class MusicTree(PlayCommonSelf):
         master_frame.rowconfigure(0, weight=0)  # InfoCentre bar frame
         master_frame.rowconfigure(1, weight=1)  # treeview frame
 
-        ''' Expanding/collapsing information centre Frame '''
+        ''' Expanding/collapsing information centre Frame - PART I of II '''
         # noinspection SpellCheckingInspection
         self.banner_frm = tk.Frame(master_frame, bg="skyblue3", height=7)
-        self.banner_frm.grid(sticky=tk.NSEW)
-        self.banner_frm.rowconfigure(0, weight=1)
-        # rowconfigure
+        self.banner_frm.grid(row=0, column=0, sticky=tk.NSEW)
         self.banner_btn = None  # will be built in next line
         self.build_banner_btn()  # Create thin horizontal ruler w/tooltip
-
-        # search shortcut: tt_leave
-        self.info = InfoCentre(self.lib_top, self.banner_frm, self.banner_btn,
-                               self.build_banner_btn, self.tt)
 
         ''' CheckboxTreeview Frame '''
         frame2 = tk.Frame(master_frame)
@@ -1152,6 +1155,12 @@ class MusicTree(PlayCommonSelf):
                                            "StatTime", "StatSize", "Count", "Seconds",
                                            "SelSize", "SelCount", "SelSeconds")
 
+
+        ''' Expanding/collapsing information centre Frame - PART II of II '''
+        # search shortcut: tt_leave
+        self.info = InfoCentre(self.lib_top, self.lib_tree, self.banner_frm,
+                               self.banner_btn, self.build_banner_btn, self.tt)
+
         ''' Treeview select item - custom select processing '''
         self.lib_tree_open_states = []  # State of collapsed/expanded artists & albums
         self.playlist_paths = []
@@ -1197,12 +1206,12 @@ class MusicTree(PlayCommonSelf):
         # TODO Most of the times horizontal scroll not needed - make dynamic.
         # noinspection SpellCheckingInspection
         ''' June 19, 2023 - Disable horizontal scroll for lib_top.tree 
-            It might be needed for debugging hidden columns though.
+            It might be needed for debugging hidden columns though. '''
         h_scroll = tk.Scrollbar(frame2, orient=tk.HORIZONTAL, width=sbar_width,
                                 command=self.lib_tree.xview)
         h_scroll.grid(row=1, column=0, sticky=tk.EW)
         self.lib_tree.configure(xscrollcommand=h_scroll.set)
-        '''
+
 
         ''' Pending Playlist Updates from Checkbox Actions '''
         self.create_pending_frame(master_frame)  # Hides after creation
@@ -1302,17 +1311,9 @@ class MusicTree(PlayCommonSelf):
         """ Called from init in MusicTree() class and InfoCentre() class
         """
         # noinspection SpellCheckingInspection
-        self.banner_btn = tk.Button(self.banner_frm, height=0, bg="skyblue3",
-                                    command = lambda: self.info.test_tt("Hello"))
-        self.banner_btn.pack()  # Old School works better this time for...
+        self.banner_btn = tk.Button(self.banner_frm, height=0, bg="skyblue3", fg="black",
+                                    command=lambda: self.info.test_tt("Hello"))
         self.banner_btn.place(height=7, width=7000)  # ...height of 7 override
-        # The banner_btn tooltip is deleted when button (ruler line) is clicked
-        # on. A new tooltip type 'piggy_back' is added and instantly invoked to
-        # expand frame which stays for 60 seconds and then collapses. Then the
-        # banner_btn is reinstated. Other functions can invoke banner_message
-        # and have it fade after 10 seconds. If mouse is moved outside of
-        # banner message the window collapses immediately. Move code below to
-        # new function self.banner_btn_tooltip() to call from a few places.
         text = "▼ ▲ ▼ ▲  Expanding/Collapsing Information Centre  ▲ ▼ ▲ ▼ \n\n" +\
             "Click this ruler line and it expands to a large frame with\n" +\
             "details of the current playlist's name, description, song\n" +\
@@ -1632,15 +1633,16 @@ class MusicTree(PlayCommonSelf):
             self.close()
             return False  # Not required because this point never reached.
         ''' Always give time slice to tooltips '''
-        now = time.time()
-        if not self.lib_top:
+        if not self.lib_top_is_active:
             return False  # self.close() has set to None
-        self.tt.poll_tips()  # Takes a very small processor slice
+        self.tt.poll_tips()  # Tooltips fade in and out. self.info piggy backing
         self.lib_top.update()  # process events in queue. E.G. message.ShowInfo()
-        sleep = 33 - (int(time.time() - now))   # Strict 30 frames per second
-        sleep = 1 if sleep < 1 else sleep       # Sleep minimum 1 millisecond
+        now = time.time()  # June 20, 2023 - Use new self.last_sleep_time
+        sleep = SLEEP_NO_PLAY - int(now - self.last_sleep_time)
+        sleep = sleep if sleep > 0 else 1      # Sleep minimum 1 millisecond
+        self.last_sleep_time = now
         ''' Are we already destroyed? '''
-        if not self.lib_top:
+        if not self.lib_top_is_active:
             return False  # self.close() has set to None
         ''' sleep remaining time until 33ms expires '''
         self.lib_top.after(sleep)              # Sleep until next 30 fps time
@@ -7900,14 +7902,23 @@ $ wmctrl -l -p
             #if self.lib_top is not None:
             if not self.play_top_is_active:
                 return False  # Added June 19, 2023
-            if self.lib_top_is_active:
-                # June 18, 2023 next line caused error on shutdown
-                self.play_top.update()           # Sept 20 2020 - Need for lib_top
-            #self.play_top.update_idletasks()    # Not powerful enough crash sys.
-            sleep = 33 - (int(time.time() - now))
-            sleep = 1 if sleep < 1 else sleep   # Sleep minimum 1 millisecond
+            if not self.lib_top_is_active:  # About to shutdown - First flag set
+                return False  # June 18, 2023 next line caused error on shutdown
+            self.play_top.update()           # Sept 20 2020 - Need for lib_top too
+
+            # Jun 20 2023 - Losing 5 ms on average see: self.info.test_tt()
+            now = time.time()  # June 20, 2023 - Use new self.last_sleep_time
+            sleep = SLEEP_PAUSED - int(now - self.last_sleep_time)
+            sleep = sleep if sleep > 0 else 1  # Sleep minimum 1 millisecond
+            self.last_sleep_time = now
+
+            # sleep = 33 - (int(time.time() - now))  # June 20, 2023 - Use global variable
+            #sleep = SLEEP_PAUSED - (int(time.time() - now))
+            #if sleep < 1:
+            #    print("Play paused and we are loosing sleep:", sleep)
+            #sleep = 1 if sleep < 1 else sleep   # Sleep minimum 1 millisecond
             self.play_top.after(sleep)          # Wait until playing
-            return False
+            return True  # June 20, 2023 this was False. Don't know effect.
 
         ''' May 23, 2023 - Updating metadata takes 10 minutes for 5,000 songs.
                 Current song would end before completion. Also a song can end
@@ -7929,8 +7940,16 @@ $ wmctrl -l -p
         if not self.play_top_is_active:
             return False                        # Play window closed so shutting down
         self.play_top.update()                  # Update artwork spinner & text
-        sleep = 33 - (int(time.time() - now))   # Strict 30 frames per second
-        sleep = 1 if sleep < 1 else sleep       # Sleep minimum 1 millisecond
+
+        # Jun 20 2023 - Losing 5 ms on average see: self.info.test_tt()
+        now = time.time()  # June 20, 2023 - Use new self.last_sleep_time
+        sleep = SLEEP_PAUSED - int(now - self.last_sleep_time)
+        sleep = sleep if sleep > 0 else 1  # Sleep minimum 1 millisecond
+        self.last_sleep_time = now
+
+        # sleep = 33 - (int(time.time() - now))  # June 20, 2023 - Use global variable
+        #sleep = SLEEP_PLAYING - (int(time.time() - now))   # Strict 30 frames per second
+        #sleep = 1 if sleep < 1 else sleep       # Sleep minimum 1 millisecond
         self.play_top.after(sleep)              # Sleep until next 30 fps time
         return True
 
@@ -13151,12 +13170,12 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         """
             Use custom Data Dictionary routines for managing treeview.
         """
+
+        ''' Data Dictionary and Treeview column names '''
         history_dict = sql.history_treeview()  # Heart of Data Dictionary
-        ''' Data Dictionary Field Names '''
         columns = ("detail", "comments", "count", "size", "seconds")
         toolkit.select_dict_columns(columns, history_dict)
-        # TODO make row_id column hidden
-        # toolkit.print_dict_columns(history_dict)  # Uncomment to debug
+
         ''' Create treeview frame with scrollbars '''
         tree_frame = tk.Frame(self.frame, bg="olive", relief=tk.RIDGE)
         tree_frame.grid(sticky=tk.NSEW, columnspan=4)
@@ -13177,10 +13196,11 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         self.his_view.tree.heading('size', text='Size of Files')
         self.his_view.tree.heading('seconds', text='Duration')
         self.his_view.tree["displaycolumns"] = columns  # hide row_id
+
         ''' Treeview select item with button clicks '''
-        # Need to import more stuff before moving columns work?
+        # Moving columns needs work and probably isn't even needed
         #toolkit.MoveTreeviewColumn(self.top, self.his_view.tree,
-        #                           row_release=self.his_button_3_click)
+        #                           row_release=self.his_button_click)
         self.his_view.tree.bind("<Button-1>", self.his_button_click)
         self.his_view.tree.bind("<Button-3>", self.his_button_click)
         self.his_view.tree.tag_configure('play_sel', background='ForestGreen',
@@ -13202,7 +13222,35 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
 
     def his_button_click(self, event):
         """ Left button clicked to select a row.
+
+        ''' Was region of treeview clicked a "separator"? '''
+        clicked_region = self.view.tree.identify("region", event.x, event.y)
+        if clicked_region == 'separator':
+            # TODO adjust stored column widths
+            return
+
+        # From: https://stackoverflow.com/a/62724993/6929343
+        if clicked_region == 'heading':
+            column_number = self.view.tree.identify_column(event.x)  # returns '#?'
+            if self.common_top == self.mus_top:
+                title = "SQL Music Table"
+            else:
+                title = "SQL History Table"
+            self.create_window(title + ': ' + column_number,
+                               900, 450)  # width, height - July 27/22 make wider.
+            column_name = self.view.columns[int(column_number.replace('#', '')) - 1]
+            column_dict = toolkit.get_dict_column(column_name, self.view.tree_dict)
+            # Note: view_column stays open when SQL Music window is closed.
+            view_column = sql.PrettyTreeHeading(column_dict)
+            view_column.scrollbox = self.scrollbox
+            # Document self.scrollbox
+            sql.tkinter_display(view_column)
+            return
+
+        # At this point only other region is 'cell'
+
         """
+
         number_str = self.his_view.tree.identify_row(event.y)
         if self.state == "new" or self.state == "save_as":
             self.thread = self.get_thread_func()  # FIX huge problem when play_close()
@@ -13772,13 +13820,14 @@ class InfoCentre:
         
     """
 
-    def __init__(self, lib_top=None, banner_frm=None, banner_btn=None, build_banner_btn=None,
-                 tooltips=None):
+    def __init__(self, lib_top=None, lib_tree=None, banner_frm=None,
+                 banner_btn=None, build_banner_btn=None, tooltips=None):
         """
             
         """
         ''' self-ize parameter list '''
         self.lib_top = lib_top
+        self.lib_tree = lib_tree
         self.banner_frm = banner_frm
         self.banner_btn = banner_btn
         self.build_banner_btn = build_banner_btn
@@ -13787,15 +13836,23 @@ class InfoCentre:
         ''' Working fields '''
         self.test = None
         self.test_text = None
+        self.test_label = None
         self.msg_recv = None
         self.test_results = []  # list of tuples (time.time(), alpha, dict fields?)
 
         self.start_time = None  # Time test started
         self.time = None  # Time message was received
+        self.last_delta_time = 0.0
 
         self.frame = None
         self.text = None
-        self.height = 200  # Calculate 30% of lib_top height?
+        self.height = None  # Fraction 33% of lib_top height
+        self.width = None  # Full width of lib_top
+        self.song_playing = None  # To shift lib_tree so current song is highlighted
+
+        ''' Track old and new y-axis position to keep same rows displayed '''
+        #self.old_y_top = self.old_y_end = 0.0
+
 
     def test_tt(self, text):
         """
@@ -13804,77 +13861,141 @@ class InfoCentre:
         :param text: simple message "Hello World".
         :return: None
         """
-        self.test = True
-        self.msg_recv = text
-        self.test_results = []  # Empty last test
-        self.start_time = time.time()
+        global SLEEP_PAUSED
+        SLEEP_PAUSED = 20  # Was 33. Setting to 20 gives 29 to 41 during fade out.
+        # During init there was no size for window
+        self.height = int(self.lib_top.winfo_height() / 3)
+        self.width = self.lib_top.winfo_width()
+        self.song_playing = self.lib_tree.tag_has("play_sel")
+        #print("song_playing:", self.song_playing)
 
-        ''' Destroy banner button in Tooltips() only for test
-        '''
+        self.test = True
+        self.msg_recv = text  # Formatted text (with \n, \t) to be displayed
+        #print("Caller says:", self.msg_recv)
+        self.test_results = []  # Empty last test
+        self.start_time = time.time()  # To calculate total elapsed time
+        self.last_delta_time = self.start_time  # To calculate ms between calls
+
+        ''' Destroy banner button in Tooltips() '''
         self.tt.close(self.banner_btn)
         self.banner_btn.destroy()  # Need to destroy frame instead and rebuild.
-        self.tt.poll_tips()  # Prevent: TEMPORARY: forced tip window close
 
+        ''' Build new frame and Text widget. Add to Tooltips() '''
+        self.frame = tk.Frame(self.banner_frm, bg="black", height=7)
+        self.frame.grid()
+        self.test_text = tk.Text(self.frame, bg="black", height=self.height,
+                                 width=self.width, fg="gold", font=(None, MON_FONTSIZE))
+        self.test_text.place(height=self.height, width=self.width, x=40, y=10)
+        self.test_text.config(highlightthickness=0, borderwidth=0)
 
-        # noinspection SpellCheckingInspection
-        self.frame = tk.Frame(self.banner_frm, height=7)
-        self.frame.grid(row=0, column=0, sticky=tk.NSEW)
-        self.frame.columnconfigure(0, weight=1)
-        self.frame.rowconfigure(0, weight=1)
-        self.frame.grid_propagate(False)
-        self.test_text = tk.Text(self.frame, bg="skyblue3", height=self.height)
-        self.test_text.grid(row=0, column=0, padx=5, pady=5, sticky=tk.W)
+        text = "\n\t▼ ▲ ▼ ▲  Expanding/Collapsing Information Centre  ▲ ▼ ▲ ▼ \n\n" + \
+               "\t\t          THIS IS JUST A TEST.\n\n" + \
+               "\t         DO NOT ADJUST YOUR KEYBOARD OR MOUSE."
 
-        text = "▼ ▲ ▼ ▲  Expanding/Collapsing Information Centre  ▲ ▼ ▲ ▼ \n\n" + \
-               "THIS IS JUST A TEST.\n" +\
-               "DO NOT ADJUST YOUR KEYBOARD OR MOUSE."
-
-        self.tt.add_tip(self.test_text, text=text, anchor="sc", 
-                        tool_type="piggy_back", pb_alpha=self.tt_alpha,
-                        pb_leave=self.tt_leave, pb_close=self.tt_close,
-                        visible_span=1000, extra_word_span=100, fade_in_span=300,
-                        visible_delay=301, fade_out_span=300)
-        self.test_text.configure(state="normal")
-        for line in text:
-            self.test_text.insert(tk.END, line)
-        self.test_text.update()  # Is this necessary? CONFIRMED YES
-        self.test_text.configure(state="disabled")
-
+        self._str_to_text_frame(text)
         # Limitation: 'visible_delay' must be greater than 'fade_out_span'
+        self.tt.add_tip(
+            self.test_text, text=text, anchor="sc", tool_type="piggy_back",
+            pb_alpha=self.tt_alpha, pb_leave=self.tt_leave, pb_ready=self.tt_ready,
+            pb_close=self.tt_close, visible_span=1000, extra_word_span=100,
+            fade_in_span=300, visible_delay=401, fade_out_span=400
+        )
         ''' ALL OPTIONS:
-        
-            def add_tip(self, widget, text='Pass text here', tool_type='button',
-                visible_delay=VISIBLE_DELAY, visible_span=VISIBLE_SPAN,
-                extra_word_span=EXTRA_WORD_SPAN, fade_in_span=FADE_IN_SPAN,
-                fade_out_span=FADE_OUT_SPAN, anchor="sw", 
-                pb_alpha=None, pb_leave=None, pb_close=None):
+def add_tip(self, widget, text='Pass text here', tool_type='button',
+    visible_delay=VISIBLE_DELAY, visible_span=VISIBLE_SPAN,
+    extra_word_span=EXTRA_WORD_SPAN, fade_in_span=FADE_IN_SPAN,
+    fade_out_span=FADE_OUT_SPAN, anchor="sw", 
+    pb_alpha=None, pb_leave=None, pb_close=None):
 
 VISIBLE_SPAN = 5000     # ms balloon tip remains on screen (5 sec/line)
 EXTRA_WORD_SPAN = 500   # 1/2 second per word if > VISIBLE_SPAN
 FADE_IN_SPAN = 500      # 1/4 second to fade in
 FADE_OUT_SPAN = 400     # 1/5 second to fade out
-
         '''
 
-        ''' Initiate test '''
+        ''' Fake event as if mouse entered parent widget bbox '''
         self.tt.log_event('enter', self.test_text, 100, 50)  # x=100, y=50
 
-    def tt_alpha(self, alpha, tt_dict):
+        ''' Need to update for first yview test in tt_alpha '''
+        #self.lib_tree.update_idletasks()  # Without this, yview stays same
+        #print("Start:", self.lib_tree.yview())
+
+        ''' Track old and new y-axis position to keep same rows displayed '''
+        #self.old_y_top, self.old_y_end = self.lib_tree.yview()
+
+    def _str_to_text_frame(self, text):
+        """ model after lyrics_score_box """
+        self.test_text.configure(state="normal")
+        self.test_text.insert(tk.END, text)
+        self.test_text.update()  # Is this necessary? Don't know yet...
+        self.test_text.configure(state="disabled")
+
+    def tt_alpha(self, alpha):
         """
         Called from Tooltips whenever fading-in or fading-out alpha changes
 
-        :param alpha: % fading-in or fading-out from 0.0 to .99999
-        :param tt_dict: Tooltips dictionary for widget status
+        :param alpha: % fading-in or fading-out from 0.0 to 1.0
         :return: None
         """
-        delta = time.time() - self.start_time
-        perc = alpha * 100
-        p_str = '({0:.2f}s, {1:.1f}%)'.format(delta, perc)
-        self.test_results.append(p_str)  # 325 results over 11.82 seconds
-
+        ''' Expand / Collapse frame with tk.Text widget inside. '''
         new_height = int(self.height * alpha)
-        print(p_str, "new_height:", new_height)
-        self.frame.config(height=new_height)  # width=frame["width"]
+        self.frame.config(height=new_height, width=self.width)
+
+    def tt_alpha_dev(self, alpha):
+        """
+        Called from Tooltips whenever fading-in or fading-out alpha changes
+
+        :param alpha: % fading-in or fading-out from 0.0 to 1.0
+        :return: None
+        """
+
+        ''' Track old and new y-axis position to keep same rows displayed '''
+        old_y_top, old_y_end = self.lib_tree.yview()
+
+        ''' Expand / Collapse frame with tk.Text widget inside. '''
+        new_height = int(self.height * alpha)
+        self.frame.config(height=new_height, width=self.width)
+
+        ''' Adjust y-axis so same row stays at bottom and tree relatively stable '''
+        self.lib_tree.update_idletasks()  # Without this, yview stays same
+        new_y_top, new_y_end = self.lib_tree.yview()
+        end_moved = new_y_end - old_y_end
+        self.lib_tree.yview_moveto(old_y_top - end_moved)
+
+    def tt_alpha_debug_version(self, alpha):
+        """
+        Called from Tooltips whenever fading-in or fading-out alpha changes
+
+        :param alpha: % fading-in or fading-out from 0.0 to 1.0
+        :return: None
+        """
+        now = time.time()  # debug
+        delta = now - self.start_time  # Debug
+        perc = alpha * 100  # debug
+        sleep = int((now - self.last_delta_time) * 1000)  # debug
+        p_str = '({0:.3f}s, {1:n}ms, {2:.1f}%)'.format(delta, sleep, perc)
+        self.test_results.append(p_str)  # debug
+
+        ''' Track old and new y-axis position to keep same rows displayed '''
+        old_y_top, old_y_end = self.lib_tree.yview()
+
+        ''' Expand / Collapse frame with tk.Text widget inside. '''
+        new_height = int(self.height * alpha)
+        print(p_str, "new_height:", new_height)  # Debug
+        self.frame.config(height=new_height, width=self.width)
+        self.last_delta_time = now  # Debug
+
+        ''' Adjust y-axis so same row stays at bottom and tree relatively stable '''
+        self.lib_top.update_idletasks()  # Without this, yview stays same
+        new_y_top, new_y_end = self.lib_tree.yview()
+        end_moved = new_y_end - old_y_end
+        self.lib_tree.yview_moveto(old_y_top - end_moved)
+
+        if self.song_playing:
+            #    self.lib_tree.yview_scroll(1, "units")  # Just to test
+            #else:
+            #    self.lib_tree.yview_scroll(-1, "units")  # Just to test
+            pass
 
     def tt_leave(self):
         """
@@ -13884,25 +14005,59 @@ FADE_OUT_SPAN = 400     # 1/5 second to fade out
 
         :return: None
         """
-        print("InfoCentre() tt_leave() mouse left widget window")
-        print(time.time() - self.start_time)
+        #print("InfoCentre() tt_leave() mouse left widget window.",
+        #      "total time:", time.time() - self.start_time)
+
+        ''' Feed fake button press event to cause info message to collapse
+            right away. This works but highly sensitive with premature
+            closing.
+        '''
+        #self.tt.log_event('press', self.test_text, 100, 50)  # x=100, y=50
+
+
+    def tt_ready(self):
+        """
+        Called from Tooltips when ready for message to be displayed.
+
+        :return: None
+        """
+        #print("InfoCentre() tt_ready() message can be displayed now.",
+        #      "total time:", time.time() - self.start_time)
+
+        #self.test_label = tk.Label(self.frame, text="I am inside a Frame", font='Arial 17 bold')
+        #self.test_label.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
+        #self.test_label.update()
+        #self.frame.grid_propagate(True)
+        #self.lib_top.update()
+        #root.update()
 
     def tt_close(self):
         """
         Called from Tooltips when fading-out process has ended.
         :return: None
         """
-        print("InfoCentre() tt_close() tooltip processing has ended")
-        print(time.time() - self.start_time)  # 11.8293859959
-        self.frame.config(height=7)  # After alpha height can be 23px
-        self.lib_top.update()  # Must update before destroy or 23px bar stays
-        self.frame.destroy()
-        self.tt.close(self.test_text)
+        #print("InfoCentre() tt_close() tooltip processing has ended.",
+        #      "total time:", time.time() - self.start_time)
+
+        ''' Fix rounding errors - Ensure old bottom row is restored '''
+        #self.lib_tree.update_idletasks()  # Need to prevent row creep next run.
+        #new_y_top, new_y_end = self.lib_tree.yview()
+        #end_moved = new_y_end - self.old_y_end
+        #self.lib_tree.yview_moveto(self.old_y_top - end_moved)
+        #self.tt_alpha_dev(0.01)  # Use this with development version
+
+        self.frame.config(height=7)  # Last height can be 0 - 30px
+        self.lib_top.update()  # Update before destroy or last stays
+        self.frame.destroy()  # Nuke the frame used for info message
+        self.tt.close(self.test_text)  # Remove 'piggy_back' tooltip
 
         ''' Rebuild banner button '''
         self.build_banner_btn()
         self.test = False
 
+
+        global SLEEP_PAUSED
+        SLEEP_PAUSED = 33
 
 
         
@@ -14568,6 +14723,7 @@ def open_files(old_cwd, prg_path, parameters, toplevel=None):
     global NEW_LOCATION  # True=Unknown music directory in parameter #1
     global LODICT  # Permanent copy of location dictionary never touched
 
+    print(r'')  # A little separation
     print(r'  ######################################################')
     print(r' //////////////                            \\\\\\\\\\\\\\')
     print(r'<<<<<<<<<<<<<<    mserve - Music Server     >>>>>>>>>>>>>>')
@@ -14583,8 +14739,10 @@ def open_files(old_cwd, prg_path, parameters, toplevel=None):
             TODO: Check individual files exist in DATA_DIR
         '''
         if os.path.isdir(g.USER_DATA_DIR):
-            print("g.USER_DATA_DIR exists:", g.USER_DATA_DIR)
+            #print("g.USER_DATA_DIR exists:", g.USER_DATA_DIR)
+            pass
         else:
+            toolkit.print_trace()
             print("g.USER_DATA_DIR is a file but must be a directory:", 
                   g.USER_DATA_DIR)
             exit()
@@ -14624,8 +14782,8 @@ def open_files(old_cwd, prg_path, parameters, toplevel=None):
             # If no optional `/` at end, add it for equal comparisons
             if not START_DIR.endswith(os.sep):
                 START_DIR = START_DIR + os.sep
-            print('mserve.py open_files() Last location read. START_DIR:',
-                  START_DIR)
+            #print('mserve.py open_files() Last location read. START_DIR:',
+            #      START_DIR)
             return
         else:
             print("mserve.py open_files() load_last_location() FAILED !!!!")

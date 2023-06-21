@@ -1663,6 +1663,7 @@ class CommonTip:
 
         self.pb_alpha = None            # Update 'piggy_back' with alpha percent
         self.pb_leave = None            # Tell 'piggy_back' mouse left widget
+        self.pb_ready = None            # Tell 'piggy_back' it can display msg
         self.pb_close = None            # Tell 'piggy_back' tip_window closed
 
 
@@ -1765,7 +1766,8 @@ class ToolTips(CommonTip):
         self.anchor = self.dict['anchor']                           # 28
         self.pb_alpha = self.dict['pb_alpha']                       # 29
         self.pb_leave = self.dict['pb_leave']                       # 30
-        self.pb_close = self.dict['pb_close']                       # 31
+        self.pb_ready = self.dict['pb_ready']                       # 31
+        self.pb_close = self.dict['pb_close']                       # 32
 
 
     def fields_to_dict(self):
@@ -1800,7 +1802,8 @@ class ToolTips(CommonTip):
         self.dict['anchor'] = self.anchor                           # 28
         self.dict['pb_alpha'] = self.pb_alpha                       # 29
         self.dict['pb_leave'] = self.pb_leave                       # 30
-        self.dict['pb_close'] = self.pb_close                       # 31
+        self.dict['pb_ready'] = self.pb_ready                       # 31
+        self.dict['pb_close'] = self.pb_close                       # 32
 
 
     def log_event(self, action, widget, x, y):
@@ -1936,6 +1939,7 @@ class ToolTips(CommonTip):
 
         elif self.log_nt.action == 'press':
             # Button pressed in widget
+            # June 20, 2023 - Was not used. Now treat like 'leave' in code above
             self.press_time = self.log_nt.time
 
         elif self.log_nt.action == 'release':
@@ -2013,7 +2017,7 @@ class ToolTips(CommonTip):
                 visible_delay=VISIBLE_DELAY, visible_span=VISIBLE_SPAN,
                 extra_word_span=EXTRA_WORD_SPAN, fade_in_span=FADE_IN_SPAN,
                 fade_out_span=FADE_OUT_SPAN, anchor="sw", 
-                pb_alpha=None, pb_leave=None, pb_close=None):
+                pb_alpha=None, pb_leave=None, pb_ready=None, pb_close=None):
 
         CommonTip.__init__(self)            # Initialize all tip instances
 
@@ -2022,6 +2026,7 @@ class ToolTips(CommonTip):
         self.tool_type = tool_type          # 'button' or 'canvas_button' or 'menu'
         self.pb_alpha = pb_alpha            # Piggy-back callback when alpha changes
         self.pb_leave = pb_leave            # Piggy-back callback when mouse leaves widget
+        self.pb_ready = pb_ready            # Piggy-back callback when tip can be displayed
         self.pb_close = pb_close            # Piggy-back callback when tip destroyed
 
         self.visible_delay = visible_delay
@@ -2201,7 +2206,8 @@ class ToolTips(CommonTip):
 
             if self.window_visible is False:
                 if self.tool_type is 'piggy_back':
-                    pass  # create callback
+                    ''' Bail-out if "piggy_back" tool_type '''
+                    pass
                 else:
                     self.create_tip_window()
                 self.window_visible = True
@@ -2210,6 +2216,8 @@ class ToolTips(CommonTip):
             full_alpha_time = fade_in_time + float(self.fade_in_span) / 1000
             if self.now > full_alpha_time:
                 # We've finished fading in
+                if self.tool_type is 'piggy_back' and self.window_fading_in:
+                    self.pb_ready()  # Tell "piggy_back" to display it's text
                 self.window_fading_in = False
                 if self.current_alpha != 1.0:
                     self.update_alpha(1.0)
@@ -2233,7 +2241,7 @@ class ToolTips(CommonTip):
         if alpha != self.current_alpha:
             if callable(self.pb_alpha):
                 ''' There is no tip window to transition. Inform 'piggy_back' '''
-                self.pb_alpha(alpha, self.dict)
+                self.pb_alpha(alpha)
             else:
                 ''' Adjust tip window alpha (transparency) during fade-in/out '''
                 self.tip_window.attributes("-alpha", alpha)
@@ -2285,10 +2293,6 @@ class ToolTips(CommonTip):
         else:
             self.fg = None
             self.bg = None
-
-        ''' Time to bail-out if "piggy_back" tool_type '''
-        if self.tool_type is 'piggy_back':
-            return
 
         #self.tip_window = tw = tk.Toplevel(self.widget)  # Original weird code...
         self.tip_window = tk.Toplevel(self.widget)
@@ -2390,7 +2394,8 @@ class ToolTips(CommonTip):
                 # TODO: When text expands/shrinks line count
                 #       we need to
                 return
-            
+  
+        print_trace()          
         print('ERROR: set_text(): tip not found')
 
     def toggle_position(self, widget):
@@ -2411,6 +2416,7 @@ class ToolTips(CommonTip):
                 self.tips_list[self.tips_index] = self.dict
                 return
 
+        print_trace()
         print('toolkit.py ERROR: toggle_position(): tip not found')
         exit()
 
@@ -2432,6 +2438,10 @@ class ToolTips(CommonTip):
         self.log_event('leave', event.widget, event.x, event.y)
         if self.pb_leave:
             self.pb_leave()  # Let "piggy_back" know mouse left parent widget
+            # InfoCentre() tt_leave() mouse left widget window. total time: 1.00810217857
+            # InfoCentre() tt_leave() mouse left widget window. total time: 1.39003515244
+            # InfoCentre() tt_leave() mouse left widget window. total time: 1.67669916153
+            # June 20, 2023 - Why are there three events generated?
 
     def motion(self, event):
         """ Mouse is panning over widget.
