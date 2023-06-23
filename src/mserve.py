@@ -41,48 +41,71 @@
 #       Jun. 07 2023 - Many changes. E.G. step_volume() takes list of sinks.
 #       Jun. 09 2023 - Volume Slider for TV Hockey. Stanley=Vegas 2, Florida 1.
 #       Jun. 11 2023 - Add TV_BREAK and SOUND. Stanley Cup=Vegas 3, Panthers 1.
-#       Jun. 13 2023 - Develop Playlists() class. Vegas won Stanley Cup!
-#       Jun. 18 2023 - Expanding/Collapsing Information Centre. 80 hours?
+#       Jun. 13 2023 - Develop Playlists() class. Vegas won Stanley Cup! (4-1)
+#       Jun. 18 2023 - Expanding/Collapsing Information Centre. InfoCentre()
 #       June 21 2023 - 'M' splash screen disappears as late as possible.
 #       June 23 2023 - Antonia's request to highlight hovered chron_tree row.
 
 # TODO:
 # -----------------------------------------------------------------------------
 
-#   "Play this song" should be: "Play Song # 9999"
-
 #   Playlists
 
 #     BUGS:
-#       Shuffling Favorites then opening playlist will undo shuffle.
+#       Shuffling Favorites then opening playlist will undo shuffle. Backup!!
 #       Pruned songs can be added to Playlist
+#       self.info.cast() for new / open time lag suppresses zoom()
 
 #     TODO:
 #       Save Playlist As... - If playlist created with 'new' option then a
 #           rename option. Otherwise create a new playlist with new name.
 #
 
-#   When opening Artist, if only one Album then open it too.
+#   When opening Artist, if only one Album, then open it too.
 
-#   Rename 'self.saved_selections'  -> 'self.play_order_iid'
-#          'self.saved_selections'  -> 'self.play_iid_seqs'     #1
-#          'self.saved_selections'  -> 'self.playlist_iid'      #1
-#          'self.saved_selections'  -> 'self.play_lib_iid'      #1
+#   Language Laws - Song should not refer to title, only filename
+#       Song = Title (can have variations E.G. "Live in Paris" at end)
+#              + Artist - Cover artists may sing the same Title
+#              + Album - Artist can have same title on different albums
 
-#          'self.saved_playlist'    -> 'self.playlist_paths'    #1  DONE !
+#   Rename  'self.saved_selections' -> 'self.play_order_iid'
+#           'self.saved_selections' -> 'self.play_iid_seqs'     #1
+#           'self.saved_selections' -> 'self.playlist_iid'      #1
+#           'self.saved_selections' -> 'self.play_lib_iid'      #1
+#           'self.saved_selections' -> 'self.sel_lib_iids'  #1
+#           'self.saved_selections' -> 'self.sel_lib_tree_iids'  #1
 
-#          'self.song_list'         -> 'self.lib_tree_paths'    #1
+#           'self.saved_playlist'   -> 'self.playlist_paths'    #1  DONE ! - TODO: reverse
+#            Must reverse above too close to 'playlists' class created in June 2023
+#           'self.playlist_paths'   -> 'self.sel_lib_paths'
+#           'self.playlist_paths'   -> 'self.sel_lib_tree_paths'
 
-#          'self.ndx'               -> 'self.curr_iid_ndx'
-#          'self.ndx'               -> 'self.play_curr_ndx'
-#          'self.ndx'               -> 'self.play_ndx'
-#          'self.ndx'               -> 'self.seq_ndx'           #1
-#          'self.ndx'               -> 'self.iid_ndx'
-#          'self.ndx'               -> 'self.song_ndx'
+#           'self.song_list'        -> 'self.lib_tree_paths'
+#           'self.song_list'        -> 'self.lib_song_paths'    #1
 
-#          New Variable             -> 'self.play_curr_iid'     # self.saved_selections(self.ndx)
+#           'self.ndx'              -> 'self.curr_iid_ndx'
+#           'self.ndx'              -> 'self.play_curr_ndx'
+#           'self.ndx'              -> 'self.play_ndx'
+#           'self.ndx'              -> 'self.seq_ndx'           #1
+#           'self.ndx'              -> 'self.sel_ndx'           #1
+#           'self.ndx'              -> 'self.iid_ndx'
+#           'self.ndx'              -> 'self.song_ndx'
 
-#          'START_DIR'              -> 'MUSIC_DIR'
+#           New Variable            -> 'self.play_curr_iid'     # self.saved_selections(self.ndx)
+#           New Variable            -> 'self.sel_iid'           # self.saved_selections(self.ndx)
+
+#           'START_DIR'             -> 'MUSIC_DIR'              X shadows music_dir just created
+
+#       NEW NAMES SHORT LIST:
+#           'self.song_list'        -> 'self.lib_song_paths'    #1
+#           'self.playlist_paths'   -> 'self.sel_lib_paths'
+#           'self.saved_selections' -> 'self.sel_lib_iids'  #1
+#           'self.ndx'              -> 'self.sel_ndx'           #1
+#           New Variable            -> 'self.sel_iid'           # = self.saved_selections[self.ndx]
+#           New Variable            -> 'self.sel_song_path'     # = self.playlist_paths[self.ndx]
+#                                      Same as self.song_list[int(self.saved_selections[self.ndx])
+
+#           'self.song_set_ndx()'   -> 'self.set_sel_ndx()'
 
 #   Artist/Album open states are crazy. Redesign in simpler faster methodology.
 #       Create nested dictionaries only tracking open items because most will be
@@ -135,23 +158,20 @@
 #       automatically. "Done" and "Rewind 5 seconds" buttons unresponsive.
 
 #   When 'dell' File Server goes to sleep, there are 4 errors not trapped:
-
 #       sql.update_metadata(): File below doesn't exist:
 #           OsFileName-The Tea Party/Tangents/03 The Messenger.m4a
-
 #       Waited > 2.5+ seconds, aborting start_ffplay() get sink
-
 #       File ".../mserve.py", line 7269, in update_lib_tree_song
 #           OSError: [Err no 2] No such file or directory:
 #               '/mnt/music/The Tea Party/Tangents/03 The Messenger.m4a
-
 #       The last song stops music but progress seconds go past duration
+#       ALSO NOTE file serve was awake for 3 days after and very, VERY, HOT !!!
 
 # REVIEW:
 # -----------------------------------------------------------------------------
 
 #   CHANGING self.ndx in PENDING DELETIONS:
-#   self.song_set_ndx() so it no longer forces play. Initiated by
+#       self.song_set_ndx() so it no longer forces play. Initiated by
 #       fact changing self.ndx in pending_deletions unpauses music. This
 #       rewrite means many overrides can be removed in callers function.
 
@@ -1303,8 +1323,6 @@ class MusicTree(PlayCommonSelf):
         # June 13, 2023 -    MusicTree() init__(toplevel...): 1.3379859924
 
         ''' Load last selections and begin playing with last song '''
-
-        #self.load_last_selections()  # Create self.saved_selections[] and play all
         self.fast_play_startup()  # Read SORTED_LIST from make_sorted_list
 
         ''' When fast_play_startup() ends we need to enter idle loop
@@ -1322,10 +1340,10 @@ class MusicTree(PlayCommonSelf):
                                     fg="black", command=lambda: self.info.view())
         self.banner_btn.place(height=7, width=7000)  # ...height of 7 override
         text = "▼ ▲ ▼ ▲  Expanding/Collapsing Information Centre  ▲ ▼ ▲ ▼ \n\n" +\
-            "Click this ruler line and it expands to a large frame with\n" +\
-            "details of the current playlist's name, description, song\n" +\
-            "count, file sizes, etc. Details about the music library and\n" +\
-            "current playing song are also displayed."
+            "Click this ruler line and it expands to a large frame.\n\n" +\
+            "Actions are displayed with the most recent at the top.\n\n" +\
+            "You can also access using the 'View' Dropdown Menu and\n" +\
+            "selecting the 'Information Centre option."
         self.tt.add_tip(self.banner_btn, text=text, anchor="sc",
                         visible_span=1000, extra_word_span=100,
                         visible_delay=150, fade_out_span=149)
@@ -1523,11 +1541,32 @@ class MusicTree(PlayCommonSelf):
     def apply_playlists(self):
         """ Called from Playlists() class after 'new' or 'open' playlist
             self.playlists.apply_callback()
+
+            TODO: After hundred restarts, takes 8 seconds to open playlist
+                  so info.cast messages sent by Playlists() never appear?
+
+            self.info.cast("Opened playlist: " + self.act_name)
+            self.apply_callback()  # Parent will start playing (if > 1 song in list)
+            #self.info.cast("Opened playlist: " + self.act_name)  # doesn't work either
+        elif self.state == 'new':
+            self.save_playlist()  # Save brand new playlist
+            self.name = None
+            self.curr_number_str = None  # Replaces .name in future
+            self.play_close()  # must be called before name is set
+            self.name = self.act_name  # Tell parent name of playlist
+            self.last_number_str = self.curr_number_str  # Replaces .name in future
+            self.curr_number_str = self.act_number_str
+            # June 23, 2023 - info.cast isn't appearing?
+            self.info.cast("Created new playlist: " + self.act_name, action="add")
+            self.apply_callback()  # Begin editing new playlist
+
+
+
         """
         self.ndx = 0  # resume will set to last playing song
         self.saved_selections = []  # lib_tree id's in sorted play order
         self.playlist_paths = []  # full path names that need to be pruned
-        self.clear_all_checks_and_selects()  # Clear in lib_tree music library
+        self.clear_all_checks_and_selects()  # Clear in lib_tree (music library)
 
         # Build playlist_paths using Music Ids
         for music_id in self.playlists.act_id_list:
@@ -1543,9 +1582,17 @@ class MusicTree(PlayCommonSelf):
             iid = str(ndx)
             self.saved_selections.append(iid)
 
-        self.set_all_checks_and_selects(opened=False)
+        self.set_all_checks_and_selects(opened=False)  # Apply in lib_tree (library)
+
         ''' Restore previous open states when we first opened grid '''
         #self.apply_all_open_states(self.lib_tree_open_states)  # Will not work
+
+        ''' Below isn't stable. Sometimes ruler button bar height not reset to 7. 
+        if self.playlists.state == 'open':
+            self.info.cast("Opened playlist: " + self.playlists.act_name)
+        elif self.state == 'new':
+            self.info.cast("Created new playlist: " + self.playlists.act_name, action="add")
+        '''
 
         if len(self.saved_selections) >= 2:
             self.play_from_start = False  # Continue playing where we left off
@@ -2017,7 +2064,7 @@ class MusicTree(PlayCommonSelf):
         text = "Playlist changes applied to memory but not saved to storage yet.\n\n" +\
             add_del_str + "\n"
 
-        #self.info.cast(text)
+        self.info.cast(text, action='update')  # it's really 'add' and/or 'delete'
 
         message.ShowInfo(
             self.lib_top, thread=self.get_refresh_thread(),
@@ -4559,7 +4606,6 @@ $ wmctrl -l -p
             Called from lib_tree's "🗘 Refresh library" button.
         """
         if self.playlists.name is not None:
-            # No need for self.info.cast()
             self.info.cast("Rebuild music library - Only works when Favorites playing",
                            'error', 'open')
             message.ShowInfo(
@@ -4636,7 +4682,6 @@ $ wmctrl -l -p
         self.populate_lib_tree(dtb)
 
         ''' Load last selections and begin playing with last song '''
-        #self.load_last_selections()  # Version prior to May 25, 2023
         self.fast_play_startup()  # Review: Memory/speed called in three places
 
     def set_tv_volume(self):
@@ -5846,145 +5891,6 @@ $ wmctrl -l -p
         self.rip_cd_class = encoding.RipCD(self.lib_top, self.tt, LODICT)
         return
 
-    def save_items(self):
-        """ Save Playlist to disk - DEPRECATED
-
-            TODO: Separate functions for save_items_as and save_items
-                  What about open/close states of parents?
-        """
-        self.saved_selections = self.lib_tree.tag_has("songsel")
-        # Can't Replace "songsel" with "checked" because artist is checked too
-        ''' At least one song must be selected '''
-        if len(self.saved_selections) <= 1:
-            # Same message in multiple places. Move to own function. Perhaps at top
-            # making language changes easier.
-            messagebox.showinfo(title="Invalid Playlist.",
-                                message="You must select at least two songs.",
-                                icon='error', parent=self.lib_top)
-            return
-
-        # set_font_style()
-        save_songs = []
-        ext.t_init('save_items()')
-        for s_ndx in self.saved_selections:
-            if s_ndx.startswith("I"):
-                print('Invalid saved_sections:', s_ndx,
-                      self.lib_tree.item(s_ndx, 'text'))
-                continue
-            ndx = int(s_ndx)
-            save_songs.append(self.song_list[ndx])
-
-        f = filedialog.asksaveasfile(mode='wb', initialdir=START_DIR,
-                                     defaultextension=".pkl", parent=self.lib_top)
-        ext.t_end('no_print')
-
-        if f:
-            # store the data as binary data stream
-            pickle.dump(save_songs, f)
-            f.close()
-
-    def new_items(self):
-        """ Clear previously selected play list entries
-            TODO: May 29, 20023 - Needs total rewrite
-        """
-
-        self.play_close()  # Close playing selections
-        self.ndx = 0  # Getting errors out of range
-        self.saved_selections = []  # Empty our sorted playlist
-        for artist in self.lib_tree.get_children():
-            for album in self.lib_tree.get_children(artist):
-                for song in self.lib_tree.get_children(album):
-                    tags = self.lib_tree.item(song)['tags']
-                    if "songsel" in tags:
-                        # Turn off all songs
-                        self.toggle_select(song, album, artist)
-
-        self.lib_top.update_idletasks()
-
-    def load_items(self):
-        """ Load Playlist from disk and erase what's selected already
-            TODO: May 29, 20023 - Needs total rewrite
-        """
-        self.lib_top_totals.append(LODICT['name'])
-        self.lib_top_totals.append("")  # Playlist name makes title bar too long
-        self.append_items(erase=True)
-
-    def append_items(self, erase=False):
-        """ BROKEN - DO NOT USE
-            Load Playlist from disk and add to what's selected already
-            TODO: May 29, 20023 - Needs total rewrite
-        """
-        # set_font_style()
-
-        # f = Playlist of songs selected for playing in artist/album/song order
-        f = filedialog.askopenfilename(initialdir=START_DIR,
-                                       title="Select playlist to open",
-                                       filetypes=[("Pickle file", "*.pkl")],
-                                       parent=self.lib_top)
-
-        if not f:
-            return  # No file selected
-        elif True is True:
-            print("append_items is broken. DO NOT USE")
-            return
-
-        ''' Add song selections (doesn't turn any off)
-            MUST validate file selected is LAST_PLAYLIST 
-        '''
-
-        selected, newly_selected = \
-            self.select_songs_from_filename(f, erase)
-
-        messagebox.showinfo(title="Playlist loaded",
-                            message=str(selected) + " songs in playlist.  " +
-                            str(newly_selected) + " new songs selected",
-                            parent=self.lib_top)
-
-        self.lib_tree.update_idletasks()
-        # root.update()
-        return
-
-    def select_songs_from_filename(self, filename, erase=False):
-        """ Song selections used to flag our playlist
-            Assume that all checkboxes have been cleared beforehand.
-            Assume that checkboxes will be applied after playlist read.
-            TODO: May 29, 20023 - Needs self.manually_checked handled.
-        """
-        # filename = songs selected for playing in shuffled artist/album/song
-        # print('pickle.STOP code:', pickle.STOP)
-
-        # save_songs = []
-        # save_songs = lc.unpickle_list(filename)   # generic open with errors
-
-        with open(filename, 'rb') as f:
-            # read the data as binary data stream
-            save_songs = pickle.load(f)
-            # print('len(save_songs):', len(save_songs))
-
-        if erase is True:
-            self.new_items()  # Erase all previous selections
-
-        newly_selected = 0
-        for i, song in enumerate(save_songs):
-            try:
-                ndx = self.song_list.index(song)
-            except ValueError:
-                # Song selected for playing is not on disk
-                continue
-            iid = str(ndx)
-            tags = self.lib_tree.item(iid)['tags']
-            if "songsel" not in tags:
-                album = self.lib_tree.parent(iid)
-                artist = self.lib_tree.parent(album)
-                # TODO: Clear checkboxes first.
-                #       Use BatchSelect - see fast_play_startup().
-                #       Apply checkboxes when done.
-                #self.manually_checked = False
-                self.toggle_select(iid, album, artist)
-                newly_selected += 1
-
-        return len(save_songs), newly_selected
-
     def write_playlist_to_disk(self):
         """ Save Favorites using save_last_selections. Also saves current song ndx.
             if self.playlists.name used, then write to SQL Playlist Record instead.
@@ -6212,179 +6118,6 @@ $ wmctrl -l -p
             print("New " + entity + " added to library:", opened, Id, text, tags)
             print("look_closed:", look_closed)
 
-    def load_last_selections(self):
-
-        """ DEPRECATED May 26, 2023 - Keep for one year for reference.
-            Load last playlist from ~/.../mserve/L999/xxx_xxx
-            Load last location and open ~/.../mserve/I999/
-            Playlist sorted by last order shuffled.
-            Begin playing with song we left off at.
-            Mark selected playing songs in lib_tree.
-
-            Finally, remove splash screen if mserve.py was called by it.
-
-        """
-
-        global LODICT  # Never change LODICT after startup!
-
-        print(r'  ######################################################')
-        print(r' //////////////                            \\\\\\\\\\\\\\')
-        print(r'<<<<<<<<<<<<<<    mserve - Music Server     >>>>>>>>>>>>>>')
-        print(r' \\\\\\\\\\\\\\                            //////////////')
-        print(r'  ######################################################')
-
-        self.saved_selections = []  # Songs selected for playing
-        self.filtered_selections = list(self.saved_selections)
-        ext.t_init('load_last_selections()')  #
-
-
-        ''' If parameter 1 is for random directory, we have no last location
-            So set variables to null and return early.
-        '''
-        if NEW_LOCATION:
-            return
-
-        ''' Check for Last selections file on disk '''
-        if not os.path.isfile(lc.FNAME_LAST_PLAYLIST):
-            return  # self.playlist_paths = pickle.load(f)
-        if not os.path.isfile(lc.FNAME_LAST_OPEN_STATES):
-            return  # self.lib_tree_open_states = pickle.load(f)
-        if not os.path.isfile(lc.FNAME_LAST_SONG_NDX):
-            return  # self.ndx = pickle.load(f)
-
-        ''' Load selected songs and parent opened states from disk '''
-        ext.t_init('FNAME_LAST_SONG_NDX')
-        self.ndx = 0  # Index to saved_selections[] list of song ids in order
-        with open(lc.FNAME_LAST_SONG_NDX, 'rb') as f:
-            self.ndx = pickle.load(f)
-            #print('current index:', self.ndx)
-        ext.t_end('no_print')
-
-        ''' Set library treeview opened states for Artists and Albums '''
-        ext.t_init('FNAME_LAST_OPEN_STATES')
-        #self.lib_tree_open_states = []  # List of expanded/collapsed flags
-        with open(lc.FNAME_LAST_OPEN_STATES, 'rb') as f:
-            self.lib_tree_open_states = pickle.load(f)
-            #print('len(self.lib_tree_open_states):', len(self.lib_tree_open_states))
-            #print('self.lib_tree_open_states[:10]:', self.lib_tree_open_states[:10])  # DEBUG
-            # self.lib_tree_open_states: [(0, u'10cc', u'Artist'),
-            # (0, u'The Best of 10cc', u'Album'), (0, u'3 Doors Down',
-
-        self.apply_all_open_states(self.lib_tree_open_states)
-        """ May 30, 2023 - Below replaced by above
-        for Artist in self.lib_tree.get_children():  # Read all artists
-            self.apply_open_state(Artist, self.lib_tree_open_states)
-            for Album in self.lib_tree.get_children(Artist):  # Read all albums
-                self.apply_open_state(Album, self.lib_tree_open_states)
-        """
-        ext.t_end('no_print')  # FNAME_LAST_OPEN_STATES: 0.0412480831
-
-        ''' Set selections numbers of playlist order in music library '''
-        ext.t_init('FNAME_LAST_PLAYLIST')
-        #self.playlist_paths = []  # Song paths with "songsel" tag sorted by playlist order
-        with open(lc.FNAME_LAST_PLAYLIST, 'rb') as f:
-            self.playlist_paths = pickle.load(f)
-            #print('len(self.playlist_paths):', len(self.playlist_paths))
-            #print("self.playlist_paths[:10]:", self.playlist_paths[:10])  # DEBUG
-            # [u'/media/rick/SANDISK128/Music/April\ Wine/Greatest Hits Live 2003/Just between you and me.mp3',
-
-        spam_count = 0  # Turn off debugging by setting to 10
-        for song in self.playlist_paths:
-            try:
-                ndx = self.song_list.index(song)
-            except ValueError:
-                if spam_count < 10:
-                    print('Not found:', song)
-                    # print(self.song_list[spam_count])
-                    spam_count += 1
-                continue
-            iid = str(ndx)
-            self.saved_selections.append(iid)
-            # Update Song number using current length of self.saved_selections
-            ''' May 25 2023 - This is done by toggle_select() function 
-            number_str = self.play_padded_number(
-                len(self.saved_selections), len(str(len(self.playlist_paths))))
-            # Song play number replaces "Selected MB" in lib_tree column "Selected"
-            self.lib_tree.set(iid, "Selected", number_str)
-            '''
-        ext.t_end('no_print')  # FNAME_LAST_PLAYLIST: 0.1182599068
-
-        if spam_count > 0:
-            print("mserve.py load_last_selections() - Total songs not found:", spam_count)
-        # print('saved_selections:', self.saved_selections[:10])  # DEBUG
-        # saved_selections: ['215', '3694', '1432', '2924', '1627', '2329', '1886', '3623', '1178', '1616']
-
-        ''' Set song checkbox tags in music library '''
-        ''' TODO: When clicking self.rebuild_lib_tree() this got corrupted
-                  so write program to rebuild it from last_open_states
-                  and last_playlist which are intact.
-        '''
-        ext.t_init('FNAME_LAST_SELECTIONS')
-        # Convert sorted playlist into self.song_list
-        # EXTREMELY WEIRD FUNCTION Requires self.song_list already created
-        # self.song_list = SORTED_LIST = make_sorted_list(START_DIR)
-        save_songs_count, newly_selected = \
-            self.select_songs_from_filename(lc.FNAME_LAST_PLAYLIST)
-        #self.select_songs_from_filename(lc.FNAME_LAST_SELECTIONS)
-
-        if save_songs_count == 0:
-            print("save_songs_count:", save_songs_count,
-                  "newly_selected:", newly_selected)
-        ext.t_end('no_print')  # FNAME_LAST_SELECTIONS: 0.8694190979
-
-        #self.lib_tree.update_idletasks()  # This takes .13 seconds alone. Move out.
-
-        ext.t_init('Wrap up')
-        # Keep host awake if necessary
-        if LODICT.get('activecmd', "") is not "":
-            self.loc_keep_awake_is_active = True
-
-            # May be restarting music player so keep awake immediately
-            self.next_active_cmd_time = time.time()
-            self.loc_keep_awake()
-
-        # IF self.ndx is greater than number in playlist, reset to 0
-        if self.ndx > (len(self.saved_selections) - 1):
-            # print('len(self.saved_selections):', len(self.saved_selections))
-            print('last saved song index too large:', self.ndx, 'reset to zero')
-            self.ndx = 0
-
-        #if M_START_TIME:
-        #    print('load time:', time.time() - M_START_TIME)
-        #NameError: global name 'M_START_TIME' is not defined
-
-        ''' Selected songs can be filtered by having time index or by Artist '''
-        self.filtered_selections = list(self.saved_selections)  # Deep copy
-        ext.t_end('no_print')  # Wrap up
-        ext.t_end('no_print')  # May 24, 2023 - load_last_selections(): 1.6982600689
-
-        ''' Compare performance of various techniques 
-        print("\nCompare performance of various techniques")
-        # NOTE: Can't drive on using 'checked' because artists are checked too
-        ext.t_init("compare_one")
-        compare_one = self.lib_tree.tag_has("songsel")
-        print('compare_one = self.lib_tree.tag_has("songsel"):', len(compare_one))
-        ext.t_end('print')  # compare_one: 0.0005340576
-
-        ext.t_init("compare_two")
-        compare_two = []  # Cannot use tuple, so list is unfair comparison
-        for Artist in self.lib_tree.get_children():  # Process artists
-            for Album in self.lib_tree.get_children(Artist):  # Process albums
-                for Song in self.lib_tree.get_children(Album):  # Process songs
-                    tags = self.lib_tree.item(Song)["tags"]
-                    if "songsel" in tags:
-                        compare_two.append(Song)
-        print('compare_two = self.lib_tree.item(Song)["tags"]:', len(compare_two))
-        ext.t_end('print')  # compare_two: 0.1401329041
-        '''
-
-        if len(self.saved_selections) >= 2:
-            self.play_from_start = False  # Continue playing where we left off
-            self.play_items()
-
-    #
-    #   fast_play_startup() replaces load_last_selections()
-    #
 
     def fast_play_startup(self):
 
@@ -10520,14 +10253,14 @@ IndexError: list index out of range
         for i in range(1, 11):  # 10 steps
             if not self.syn_top_is_active:
                 return
-            s_time = set_volume(self.sync_ffplay_sink, int(i * 10))
+            s_time, err = set_volume(self.sync_ffplay_sink, int(i * 10))
             for app_sink, app_vol, app_name in self.old_sinks:
                 if not others:
                     break  # Only doing ourselves
                 if app_sink == self.sync_ffplay_sink:
                     continue  # Skip our sink!
                 percent = int(app_vol) - (int(app_vol) * i / 10)  # Reduce by 10%
-                app_time = set_volume(app_sink, percent)  # Volume down 10%
+                app_time, err = set_volume(app_sink, percent)  # Volume down 10%
                 s_time += app_time  # Total all job times
             if s_time < .07:
                 root.after(int((.07 - s_time) * 1000))  # Sleep .07 per step
@@ -10624,7 +10357,7 @@ IndexError: list index out of range
                         continue                # We are on our own sink already adjusted
                     if old_sink == app_sink:
                         percent = int(old_vol) * i / 10  # Old volume up 10%
-                        app_time = set_volume(old_sink, percent)
+                        app_time, err = set_volume(old_sink, percent)
                         s_time += app_time      # Total all system times
                         if app_time > .025:
                             print('sync_clean_ffplay(self): app_time too large:',
@@ -11485,8 +11218,8 @@ IndexError: list index out of range
                     self.playlists.act_id_list.append(music_id)
             self.playlists.save_playlist()
 
-        # TODO: broadcast to Information Centre
-        self.info.cast("Shuffled Playlist: " + self.title_suffix, action='update')
+        self.info.cast("Shuffled Playlist: " + self.title_suffix + "with " +
+                       str(len(self.saved_selections)) + " songs.", action='update')
 
     def play_remove(self, iid):
         """ Song has been unchecked. Remove from sorted playlist.
@@ -11920,7 +11653,7 @@ IndexError: list index out of range
         for i in range(1, 21):  # 20 steps
             if self.sam_top_is_active is False:
                 break
-            our_time = set_volume(self.sam_top_sink, int(i * 5))  # Volume up 5%
+            our_time, err = set_volume(self.sam_top_sink, int(i * 5))  # Volume up 5%
             # To get 1-20 you need 1,21 range!
             for active_sink in old_sinks:
                 app_sink, app_vol, app_name = active_sink
@@ -11933,7 +11666,7 @@ IndexError: list index out of range
                 except ValueError:
                     percent = 0
                     print("mserve.py sample_song() invalid app_vol:", app_vol)
-                app_time = set_volume(app_sink, percent)  # Volume down 5%
+                app_time, err = set_volume(app_sink, percent)  # Volume down 5%
                 our_time += app_time  # Total all job times
                 self.sam_top.update()  # Poll for close button
             if our_time < .05:
@@ -11976,7 +11709,7 @@ IndexError: list index out of range
             percent = 100 - i * 5
             if self.sam_top_sink is not "":
                 # Set our playing sample's volume down by 5%
-                our_time = set_volume(self.sam_top_sink, percent)
+                our_time, err = set_volume(self.sam_top_sink, percent)
             else:
                 our_time = 0.0  # Time used so far
             # Turn volume back up for sinks we turned down earlier
@@ -11989,7 +11722,7 @@ IndexError: list index out of range
                             continue
                         # Sink is still active after sample 10 secs
                         percent = old_vol * i / 20  # Volume up 5%
-                        app_time = set_volume(old_sink, percent)
+                        app_time, err = set_volume(sink, value)
                         our_time += app_time  # Total all job times
             if our_time < .04:
                 root.after(int((.04 - our_time) * 1000))  # Sleep .04 between
@@ -12030,12 +11763,6 @@ IndexError: list index out of range
 
     def build_chronology(self, sbar_width=12):
         """ Chronology treeview List Box, Columns and Headings
-
-            TODO:   Right click on Chrono Tree and Library brings up same
-                    song options:
-                        - View History
-                        - Kid 3
-                        - Sample middle 10 seconds (change function?)
         """
         #style = ttk.Style(self.F4)
         #style.configure("black.Treeview", background="black")
@@ -12053,13 +11780,15 @@ IndexError: list index out of range
                                 command=self.chron_tree.yview)
         v_scroll.grid(row=0, column=1, sticky=tk.NS)
         self.chron_tree.configure(yscrollcommand=v_scroll.set)
-        # horizontal scrollbar useless when only column #0 is used.
+        # horizontal scrollbar does nothing in treeview with single column.
         #h_scroll = tk.Scrollbar(self.F4, orient=tk.HORIZONTAL, width=sbar_width,
         #                        command=self.chron_tree.xview)
         #h_scroll.grid(row=1, column=0, sticky=tk.EW)
         #self.chron_tree.configure(x scroll command=h_scroll.set)
 
-        ''' Use tool_type="canvas_button" for entire treeview '''
+        ''' Use tool_type="canvas_button" for entire treeview
+            DISABLED - But leave here so mistake isn't repeated... 
+        '''
         # Note this steals <Button-1>, <Motion> and <Leave> events from canvas
         # Which get stolen back in bindings further down
         #self.tt.add_tip(
@@ -12075,11 +11804,11 @@ IndexError: list index out of range
 
         ''' Configure tag for row highlight '''
         self.chron_tree.tag_configure('highlight', background='LightBlue')
-        #  foreground='Black')  # Too complicated. Leave with background only
         self.chron_tree.bind('<Motion>', self.chron_highlight_row)
         self.chron_tree.bind("<Leave>", self.chron_leave_row)
 
         ''' Trap left mouse click to select song for playing '''
+        # None of the left click stuff is working. Throw in towel
         #self.chron_tree.bind('<Button-1>', self.chron_tree_left_click)
         #self.chron_tree.bind('<Button-1>', self.chron_tree_right_click)
         self.chron_tree.bind('<Button-3>', self.chron_tree_right_click)
@@ -12109,10 +11838,6 @@ IndexError: list index out of range
                 self.chron_tree.insert('', 'end', iid=song_iid, text=line, values=values,
                                        tags=("normal",))
                 self.chron_tree.tag_bind(song_iid, '<Motion>', self.chron_highlight_row)
-                #self.chron_tree.tag_bind(song_iid, '<Leave>', self.chron_leave_row)
-                # tag_bind on <Leave> generates error for every song:
-                # mserve.py populate_chron_tree() bad line: № 1501 🎵 When You're On Top 🎨 The Wallflowers 🖸 Collected: 1996-2005 📅 2002 🕑 3:57
-                # mserve.py populate_chron_tree() insert failed with Error: Item 1501 already exists
             except tk.TclError:
                 bad_msg = "mserve.py populate_chron_tree() bad line:"
                 print(bad_msg, line)
@@ -12120,7 +11845,6 @@ IndexError: list index out of range
                     self.chron_tree.insert('', 'end', iid=song_iid, text=bad_msg +
                                            " " + song_iid, tags=("normal",))
                     self.chron_tree.tag_bind(song_iid, '<Motion>', self.chron_highlight_row)
-                    #self.chron_tree.tag_bind(song_iid, '<Leave>', self.chron_leave_row)
                 except Exception as err:
                     print('mserve.py populate_chron_tree() insert failed with Error: %s' % (str(err)))
                     print()  # When it breaks tons of errors so separate into grouped msgs
@@ -12157,29 +11881,22 @@ IndexError: list index out of range
         tree = event.widget
         item = tree.identify_row(event.y)
         #print("item:", item)  # Never getting called?
-        # Get called dozens of times when still in same row
-        if self.chron_last_row == item:
-            return
 
-        self.chron_leave_row(event)
-        tree.tk.call(tree, "tag", "remove", "highlight")
-        ''' Too complicated.
-        if item == str(self.ndx + 1):
-            tree.tk.call(tree, "tag", "remove", "chron_sel", item)
-        else:
-            tree.tk.call(tree, "tag", "remove", "normal", item)
-        '''
-        #tree.tk.call(tree, "tag", "add", "highlight", item)
-        ''' The "normal" or "chron_sel" tags appear first and take priority for background '''
-        #toolkit.tv_tag_add(tree, item, "highlight", strict=True)  # Append
-        #toolkit.tv_tag_insert_first(tree, item, "highlight", strict=True)
+        if self.chron_last_row == item:
+            return        # Get called dozens of times when still in same row
+
+        self.chron_leave_row(event)  # If we left a row reset chron_tree background
+
+        ''' Remove "normal" or "chron_sel" tag with "highlight" '''
         tags = tree.item(item)['tags']
         if "chron_sel" in tags:
             toolkit.tv_tag_replace(tree, item, "chron_sel", "highlight", strict=True)
             self.chron_last_tag_removed = "chron_sel"
         else:
-            toolkit.tv_tag_replace(tree, item, "normal", "highlight", strict=True)
-            self.chron_last_tag_removed = "normal"  # TODO test with empty rows
+            toolkit.tv_tag_replace(tree, item, "normal", "highlight", strict=False)
+            # Got error that "normal" wasn't in tags when using strict=True June 23, 2023
+            self.chron_last_tag_removed = "normal"
+
         self.chron_last_row = item
 
         #print("highlight:", self.chron_last_row,
@@ -12190,35 +11907,26 @@ IndexError: list index out of range
         Un-highlight row just left
         """
         #print("leave_row:", self.chron_last_row, "Apply :", self.chron_last_tag_removed)
-        if self.chron_last_row is not None:
-            tree = event.widget
-            if toolkit.tv_tag_replace(tree, self.chron_last_row, "highlight",
-                                      self.chron_last_tag_removed, strict=False):
-                # "highlight" never existed, but need to add back old
-                toolkit.tv_tag_insert_first(tree, self.chron_last_row,  # True = lots errors
-                                            self.chron_last_tag_removed, strict=False)
-            #tree.tk.call(tree, "tag", "remove", "highlight")
-            ''' Too complicated.
-            if self.chron_last_row == str(self.ndx + 1):
-                tree.tk.call(tree, "tag", "remove", "highlight", self.chron_last_row)
-                tree.tk.call(tree, "tag", "remove", "normal", self.chron_last_row)
-                tree.tk.call(tree, "tag", "add", "chron_sel", self.chron_last_row)
-                pass
-            else:
-                tree.tk.call(tree, "tag", "remove", "chron_sel", self.chron_last_row)
-                tree.tk.call(tree, "tag", "add", "normal", self.chron_last_row)
-            '''
-            self.chron_last_row = None
-            self.chron_last_tag_removed = None
+        if self.chron_last_row is None:
+            return  # Nothing to see here, move along....
 
-    @staticmethod
-    def chron_tree_left_click(event):
+        tree = event.widget
+        if toolkit.tv_tag_replace(tree, self.chron_last_row, "highlight",
+                                  self.chron_last_tag_removed, strict=False):
+            # "highlight" never existed, but need to add back old
+            toolkit.tv_tag_insert_first(tree, self.chron_last_row,  # True = lots errors
+                                        self.chron_last_tag_removed, strict=False)
+
+        self.chron_last_row = None
+        self.chron_last_tag_removed = None
+
+    def chron_tree_left_click(self, event):
         """
             Binding goes directly to chron_tree_right_click()
         """
         #item = self.chron_tree.identify_row(event.y)
         #print('mserve.py chron_tree_left_click(self, event):', item)
-        chron_tree_right_click(event)
+        self.chron_tree_right_click(event)
 
     def chron_tree_right_click(self, event):
         """ Drop down menu:
@@ -13401,15 +13109,9 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         #                           row_release=self.his_button_click)
         self.his_view.tree.bind("<Button-1>", self.his_button_click)
         self.his_view.tree.bind("<Button-3>", self.his_button_click)
+        self.his_view.tree.bind("<Double-Button-1>", self.apply)
         self.his_view.tree.tag_configure('play_sel', background='ForestGreen',
                                          foreground="White")
-        ''' For some reason, memory of last hist_view.tree still exists 
-            return ttk.Treeview.insert(self, parent, index, iid, **kw)
-              File "/usr/lib/python2.7/lib-tk/ttk.py", line 1337, in insert
-                "-id", iid, *opts)
-            TclError: Item P000001 already exists
-        '''
-        #self.his_view.tree.delete(*self.his_view.tree.get_children())
 
         ''' Loop through sorted lists, reread history and insert in tree '''
         for name in self.names_for_loc:  # Sorted alphabetically
@@ -13453,7 +13155,8 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         if self.state == "new" or self.state == "save_as":
             self.thread = self.get_thread_func()  # FIX huge problem when play_close()
             # cannot use enable_input because rename needs to pick old name first
-            text = "Cannot pick an old playlist when creating a new playlist."
+            text = "Cannot pick an old playlist when new playlist name required.\n\n" + \
+                "Enter a new Playlist name and description below."
             message.ShowInfo(self.top, "Existing playlists for reference only!",
                              text, icon='warning', thread=self.thread)
         else:
@@ -13840,7 +13543,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         if self.state == 'delete':
             # TODO: If deleting current playlist need to use Default Favorites
             self.delete_playlist()
-            self.info.cast("Deleting playlist: " + self.act_name, action="delete")
+            self.info.cast("Deleted playlist: " + self.act_name, action="delete")
             if self.curr_number_str == self.act_number_str:
                 self.name = None
                 self.last_number_str = self.curr_number_str  # Replaces .name in future
@@ -13856,8 +13559,11 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             self.last_number_str = self.curr_number_str  # Replaces .name in future
             self.curr_number_str = self.act_number_str
             self.reset()  # Close everything down, E.G. destroy window
-            self.info.cast("Open playlist: " + self.act_name)
-            self.apply_callback()  # Start picking songs for new playlist
+            # June 23, 2023 - info.cast isn't appearing?
+            self.info.cast("Opened playlist: " + self.act_name + " with " +
+                           str(self.act_count) + " songs.")
+            self.apply_callback()  # Parent will start playing (if > 1 song in list)
+            #self.info.cast("Opened playlist: " + self.act_name)  # doesn't work either
         elif self.state == 'new':
             self.save_playlist()  # Save brand new playlist
             self.name = None
@@ -13866,14 +13572,18 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             self.name = self.act_name  # Tell parent name of playlist
             self.last_number_str = self.curr_number_str  # Replaces .name in future
             self.curr_number_str = self.act_number_str
-            self.info.cast("Create new playlist: " + self.act_name, action="add")
+            # June 23, 2023 - info.cast isn't appearing?
+            self.info.cast("Created new playlist: " + self.act_name, action="add")
             self.apply_callback()  # Tell parent to start editing playlist
+            #self.info.cast("Created new playlist: " + self.act_name)  # doesn't work either
             # apply_callback will end right away after closing lib selections
         else:
-            self.save_playlist()  # Save, Save As, Rename
+            ''' Remaining options are Save, Save As, Rename '''
+            self.save_playlist()
             self.name = self.act_name  # In case of 'rename' title updates
-            self.curr_number_str = self.act_number_str  # Can't be common: 'delete'
-            self.info.cast("Saving playlist: " + self.act_name, action="update")
+            self.curr_number_str = self.act_number_str
+            self.info.cast("Saved playlist: " + self.act_name + " with " +
+                           str(self.act_count) + " songs.", action="update")
 
         # TODO: New design with self.last_number_str and self.curr_number_str
 
@@ -13958,6 +13668,9 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         
     Opening playlists slows down from <1 second to over 7 seconds. See bug:
 
+----------------------------------------------------------------------
+SLOWDOWN BUG: https://gitlab.gnome.org/GNOME/gnome-shell/-/issues/3125
+
 Default ibus-daemon causes high cpu usage and startup delay for a tcl / tk application
 Closed
 
@@ -13992,7 +13705,81 @@ test driver to reproduce this behavior (but I will do, if really necessary).
 
 Thanks in advance for your help!
 
-Best regards, Roland    https://gitlab.gnome.org/GNOME/gnome-shell/-/issues/3125
+Best regards, Roland    
+
+----------------------------------------------------------------------
+SLOWDOWN BUG: https://gitlab.gnome.org/GNOME/gnome-shell/-/issues/2674
+
+Tkinter/Python3 app launch slow down each time it is killed instead of closed
+Open
+
+Tkinter/Python3 app launch slow down each time it is killed instead of closed
+
+The bug is present in the following setup:
+
+    Ubuntu 18.04.3 LTS (tested also on 20.04 LTS beta)
+    gnome-shell package is version 3.28.4-0ubuntu18.04.2
+    Linux x 4.15.0-96-generic #97 (closed)-Ubuntu SMP Wed Apr 1 03:25:46 UTC 2020 x86_64 x86_64 x86_64 GNU/Linux
+
+Tested and problem reproducible on:
+
+    GNOME Flashback (Compiz) - default on my machine
+    Ubuntu on Wayland
+    GNOME on Xorg
+
+Tested and problem is not detected on:
+
+    Live Kubuntu 18.04 LTS on other machine
+    vanilla LXDE installed in my Ubuntu 18.04.3 LTS
+
+The problem is whenever a Tkinter/Python3 application I am working on is 
+killed with Ctrl-C or killall python3 the subsequent launch of the 
+application takes more time. When the window is closed with the X button 
+no time is added to subsequent runs. When the user logs out and logs in 
+launch time is back to the original.
+
+I have attached a simple python script (slow.py) that demonstrates the issue. 
+I also attached a bash script (runme) that runs the script in a loop and uses 
+grep to print relevant time.
+
+Steps to reproduce:
+
+    run ./runme
+    Close the window using the X symbol a number of time (e.g. 10 times)
+
+    20640    0.206    0.000    0.206    0.000 {method 'call' of '_tkinter.tkapp' objects}
+    20640    0.209    0.000    0.209    0.000 {method 'call' of '_tkinter.tkapp' objects}
+    20640    0.233    0.000    0.233    0.000 {method 'call' of '_tkinter.tkapp' objects}
+    20640    0.217    0.000    0.217    0.000 {method 'call' of '_tkinter.tkapp' objects}
+    20640    0.207    0.000    0.207    0.000 {method 'call' of '_tkinter.tkapp' objects}
+    20640    0.230    0.000    0.230    0.000 {method 'call' of '_tkinter.tkapp' objects}
+    20640    0.215    0.000    0.215    0.000 {method 'call' of '_tkinter.tkapp' objects}
+    20640    0.215    0.000    0.215    0.000 {method 'call' of '_tkinter.tkapp' objects}
+
+The second column indicating time spent in all calls of the "call" method is 
+consistent between calls.
+
+    Kill the application, I use killall python3 run in a separate window. Do 
+    this a number of times (e.g. 10). Close the application with X (the first
+     close reports wrong time, so please do this a couple of times)
+
+    20640    1.331    0.000    1.331    0.000 {method 'call' of '_tkinter.tkapp' objects}
+    20640    1.383    0.000    1.383    0.000 {method 'call' of '_tkinter.tkapp' objects}
+    20640    1.321    0.000    1.321    0.000 {method 'call' of '_tkinter.tkapp' objects}
+    20640    1.377    0.000    1.377    0.000 {method 'call' of '_tkinter.tkapp' objects}
+
+Now the time spend in the "call" method is significantly higher.
+
+    When the user logs out and in the time is back to about 0.210 until the 
+    app is killed with killall python3 or Ctrl-C
+
+The problem is that the launch time of the app increased. The expected behavior
+is that there is no rise in launch time of the application. On other window
+managers - LXDE and KDE the problem does not manifest itself.
+
+For the application I am working on the launch time increase is significant. 
+Killing the application once adds about 6 seconds to the launch time.
+
 '''
 #
 # ==============================================================================
@@ -14005,10 +13792,26 @@ class InfoCentre:
                 self.banner_frm, self.banner_btn, self.build_banner_btn,
                 self.build_banner_canvas, self.tt, title_font, text_font):
 
-            self.info.cast() - Create dict and call zoom().
+            self.info.cast() - Create dict and call zoom(show_close=False).
             self.info.fact() - Create dict only.
             self.info.zoom() - Expand/collapse frame. Show dict.
             self.info.view() - Call zoom(), but use close button to exit.
+
+        TODO's from PHONE:
+
+Add scrollbar in gold with red slide button.
+
+Delete cast type info already viewed.
+
+Add line numbers last viewed because may not have scrolled down.
+
+Initially keep all dict entries because selected deleting is complicated.
+
+Add line between info entries with the time centered on line. Time format "just now", "x minutes ago", "x hours ago".
+
+There is no ruler in tkinter so manually create with line draw characters.
+
+Add previous_text and restart _text constants for play_top previous button.
 
     """
 
@@ -14038,27 +13841,7 @@ class InfoCentre:
         self.dict = OrderedDict()  # Use 'View' Dropdown Menu, 'Show Debug' to see last
         self.list = []  # list of self.dict. Newest first: self.list.insert(0, self.dict)
 
-        ''' Working fields primarily for testing '''
-        self.test = None
-        self.test_label = None
-        self.msg_recv = None
-        self.test_results = []  # list of tuples (time.time(), alpha, dict fields?)
-        self.song_playing = None  # To shift lib_tree so current song is highlighted
-
-        self.start_time = None  # Time test started
-        self.time = None  # Time message was received
-        self.last_delta_time = 0.0
-        self.original_sleep = None  # Override sleep time for polling tooltips
-
-
-        ''' Track old and new y-axis position to keep same rows displayed '''
-        #self.old_y_top = self.old_y_end = 0.0
-
-        # NEED to broadcast with InfoCentre
-        #text = "Playlist changes applied to memory but not saved to storage yet.\n\n" +\
-        #    add_del_str + "\n"
-
-        #self.info.cast(text)  # The text is cast into expanding frame and brief period
+        #self.info.cast(text)  # The text is cast into expanding frame for brief period
         # the frame collapses.  The casts are read by click on ruler bar button or
         # from View dropdown menu pick "Information Centre" option which is the same
         # self.info.view() function.
@@ -14092,14 +13875,30 @@ class InfoCentre:
         # A number of facts can be posted by fact type. When a new fact it posted if the
         # same type exists it is moved into splash history.
 
+        ''' Working fields for testing '''
+        self.test = None
+        self.test_label = None
+        self.msg_recv = None
+        self.test_results = []  # list of tuples (time.time(), alpha, dict fields?)
+        self.song_playing = None  # To shift lib_tree so current song is highlighted
+
+        self.start_time = None  # Time test started
+        self.time = None  # Time message was received
+        self.last_delta_time = 0.0
+        self.original_sleep = None  # Override sleep time for polling tooltips
+
+        ''' Track old and new y-axis position to keep same rows displayed '''
+        self.old_y_top = self.old_y_end = 0.0
+
     def new_dict(self, new_type, text, severity=None, action=None, patterns=None):
         """
         Create a new dictionary
         :param new_type: 'cast' or 'fact' 
+        :param text: Formatted text (\n, \t, etc.)  for tk.Text widget.
         :param severity: 'info', 'warning', 'error'
         :param action: 'open', 'update', 'add', 'delete', 'rename'
-        :param text: Formatted text suitable for tk.Text widget format.
-        :return now: time dictionary created 
+        :param patterns: Formatted text suitable for tk.Text widget format.
+        :return now: time dictionary created
         """
         now = time.time()
         self.dict = \
@@ -14114,36 +13913,15 @@ class InfoCentre:
         #   NOTE: 'run' is currently considered to be same as 'open'
         # text: "mserve START-UP:\n\t999 Artists\n\t999 Albums\n\t 9,999 Songs"
         # patterns: [("Added", "white", "green"), ("Deleted", "red", "grey")]
-        #   PROBLEM: highlighting applies to all messages in Text
+        #   CHALLENGE: highlighting applies to all messages in Text, need start line number
         # view_time: 0.0 = False. After viewing, some info_type+action deleted
 
         self.dict['type'] = new_type
-        self.dict['source'] = toolkit.get_trace()[:-3]  # Cut InfoCentre entries
+        # Always delete last three entries from InfoCentre (get_trace, new_dict, cast/fact)
+        self.dict['source'] = toolkit.get_trace()[:-3]
         # TODO: Use "show_debug()" to see results and filter / merge lines.
         # noinspection SpellCheckingInspection
-        '''
-            File "./m", line 158, in <module>
-              main()
-            
-            File "./m", line 100, in main
-              mserve.main(toplevel=splash, cwd=cwd, parameters=sys.argv)
-            
-            File "/home/rick/python/mserve.py", line 15184, in main
-              MusicTree(toplevel, SORTED_LIST)  # Build treeview of songs
-            
-            File "/home/rick/python/mserve.py", line 1163, in __init__
-              self.info.cast("mserve started")
-            
-            File "/home/rick/python/mserve.py", line 13971, in cast
-              time_stamp = self.new_dict('cast', text, severity, action)
-            
-            File "/home/rick/python/mserve.py", line 13939, in new_dict
-              self.dict['source'] = toolkit.get_trace()  # TODO: filter results
-            
-            File "/home/rick/python/toolkit.py", line 69, in get_trace
-              return traceback.format_stack()
-        '''
-        # Always delete last three entries (get_trace, new_dict, cast)
+        ''' Some thoughts to shorten trace '''
         # If first two entries contain "/m" delete them
 
         # Read remaining lines backwards and build new 'source'
@@ -14163,6 +13941,7 @@ class InfoCentre:
         self.dict['severity'] = severity
         self.dict['action'] = action
         self.dict['text'] = text
+        self.dict['patterns'] = patterns
         return now
 
     def cast(self, text, severity=None, action=None, patterns=None):
@@ -14171,10 +13950,11 @@ class InfoCentre:
         If user interested they can use view() function to slowly read message.
         After reading, most messages are deleted, but some are kept in session history.
 
+        :param text: Formatted text (\n, \t, etc.)  for tk.Text widget.
         :param severity: 'info', 'warning', 'error'
         :param action: 'open', 'update', 'add', 'delete', 'rename'
-        :param text: Formatted text suitable for tk.Text widget format.
-        :return: time assigned to information centre entry. Can be used to find again
+        :param patterns: Formatted text suitable for tk.Text widget format.
+        :return: time assigned to information centre entry.
         """
         ''' 
             PROCESSING STEPS:
@@ -14184,11 +13964,11 @@ class InfoCentre:
                 Call splash function
         '''
 
-        # TODO: Recursive call if first cast is still active.
+        # REVIEW: Recursive call if first cast is still active.
 
         time_stamp = self.new_dict('cast', text, severity, action, patterns)
         self.list.insert(0, self.dict)
-        # self.dict remains in memory for all functions to "see"
+        # self.dict remains intact for methods to access
         self.zoom()
         return time_stamp  # time_stamp can be used by caller to massage text
 
@@ -14198,10 +13978,11 @@ class InfoCentre:
         If user interested they can use view() function to slowly read message.
         After reading, most messages are deleted, but some are kept in session history.
 
+        :param text: Formatted text (\n, \t, etc.)  for tk.Text widget.
         :param severity: 'info', 'warning', 'error'
         :param action: 'open', 'update', 'add', 'delete', 'rename'
-        :param text: Formatted text suitable for tk.Text widget format.
-        :return: time assigned to information centre entry. Can be used to find again
+        :param patterns: Formatted text suitable for tk.Text widget format.
+        :return: time assigned to information centre entry.
         """
         ''' 
             PROCESSING STEPS:
@@ -14219,7 +14000,7 @@ class InfoCentre:
         return time_stamp  # time_stamp can be used by caller to massage text
 
     def view(self):
-        self.zoom(show_close=True)  # close_button is broken...
+        self.zoom(show_close=True)  # Use self.close_button
 
     def zoom(self, show_close=False):
         """
