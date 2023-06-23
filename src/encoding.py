@@ -12,6 +12,7 @@
 #
 #   Aug. 22 2021 - toolkit.ToolTips() for fading tooltips on hover
 #   May. 07 2023 - Convert gmtime to localtime. Before today needs update.
+#   June 22 2023 - Use CustomScrolledText ported from encoding.py to toolkit.py
 #
 # ==============================================================================
 """
@@ -249,8 +250,8 @@ class RipCD:
         # self.scrollbox = CustomScrolledText(frame1, state="readonly", font=ms_font)
         # TclError: bad state "readonly": must be disabled or normal
         # Text padding not working: https://stackoverflow.com/a/51823093/6929343
-        self.scrollbox = CustomScrolledText(frame1, state="normal", font=ms_font,
-                                            borderwidth=15, relief=tk.FLAT)
+        self.scrollbox = toolkit.CustomScrolledText(
+            frame1, state="normal", font=ms_font, borderwidth=15, relief=tk.FLAT)
         self.scrollbox.insert("end", Quote)
         self.scrollbox.grid(row=0, column=1, padx=3, pady=3, sticky=tk.NSEW)
         tk.Grid.rowconfigure(frame1, 0, weight=1)
@@ -2409,10 +2410,12 @@ class RipCD:
         return os_name  # os_name inserted into selection 
 
 
-class CustomScrolledText(scrolledtext.ScrolledText):
+class ObsoleteCustomScrolledText(scrolledtext.ScrolledText):
     """A text widget with a new method, highlight_pattern()
 
             NOTE: This has been moved to toolkit.py
+
+            AFTER TESTING NOT NEEDED, DELETE THIS Class
 
     example:
 

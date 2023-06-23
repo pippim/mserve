@@ -43,37 +43,24 @@
 #       Jun. 11 2023 - Add TV_BREAK and SOUND. Stanley Cup=Vegas 3, Panthers 1.
 #       Jun. 13 2023 - Develop Playlists() class. Vegas won Stanley Cup!
 #       Jun. 18 2023 - Expanding/Collapsing Information Centre. 80 hours?
+#       June 21 2023 - 'M' splash screen disappears as late as possible.
+#       June 23 2023 - Antonia's request to highlight hovered chron_tree row.
 
 # TODO:
 # -----------------------------------------------------------------------------
 
+#   "Play this song" should be: "Play Song # 9999"
+
 #   Playlists
 
 #     BUGS:
-#       Pause/Play state reflected incorrectly.
 #       Shuffling Favorites then opening playlist will undo shuffle.
 #       Pruned songs can be added to Playlist
-#       New playlist, start playing, getting resume from favorites. Song #4, 1m:30s
 
 #     TODO:
-#       Close playlist before opening another. This will save resume state.
-#       Create generic "99.9 MB" function to use in title and playlists()
-#       Save/Restore - Hockey, Resume and Chron States for each Playlist.
-#       Save/Restore - open/closed states for lib_top.tree parents.
-#       Rename Playlist - Rebuild lib_top.title and .
-#       Delete Playlist - Finish coding and tests.
 #       Save Playlist As... - If playlist created with 'new' option then a
 #           rename option. Otherwise create a new playlist with new name.
 #
-
-#   Information Centre
-#       Can message.ShowInfo and message.AskQuestion dump text to broadcast?
-#       Initial hook in self.apply_callback()
-#       Initial class called InfoCentre() Usage:
-#           self.info = InfoCentre(
-#               self.banner_frm, self.banner_btn, self.build_banner_btn,
-#               self.tt)
-#           InfoCentre needs better name
 
 #   When opening Artist, if only one Album then open it too.
 
@@ -162,6 +149,8 @@
 
 # REVIEW:
 # -----------------------------------------------------------------------------
+
+#   CHANGING self.ndx in PENDING DELETIONS:
 #   self.song_set_ndx() so it no longer forces play. Initiated by
 #       fact changing self.ndx in pending_deletions unpauses music. This
 #       rewrite means many overrides can be removed in callers function.
@@ -441,6 +430,7 @@ TV_SOUND = "Firefox"    # Hockey broadcast is aired on Firefox browser
 
 # Number of seconds to Rewind or Fast Forward a song. Must be string
 REW_FF_SECS = "10"
+REW_CUTOFF = 12         # If current less than cutoff, play previous song
 
 PRUNED_COUNT = 0  # sys arg topdir = 0, artist = 1, album = 2
 COMPIZ_FISHING_STEPS = 100  # May 18, 2023 when 100 steps windows disappear
@@ -792,6 +782,9 @@ class PlayCommonSelf:
         self.close_button = None            # tk.Button(text="✘ Close
         self.shuffle_button = None          # tk.Button(text=" 🔀 Shuffle",
         self.prev_button = None             # tk.Button(text="⏮  Previous"
+        self.previous_text = "⏮  Previous"
+        self.restart_text = "⏮  Restart"
+        self.prev_button_text = None
         self.rew_button = None              # tk.Button(text="⏪  -10 sec"
         self.com_button = None              # tk.Button(text="🏒  Commercial"
         self.pp_button = None               # tk.Button(text="▶  Play"
@@ -908,6 +901,8 @@ class PlayCommonSelf:
 
         ''' Play Chronology '''
         self.chron_tree = None              # ttk.Treeview Playlist Chronology
+        self.chron_last_row = None          # Last row highlighted with cursor
+        self.chron_last_tag_removed = None  # 'normal' or 'chron_sel' was removed for highlight
         self.chron_filter = None            # 'time_index', 'over_5', [ARTIST NAME]
         self.chron_attached = []            # list of attached chronology tree id's
         self.chron_detached = []            # list of detached id's to restore
@@ -986,10 +981,10 @@ class PlayCommonSelf:
         self.pending_cancel_btn = None      # Cancel Playlist Update Button
 
         ''' Set volume slider '''
-        self.vol_class = None               # = Volume()
+        self.vol_class = None               # Volume() during Hockey TV commercials
 
         ''' Playlists stored in SQL database '''
-        self.playlists = None               # = Playlists()
+        self.playlists = None               # Playlists()
         self.title_suffix = None  # title_suffix used in two places below
 
         ''' Menu bars: File, Edit, View + space + playlist information '''
@@ -1059,29 +1054,6 @@ class MusicTree(PlayCommonSelf):
         # Move to main()
         # img.taskbar_icon(self.lib_top, 64, 'white', 'lightskyblue', 'black')
 
-        ''' Create self.playlists '''
-        # thread=self.get_refresh_thread,  # Passing function for each time window opens!
-        self.playlists = Playlists(
-            self.lib_top, apply_callback=self.apply_playlists, tooltips=self.tt,
-            pending=self.get_pending_cnt_total, enable_lib_menu=self.enable_lib_menu,
-            thread=self.get_refresh_thread, play_close=self.play_close,
-            display_lib_title=self.display_lib_title)
-        self.build_lib_menu()  # Menu bar with File-Edit-View dropdown submenus
-        self.set_title_suffix()  # At this point (June 18, 2023) it will be "Favorites"
-
-        ''' Window Title bar. E.G.
-            AW17R3  🎵 757 songs, 279 selected  🖸 6626.3 MB used, 2602.1 MB selected - mserve
-        '''
-        self.lib_top.title("Music Server")
-        #                       Loc     Songs   Time  Count sSize sSeconds
-        #                       0       2       4     6     8     10
-        self.lib_top_totals = ["", "", "", "", "", 0, 0, 0, 0, 0, 0]
-        #                           1       3      5     7     9
-        #                           Play    Space  Size  Secs  sCount
-        self.lib_top_totals[0] = LODICT['name']
-        self.lib_top_totals[1] = ""  # Playlist name makes title too long
-        self.lib_top_playlist_name = ""  # appended to lib_top.title after totals
-
         ''' Create frames '''
         master_frame = tk.Frame(self.lib_top, bg="Olive", relief=tk.RIDGE)
         master_frame.grid(sticky=tk.NSEW)
@@ -1091,7 +1063,7 @@ class MusicTree(PlayCommonSelf):
 
         ''' Expanding/collapsing information centre Frame - PART I of II '''
         # noinspection SpellCheckingInspection
-        self.banner_frm = tk.Frame(master_frame, bg="skyblue3", height=7)
+        self.banner_frm = tk.Frame(master_frame, bg="SkyBlue3", height=7)
         self.banner_frm.grid(row=0, column=0, sticky=tk.NSEW)
         self.banner_btn = None  # will be built in next line
         self.build_banner_btn()  # Create thin horizontal ruler w/tooltip
@@ -1155,12 +1127,41 @@ class MusicTree(PlayCommonSelf):
                                            "StatTime", "StatSize", "Count", "Seconds",
                                            "SelSize", "SelCount", "SelSeconds")
 
+        # Give some padding between triangles and border, between tree & scroll bars
+        self.lib_tree["padding"] = (10, 0, 10, 10)  # left, top, right, bottom
 
         ''' Expanding/collapsing information centre Frame - PART II of II '''
         # search shortcut: tt_leave
         self.info = InfoCentre(self.lib_top, self.lib_tree, self.banner_frm,
                                self.banner_btn, self.build_banner_btn, self.tt)
-        self.info.cast("mserve started")
+
+        self.info.fact("mserve started")
+
+        ''' Create self.playlists '''
+        # thread=self.get_refresh_thread,  # Passing function for each time window opens!
+        self.playlists = Playlists(
+            self.lib_top, apply_callback=self.apply_playlists, tooltips=self.tt,
+            pending=self.get_pending_cnt_total, enable_lib_menu=self.enable_lib_menu,
+            thread=self.get_refresh_thread, play_close=self.play_close,
+            display_lib_title=self.display_lib_title, info=self.info)
+        #self.build_lib_menu()  # Menu bar with File-Edit-View dropdown submenus
+        self.set_title_suffix()  # At this point (June 18, 2023) it will be "Favorites"
+
+        ''' Window Title bar. E.G.
+            AW17R3  🎵 757 songs, 279 selected  🖸 6626.3 MB used, 2602.1 MB selected - mserve
+        '''
+        self.lib_top.title("Music Server")
+        #                       Loc     Songs   Time  Count sSize sSeconds
+        #                       0       2       4     6     8     10
+        self.lib_top_totals = ["", "", "", "", "", 0, 0, 0, 0, 0, 0]
+        #                           1       3      5     7     9
+        #                           Play    Space  Size  Secs  sCount
+        self.lib_top_totals[0] = LODICT['name']
+        self.lib_top_totals[1] = ""  # Playlist name makes title too long
+        self.lib_top_playlist_name = ""  # appended to lib_top.title after totals
+
+        ''' Music Library Dropdown Menu references Playlists() and InfoCentre() '''
+        self.build_lib_menu()  # Menu bar with File-Edit-View dropdown submenus
 
         ''' Treeview select item - custom select processing '''
         self.lib_tree_open_states = []  # State of collapsed/expanded artists & albums
@@ -1177,8 +1178,8 @@ class MusicTree(PlayCommonSelf):
         style.configure('Treeview', indent=row_height + 6)
 
         ''' Create images for checked, unchecked and tristate '''
-        self.checkboxes = img.make_checkboxes(row_height - 8, 'black',
-                                              'white', 'deepskyblue')
+        self.checkboxes = img.make_checkboxes(
+            row_height - 8, 'black', 'white', 'DodgerBlue')  # SkyBlue3 not in Pillow
         self.lib_tree.tag_configure("unchecked", image=self.checkboxes[0])
         self.lib_tree.tag_configure("tristate", image=self.checkboxes[1])
         self.lib_tree.tag_configure("checked", image=self.checkboxes[2])
@@ -1189,6 +1190,11 @@ class MusicTree(PlayCommonSelf):
         img.make_triangles(self.triangles, width, 'black', 'grey')
 
         self.lib_tree.grid(row=0, column=0, sticky=tk.NSEW)
+
+        ''' Configure tag for row highlight '''
+        self.lib_tree.tag_configure('highlight', background='lightblue')
+        self.lib_tree.bind('<Motion>', self.lib_highlight_row)
+        self.lib_tree.bind("<Leave>", self.lib_leave_row)
 
         '''         B I G   T I C K E T   E V E N T
             Create Album/Artist/ OS Song filename Treeview 
@@ -1207,12 +1213,12 @@ class MusicTree(PlayCommonSelf):
         # TODO Most of the times horizontal scroll not needed - make dynamic.
         # noinspection SpellCheckingInspection
         ''' June 19, 2023 - Disable horizontal scroll for lib_top.tree 
-            It might be needed for debugging hidden columns though. '''
+            It might be needed for debugging hidden columns though. 
         h_scroll = tk.Scrollbar(frame2, orient=tk.HORIZONTAL, width=sbar_width,
                                 command=self.lib_tree.xview)
         h_scroll.grid(row=1, column=0, sticky=tk.EW)
         self.lib_tree.configure(xscrollcommand=h_scroll.set)
-
+        '''
 
         ''' Pending Playlist Updates from Checkbox Actions '''
         self.create_pending_frame(master_frame)  # Hides after creation
@@ -1311,9 +1317,9 @@ class MusicTree(PlayCommonSelf):
     def build_banner_btn(self):
         """ Called from init in MusicTree() class and InfoCentre() class
         """
-        # noinspection SpellCheckingInspection
-        self.banner_btn = tk.Button(self.banner_frm, height=0, bg="skyblue3", fg="black",
-                                    command=lambda: self.info.test_tt("Hello"))
+        # Use lambda because self.info.view() hasn't been defined yet.
+        self.banner_btn = tk.Button(self.banner_frm, height=0, bg="SkyBlue3",
+                                    fg="black", command=lambda: self.info.view())
         self.banner_btn.place(height=7, width=7000)  # ...height of 7 override
         text = "▼ ▲ ▼ ▲  Expanding/Collapsing Information Centre  ▲ ▼ ▲ ▼ \n\n" +\
             "Click this ruler line and it expands to a large frame with\n" +\
@@ -1442,13 +1448,13 @@ class MusicTree(PlayCommonSelf):
         # View menu - Show locations and SQL library  #command=lambda: self.info.test_tt("Hello")
         self.view_menu = tk.Menu(mb, tearoff=0)
         self.view_menu.add_command(label="Information Centre", font=(None, MED_FONT),
-                                   command=lambda: self.info.test_tt("Hello"))
+                                   command=self.info.view)
         self.view_menu.add_command(label="Show Location", font=(None, MED_FONT),
                                    command=lambda: self.show_location(
                                    caller='Drop', mode='Show'))
         self.play_hockey_allowed = self.get_hockey_state()
         if self.play_hockey_allowed:
-            text = "Enable FF/Rewind buttons"
+            text = "Enable FF/Rewind buttons"  # TODO: Make self.variable names
         else:
             text = "Use TV Commercial buttons"
         self.view_menu.add_command(label=text, font=(None, MED_FONT),
@@ -1989,7 +1995,7 @@ class MusicTree(PlayCommonSelf):
         # When applying deletions, pause is reversed and starts playing from song start
         # Probably caused by self.last_started now being different than self.ndx.
         # TODO verify
-        
+
         ''' Call reset which reads playlist in memory and applies to lib_tree'''
         str_add_cnt = str(self.pending_add_cnt)  # reset() will destroy values
         str_del_cnt = str(self.pending_del_cnt)  # reset() will destroy values
@@ -2100,36 +2106,36 @@ class MusicTree(PlayCommonSelf):
                 #  5=Count, 6=Seconds, 7=SelSize, 8=SelCount, 9=SelSeconds
                 # Dec 28 2020 - Selected Size is now Song Sequence Number
                 level_count[0] += 1  # Increment artist count
-                CurrArtistId = self.lib_tree.insert("", "end", text=Artist,
-                                                    tags=("Artist",
-                                                          "unchecked"), open=True,
-                                                    values=("", "", '',
-                                                            0.0, 0, 0, 0, 0, 0, 0))
-                #              Access    Selected   StatSize  sSize  sSeconds
-                #              0         2          4         6       8
-                # 'values' = [ "",  "",  "",  0.0,  0,  0,    0,  0,  0 ]
-                #                   1         3         5         7
-                #                   Size      StatTime  Count     sCount
+                opened = False  # New installation would be more concise view for user
+                CurrArtistId = self.lib_tree.insert(
+                    "", "end", text=Artist, tags=("Artist", "unchecked"), open=opened,
+                    values=("",  "",  "",  0.0,  0,  0,    0,  0,  0, 0))
+                #           Access    Selected   StatSize  sSize   sSeconds
+                #           0         2          4         6       8
+                #   values=("",  "",  "",  0.0,  0,  0,    0,  0,  0 )
+                #                1         3         5         7
+                #                Size      StatTime  Count     sCount
 
                 # Treeview bug inserts integer 0 as string 0, must overwrite
-                self.tree_col_range_replace(CurrArtistId, 5,
-                                            [0, 0, 0, 0, 0, 0])
-
+                self.tree_col_range_replace(CurrArtistId, 5, [0, 0, 0, 0, 0, 0])
+                self.lib_tree.tag_bind(CurrArtistId, '<Motion>', self.lib_highlight_row)
                 LastArtist = Artist
                 LastAlbum = ""  # Force subtotal break for Album
 
             if Album != LastAlbum:
                 level_count[1] += 1  # Increment album count
-                CurrAlbumId = self.lib_tree.insert(CurrArtistId, "end",
-                                                   text=Album, tags=("Album",
-                                                                     "unchecked"),
-                                                   values=("", "", "",
-                                                           0.0, 0, 0, 0, 0, 0, 0))
+                opened = False  # New installation would be more concise view for user
+                CurrAlbumId = self.lib_tree.insert(
+                    CurrArtistId, "end", text=Album, tags=("Album", "unchecked"),
+                    open=opened, values=("", "", "", 0.0, 0, 0, 0, 0, 0, 0))
+                # May 24, 2023 - open state wasn't specified before today
+                # Treeview bug inserts integer 0 as string 0, must overwrite
+                self.tree_col_range_replace(CurrAlbumId, 5, [0, 0, 0, 0, 0, 0])
 
                 # Treeview bug inserts integer 0 as string 0, must overwrite
-                self.tree_col_range_replace(CurrAlbumId, 5,
-                                            [0, 0, 0, 0, 0, 0])
+                self.tree_col_range_replace(CurrAlbumId, 5, [0, 0, 0, 0, 0, 0])
 
+                self.lib_tree.tag_bind(CurrAlbumId, '<Motion>', self.lib_highlight_row)
                 LastAlbum = Album
 
             ''' Build full song path from song_list[] '''
@@ -2157,14 +2163,30 @@ class MusicTree(PlayCommonSelf):
             ftime = tmf.ago(float(stat.st_atime))
 
             ''' Add the song '''
-            self.lib_tree.insert(CurrAlbumId, "end", iid=str(i), text=Song,
-                                 tags=("Song", "unchecked"),
-                                 values=(ftime, fsize, '', float(stat.st_atime),
-                                         stat.st_size, 1, 0, 0, 0, 0))
-            self.tree_col_range_replace(str(i), 6,
-                                        [1, 0, 0, 0, 0])
+            self.lib_tree.insert(
+                CurrAlbumId, "end", iid=str(i), text=Song, tags=("Song", "unchecked"),
+                values=(ftime, fsize, '', float(stat.st_atime), stat.st_size, 1, 0, 0, 0, 0))
+            self.tree_col_range_replace(str(i), 6, [1, 0, 0, 0, 0])
+            self.lib_tree.tag_bind(str(i), '<Motion>', self.lib_highlight_row)
 
         self.display_lib_title()  # Was called thousands of times above.
+
+    @staticmethod
+    def lib_highlight_row(event):
+        """ Cursor hovering over row highlights it in light blue
+        """
+        tree = event.widget
+        item = tree.identify_row(event.y)
+        tree.tk.call(tree, "tag", "remove", "highlight")
+        tree.tk.call(tree, "tag", "add", "highlight", item)
+
+    @staticmethod
+    def lib_leave_row(event):
+        """
+        Un-highlight row just left
+        """
+        tree = event.widget
+        tree.tk.call(tree, "tag", "remove", "highlight")
 
     def fast_lib_tree_create(self, delayed_textbox):
 
@@ -4536,8 +4558,6 @@ $ wmctrl -l -p
             cursor (so to speak) to first changed song (open parents).
             Called from lib_tree's "🗘 Refresh library" button.
         """
-        self.info.cast("Rebuild music library - scan for new songs")
-
         if self.playlists.name is not None:
             # No need for self.info.cast()
             self.info.cast("Rebuild music library - Only works when Favorites playing",
@@ -4550,6 +4570,8 @@ $ wmctrl -l -p
                      "The Refresh Library function checks for new song files which is\n" +
                      "a process automatically performed during mserve startup anyway.")
             return
+
+        self.info.cast("Rebuild music library - scan for new songs")
 
         global SORTED_LIST
         # Build list of songs
@@ -4814,11 +4836,14 @@ $ wmctrl -l -p
         print("--- KEY ---\t  --- VALUE ---\n")
         for key in self.info.dict:
             if isinstance(self.info.dict[key], list):
-                all_entries = self.info.dict[key]  # pattern or trace
-                if len(all_entries) != 0:  # If zero, drop down to print regular line
+                entries = self.info.dict[key]  # pattern or trace
+                if len(entries) == 1:  # If zero, drop down to print regular line
                     print("['" + key + "']\t:", self.info.dict[key][0])
+                    continue
+                elif len(entries) > 1:  # If zero, drop down to print regular line
+                    print("['" + key + "']\t: list[VALUES] on lines below.")
+                    for entry in entries: print(entry)
                     continue  # TODO: for entry in all_entries:
-
             print("['" + key + "']\t:", self.info.dict[key])  # regular line
 
         print("\n=======================================\n")
@@ -6020,7 +6045,7 @@ $ wmctrl -l -p
 
         global LODICT, START_DIR
 
-        if self.playlists.name:
+        if self.playlists.name is not None:
             self.playlists.save_playlist()
             # June 19, 2023 - Guaranteed other playlist maintenance hasn't occurred?
             return  # Playlists are saved
@@ -6902,7 +6927,7 @@ $ wmctrl -l -p
 
         # Set four rounded rectangles to width of the longest rectangle to
         # prevent the longest rectangle right side showing under shorter ones
-        self.set_max_dimensions()
+        self.set_max_dimensions()  # TODO rename to explicit
 
         # U+2630 in unicode and then U+22EE
         self.lyrics_panel_text = "0%, Blah blah, Line: 99 of: 99"
@@ -6968,6 +6993,7 @@ $ wmctrl -l -p
         self.lyrics_score_box.tag_config('highlight', background='black',
                                          foreground='white')
 
+        # NOTE: ttk.Scrollbar widget on tk.Text widget. Research later.
         self.lyrics_score_scroll_y = ttk.Scrollbar(
             self.play_F3, command=self.lyrics_score_box.yview)
         self.lyrics_score_scroll_y.grid(row=0, column=1, rowspan=2, sticky='ns')
@@ -6995,10 +7021,10 @@ $ wmctrl -l -p
             self.ndx = 0  # Control for current song 0 = 1st
 
         ''' Remove splash screen if we were called with it. '''
-        if self.splash_toplevel:
-            self.splash_toplevel.withdraw()  # Remove splash screen
+        #if self.splash_toplevel:
+        #    self.splash_toplevel.withdraw()  # Remove splash screen
 
-        root.update()
+        #root.update()  # Remove June 21, 2023 - Not needed
         #root.after(1000)  # Remove May 9, 2023. Why was a WHOLE SECOND here???
 
         ''' Retrieve location's last playing/paused status, song progress seconds '''
@@ -7096,11 +7122,12 @@ $ wmctrl -l -p
                 ''' Prev Track Button '''
                 # U+1f844 🡄         U+1f846 🡆         U_1f808 🠈         I+1f80a 🠊
                 # June 17, 2023: Change 🠈 to last track button emoji (u+23ee) ⏮
+                self.prev_button_text = self.previous_text
                 self.prev_button = \
-                    tk.Button(self.play_btn, text="⏮  Previous", width=BTN_WID2 - 2,
+                    tk.Button(self.play_btn, text=self.prev_button_text, width=BTN_WID2 - 2,
                               command=lambda s=self: s.song_set_ndx('prev'))
                 self.prev_button.grid(row=0, column=col, padx=2, sticky=tk.W)
-                self.tt.add_tip(self.prev_button, "Play previous song in playlist.",
+                self.tt.add_tip(self.prev_button, "Play previous song.",
                                 anchor="sw")
             elif name == "Next":
                 ''' Next Track Button '''
@@ -7384,7 +7411,7 @@ $ wmctrl -l -p
         """ Rewind song 10 seconds back. If Music paused, then begin playing.
             If current song secs is <12, then send restart song signal
         """
-        if self.current_song_secs < float(REW_FF_SECS) + 2.0:
+        if self.current_song_secs < float(REW_CUTOFF):
             self.song_set_ndx('restart')  # Was less than 12 seconds so restart
             return
 
@@ -7451,6 +7478,10 @@ $ wmctrl -l -p
             # Instead of prev/next song index, skip detached treeview items
             self.filter_song_set_ndx(seq)
         elif seq == 'prev':
+            if self.current_song_secs > float(REW_CUTOFF):
+                # TODO: After 12 seconds, change text from "Previous" to "Restart"
+                self.song_set_ndx('restart')  # Was > 12 seconds so restart
+                return
             if self.ndx == 0:  # If on first go to last
                 self.ndx = len(self.saved_selections) - 1
             else:
@@ -7777,6 +7808,12 @@ $ wmctrl -l -p
 
         # update treeview display and position treeview to current song
         self.update_lib_tree_song(self.current_song_path, list_index)
+
+        ''' Remove splash screen if we were called with it. '''
+        if self.splash_toplevel:
+            self.splash_toplevel.withdraw()  # Remove splash screen
+            self.splash_toplevel = None
+
         if real_start:
             self.play_to_end()  # play song until end
             self.queue_next_song()  # Save indices & next song as appropriate
@@ -7906,6 +7943,18 @@ $ wmctrl -l -p
             sleep = 1 if sleep < 1 else sleep   # Sleep minimum 1 millisecond
             self.syn_top.after(sleep)           # Wait until lyric sync
             return False                        # Used to be a "continue" statement
+
+        ''' Set previous or restart into button text '''
+        if self.prev_button_text == self.previous_text:
+            if self.current_song_secs > float(REW_CUTOFF):
+                self.prev_button_text = self.restart_text
+                self.prev_button['text'] = self.prev_button_text
+                self.tt.set_text(self.prev_button, "Restart song at beginning.")
+        else:  # Previous button text says "Restart"
+            if self.current_song_secs < float(REW_CUTOFF):
+                self.prev_button_text = self.previous_text
+                self.prev_button['text'] = self.prev_button_text
+                self.tt.set_text(self.prev_button, "Play previous song.")
 
         ''' Playing music for Hockey Commercial or Intermission '''
         if self.play_hockey_active:                  # Is hockey active?
@@ -8074,9 +8123,16 @@ $ wmctrl -l -p
         self.Duration = self.Duration.split('.')[0]
         self.DurationSecs = self.convert_seconds(self.Duration)  # Note must save in parent
 
+        self.info.fact(
+            "Begin playing song: " + self.Title +
+            "\nArtist:\t" + self.Artist +
+            "\nAlbum:\t" + self.Album +
+            "\nTrack:\t" + self.Track +
+            "\tDate:\t" + self.Date +
+            "\tDuration:\t" + self.Duration
+        )
+
         # Update sql library Music Table with metadata tags
-        # Important we use self.Artist instead of self.current_song_artist
-        # which can have ellipsis in truncated name.
         if update_sql is True:
             self.meta_update_succeeded = None  # Wasn't called
             if path.startswith(START_DIR):
@@ -10051,7 +10107,7 @@ $ wmctrl -l -p
         ''' Create images for checked, unchecked and tristate '''
         # Don't use self.checkboxes list as GC destroys others with that name
         self.check2 = img.make_checkboxes(row_height - 6, self.foreground,
-                                          self.background, 'deepskyblue')
+                                          self.background, 'SkyBlue3')
         self.syn_tree.tag_configure("unchecked", image=self.check2[0])
         self.syn_tree.tag_configure("tristate", image=self.check2[1])
         self.syn_tree.tag_configure("checked", image=self.check2[2])
@@ -11416,7 +11472,7 @@ IndexError: list index out of range
         # June 18, 2023 - Review history audit record. Probably overkill?
         #   Should call self.write_playlist_to_disk(override=selections_only)
         sql.hist_add_shuffle('edit', 'shuffle', self.saved_selections)
-        if self.playlists.name:
+        if self.playlists.name is not None:
             self.playlists.act_id_list = []
             for Id in self.saved_selections:
                 full_path = self.real_path(int(Id))
@@ -11430,6 +11486,7 @@ IndexError: list index out of range
             self.playlists.save_playlist()
 
         # TODO: broadcast to Information Centre
+        self.info.cast("Shuffled Playlist: " + self.title_suffix, action='update')
 
     def play_remove(self, iid):
         """ Song has been unchecked. Remove from sorted playlist.
@@ -12002,33 +12059,166 @@ IndexError: list index out of range
         #h_scroll.grid(row=1, column=0, sticky=tk.EW)
         #self.chron_tree.configure(x scroll command=h_scroll.set)
 
+        ''' Use tool_type="canvas_button" for entire treeview '''
+        # Note this steals <Button-1>, <Motion> and <Leave> events from canvas
+        # Which get stolen back in bindings further down
+        #self.tt.add_tip(
+        #    self.chron_tree, "Playlist Chronology\n" +
+        #    "Right click on a song for action menus.",
+        #    tool_type="canvas_button", anchor="nw")
+
         ''' Chronology treeview Colors '''
         self.chron_tree.tag_configure('normal', background='Black',
                                       foreground='Gold')
         self.chron_tree.tag_configure('chron_sel', background='grey18',
                                       foreground='LightYellow')
 
+        ''' Configure tag for row highlight '''
+        self.chron_tree.tag_configure('highlight', background='LightBlue')
+        #  foreground='Black')  # Too complicated. Leave with background only
+        self.chron_tree.bind('<Motion>', self.chron_highlight_row)
+        self.chron_tree.bind("<Leave>", self.chron_leave_row)
+
         ''' Trap left mouse click to select song for playing '''
         #self.chron_tree.bind('<Button-1>', self.chron_tree_left_click)
-        self.chron_tree.bind('<Button-1>', self.chron_tree_right_click)
+        #self.chron_tree.bind('<Button-1>', self.chron_tree_right_click)
         self.chron_tree.bind('<Button-3>', self.chron_tree_right_click)
-
-        ''' Use tool_type="canvas_button" for entire treeview '''
-        self.tt.add_tip(
-            self.chron_tree, "Playlist Chronology\n" +
-            "Right click on a song for action menus.",
-            tool_type="canvas_button", anchor="nw")
 
         ''' Populate chronology treeview '''
         self.populate_chron_tree()
 
-    def chron_tree_left_click(self, event):
+    def populate_chron_tree(self):
+        """ Populate playlist chronology treeview listbox
         """
-            NOT USED - Binding goes directly to chron_tree_right_click()
-            Even still, have to left click twice for it to work sometimes.
+
+        ''' Delete all attached entries in current treeview '''
+        self.chron_tree.delete(*self.chron_tree.get_children())
+
+        for i, lib_tree_iid in enumerate(self.saved_selections):
+            if not self.play_top_is_active:
+                return  # Play window closed?
+
+            ''' Add the #-song-artist line to chron listbox '''
+            line, time_index = self.build_chron_line(i + 1, lib_tree_iid, True)
+            song_iid = str(i + 1)  # song_number is 'i + 1'
+            if time_index is None:
+                values = ("no",)
+            else:
+                values = ("yes",)  # To find synchronized lyrics (time index)
+            try:  # June 22, 2023 was 'iid = i + 1'
+                self.chron_tree.insert('', 'end', iid=song_iid, text=line, values=values,
+                                       tags=("normal",))
+                self.chron_tree.tag_bind(song_iid, '<Motion>', self.chron_highlight_row)
+                #self.chron_tree.tag_bind(song_iid, '<Leave>', self.chron_leave_row)
+                # tag_bind on <Leave> generates error for every song:
+                # mserve.py populate_chron_tree() bad line: № 1501 🎵 When You're On Top 🎨 The Wallflowers 🖸 Collected: 1996-2005 📅 2002 🕑 3:57
+                # mserve.py populate_chron_tree() insert failed with Error: Item 1501 already exists
+            except tk.TclError:
+                bad_msg = "mserve.py populate_chron_tree() bad line:"
+                print(bad_msg, line)
+                try:
+                    self.chron_tree.insert('', 'end', iid=song_iid, text=bad_msg +
+                                           " " + song_iid, tags=("normal",))
+                    self.chron_tree.tag_bind(song_iid, '<Motion>', self.chron_highlight_row)
+                    #self.chron_tree.tag_bind(song_iid, '<Leave>', self.chron_leave_row)
+                except Exception as err:
+                    print('mserve.py populate_chron_tree() insert failed with Error: %s' % (str(err)))
+                    print()  # When it breaks tons of errors so separate into grouped msgs
+
+        ''' Create empty rows when row count < 10 '''
+        row_count = len(self.chron_tree.get_children())
+        fake_rows = self.chron_tree.tag_has("empty")  # existing number fake rows
+        needed_rows = 10 - row_count
+        needed_rows = 0 if needed_rows < 0 else needed_rows
+        if needed_rows > len(fake_rows):
+            add_cnt = needed_rows - len(fake_rows)
+            for _ in range(add_cnt):
+                self.chron_tree.insert('', 'end', tags=("normal", "empty"))
+        elif len(fake_rows) > needed_rows:
+            del_cnt = len(fake_rows) - needed_rows
+            for i, _ in enumerate(range(del_cnt)):
+                self.chron_tree.delete(fake_rows[i])
+
+        ''' Highlight current song
+
+            Only songs that have been played once will have metadata for release
+            date and duration. Otherwise a short line will be displayed
+
+            You can use "View", "SQL Music", "Missing artwork" to force metadata
+            to be read for all songs in location. Then regular (full) lines are
+            displayed in chronology treeview.    
+
+        '''
+        self.play_chron_highlight(self.ndx, True)  # Calls root.update
+
+    def chron_highlight_row(self, event):
+        """ Cursor hovering over row highlights it in light blue
         """
-        item = self.chron_tree.identify_row(event.y)
-        print('mserve.py chron_tree_left_click(self, event):', item)
+        tree = event.widget
+        item = tree.identify_row(event.y)
+        #print("item:", item)  # Never getting called?
+        # Get called dozens of times when still in same row
+        if self.chron_last_row == item:
+            return
+
+        self.chron_leave_row(event)
+        tree.tk.call(tree, "tag", "remove", "highlight")
+        ''' Too complicated.
+        if item == str(self.ndx + 1):
+            tree.tk.call(tree, "tag", "remove", "chron_sel", item)
+        else:
+            tree.tk.call(tree, "tag", "remove", "normal", item)
+        '''
+        #tree.tk.call(tree, "tag", "add", "highlight", item)
+        ''' The "normal" or "chron_sel" tags appear first and take priority for background '''
+        #toolkit.tv_tag_add(tree, item, "highlight", strict=True)  # Append
+        #toolkit.tv_tag_insert_first(tree, item, "highlight", strict=True)
+        tags = tree.item(item)['tags']
+        if "chron_sel" in tags:
+            toolkit.tv_tag_replace(tree, item, "chron_sel", "highlight", strict=True)
+            self.chron_last_tag_removed = "chron_sel"
+        else:
+            toolkit.tv_tag_replace(tree, item, "normal", "highlight", strict=True)
+            self.chron_last_tag_removed = "normal"  # TODO test with empty rows
+        self.chron_last_row = item
+
+        #print("highlight:", self.chron_last_row,
+        #      "Remove:", self.chron_last_tag_removed)
+
+    def chron_leave_row(self, event):
+        """
+        Un-highlight row just left
+        """
+        #print("leave_row:", self.chron_last_row, "Apply :", self.chron_last_tag_removed)
+        if self.chron_last_row is not None:
+            tree = event.widget
+            if toolkit.tv_tag_replace(tree, self.chron_last_row, "highlight",
+                                      self.chron_last_tag_removed, strict=False):
+                # "highlight" never existed, but need to add back old
+                toolkit.tv_tag_insert_first(tree, self.chron_last_row,  # True = lots errors
+                                            self.chron_last_tag_removed, strict=False)
+            #tree.tk.call(tree, "tag", "remove", "highlight")
+            ''' Too complicated.
+            if self.chron_last_row == str(self.ndx + 1):
+                tree.tk.call(tree, "tag", "remove", "highlight", self.chron_last_row)
+                tree.tk.call(tree, "tag", "remove", "normal", self.chron_last_row)
+                tree.tk.call(tree, "tag", "add", "chron_sel", self.chron_last_row)
+                pass
+            else:
+                tree.tk.call(tree, "tag", "remove", "chron_sel", self.chron_last_row)
+                tree.tk.call(tree, "tag", "add", "normal", self.chron_last_row)
+            '''
+            self.chron_last_row = None
+            self.chron_last_tag_removed = None
+
+    @staticmethod
+    def chron_tree_left_click(event):
+        """
+            Binding goes directly to chron_tree_right_click()
+        """
+        #item = self.chron_tree.identify_row(event.y)
+        #print('mserve.py chron_tree_left_click(self, event):', item)
+        chron_tree_right_click(event)
 
     def chron_tree_right_click(self, event):
         """ Drop down menu:
@@ -12038,7 +12228,7 @@ IndexError: list index out of range
                 Filter songs by artist, with time index, over 5 minutes
         """
         item = self.chron_tree.identify_row(event.y)
-        print('def chron_tree_right_click(self, event):', item)
+        #print('def chron_tree_right_click(self, event):', item, type(item))
         try:
             Id = int(item)
         except ValueError:  # invalid literal for int() with base 10: ''
@@ -12052,11 +12242,11 @@ IndexError: list index out of range
 
         if self.ndx == (Id - 1):
             # Restart current song from beginning
-            menu.add_command(label="Play from start", font=(None, MED_FONT),
+            menu.add_command(label="Restart Song № " + str(Id), font=(None, MED_FONT),
                              command=lambda: self.chron_tree_play_now(Id))
         else:
-            # Play different song in list
-            menu.add_command(label="Play this song", font=(None, MED_FONT),
+            # Play different song in list / Sel. MB
+            menu.add_command(label="Play Song № " + str(Id), font=(None, MED_FONT),
                              command=lambda: self.chron_tree_play_now(Id))
         menu.add_separator()
         if self.chron_filter is None:
@@ -12248,62 +12438,7 @@ IndexError: list index out of range
         iid = self.saved_selections[Id - 1]  # Create treeview ID
         self.kid3_song(iid)
 
-    def populate_chron_tree(self):
-        """ Populate playlist chronology treeview listbox
-        """
-
-        ''' Delete all attached entries in current treeview '''
-        self.chron_tree.delete(*self.chron_tree.get_children())
-
-        for i, lib_tree_iid in enumerate(self.saved_selections):
-            if not self.play_top_is_active:
-                return  # Play window closed?
-            # song_number += 1
-            ''' Add the #-song-artist line to chron listbox '''
-            line, time_index = self.play_chron_line(i + 1, lib_tree_iid, True)
-            if time_index is None:
-                values = ("no",)
-            else:
-                values = ("yes",)  # To find synchronized lyrics (time index)
-            try:
-                self.chron_tree.insert('', 'end', iid=i + 1, text=line, values=values,
-                                       tags=("normal",))
-            except tk.TclError:
-                bad_msg = "mserve.py populate_chron_tree() bad line:"
-                print(bad_msg, line)
-                try:
-                    self.chron_tree.insert('', 'end', iid=i + 1, text=bad_msg +
-                                           " " + str(i + 1), tags=("normal",))
-                except Exception as err:
-                    print('Update Failed: \nError: %s' % (str(err)))
-
-        ''' Create empty rows when row count < 10 '''
-        row_count = len(self.chron_tree.get_children())
-        fake_rows = self.chron_tree.tag_has("empty")  # existing number fake rows
-        needed_rows = 10 - row_count
-        needed_rows = 0 if needed_rows < 0 else needed_rows
-        if needed_rows > len(fake_rows):
-            add_cnt = needed_rows - len(fake_rows)
-            for _ in range(add_cnt):
-                self.chron_tree.insert('', 'end', tags=("normal", "empty"))
-        elif len(fake_rows) > needed_rows:
-            del_cnt = len(fake_rows) - needed_rows
-            for i, _ in enumerate(range(del_cnt)):
-                self.chron_tree.delete(fake_rows[i])
-
-        ''' Highlight current song
-        
-            Only songs that have been played once will have metadata for release
-            date and duration. Otherwise a short line will be displayed
-            
-            You can use "View", "SQL Music", "Missing artwork" to force metadata
-            to be read for all songs in location. Then regular (full) lines are
-            displayed in chronology treeview.    
-        
-        '''
-        self.play_chron_highlight(self.ndx, True)  # Calls root.update
-
-    def play_chron_line(self, playlist_no, lib_tree_iid, short_line):
+    def build_chron_line(self, playlist_no, lib_tree_iid, short_line):
         """ № (U+2116)  🎵  (1f3b5)  🎨  (1f3a8)  🖌  (1f58c)  🖸 (1f5b8)
             Big space  (2003)   “Tabular width”, the width of digits (2007)
 
@@ -12388,10 +12523,9 @@ IndexError: list index out of range
 
 
     @staticmethod
-    def play_padded_number(song_number, number_digits,
-                           prefix=NUMBER_PREFIX):
+    def play_padded_number(song_number, number_digits, prefix=NUMBER_PREFIX):
         """ Pad song number with spaces to line up song name evenly
-            Called from refresh_acc_times() and play_chron_line()
+            Called from refresh_acc_times() and build_chron_line()
         """
         padded_number = ""
         this_digits = len(str(song_number))
@@ -12425,7 +12559,7 @@ IndexError: list index out of range
         if short_line is False:  # REVIEW: probably not needed anymore
             lib_tree_iid = self.saved_selections[ndx]  # lib_tree iid
             ''' Add the #-song-artist line to chron listbox '''
-            line, time_index = self.play_chron_line(int(Id), lib_tree_iid, False)
+            line, time_index = self.build_chron_line(int(Id), lib_tree_iid, False)
             self.chron_tree.item(Id, text=line)  # TODO: values for time_index
 
         ''' Position row to show previous 3, current and next 6 songs '''
@@ -13013,7 +13147,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
 
     """
 
-    def __init__(self, parent=None, text=None, pending=None,
+    def __init__(self, parent=None, text=None, pending=None, info=None,
                  apply_callback=None, enable_lib_menu=None, play_close=None,
                  tooltips=None, thread=None, display_lib_title=None):
         """
@@ -13023,6 +13157,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         self.parent = parent  # FOR NOW self.parent MUST BE: lib_top
         self.text = text  # Text replacing treeview when no playlists on file
         self.get_pending = pending  # What is pending in parent?  - Could be favorites
+        self.info = info  # InfoCentre()
         self.apply_callback = apply_callback
         self.play_close = play_close  # Main music playing window to close down
         self.enable_lib_menu = enable_lib_menu
@@ -13705,6 +13840,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         if self.state == 'delete':
             # TODO: If deleting current playlist need to use Default Favorites
             self.delete_playlist()
+            self.info.cast("Deleting playlist: " + self.act_name, action="delete")
             if self.curr_number_str == self.act_number_str:
                 self.name = None
                 self.last_number_str = self.curr_number_str  # Replaces .name in future
@@ -13720,6 +13856,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             self.last_number_str = self.curr_number_str  # Replaces .name in future
             self.curr_number_str = self.act_number_str
             self.reset()  # Close everything down, E.G. destroy window
+            self.info.cast("Open playlist: " + self.act_name)
             self.apply_callback()  # Start picking songs for new playlist
         elif self.state == 'new':
             self.save_playlist()  # Save brand new playlist
@@ -13729,12 +13866,14 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             self.name = self.act_name  # Tell parent name of playlist
             self.last_number_str = self.curr_number_str  # Replaces .name in future
             self.curr_number_str = self.act_number_str
+            self.info.cast("Create new playlist: " + self.act_name, action="add")
             self.apply_callback()  # Tell parent to start editing playlist
             # apply_callback will end right away after closing lib selections
         else:
             self.save_playlist()  # Save, Save As, Rename
             self.name = self.act_name  # In case of 'rename' title updates
             self.curr_number_str = self.act_number_str  # Can't be common: 'delete'
+            self.info.cast("Saving playlist: " + self.act_name, action="update")
 
         # TODO: New design with self.last_number_str and self.curr_number_str
 
@@ -13816,6 +13955,44 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
 
     Thank goodness there is no thread=self.get_refresh_thread() needed so the
         Playlists() class nightmare isn't relived !
+        
+    Opening playlists slows down from <1 second to over 7 seconds. See bug:
+
+Default ibus-daemon causes high cpu usage and startup delay for a tcl / tk application
+Closed
+
+Default ibus-daemon causes high cpu usage and startup delay for a tcl / tk application
+Affected version
+
+I tested Ubuntu 18.04 / 20.04 & Centos 7 / 8 (also current beta versions) but I think
+ every gnome3 Version will be affected.
+
+Bug summary
+
+If we start our big TCL/TK application using gnome3 the startup time increases 
+from 1 sec (KDE, Mate, ...) up to 60 sec. In the meantime ibus-daemon & ibus-X11 
+are using both a full CPU. After the application is started, it can be used 
+without any problems. If I stop the ibus-damon (ibus exit) and restart the 
+application everything is working fine.
+
+After playing around a bit I could nail it down to the "--xim" option. If I 
+remove this option, the application starts fast.
+
+As a workaround I restart ibus-daemon without the --xim option at session login.
+
+I tested many other environments like KDE, Xfce, Mate also using the ibus-daemon
+but there the problem does not occur (also with the --xim option). So I think 
+it could be a problem between the gnome3 ibus implementation & tcl/tk (8.5.X)?
+
+Has anybody seen this before? Please tell me, what you need to analyze the 
+problem and I will do (strace, ...).
+
+Since our application is a commercial software I cannot easily provide a 
+test driver to reproduce this behavior (but I will do, if really necessary).
+
+Thanks in advance for your help!
+
+Best regards, Roland    https://gitlab.gnome.org/GNOME/gnome-shell/-/issues/3125
 '''
 #
 # ==============================================================================
@@ -13827,7 +14004,12 @@ class InfoCentre:
             self.info = InfoCentre(
                 self.banner_frm, self.banner_btn, self.build_banner_btn,
                 self.build_banner_canvas, self.tt, title_font, text_font):
-        
+
+            self.info.cast() - Create dict and call zoom().
+            self.info.fact() - Create dict only.
+            self.info.zoom() - Expand/collapse frame. Show dict.
+            self.info.view() - Call zoom(), but use close button to exit.
+
     """
 
     def __init__(self, lib_top=None, lib_tree=None, banner_frm=None,
@@ -13837,25 +14019,31 @@ class InfoCentre:
         """
         ''' self-ize parameter list '''
         self.lib_top = lib_top
-        self.lib_tree = lib_tree
-        self.banner_frm = banner_frm
-        self.banner_btn = banner_btn
-        self.build_banner_btn = build_banner_btn
-        self.tt = tooltips
+        self.lib_tree = lib_tree  # Used in development version will probably drop
+        self.banner_frm = banner_frm  # Frame shared by button ruler and zoom
+        self.banner_btn = banner_btn  # The button appearing as thin ruler line
+        self.build_banner_btn = build_banner_btn  # Function to call when finished
+        self.tt = tooltips  # Tooltips() class instance
 
-        ''' Common variables '''
-        self.frame = None
-        self.text = None
-        self.height = None  # Fraction 33% of lib_top height
+        ''' Window variables '''
+        self.frame = None  # Zoom frame goes where button ruler line was
+        self.widget = None  # parent widget passed to Tooltips()
+        self.close_button = None  # Close zoom frame.  Only appears during .view()
+        self.text = None  # tk.Text with scrollbars
+        self.text_scroll_y = None  # scroll up and down (y-axis)
+        self.height = None  # 33% of lib_top height
         self.width = None  # Full width of lib_top
-        self.song_playing = None  # To shift lib_tree so current song is highlighted
+
+        ''' Information Dictionary '''
+        self.dict = OrderedDict()  # Use 'View' Dropdown Menu, 'Show Debug' to see last
+        self.list = []  # list of self.dict. Newest first: self.list.insert(0, self.dict)
 
         ''' Working fields primarily for testing '''
         self.test = None
-        self.test_text = None
         self.test_label = None
         self.msg_recv = None
         self.test_results = []  # list of tuples (time.time(), alpha, dict fields?)
+        self.song_playing = None  # To shift lib_tree so current song is highlighted
 
         self.start_time = None  # Time test started
         self.time = None  # Time message was received
@@ -13904,12 +14092,7 @@ class InfoCentre:
         # A number of facts can be posted by fact type. When a new fact it posted if the
         # same type exists it is moved into splash history.
 
-        ''' Information Dictionary '''
-        self.dict = OrderedDict()  # Use View Dropdown Menu - Show Debug to view contents
-
-        self.list = []  # list of self.dict. Newest first: self.list.insert(0, self.dict)
-
-    def new_dict(self, new_type, text, severity=None, action=None):
+    def new_dict(self, new_type, text, severity=None, action=None, patterns=None):
         """
         Create a new dictionary
         :param new_type: 'cast' or 'fact' 
@@ -13935,18 +14118,54 @@ class InfoCentre:
         # view_time: 0.0 = False. After viewing, some info_type+action deleted
 
         self.dict['type'] = new_type
-        self.dict['source'] = toolkit.get_trace()  # TODO: filter results
-        #self.dict['source'] = ["mserve.py"]  # Temporary until trace is filtered
+        self.dict['source'] = toolkit.get_trace()[:-3]  # Cut InfoCentre entries
+        # TODO: Use "show_debug()" to see results and filter / merge lines.
+        # noinspection SpellCheckingInspection
+        '''
+            File "./m", line 158, in <module>
+              main()
+            
+            File "./m", line 100, in main
+              mserve.main(toplevel=splash, cwd=cwd, parameters=sys.argv)
+            
+            File "/home/rick/python/mserve.py", line 15184, in main
+              MusicTree(toplevel, SORTED_LIST)  # Build treeview of songs
+            
+            File "/home/rick/python/mserve.py", line 1163, in __init__
+              self.info.cast("mserve started")
+            
+            File "/home/rick/python/mserve.py", line 13971, in cast
+              time_stamp = self.new_dict('cast', text, severity, action)
+            
+            File "/home/rick/python/mserve.py", line 13939, in new_dict
+              self.dict['source'] = toolkit.get_trace()  # TODO: filter results
+            
+            File "/home/rick/python/toolkit.py", line 69, in get_trace
+              return traceback.format_stack()
+        '''
+        # Always delete last three entries (get_trace, new_dict, cast)
+        # If first two entries contain "/m" delete them
+
+        # Read remaining lines backwards and build new 'source'
+        # line.replace('File "' + cwd + os.sep', '')
+        # line.replace('", line ', '@', 1)
+        # two_lines = line.split(', in ')
+        # part1 = two_lines[0]
+        # two_liens = two_lines[1].split('\n  ')
+        # part2 = two_lines[0]
+        # part3 = two_lines[1]  # What do do about optional comments after "#"?
+        # new_line = part1 + "-" + part_2 + "(): "
+
         if severity is None:
             severity = 'info'
         if action is None:
-            action = 'open'
+            action = 'open'  # Another choice would be 'run'
         self.dict['severity'] = severity
         self.dict['action'] = action
         self.dict['text'] = text
         return now
 
-    def cast(self, text, severity=None, action=None):
+    def cast(self, text, severity=None, action=None, patterns=None):
         """
         Briefly display message in expanding/collapsing Information Centre.
         If user interested they can use view() function to slowly read message.
@@ -13967,18 +14186,47 @@ class InfoCentre:
 
         # TODO: Recursive call if first cast is still active.
 
-        time_stamp = self.new_dict('cast', text, severity, action)
-        self.list.insert(0, self.new_dict)
+        time_stamp = self.new_dict('cast', text, severity, action, patterns)
+        self.list.insert(0, self.dict)
         # self.dict remains in memory for all functions to "see"
-        self.splash()
+        self.zoom()
         return time_stamp  # time_stamp can be used by caller to massage text
 
-    def splash(self):
+    def fact(self, text, severity=None, action=None, patterns=None):
         """
-            "Splash" a message by expanding/collapsing information centre panel
+        Briefly display message in expanding/collapsing Information Centre.
+        If user interested they can use view() function to slowly read message.
+        After reading, most messages are deleted, but some are kept in session history.
+
+        :param severity: 'info', 'warning', 'error'
+        :param action: 'open', 'update', 'add', 'delete', 'rename'
+        :param text: Formatted text suitable for tk.Text widget format.
+        :return: time assigned to information centre entry. Can be used to find again
+        """
+        ''' 
+            PROCESSING STEPS:
+                Queue operation if previous cast is still active.
+                Create dictionary
+                Insert dictionary in list
+                Call splash function
+        '''
+
+        # TODO: Recursive call if first cast is still active.
+
+        time_stamp = self.new_dict('fact', text, severity, action, patterns)
+        self.list.insert(0, self.dict)
+        # self.dict remains in memory for all functions to "see"
+        return time_stamp  # time_stamp can be used by caller to massage text
+
+    def view(self):
+        self.zoom(show_close=True)  # close_button is broken...
+
+    def zoom(self, show_close=False):
+        """
+            "Zoom" messages by expanding/collapsing information centre panel
             self.dict is populated with all variables caller sent
 
-        :return self.dict['time']: Time assigned to transaction
+            :param show_close: Display a close button and extend visible time
         """
         ''' Get current lib_top coordinates and current playing song '''
         # During init there was no size for window
@@ -14000,48 +14248,69 @@ class InfoCentre:
 
         ''' Destroy banner button in Tooltips() and banner button '''
         self.tt.close(self.banner_btn)
-        self.banner_btn.destroy()  # Real Estate commandeered for splash
+        self.banner_btn.destroy()  # Real Estate commandeered for zoom frame
 
-        ''' Build new frame and Text widget. Add to Tooltips() '''
+        ''' Build tk.Frame and tk.Text widgets. Optional tk.Button to close frame '''
         self.frame = tk.Frame(self.banner_frm, bg="black", height=7)
         self.frame.grid()
-        self.test_text = tk.Text(self.frame, bg="black", height=self.height,
-                                 width=self.width, fg="gold", font=(None, MON_FONTSIZE))
-        self.test_text.place(height=self.height, width=self.width, x=40, y=10)
-        self.test_text.config(highlightthickness=0, borderwidth=0)
+        if show_close:
+            ''' Close Button - NOTE: This calls reset() function !!! '''
+            self.close_button = tk.Button(self.frame, text="✘ Close", bg="gold",
+                                          width=BTN_WID2 - 4, command=self._close_clicked)
+            self.close_button.place(height=MON_FONTSIZE * 3, width=BTN_WID2 * 8,
+                                    x=10, y=10)
+            visible_span = 1000 * 60 * 1  # Visible for one minute per tk.Text line
+        else:
+            visible_span = 1000  # Visible 1 second per tk.Text line
 
-        self._str_to_text_frame(text)
-        # Limitation: 'visible_delay' must be greater than 'fade_out_span'
+        ''' Create custom (highlighting supported) tk.Text widget with scrollbars '''
+        self.text = toolkit.CustomScrolledText(
+            self.frame, bg="black", height=self.height, width=self.width, fg="gold",
+            font=(None, MON_FONTSIZE), state="normal")
+        self.text.place(height=self.height-60, width=self.width-20, x=10, y=50)
+        self.text.config(highlightthickness=0, borderwidth=0)
+        self.text.vbar.config(troughcolor='black', bg='gold')
+        ''' Read all dictionaries and stuff into CustomScrolledText object '''
+        for read_dict in self.list:
+            ''' Calculate length of line draw '''
+            line_draw = int(self.width / MON_FONTSIZE * .6)
+            self._str_to_text_frame(
+                "─" * line_draw + "┨ " + tmf.ago(read_dict['time']))
+            # Use read_dict to keep self.dict intact
+            self._str_to_text_frame(read_dict['text'])
+            if not show_close:
+                break  # Called by .cast() so only one message to display
+
+        ''' .view() has close button, but .cast() doesn't. '''
+        if show_close:
+            self.widget = self.close_button
+            anchor = "sw"
+        else:
+            self.widget = self.text
+            anchor = "sc"
+
+        ''' Add CustomScrolledText widget to Tooltips() as 'piggy_back' '''
         self.tt.add_tip(
-            self.test_text, text=text, anchor="sc", tool_type="piggy_back",
+            self.widget, text=text, anchor=anchor, tool_type="piggy_back",
             pb_alpha=self.tt_alpha, pb_leave=self.tt_leave, pb_ready=self.tt_ready,
-            pb_close=self.tt_close, visible_span=1000, extra_word_span=100,
-            fade_in_span=300, visible_delay=401, fade_out_span=400
+            pb_close=self.tt_close, visible_span=visible_span, extra_word_span=100,
+            fade_in_span=300, visible_delay=201, fade_out_span=200
+            # Limitation: 'visible_delay' must be greater than 'fade_out_span'
         )
-        ''' ALL OPTIONS:
-def add_tip(self, widget, text='Pass text here', tool_type='button',
-    visible_delay=VISIBLE_DELAY, visible_span=VISIBLE_SPAN,
-    extra_word_span=EXTRA_WORD_SPAN, fade_in_span=FADE_IN_SPAN,
-    fade_out_span=FADE_OUT_SPAN, anchor="sw", 
-    pb_alpha=None, pb_leave=None, pb_close=None):
 
-VISIBLE_SPAN = 5000     # ms balloon tip remains on screen (5 sec/line)
-EXTRA_WORD_SPAN = 500   # 1/2 second per word if > VISIBLE_SPAN
-FADE_IN_SPAN = 500      # 1/4 second to fade in
-FADE_OUT_SPAN = 400     # 1/5 second to fade out
-        '''
+        ''' Start Tooltips() by saying mouse hovered over the text widget. '''
+        self.tt.log_event('enter', self.widget, 10, 5)  # x=10, y=5
 
-        ''' Send fake event to Tooltips() as if mouse hovers over parent widget '''
-        self.tt.log_event('enter', self.test_text, 10, 5)  # x=10, y=5
+    def _close_clicked(self):
+        """ When close button clicked tell Tooltips to start fading out """
+        self.tt.log_event('press', self.widget, 100, 50)  # x=100, y=50
 
-        ''' Need to update for first yview test in tt_alpha '''
-        # self.lib_tree.update_idletasks()  # Without this, yview stays same
-        # print("Start:", self.lib_tree.yview())
-
-        ''' Track old and new y-axis position to keep same rows displayed '''
-        # self.old_y_top, self.old_y_end = self.lib_tree.yview()
-
-        return self.dict['time']
+    def _str_to_text_frame(self, text):
+        """ model after lyrics_score_box """
+        self.text.configure(state="normal")
+        self.text.insert(tk.END, text + "\n")
+        self.text.update()  # Is this necessary? Don't know yet...
+        self.text.configure(state="disabled")
 
     def test_tt(self, text):
         """
@@ -14069,24 +14338,26 @@ FADE_OUT_SPAN = 400     # 1/5 second to fade out
 
         ''' Destroy banner button in Tooltips() '''
         self.tt.close(self.banner_btn)
-        self.banner_btn.destroy()  # Destroy banner button. Real Estate commadered for splash
+        self.banner_btn.destroy()  # Destroy banner button. Real Estate commandeered
 
         ''' Build new frame and Text widget. Add to Tooltips() '''
         self.frame = tk.Frame(self.banner_frm, bg="black", height=7)
         self.frame.grid()
-        self.test_text = tk.Text(self.frame, bg="black", height=self.height,
-                                 width=self.width, fg="gold", font=(None, MON_FONTSIZE))
-        self.test_text.place(height=self.height, width=self.width, x=40, y=10)
-        self.test_text.config(highlightthickness=0, borderwidth=0)
+        self.text = tk.Text(self.frame, bg="black", height=self.height,
+                            width=self.width, fg="gold", font=(None, MON_FONTSIZE))
+        self.text.place(height=self.height, width=self.width, x=40, y=10)
+        self.text.config(highlightthickness=0, borderwidth=0)
 
-        text = "\n\t▼ ▲ ▼ ▲  Expanding/Collapsing Information Centre  ▲ ▼ ▲ ▼ \n\n" + \
-               "\t\t          THIS IS JUST A TEST.\n\n" + \
-               "\t         DO NOT ADJUST YOUR KEYBOARD OR MOUSE."
+        text = "\t▼ ▲ ▼ ▲  Expanding/Collapsing Information Centre  ▲ ▼ ▲ ▼ \n\n" + \
+               "\t\t          Why is it spelled that way?\n\n" + \
+               '\t\t   In programming, "center" is an action.\n\n' +\
+               '\t\t       In this case, "Centre" is a place.'
 
         self._str_to_text_frame(text)
         # Limitation: 'visible_delay' must be greater than 'fade_out_span'
+        self.widget = self.text
         self.tt.add_tip(
-            self.test_text, text=text, anchor="sc", tool_type="piggy_back",
+            self.widget, text=text, anchor="sc", tool_type="piggy_back",
             pb_alpha=self.tt_alpha, pb_leave=self.tt_leave, pb_ready=self.tt_ready,
             pb_close=self.tt_close, visible_span=1000, extra_word_span=100,
             fade_in_span=300, visible_delay=401, fade_out_span=400
@@ -14105,7 +14376,7 @@ FADE_OUT_SPAN = 400     # 1/5 second to fade out
         '''
 
         ''' Fake event as if mouse entered parent widget bbox '''
-        self.tt.log_event('enter', self.test_text, 100, 50)  # x=100, y=50
+        self.tt.log_event('enter', self.widget, 100, 50)  # x=100, y=50
 
         ''' Need to update for first yview test in tt_alpha '''
         #self.lib_tree.update_idletasks()  # Without this, yview stays same
@@ -14113,13 +14384,6 @@ FADE_OUT_SPAN = 400     # 1/5 second to fade out
 
         ''' Track old and new y-axis position to keep same rows displayed '''
         #self.old_y_top, self.old_y_end = self.lib_tree.yview()
-
-    def _str_to_text_frame(self, text):
-        """ model after lyrics_score_box """
-        self.test_text.configure(state="normal")
-        self.test_text.insert(tk.END, text)
-        self.test_text.update()  # Is this necessary? Don't know yet...
-        self.test_text.configure(state="disabled")
 
     def tt_alpha(self, alpha):
         """
@@ -14199,17 +14463,36 @@ FADE_OUT_SPAN = 400     # 1/5 second to fade out
         #print("InfoCentre() tt_leave() mouse left widget window.",
         #      "total time:", time.time() - self.start_time)
 
+        # InfoCentre() tt_leave() mouse left widget window. total time: 0.532470941544
+        # InfoCentre() tt_leave() mouse left widget window. total time: 0.504528999329
+        # InfoCentre() tt_leave() mouse left widget window. total time: 0.451492786407
+        # InfoCentre() tt_leave() mouse left widget window. total time: 0.519959926605
+        # InfoCentre() tt_leave() mouse left widget window. total time: 0.521574020386
+        # InfoCentre() tt_leave() mouse left widget window. total time: 0.519021034241
+        # InfoCentre() tt_leave() mouse left widget window. total time: 0.537034034729
+        # InfoCentre() tt_leave() mouse left widget window. total time: 0.505052089691
+        # InfoCentre() tt_leave() mouse left widget window. total time: 0.508666992188
+
         ''' Feed fake button press event to cause info message to collapse
-            right away. This works but highly sensitive with premature
-            closing.
+            right away. Only works occasionally!
+            
+            When called by button bar leaves right away and closes
+            When called by View Information Centre doesn't leave at all
+            
+            Low priority because view will have a close button and banner button is short
         '''
-        #self.tt.log_event('press', self.test_text, 100, 50)  # x=100, y=50
+        elapsed = time.time() - self.start_time
+        if elapsed > 1000.0:  # Ignore if less than 1 second
+            self.tt.log_event('press', self.widget, 100, 50)  # x=100, y=50
+            # Notice first event is ignored. Then next is treated as real
+            # InfoCentre() tt_leave() mouse left widget window. total time: 0.527550935745
+            # InfoCentre() tt_leave() mouse left widget window. total time: 2.58352994919
+        pass
 
 
     def tt_ready(self):
         """
         Called from Tooltips when ready for message to be displayed.
-
         :return: None
         """
         #print("InfoCentre() tt_ready() message can be displayed now.",
@@ -14221,6 +14504,7 @@ FADE_OUT_SPAN = 400     # 1/5 second to fade out
         #self.frame.grid_propagate(True)
         #self.lib_top.update()
         #root.update()
+        pass
 
     def tt_close(self):
         """
@@ -14237,15 +14521,19 @@ FADE_OUT_SPAN = 400     # 1/5 second to fade out
         #self.lib_tree.yview_moveto(self.old_y_top - end_moved)
         #self.tt_alpha_dev(0.01)  # Use this with development version
 
-        self.frame.config(height=7)  # Last height can be 0 - 30px
-        self.lib_top.update()  # Update before destroy or last stays
-        self.frame.destroy()  # Nuke the frame used for info message
-        self.tt.close(self.test_text)  # Remove 'piggy_back' tooltip
+        ''' May have manually closed frame at same time Tooltips closes '''
+        if self.frame:
+            self.frame.config(height=7)  # Last height can be 0 - 30px
+            self.lib_top.update()  # Update before destroy or last stays
+            self.frame.destroy()  # Nuke the frame used for info message
+            self.tt.close(self.widget)  # Remove 'piggy_back' tooltip
+            self.frame = None
 
         ''' Rebuild banner button '''
         self.build_banner_btn()
         self.test = False
 
+        ''' If 33ms sleep was overriden, restore original value. '''
         if self.original_sleep is not None:
             global SLEEP_PAUSED
             SLEEP_PAUSED = self.original_sleep
@@ -15016,13 +15304,21 @@ def open_files(old_cwd, prg_path, parameters, toplevel=None):
         # Check how many songs
         music_list, depth_count = make_sorted_list(START_DIR, toplevel=toplevel)
         if depth_count[0] == 0 and depth_count[1] == 0 and depth_count[2] == 0:
+            # TODO: Splash screen "M" is still open but cannot be moved because
+            #           it has no window decorations.
+            #       Clicking Cancel in filepicker is an endless loop
+            #       Entering '~/Music' into Filepicker and clicking 'OK' should work but doesn't
+            #       Control+C doesn't terminate in terminal. Have to close tab
             text = "Music Library appears empty !!!\n\n" + \
                    "    " + START_DIR + "\n\n" + \
                    "No songs were found in target directory nor the\n" + \
                    "next three subdirectory levels under the target.\n\n" + \
                    "Verify the directory name and try again."
-            message.ShowInfo(root, title="No music files found.", text=text,
-                             align='left', icon='error')
+            messagebox.showinfo(title="No music files found.", message=text)
+            #message.ShowInfo(root, title="No music files found.", text=text,
+            #                 align='left', icon='error')  # Doesn't work without parent
+            # NOTE: OK doesn't work so use messagebox.showinfo() instead
+            #       Window appears on top-left monitor @ 30,30 so use messagebox instead
             continue
 
         print("mserve.py open_files() len(music_list):",
@@ -15042,13 +15338,12 @@ def open_files(old_cwd, prg_path, parameters, toplevel=None):
     print("End of open_files()")
 
 
-def main(toplevel=None, mon_geom=None, cwd=None, parameters=None):
+def main(toplevel=None, cwd=None, parameters=None):
     """
     Establish our file locations from sys.argv or last used location
 
     :type toplevel: Object
     :param toplevel: Splash screen mounted by m for startup
-    :param mon_geom: Monitor geometry if called by m (splash screen)
     :param cwd: Current Working Directory when program started
     :param parameters: sys.argv used to call program
     """
@@ -15072,14 +15367,6 @@ def main(toplevel=None, mon_geom=None, cwd=None, parameters=None):
     ''' parameters are passed by "m" to mserve.py '''
     if parameters is None:
         parameters = sys.argv
-
-    ''' mon_geom is passed by "m" to mserve.py '''
-    if mon_geom is not None:
-        # print('mon_geom:', mon_geom)
-        # Appears to be useless on June 5, 2023
-        #     # Center splash screen on monitor and get monitor's geometry
-        #     mon_dict = monitor.center(splash)
-        pass
 
     # Create Tkinter "very top" Top Level window
     if toplevel is None:

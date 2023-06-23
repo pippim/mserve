@@ -2391,7 +2391,7 @@ COLUMN: Seconds                   VALUE: None
                     hist_cursor.execute(sql, (key,))
                     self.successful_update_count += 1
                 except Exception as err:
-                    print('Update Failed: \nError: %s' % (str(err)))
+                    print('sql.del_music_ids() Update Failed:\n  Error: %s' % (str(err)))
                     print("  key:", key,)
                     print(sql, "\n", (detail, comment, key))
                     self.sql_cmd_error = True
@@ -2431,7 +2431,7 @@ COLUMN: Seconds                   VALUE: None
                     cursor.execute(sql, (key,))
                     self.successful_update_count += 1
                 except Exception as err:
-                    print('Update Failed: \nError: %s' % (str(err)))
+                    print('sql.del_music_ids() Update Failed:\n  Error: %s' % (str(err)))
                     print("  key:", key, " | sql:", sql)
                     self.sql_cmd_error = True
                 pass
@@ -2515,7 +2515,7 @@ COLUMN: Seconds                   VALUE: None
                     hist_cursor.execute(sql, (key,))
                     self.successful_update_count += 1
                 except Exception as err:
-                    print('Update Failed: \nError: %s' % (str(err)))
+                    print('sql.fix_scrape_parm() Update Failed:\n  Error: %s' % (str(err)))
                     print("  key:", key,)
                     print(sql, "\n", (detail, comment, key))
                     self.sql_cmd_error = True
@@ -2628,7 +2628,7 @@ COLUMN: Seconds                   VALUE: None
                     hist_cursor.execute(sql, (key,))
                     self.successful_update_count += 1
                 except Exception as err:
-                    print('Update Failed: \nError: %s' % (str(err)))
+                    print('sql.fix_meta_edit() Update Failed:\n  Error: %s' % (str(err)))
                     print("  key:", key,)
                     print(sql, "\n", (detail, comment, key))
                     self.sql_cmd_error = True
@@ -2752,7 +2752,7 @@ COLUMN: Seconds                   VALUE: None
                     hist_cursor.execute(sql, (detail, comment, key))
                     self.successful_update_count += 1
                 except Exception as err:
-                    print('Update Failed: \nError: %s' % (str(err)))
+                    print('sql.fix_utc_dates() Update Failed:\n  Error: %s' % (str(err)))
                     print("  detail:", detail)
                     print("  comment:", comment)
                     print("  key:", key)

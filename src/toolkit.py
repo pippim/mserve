@@ -381,6 +381,21 @@ def tv_tag_add(tv, iid, new, strict=False):
         return False
 
 
+def tv_tag_insert_first(tv, iid, new, strict=False):
+    """ Treeview tag function """
+    tags = tv.item(iid)['tags']
+    if new not in tags:
+        tags.insert(0, new)
+        tv.item(iid, tags=tags)
+        return True
+    else:
+        if strict:
+            print_trace()
+            print("'insert_first' tag: '" + new + 
+                  "' already in treeview 'tags' list:", tags)
+        return False
+
+
 def tv_tag_replace(tv, iid, old, new, strict=False):
     """ Treeview tag function """
     tags = tv.item(iid)['tags']
@@ -601,8 +616,8 @@ class DictTreeview:
         style.configure('Treeview', indent=row_height + 6)
 
         ''' Create images for checked, unchecked and tristate '''
-        self.checkboxes = img.make_checkboxes(row_height - 8, 'black',
-                                              'white', 'deepskyblue')
+        self.checkboxes = img.make_checkboxes(
+            row_height - 8, 'black', 'white', 'DodgerBlue')  # SkyBlue3 not in Pillow
         self.tree.tag_configure("unchecked", image=self.checkboxes[0])
         self.tree.tag_configure("tristate", image=self.checkboxes[1])
         self.tree.tag_configure("checked", image=self.checkboxes[2])
@@ -1665,6 +1680,7 @@ class CommonTip:
         self.normal_button_color = None  # .itemcget("button_color"...)   # 27
         self.anchor = None              # tooltip anchor point on widget  # 28
 
+                                        # 'piggy_back' below with # 29 to # 32
         self.pb_alpha = None            # Update 'piggy_back' with alpha percent
         self.pb_leave = None            # Tell 'piggy_back' mouse left widget
         self.pb_ready = None            # Tell 'piggy_back' it can display msg
@@ -1822,6 +1838,8 @@ class ToolTips(CommonTip):
         Event = namedtuple('Event', 'time, action, widget, x, y')
         # noinspection PyArgumentList
         self.log_nt = Event(time.time(), action, widget, x, y)
+        #if action == 'enter' or action == 'leave' or action == 'press':  # debug self.info
+        #    print("log_event(self, action, widget)", action, str(widget)[-4:])
         self.log_list.append(self.log_nt)
         # print('EVENT:', self.log_nt)
 
@@ -1882,7 +1900,7 @@ class ToolTips(CommonTip):
                 return
 
         if self.dict['widget'] != search_widget:
-            # TODO: This will spam at 30 fps
+            # TODO: This will spam at 30 fps. until system crashes?
             print('self.log_nt NOT FOUND!:', self.log_nt)
             return
         
@@ -1894,37 +1912,43 @@ class ToolTips(CommonTip):
             self.window_fading_in and self.window_fading_out already 
             setup so just need self.wait_time.
         '''
-        # if self.log_nt.action == 'leave':  # June 20, 2023 test
         if self.log_nt.action == 'leave' or self.log_nt.action == 'press':
             # Leaving widget - June 20, 2023 treat button press as leave
             self.leave_time = self.log_nt.time
+            #print("self.log_nt.action:", self.log_nt.action, str(self.widget)[-4:],
+            #      self.text.split("\n")[0])   # debug self.info
+            # debug self.info
+            #print("pb_leave, alpha, ready:", self.pb_leave, self.pb_alpha, self.pb_ready)
             prt_time = datetime.utcnow().strftime("%M:%S.%f")[:-2]
             d_print(prt_time, 'leaving widget: ', str(self.widget)[-4:])
+            #if self.pb_close is not None:  # debug self.info
+            #    print("self.log_nt.action:", self.log_nt.action)
+            #    print("self.window_fading_out:", self.window_fading_out,
+            #          " | self.window_fading_in:", self.window_fading_in,
+            #          " | self.window_visible:", self.window_visible)
 
             if self.window_fading_out:
-                # If already fading out, continue the process
-                pass  # Can't return now, need to go down for save
-
+                pass  # If already fading out, continue the process
             elif self.window_fading_in:
-                # We were in the middle of fading in, so force fade out from
-                # same alpha level
-                # WIP: Currently fades from 1.0 to 0.1
-                self.force_fade_out()
-
+                self.force_fade_out()  # Fudge start time to begin fade out
             elif self.window_visible:
-                # Return widget colors to 'normal' state if needed.
-                self.reset_widget_colors()
-                # Begin fade process now
-                self.force_fade_out()
-
+                self.reset_widget_colors()  # Return widget colors to 'normal'.
+                self.force_fade_out()  # Begin fade out process now
+            #elif self.pb_close is not None:
+            #    print("Force self.pb_close()")  # debug self.info
+            #    self.pb_close()  # Patch. Can't figure out why need to force...
+            #    # For some reason self.window_visible is False so next line runs
             else:
-                # Window isn't visible now, so force it to never mount
-                self.enter_time = 0.0
+                self.enter_time = 0.0  # Force window to never mount
 
         elif self.log_nt.action == 'enter':
             # Entering widget
             prt_time = datetime.utcnow().strftime("%M:%S.%f")[:-2]
             d_print(prt_time, 'entering widget:', str(self.widget)[-4:])
+
+            #print("self.log_nt.action:", self.log_nt.action, str(self.widget)[-4:],
+            #      self.text.split("\n")[0])  # debug self.info
+
             self.enter_time = self.log_nt.time
             if self.window_visible is True:
                 # Same widget was entered again before fade out completed.
@@ -1962,7 +1986,7 @@ class ToolTips(CommonTip):
         _fade_in, _fade_out = self.calc_fade_in_out()
         diff = _fade_out - self.enter_time
         self.enter_time = self.now - diff
-        # print('diff:', diff)
+        #print('diff:', diff)
 
     def move_window(self):
         """ Move window as mouse moves"""
@@ -2123,8 +2147,7 @@ class ToolTips(CommonTip):
         """ Check if window should be created or destroyed.
             Check if we are fading in or fading out and set alpha.
 
-            TODO: As tip window is fading in, button click is not registered so
-                  tip window stays up for normal duration
+            TODO: Leave event is not passed to InfoCentre() unless fading in/out
         """
         if not self.widget.winfo_exists():
             # If parent closed, tool tip is irrelevant. bserve bup_view close
@@ -2132,7 +2155,7 @@ class ToolTips(CommonTip):
             return
 
         # Was window destroyed? eg by toplevel closing.
-        if self.tip_window:
+        if self.tip_window:  # 'piggy_back' doesn't use self.tip_window
             if not self.tip_window.winfo_exists():
                 self.tip_window = None
                 self.window_visible = False
@@ -2209,10 +2232,8 @@ class ToolTips(CommonTip):
                 return
 
             if self.window_visible is False:
-                if self.tool_type is 'piggy_back':
-                    ''' Bail-out if "piggy_back" tool_type '''
-                    pass
-                else:
+                if self.tool_type is not 'piggy_back':
+                    ''' 'piggy_back' has own tk.Frame and tk.Text scrollbox '''
                     self.create_tip_window()
                 self.window_visible = True
                 self.window_fading_in = True
@@ -2221,7 +2242,7 @@ class ToolTips(CommonTip):
             if self.now > full_alpha_time:
                 # We've finished fading in
                 if self.tool_type is 'piggy_back' and self.window_fading_in:
-                    self.pb_ready()  # Tell "piggy_back" to display it's text
+                    self.pb_ready()  # Tell "piggy_back" to display (optional)
                 self.window_fading_in = False
                 if self.current_alpha != 1.0:
                     self.update_alpha(1.0)
@@ -2332,7 +2353,7 @@ class ToolTips(CommonTip):
         label.pack(padx=2, pady=2)
         border_color.pack(padx=10, pady=10)
 
-        self.tip_window.attributes("-alpha", 0)  # Start at 1%
+        self.tip_window.attributes("-alpha", 0)  # Start at 0%
         self.tip_window.update_idletasks()
         self.window_geom = self.tip_window.wm_geometry()
         self.override_window_geom(widget_nw, widget_ne, widget_se, widget_sw)
@@ -2441,11 +2462,8 @@ class ToolTips(CommonTip):
         d_print('LEAVE:', str(event.widget)[-4:], event.x, event.y)
         self.log_event('leave', event.widget, event.x, event.y)
         if self.pb_leave:
+            # print("Calling pb_leave():", str(event.widget)[-4:])  # debug self.info
             self.pb_leave()  # Let "piggy_back" know mouse left parent widget
-            # InfoCentre() tt_leave() mouse left widget window. total time: 1.00810217857
-            # InfoCentre() tt_leave() mouse left widget window. total time: 1.39003515244
-            # InfoCentre() tt_leave() mouse left widget window. total time: 1.67669916153
-            # June 20, 2023 - Why are there three events generated?
 
     def motion(self, event):
         """ Mouse is panning over widget.
@@ -2473,13 +2491,14 @@ class ToolTips(CommonTip):
         """ When window closes all tooltips in it must be removed.
             :param widget either button or parent(s) of button.
             TODO: What about unbinding button tooltips currently displayed?
+
         """
         new_list = []
         for self.dict in self.tips_list:
             if not str(self.dict['widget']).startswith(str(widget)):
                 new_list.append(self.dict)
 
-        # diff = len(self.tips_list) - len(new_list)
+        diff = len(self.tips_list) - len(new_list)
         # print(diff, 'Tooltips removed on close')
         self.tips_list = []
         self.tips_list = new_list

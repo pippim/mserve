@@ -367,32 +367,6 @@ def make_triangles(triangle_list, hgt, out_c, fill_c):
                       ]
            })])
 
-    ''' June 19, 2023 - Attempt 'indent' to put more space between triangles
-        and checkboxes in order to prevent accidental clicking. See:
-        https://stackoverflow.com/questions/61280744/
-        tkinter-how-to-adjust-treeview-indentation-size-and-indicator-arrow-image
-        
-        Marginal success. Old format:
-        1
-         12
-           121
-           122
-         13
-          131
-        
-        New format.
-        
-        1
-            12
-                 121
-                 122
-            13
-                 131
-
-        However it only indents entire row and doesn't put whitespace between
-        triangle (chevron) and checkbox.
-    '''
-    #print("style.configure('Treeview', indent=50)")
     style.configure('Treeview', indent=63)
 
 

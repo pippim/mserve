@@ -3,155 +3,56 @@
 
 # ==============================================================================
 #
-#       m - Wrapper for mserve.py
+#       m - Optional wrapper to mserve.py. Provides splash window & less typing.
+#
+#       mserve.py (Music Server) - Manage Music in multiple locations
+#
+#       June 21 2023 - 'M' splash screen appears ASAP. Code cleanup.
 #
 # ==============================================================================
 
-"""
-        TODO: Spin "M"
-              Check dependencies
-
-        Splash screen for mserve.
-        mserve has it's own list of required modules but this wrapper requires:
-        
-            Gnome Desktop Toolkit (Gdk)
-"""
-
 from __future__ import print_function
 
-try:                        # Python 3
+try:
     import tkinter as tk
     PYTHON_VER = "3"
-
-except ImportError:         # Python 2
+except ImportError:
     import Tkinter as tk
     PYTHON_VER = "2"
 
-import os
-import time
-M_START_TIME = time.time()
-import image as img         # Routines for tk & photo images
-import sql                  # SQLite3 functions
-import monitor              # Display, Screen, Monitor and Window functions
-import mserve               # Script loaded as module for .pyc
-
-''' Logging is duplicated in monitor.py module. Not sure how to apply yet? '''
-# https://stackoverflow.com/a/36419702/6929343
-import logging
-
-# https://stackoverflow.com/a/67352300/6929343
-logging.getLogger('PIL').setLevel(logging.WARNING)
-import sys
-
-logging.basicConfig(format='%(asctime)s %(levelname)s %(message)s',
-                    level=logging.DEBUG,
-                    stream=sys.stdout)
-
-# Values from gnome-terminal to prevent window shrinking too small
-import global_variables as g
-
-#WIN_MIN_WIDTH = 142
-#WIN_MIN_HEIGHT = 63
+import sys              # To get passed parameters
+import os               # To get current directory
+import image as img     # Pippim functions for image management
+import monitor          # Pippim function to center window on monitor
+import mserve           # Pippim Music Server
+size = 300              # Splash Window width and height (300 x 300)
 
 
 def main():
-    """
-    Create splash screen and invoke mserve.py which takes a second or more
-    """
 
-    ''' Change to working path - same code in m and mserve.py '''
-    cwd = os.getcwd()
-    dir_path = os.path.dirname(os.path.realpath(__file__))
-    if cwd != dir_path:
-        #print("Changing to dir_path:", dir_path)
-        os.chdir(dir_path)
+    ''' Create splash window centered on active monitor '''
+    splash = tk.Tk()  # Tkinter toplevel window
+    splash.wm_attributes('-type', 'splash')  # No window decorations
+    splash.minsize(size, size)
+    monitor.center(splash)
 
-    g.init()  # Initialize g.WIN_MIN_WIDTH, g.WIN_MIN_HEIGHT
-    splash = tk.Tk()  # "very top" toplevel
-    splash.title("Music Server - mserve")
-    splash.minsize(g.WIN_MIN_WIDTH, g.WIN_MIN_HEIGHT)
-
-    ''' Set font style for all fonts including tkSimpleDialog.py '''
-    img.set_font_style()  # Make messagebox text larger for HDPI monitors
-
-    ''' Set program icon in taskbar '''
-    # Waste of startup time for splash screen which should be short as possible.
-    # img.taskbar_icon(splash, 64, 'white', 'lightskyblue', 'black')
-
-    ''' Get splash image '''
-    splash_image = img.m_splash_image(300, 'white', 'lightskyblue', 'black')
-
-    # create and pack the canvas. Then load image file
-    canvas = tk.Canvas(width=300, height=300, bg='black')
+    ''' Create Big "M" Splash Image '''
+    m_img = img.m_splash_image(size, 'white', 'lightskyblue', 'black')
+    canvas = tk.Canvas(width=size, bg='black', highlightthickness=0)
     canvas.pack(expand=tk.YES, fill=tk.BOTH)
-    canvas.create_image(0, 0, image=splash_image, anchor=tk.NW)
-    #splash.update_idletasks()  # This is required for visibility
-
-    # Center splash screen on monitor and get monitor geometry
-    mon_dict = monitor.center(splash)
-    #splash.wm_overrideredirect(1)  # June 13/20201 debug long press, move this to top.
-    splash.update()  # This is required for visibility
-
-    # At this point make window undecorated
-    # From: https://stackoverflow.com/a/37199655/6929343
-    splash.overrideredirect(True)  # Remove splash window close button
-
-    # Call mserve.py module about 13k lines of code
-    mserve.main(toplevel=splash, mon_geom=mon_dict, cwd=cwd, parameters=sys.argv)
-    exit()  # Required to close mserve.py ending comes back here!
-    splash.mainloop()
-
-
-def main_c():
-    """  NOT USED
-    Attempt at circle with no window decorations.
-    """
-    splash = tk.Tk()  # "very top" toplevel
-    splash.wm_overrideredirect(1)  # June 13/20201 debug long press, move this to top.
-    splash.wm_overrideredirect(0)  # June 13/20201 debug long press, move this to top.
-    splash.wm_attributes('-type', 'splash')  # only works X11 and not all distros
-    splash.wait_visibility()
-    splash.wm_overrideredirect(1)  # June 13/20201 debug long press, move this to top.
-    splash.attributes("-alpha", 0)  # Make invisible
-    splash.withdraw()  # Reverse with deiconify
-    splash.attributes("-alpha", 0)  # Make invisible
-    splash.wm_attributes("-alpha", 0)  # Make invisible
-    #splash.overrideredirect(True)
-
-    ''' Set font style for all fonts including tkSimpleDialog.py '''
-    img.set_font_style()  # Make messagebox text larger for HDPI monitors
-
-    ''' Set program icon in taskbar '''
-    # Waste of time for splash screen.
-    # img.taskbar_icon(splash, 64, 'white', 'lightskyblue', 'black')
-
-    ''' Get splash image '''
-    splash_image = img.m_circle_splash_image(300, 'white', 'lightskyblue', 'black')
-
-    # create and pack the canvas. Then load image file
-    canvas = tk.Canvas(width=300, height=300, bg='black')
-    canvas.pack(expand=tk.YES, fill=tk.BOTH)
-    canvas.create_image(0, 0, image=splash_image, anchor=tk.NW)
-
-    splash.deiconify()
+    canvas.create_image(0, 0, image=m_img, anchor=tk.NW)
     splash.update_idletasks()  # This is required for visibility
 
-    # Center splash screen on monitor and get monitors geometry
-    #mon_geom = monitor.center(splash)
-    mon_dict = monitor.center(splash)
-    splash.deiconify()
-    splash.update()  # This is required for visibility
+    ''' Change working directory for python modules '''
+    cwd = os.getcwd()  # First save the current working directory
+    dir_path = os.path.dirname(os.path.realpath(__file__))
+    if cwd != dir_path:
+        os.chdir(dir_path)  # Change to directory where mserve python modules reside
 
-    print('sleeping 4 seconds on splash screen')
-    splash.after(4000)
-    # At this point make window undecorated
-    # From: https://stackoverflow.com/a/37199655/6929343
-    splash.overrideredirect(True)  # Remove splash window close button
-
-    # Call mserve module about 10k lines of code
-    mserve.main(toplevel=splash, mon_geom=mon_dict)
-    exit()  # Required to close mserve.py ending comes back here!
-    splash.mainloop()
+    ''' Call mserve.py passing old working directory and optional music dir parm '''
+    mserve.main(toplevel=splash, cwd=cwd, parameters=sys.argv)
+    exit()  # Required because when mserve.py closes it comes back to this point.
+    splash.mainloop()  # mainloop required for tkinter window processing
 
 
 if __name__ == "__main__":
