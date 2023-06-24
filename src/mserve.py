@@ -46,6 +46,9 @@
 #       June 21 2023 - 'M' splash screen disappears as late as possible.
 #       June 23 2023 - Antonia's request to highlight hovered chron_tree row.
 
+# noinspection SpellCheckingInspection
+"""
+
 # TODO:
 # -----------------------------------------------------------------------------
 
@@ -68,48 +71,73 @@
 #              + Artist - Cover artists may sing the same Title
 #              + Album - Artist can have same title on different albums
 
-#   Rename  'self.saved_selections' -> 'self.play_order_iid'
-#           'self.saved_selections' -> 'self.play_iid_seqs'     #1
-#           'self.saved_selections' -> 'self.playlist_iid'      #1
-#           'self.saved_selections' -> 'self.play_lib_iid'      #1
-#           'self.saved_selections' -> 'self.sel_lib_iids'  #1
-#           'self.saved_selections' -> 'self.sel_lib_tree_iids'  #1
+#   Music library name for lib_tree is too generic. There is already
+#   SQL Music Table which is more like the real library of mserve.
+#
+#   Candidates:
+#
+#   1. Location song files (lsf_tree)  # Is misleading for Pruned Tree's
+#   2. OS song file library (osf_tree)  # To close to: sql.ofb.Select()?
+#   3. Filenames by Album by Artist (faa_tree)  # Sounds like a plane crash
+#   4. Artist/Album/Title tree (aat_tree)  # probably subject to typo's
+#   5. Collapsed OS walk (cow_tree)  # Sounds cool plus CoW used in industry
+#   6. Grouped Song Files (gsf_tree)  # Same problem as osf and sounds like groupies
 
-#           'self.saved_playlist'   -> 'self.playlist_paths'    #1  DONE ! - TODO: reverse
-#            Must reverse above too close to 'playlists' class created in June 2023
+#   Rename  'self.saved_selections' -> 'self.play_order_iid'
+#           'self.saved_selections' -> 'self.play_iid_seqs'
+#           'self.saved_selections' -> 'self.playlist_iid'
+#           'self.saved_selections' -> 'self.play_lib_iid'
+#           'self.saved_selections' -> 'self.sel_lib_iids'
+#           'self.saved_selections' -> 'self.sel_lib_tree_iids'
+#           'self.saved_playlist'   -> 'self.playlist_paths'  # Already DONE :(
+#               Must reverse above too close to 'playlists' class created in June 2023
 #           'self.playlist_paths'   -> 'self.sel_lib_paths'
 #           'self.playlist_paths'   -> 'self.sel_lib_tree_paths'
-
 #           'self.song_list'        -> 'self.lib_tree_paths'
-#           'self.song_list'        -> 'self.lib_song_paths'    #1
-
+#           'self.song_list'        -> 'self.lib_song_paths'
 #           'self.ndx'              -> 'self.curr_iid_ndx'
 #           'self.ndx'              -> 'self.play_curr_ndx'
 #           'self.ndx'              -> 'self.play_ndx'
-#           'self.ndx'              -> 'self.seq_ndx'           #1
-#           'self.ndx'              -> 'self.sel_ndx'           #1
+#           'self.ndx'              -> 'self.seq_ndx'
+#           'self.ndx'              -> 'self.sel_ndx'
 #           'self.ndx'              -> 'self.iid_ndx'
 #           'self.ndx'              -> 'self.song_ndx'
-
-#           New Variable            -> 'self.play_curr_iid'     # self.saved_selections(self.ndx)
-#           New Variable            -> 'self.sel_iid'           # self.saved_selections(self.ndx)
-
+#           New Variable            -> 'self.play_curr_iid'     # self.saved_selections[self.ndx]
+#           New Variable            -> 'self.sel_iid'           # self.saved_selections[self.ndx]
 #           'START_DIR'             -> 'MUSIC_DIR'              X shadows music_dir just created
 
-#       NEW NAMES SHORT LIST:
-#           'self.song_list'        -> 'self.lib_song_paths'    #1
+#       RENAME VARIABLES SHORT LIST:
+#           'self.song_list'        -> 'self.lib_song_paths'
+
+#                       THIS GROUP
 #           'self.playlist_paths'   -> 'self.sel_lib_paths'
-#           'self.saved_selections' -> 'self.sel_lib_iids'  #1
-#           'self.ndx'              -> 'self.sel_ndx'           #1
-#           New Variable            -> 'self.sel_iid'           # = self.saved_selections[self.ndx]
-#           New Variable            -> 'self.sel_song_path'     # = self.playlist_paths[self.ndx]
+#           'self.saved_selections' -> 'self.sel_lib_iids'
+#                       ... OR ... THIS GROUP
+#           'self.playlist_paths'   -> 'self.lib_sel_paths'
+#           'self.saved_selections' -> 'self.lib_sel_iids'
+
+#                       THIS GROUP
+#           'self.ndx'              -> 'self.sel_curr_ndx'
+#           New Variable            -> 'self.sel_curr_iid'      # = self.saved_selections[self.ndx]
+#           New Variable            -> 'self.sel_curr_path'     # = self.playlist_paths[self.ndx]
+#                       ... OR ... THIS GROUP
+#           'self.ndx'              -> 'self.curr_lib_ndx'
+#           New Variable            -> 'self.curr_lib_iid'      # = self.saved_selections[self.ndx]
+#           New Variable            -> 'self.curr_lib_path'     # = self.playlist_paths[self.ndx]
 #                                      Same as self.song_list[int(self.saved_selections[self.ndx])
 
-#           'self.song_set_ndx()'   -> 'self.set_sel_ndx()'
+#                       THIS GROUP
+#           'self.ndx'              -> 'self.lib_curr_ndx'
+#           New Variable            -> 'self.lib_curr_iid'      # = self.saved_selections[self.ndx]
+#           New Variable            -> 'self.lib_curr_path'     # = self.playlist_paths[self.ndx]
+#                       ... OR ... THIS GROUP
+#           'self.ndx'              -> 'self.curr_sel_ndx'
+#           New Variable            -> 'self.curr_sel_iid'      # = self.saved_selections[self.ndx]
+#           New Variable            -> 'self.curr_sel_path'     # = self.playlist_paths[self.ndx]
+#                                      Same as self.song_list[int(self.saved_selections[self.ndx])
 
-#   Artist/Album open states are crazy. Redesign in simpler faster methodology.
-#       Create nested dictionaries only tracking open items because most will be
-#       closed. If an Artist only has one album, automatically force album open.
+#       RENAME FUNCTIONS:
+#           'self.song_set_ndx()'   -> 'self.set_sel_ndx()'
 
 #   Location processing is 1500 lines and really is never used after setup. Move
 #       to separate file? Add generic processing for synchronizing programming
@@ -143,6 +171,7 @@
 
 # BUGS:
 # -----------------------------------------------------------------------------
+
 #   Saving current open/close states in pending_xxx() functions opens wrong
 #       album
 
@@ -187,8 +216,6 @@
 #
 # =============================================================================
 
-# noinspection SpellCheckingInspection
-"""
 
 CALL:
     m "/mnt/music/Users/Person/Music/iTunes/iTunes Media/Music/"
@@ -199,7 +226,7 @@ REQUIRES:
     sudo apt install ffmpeg                  # for artwork, ffprobe and ffplay
     sudo apt install gstreamer1.0-tools      # For encoding CDs gst-launch-1.0
     sudo apt install kid3                    # Optional for editing metadata
-    sudo apt install pauvcontrol             # For VU Meters (sound loopback) 
+    sudo apt install pauvcontrol             # For VU Meters (sound redirect)
     sudo apt install pqiv                    # Make transparent Shark (Hockey)
     sudo apt install python-appdirs          # Application directory names
     sudo apt install python-beautifulsoup    # Scrape Song lyrics
@@ -1219,8 +1246,44 @@ class MusicTree(PlayCommonSelf):
         '''         B I G   T I C K E T   E V E N T
             Create Album/Artist/ OS Song filename Treeview 
         '''
-        #self.manually_checked = False  # Used for self.reverse/self.toggle
         self.populate_lib_tree(dtb)
+
+        ''' Shortcut to save time. It works but is difficult to read.
+            TODO: Save code in toolkit.py for potential resurrection.
+        ext.t_init("grab all parents")
+        all_artists = self.lib_tree.get_children()
+        last_albums = self.lib_tree.get_children(all_artists[-1])
+        ext.t_end('print')
+
+        hex_str_start = '0x' + all_artists[0][1:]
+        hex_str_end = '0x' + last_albums[-1][1:]
+        int_start = int(hex_str_start, 16)
+        int_end = int(hex_str_end, 16)
+        hex_start = hex(int_start)
+        hex_end = hex(int_end)
+        print("\nfrom:", hex_start, "to:", hex_end)
+
+        ext.t_init("loop through generated parents")
+        awkward_fnd_cnt = 0
+        for int_base in range(int_start, int_end + 1):
+            hex_base = hex(int_base)
+            str_base = str(hex_base)[2:].zfill(3)  # Drop '0x' prefix, prepend zeros
+            parent = "I" + str_base.upper()
+            try:
+                stuff = self.lib_tree.item(parent)
+                awkward_fnd_cnt += 1
+                if awkward_fnd_cnt == 1:
+                    print("\nFirst Artist:", parent)
+                    print(stuff)
+            except tk.TclError:
+                print("parent not found:", parent)
+
+        print("\n# parents:", awkward_fnd_cnt, "Last Album:", parent)
+        print(stuff, "\n")
+        ext.t_end('print')
+        # Returns all the artists but can read sequentially from first to last
+        # with hex increment to get all Artists and Albums
+        '''
 
         ''' Treeview Scrollbars '''
         # Create a vertical scrollbar linked to the frame.
@@ -1427,8 +1490,13 @@ class MusicTree(PlayCommonSelf):
                                    command=self.close_playlist, state=tk.DISABLED)
         self.file_menu.add_separator()  # NOTE: UTF-8 3 dots U+2026 …
 
-        self.file_menu.add_command(label="Save Play and Restart", font=(None, MED_FONT),
-                                   command=self.restart)
+        #self.file_menu.add_command(label="Save Play and Restart", font=(None, MED_FONT),
+        #                           command=self.restart)
+        # Uncomment above if heavy development changes needed for testing, beware:
+        # of: SLOWDOWN BUG: https://gitlab.gnome.org/GNOME/gnome-shell/-/issues/2674
+        # and: SLOWDOWN BUG: https://gitlab.gnome.org/GNOME/gnome-shell/-/issues/3125
+        # The facts are apparent when you restart. To save time, just exit and type 'm'.
+
         self.file_menu.add_command(label="Save Play and Exit", font=(None, MED_FONT),
                                    command=self.close)
         self.file_menu.add_separator()
@@ -1566,7 +1634,7 @@ class MusicTree(PlayCommonSelf):
         self.ndx = 0  # resume will set to last playing song
         self.saved_selections = []  # lib_tree id's in sorted play order
         self.playlist_paths = []  # full path names that need to be pruned
-        self.clear_all_checks_and_selects()  # Clear in lib_tree (music library)
+        self.clear_all_checks_and_opened()  # Clear in lib_tree (music library)
 
         # Build playlist_paths using Music Ids
         for music_id in self.playlists.act_id_list:
@@ -1582,7 +1650,8 @@ class MusicTree(PlayCommonSelf):
             iid = str(ndx)
             self.saved_selections.append(iid)
 
-        self.set_all_checks_and_selects(opened=False)  # Apply in lib_tree (library)
+        self.get_open_states_to_list()
+        self.set_all_checks_and_opened()
 
         ''' Restore previous open states when we first opened grid '''
         #self.apply_all_open_states(self.lib_tree_open_states)  # Will not work
@@ -1861,7 +1930,7 @@ class MusicTree(PlayCommonSelf):
                 delete_play_ndx_list.append(delete_play_path_ndx)
             except ValueError:
                 toolkit.print_trace()
-                dprint("Could not find song in playlist:", delete_path)
+                print("Could not find song in playlist:", delete_path, "\n")
                 continue
 
             try:
@@ -1870,7 +1939,8 @@ class MusicTree(PlayCommonSelf):
                 # Note delete_ndx is 1 less than Playlist Play Number
             except ValueError:
                 toolkit.print_trace()
-                dprint("Could not find iid in self.saved_selections:", delete_iid)
+                print("Could not find iid in self.saved_selections:",
+                      delete_iid, "\n")
                 continue
 
             ''' Build list of music ids indices to be deleted '''
@@ -1878,7 +1948,7 @@ class MusicTree(PlayCommonSelf):
                 music_id = sql.music_id_for_song(delete_path[len(PRUNED_DIR):])
                 if music_id == 0:
                     toolkit.print_trace()
-                    print("sql.music_id_for_song(delete_path[len(PRUNED_DIR):])")
+                    print("sql.music_id_for_song(delete_path[len(PRUNED_DIR):])\n")
                 else:
                     delete_ndx = self.playlists.act_id_list.index(music_id)
                     delete_music_ndx_list.append(delete_ndx)
@@ -1926,10 +1996,12 @@ class MusicTree(PlayCommonSelf):
                     self.playlists.act_size -= d['OsFileSize']
                     self.playlists.act_count -= 1
                     self.playlists.act_seconds -= d['Seconds']
-                dprint("deleting self.playlists.act_id_list[index] in reverse order:", index)
+                dprint("deleting self.playlists.act_id_list[index]" +
+                       " in reverse order:", index)
 
         if delete_play_ndx_list != delete_ndx_list:
-            dprint("mserve.py pending_apply(): delete_play_ndx_list != delete_ndx_list")
+            dprint("mserve.py pending_apply():" +
+                   " delete_play_ndx_list != delete_ndx_list")
 
         ''' Adjust currently playing song index (self.ndx) if necessary '''
         if prior_to_current_count > 0:
@@ -2087,8 +2159,8 @@ class MusicTree(PlayCommonSelf):
         # Rebuild checkboxes, selected totals, song play order numbers
         # Get current open states to reopen after cancel processing
         # Uncheck all artists, albums, songs and "songsel" tags
-        self.clear_all_checks_and_selects()  # Clear in lib_tree music library
-        self.set_all_checks_and_selects()  # Rebuild using playlist in memory
+        self.clear_all_checks_and_opened()  # Clear in lib_tree music library
+        self.set_all_checks_and_opened()  # Rebuild using playlist in memory
         ''' Restore previous open states when we first opened grid '''
         self.apply_all_open_states(self.lib_tree_open_states)
 
@@ -4017,7 +4089,6 @@ class MusicTree(PlayCommonSelf):
     def process_unchecked(self, item):
         """ We just unchecked the item, update totals
         """
-        #self.manually_checked = True  # Used for self.reverse/self.toggle
         tags = self.lib_tree.item(item)['tags']
         if 'Artist' in tags or 'Album' in tags:
             self.set_all_parent(item, 'Del')
@@ -4026,7 +4097,6 @@ class MusicTree(PlayCommonSelf):
             self.reverse(item)
         else:
             print('process_unchecked() bad line type tag:', tags)
-        #self.manually_checked = False
 
     def process_checked(self, item):
         """ We just checked the item, update totals
@@ -4034,8 +4104,6 @@ class MusicTree(PlayCommonSelf):
             TODO: Adding to playlist an album or artist then all get same
                   song number in chron tree until restart.
         """
-
-        #self.manually_checked = True  # Used for self.reverse/self.toggle
         tags = self.lib_tree.item(item)['tags']
         if 'Artist' in tags or 'Album' in tags:
             self.set_all_parent(item, 'Add')
@@ -4044,7 +4112,6 @@ class MusicTree(PlayCommonSelf):
             self.reverse(item)
         else:
             print('process_checked() bad line type tag:', tags)
-        #self.manually_checked = False
 
     def set_all_parent(self, Id, action):
         """ ID can be an Artist or Album. action can be "Add" or "Del"
@@ -4258,18 +4325,13 @@ class MusicTree(PlayCommonSelf):
         self.wrap_up_popup()  # Set color tags and counts
 
     def reverse(self, Id):
-        """ WARNING: Called from multiple places """
-        # Toggle song tag on/off. Only used for song, not parent
-        #self.manually_checked = True
+        """ Toggle song tag on/off. Only used for song, not parent """
         if Id.startswith("I"):
             print("mserve.py reverse(" + Id + "): should not be called.")
             return  # Parents are a no-go
-
-        # New code October 1, 2020
         album = self.lib_tree.parent(Id)
         artist = self.lib_tree.parent(album)
         self.toggle_select(Id, album, artist)
-        return
 
     def file_manager_parent(self, Id):
         """ Open path with file manager. FUTURE FUNCTION
@@ -4875,9 +4937,7 @@ $ wmctrl -l -p
         #toolkit.list_widgets(self.lib_top, scan="Frame")  # Too much info. Needs work!
 
         print("\n\n=======================================")
-        print("\nInformation Centre - self.info.dict[] =")
-        # print("---------------------------------------\n")  # Too Busy with lines?
-        print()  # Substitute for busy lines above
+        print("\nInformation Centre - self.info.dict[] =\n")
         print("--- KEY ---\t  --- VALUE ---\n")
         for key in self.info.dict:
             if isinstance(self.info.dict[key], list):
@@ -4887,12 +4947,20 @@ $ wmctrl -l -p
                     continue
                 elif len(entries) > 1:  # If zero, drop down to print regular line
                     print("['" + key + "']\t: list[VALUES] on lines below.")
-                    for entry in entries: print(entry)
-                    continue  # TODO: for entry in all_entries:
+                    for entry in entries:
+                        print(entry)
+                    continue
+                    # Looks ok for regular list like ['source]' but not for ['text']:
+
+                    # ['text']	: Begin playing song: Moon age Daydream
+                    # Artist:	Guardians of the Galaxy
+                    # Album:	Awesome Mix Vol. 1
+                    # Track:	4/12	Date:	2014	Duration:	00:04:42
+                    # ['patterns']	: None
+
             print("['" + key + "']\t:", self.info.dict[key])  # regular line
 
         print("\n=======================================\n")
-
 
         #thread = self.get_refresh_thread()
         message.ShowInfo(self.lib_top, "DEBUG - mserve.py",
@@ -5953,56 +6021,18 @@ $ wmctrl -l -p
 
         if self.playlists.name is not None:
             self.playlists.save_playlist()
-            # June 19, 2023 - Guaranteed other playlist maintenance hasn't occurred?
-            return  # Playlists are saved
+            return
 
-        # Is self.saved_selections already populated by music player?
+        ''' If self.saved_selections not populated, grab all checked songs '''
         if len(self.saved_selections) == 0:
-            # Use selections from Music Library treeview
             self.saved_selections = self.lib_tree.tag_has("songsel")
 
+        ''' All song selections cleared, next startup uses previous save '''
         if len(self.saved_selections) == 0:
-            # User has cleared all selections, next startup uses previous save
-            return ''' No songs selected '''
-
-        # ===================  A B O R T   N O W   ! ! !
-
-        #self.set_title_suffix()
-        #message.ShowInfo(
-        #    title=self.title_suffix + " WILL NOT BE SAVED.",
-        #    thread=self.get_refresh_thread(), parent=self.lib_top,
-        #    text=str(len(self.saved_selections)) +
-        #    " songs in " + self.title_suffix + " have NOT been saved.\n\n" +
-        #    "WE ARE IN TEST MODE AND LAST LOCATION is getting wiped out.\n"
-        #)
-
-        ''' Save full path of selected songs in Artist/Album/Track order '''
-        ''' Deprecated May 25, 2023 - Save selected songs in Alphabetical order 
-        save_songs = []
-        song_count = 0
-        ext.t_init('save_last_selections()')
-        # NOTE: Can't drive on using 'checked' because artists are checked too
-        for s_ndx in self.lib_tree.tag_has("songsel"):
-            ndx = int(s_ndx)  # string to integer
-            save_songs.append(self.song_list[ndx])  # Get full path
-            song_count += 1  # What if zero?
-
-        with open(lc.FNAME_LAST_SELECTIONS, "wb") as f:
-            # store the data as binary data stream
-            pickle.dump(save_songs, f)  # Save song list
-        ext.t_end('no_print')  # Calculate processing time.
-        '''
+            return
 
         ''' Save expanded/collapsed state of Artists & Albums '''
         self.lib_tree_open_states = self.get_all_open_states()
-        """ Below replaced by above
-        self.lib_tree_open_states = []
-        for Artist in self.lib_tree.get_children():  # Process artists
-            self.append_open_state(Artist, self.lib_tree_open_states)  # Artist text
-            for Album in self.lib_tree.get_children(Artist):  # Process albums
-                self.append_open_state(Album, self.lib_tree_open_states)  # Album text
-        """
-
         with open(lc.FNAME_LAST_OPEN_STATES, "wb") as f:
             pickle.dump(self.lib_tree_open_states, f)  # Save open states
 
@@ -6019,7 +6049,6 @@ $ wmctrl -l -p
 
         ''' Save full path of selected songs in current play order '''
         save_songs = []
-        song_count = 0
         for s_ndx in self.saved_selections:
             try:
                 if s_ndx.startswith("I"):
@@ -6033,91 +6062,72 @@ $ wmctrl -l -p
 
             ndx = int(s_ndx)  # string to integer
             save_songs.append(self.song_list[ndx])  # Get full path
-            song_count += 1  # What if zero?
 
         with open(lc.FNAME_LAST_PLAYLIST, "wb") as f:
-            # store the data as binary data stream
             pickle.dump(save_songs, f)  # Save song list
 
         ''' Save last playing song  '''
-        if self.ndx > (song_count - 1):
+        if self.ndx > (len(save_songs) - 1):
             self.ndx = 0
         with open(lc.FNAME_LAST_SONG_NDX, "wb") as f:
-            # store the data as binary data stream
             pickle.dump(self.ndx, f)  # Save song index
 
-
     def get_all_open_states(self):
-        """ Below replaced by above         """
-        ''' Save expanded/collapsed state of Artists & Albums '''
+        """ 
+        Get expanded/collapsed state (opened/closed) of lib_tree Artists & Albums
+        Return list of tuples. Where each tuple contains:
+            (opened 0/1, artist or album name, tag with u'Artist' or u'Album')
+
+        Revised: June 24, 2023 - Was storing both the open and close states:
+            22028 Jun 24 09:49 last_open_states
+        Significant performance boost by storing just the open states:
+              912 Jun 24 10:19 last_open_states
+
+        :return open_list: [(opened, text, tag), (opened, text, tag), ... ()]
+        """
         open_list = list()
+
         for Artist in self.lib_tree.get_children():  # Process artists
-            self.append_open_state(Artist, open_list)  # Artist text
+            self.append_open_state(Artist, open_list)  # Append opened, text, tag
             for Album in self.lib_tree.get_children(Artist):  # Process albums
                 self.append_open_state(Album, open_list)  # Album text
+
         return open_list
 
     def get_open_state(self, Id):
-        if not Id.startswith("I"):
-            print("get_open_state() Id must start with 'I':", Id)
-            return  # Skip songs (irrelevant)
-        opened = self.lib_tree.item(Id, 'open')
-        text = self.lib_tree.item(Id)['text']
-        tags = self.lib_tree.item(Id)['tags'][0]  # Only Artist or Album tag
-        return opened, text, tags
+        """ 
+        Get expanded/collapsed state (opened/closed) of one Artist or Album:
+            (opened 0/1, artist or album name, tag with u'Artist' or u'Album')
+        :return tuple: (opened, text, tag)
+        """
+        item = self.lib_tree.item(Id)
+        return item['open'], item['text'], item['tags'][0]  # First tag only
 
-    def append_open_state(self, Id, opn_states_list):
-        if not Id.startswith("I"):
-            print("append_open_state() Id must start with 'I':", Id)
-            return  # Skip songs (irrelevant)
-        opened, text, tags = self.get_open_state(Id)
-        # We only want to save "Artist" or "Album" tag, no selections otherwise
-        # lookups will fail.
-        if "Artist" in tags:
-            tags = u"Artist"
-        elif "Album" in tags:
-            tags = u"Album"
-        else:
-            print("append_open_state(): Missing 'Artist' or 'Album' tag:", tags)
-        opn_states_list.append(tuple((opened, text, tags)))
+    def append_open_state(self, Id, open_states_list):
+        """ open_states_states list is mutable. Append when Artist/Album open """
+        opened, text, tag = self.get_open_state(Id)
+        if opened == 1 or opened is True:
+            open_states_list.append(tuple((1, text, tag)))
 
     def apply_all_open_states(self, open_states):
-        """ May 30, 2023 - Below replaced by above  """
+        """         
+        Set expanded/collapsed state (opened/closed) of lib_tree Artists & Albums
+        :param open_states: List of tuples [(opened, text, tag),... ()]
+        """
         for Artist in self.lib_tree.get_children():  # Read all artists
             self.apply_open_state(Artist, open_states)
             for Album in self.lib_tree.get_children(Artist):  # Read all albums
                 self.apply_open_state(Album, open_states)
 
-    def apply_open_state(self, Id, opn_states_list):
-        """ Set the expanded/collapsed indicators (chevrons) for
-            artists and albums. The treeview iid all start with "I"
+    def apply_open_state(self, Id, open_states_list):
+        """ Set the expanded/collapsed indicators (chevrons) for a single
+            artist or album.
         """
-        if not Id.startswith("I"):
-            print("apply_open_state() Id must start with 'I':", Id)
-            return  # Skip songs (irrelevant)
-        opened, text, tags = self.get_open_state(Id)
-
-        look_closed = tuple((0, text, tags))
-        look_open = tuple((1, text, tags))
-
-        if look_closed in opn_states_list:
-            if opened is True or opened == 1:
-                self.lib_tree.item(Id, open=False)
-                # print ("Parent forced to collapsed:", opened, Id, text, tags)
-        elif look_open in opn_states_list:
-            if opened is False or opened == 0:
-                self.lib_tree.item(Id, open=True)
-                # print ("Parent forced to expanded:", opened, Id, text, tags)
-        else:
-            if "Artist" in tags:
-                entity = "Artist"
-            elif "Album" in tags:
-                entity = "Album"
-            else:
-                entity = "Unknown Entity"
-            print("New " + entity + " added to library:", opened, Id, text, tags)
-            print("look_closed:", look_closed)
-
+        opened, text, tag = self.get_open_state(Id)  # lib_tree fields
+        ''' Create tuple for search into storage open states list '''
+        test_open = tuple((1, text, tag))  # tag=just "Artist" or "Album"
+        if test_open in open_states_list:
+            self.lib_tree.item(Id, open=True)
 
     def fast_play_startup(self):
 
@@ -6198,89 +6208,10 @@ $ wmctrl -l -p
             self.saved_selections.append(iid)
         ext.t_end('no_print')  # Jun 13, 2023 - self.saved_selections 0.1488709450
 
-        ext.t_init('set_all_checks_and_selects')
-        self.set_all_checks_and_selects()
+        ext.t_init('set_all_checks_and_opened')
+        self.set_all_checks_and_opened()
         ext.t_end('no_print')  # Jun 13, 2023 - checks_and_selects: 0.4508948326
-        """
-        
-        self.set_all_checks_and_selects() replaces commented code below
-        
-        ''' Set opened states for Artists and Albums, play number for Songs '''
-        bs = BatchSelect(self.lib_tree)
-
-        not_selected_count = 0
-        selected_count = 0
-        ext.t_init('Merge three processes together')
-        for Artist in self.lib_tree.get_children():  # Read all artists
-            self.apply_open_state(Artist, self.lib_tree_open_states)
-            for Album in self.lib_tree.get_children(Artist):  # Read all albums
-                self.apply_open_state(Album, self.lib_tree_open_states)
-                for Song in self.lib_tree.get_children(Album):  # Read all songs
-                    ''' Is song in playlist? '''
-                    try:
-                        ndx = self.saved_selections.index(Song)  # Song in playlist?
-                    except ValueError:
-                        not_selected_count += 1
-                        if not_selected_count < 1:
-                            # Not an error - simply here for future debugging
-                            print('Skipping - Not in playlist:', full_path)
-                        continue
-
-                    selected_count += 1
-
-                    ''' Set song checkbox tags in music library treeview '''
-                    number_str = self.play_padded_number(
-                        str(ndx+1), len(str(len(self.playlist_paths))))
-                    adj_list = bs.add_select(Song, Album, Artist, number_str)
-                    # Update treeview columns with selected size, count and seconds
-                    # May 30, 2023 - was self.tree_col_range_add()
-                    self.tree_col_range_replace(Song, 8, adj_list)  # Column number passed
-        ext.t_end('no_print')
-
-        ext.t_init('Apply totals to Artists & Albums + set checkbox')
-        for Artist in self.lib_tree.get_children():  # Read all Artists
-            adj_list = bs.get_totals(Artist)
-            # May 30, 2023 - was range_add()
-            self.tree_col_range_replace(Artist, 8, adj_list, tagsel='artist_sel')
-            for Album in self.lib_tree.get_children(Artist):  # Read all Albums
-                adj_list = bs.get_totals(Album)
-                # May 30, 2023 - was range_add()
-                self.tree_col_range_replace(Album, 8, adj_list, tagsel='album_sel')
-                ''' Toggle processing with BatchSelect() class '''
-                for Song in self.lib_tree.get_children(Album):  # Read all Albums
-                    tags = self.lib_tree.item(Song)["tags"]
-                    if "songsel" in tags:
-                        # noinspection PyProtectedMember
-                        self.lib_tree._check_ancestor(Song)  # in CheckboxTreeview()
-                        break  # Only one Song has to be tested
-
-        adj_list = bs.get_totals('lib_top_totals')
-        self.tree_title_zero_selected()
-        self.tree_title_range_add(8, adj_list)  # Pass start index
-        ext.t_end('no_print')
-        """
-
-        ''' Results May 25, 2023
-            load_last_selections(): 1.0014159679 (first time not using .pyc)
-            load_last_selections(): 1.0120351315
-            load_last_selections(): 1.0294408798
-            load_last_selections(): 1.0091419220
-            fast_play_startup() All Steps: 0.5239691734 (first time not using .pyc)
-            fast_play_startup() All Steps: 0.5547988415
-            fast_play_startup() All Steps: 0.5582001209
-            fast_play_startup() All Steps: 0.5424280167
-            
-            NOTE: On May 24, it was - load_last_selections(): 1.6982600689
-        '''
         ext.t_init('Wrap up')
-        #print("mserve.py fast_play_startup() - Songs not on playlist:", not_selected_count)
-        #print("mserve.py fast_play_startup() - Songs checked in playlist:", selected_count)
-        #print("mserve.py fast_play_startup() - Playlist size:", len(self.playlist_paths))
-        # print('saved_selections:', self.saved_selections[:10])  # DEBUG
-        # saved_selections: ['215', '3694', '1432', '2924', '1627', '2329', '1886', '3623', '1178', '1616']
-        #ext.t_init('self.lib_tree.update_idletasks()')
-        #self.lib_tree.update_idletasks()
-        #ext.t_end('print')  # self.lib_tree.update_idletasks(): 0.1376891136
 
         # Keep host awake if necessary
         if LODICT.get('activecmd', "") is not "":
@@ -6308,22 +6239,35 @@ $ wmctrl -l -p
             # print('Continue playing with song#:',self.ndx)
             self.play_items()
 
-    def clear_all_checks_and_selects(self):
+    def clear_all_checks_and_opened(self):
         """ Called from self.pending_reset() and self.playlists.apply_callback()
         """
         ext.t_init('Apply totals to Artists & Albums + set checkbox')
         for Artist in self.lib_tree.get_children():  # Read all Artists
-            self.uncheck_tag(Artist)
+            self.clear_item_check_and_open(Artist, force_close=True)
             for Album in self.lib_tree.get_children(Artist):  # Read all Albums
-                self.uncheck_tag(Album)
+                self.clear_item_check_and_open(Album, force_close=True)
                 for Song in self.lib_tree.get_children(Album):  # Read all Albums
-                    self.uncheck_tag(Song)
+                    self.clear_item_check_and_open(Song)
                     ''' Force Play No. blank - erase 'Adding' and 'Deleting' '''
                     self.lib_tree.set(Song, "Selected", "")
         ext.t_end('no_print')
 
-    def uncheck_tag(self, iid):
-        tags = self.lib_tree.item(iid)["tags"]
+    def clear_item_check_and_open(self, iid, force_close=False):
+        """
+        Clear checkbox and open state for single lib_tree item.
+        :param iid: Treeview iid. Artists and Albums start with I.
+        :param force_close: Processing an Artist or Album force open state to 0.
+        :return:
+        """
+        item = self.lib_tree.item(iid)
+        tags = item["tags"]
+        is_open = False
+
+        ''' Songs don't have an opened flag. Only Artists and Albums. '''
+        if force_close:
+            is_open = True if item['open'] is True or item['open'] == 1 else False
+
         update = False
         if "songsel" in tags:
             tags.remove("songsel")
@@ -6337,14 +6281,20 @@ $ wmctrl -l -p
         if "unchecked" not in tags:
             tags.append("unchecked")
             update = True
+        if is_open:
+            update = True
+
         if update:
             self.lib_tree.item(iid, tags=tags)
+            if is_open:
+                self.lib_tree.item(iid, open=0)
 
-    def set_all_checks_and_selects(self, opened=True):
+    def set_all_checks_and_opened(self, opened=True):
         """ Called from self.pending_reset() and self.fast_play_startup()
             June 15, 2023 - called from self.playlists.apply_callback().
             June 19, 2023 - opened=False for playlists which do not record
                 open states for Artists ans Albums.
+            June 24, 2023 - Playlists now supported, remove opened=True...
 
             BatchSelect() class for single update to parents' total selected.
             Before calling all items must be "unchecked" and "songsel" blanked.
@@ -6360,13 +6310,16 @@ $ wmctrl -l -p
         for Artist in self.lib_tree.get_children():  # Read all artists
             if opened:
                 self.apply_open_state(Artist, self.lib_tree_open_states)
+                #print("self.lib_tree_open_states:", self.lib_tree_open_states)
             else:
                 self.lib_tree.item(Artist, open=False)
+
             for Album in self.lib_tree.get_children(Artist):  # Read all albums
                 if opened:
                     self.apply_open_state(Album, self.lib_tree_open_states)
                 else:
                     self.lib_tree.item(Album, open=False)
+
                 for Song in self.lib_tree.get_children(Album):  # Read all songs
                     ''' Is song in playlist? '''
                     try:
@@ -8609,6 +8562,7 @@ $ wmctrl -l -p
                 self.play_save_score_erase_time()
                 self.lyrics_scrape_done = True
                 self.play_lyrics_rebuild_title()
+                self.info.fact("Lyrics scraped for: " + self.Title)
             else:
                 return  # We are still fetching lyrics
 
@@ -11296,9 +11250,6 @@ IndexError: list index out of range
             Existing items do not have their № updated (incremented)
         """
 
-        #if not self.manually_checked:
-        #    return  # Used for self.reverse/self.toggle
-
         if not LIBRARY_SELECT_INSERT_PLAY_HERE:
             print("LIBRARY_SELECT_INSERT_PLAY_HERE must be true")
             return
@@ -11308,7 +11259,7 @@ IndexError: list index out of range
             self.ndx = 0
             print('play_insert(): Unplanned resetting self.ndx = 0')
 
-        # print ('Inserting song iid:',iid, 'at:',self.ndx)
+        # print('Inserting song iid:', iid, 'at:', self.ndx)
         curr_play_id = self.saved_selections[self.ndx]  # Get current song ID
         L = list(self.saved_selections)  # convert tkinter tuple to list
         L[self.ndx:self.ndx] = [iid]  # Insert song new ID here
@@ -11375,12 +11326,11 @@ IndexError: list index out of range
         if self.chron_filter is not None:
             self.chron_reverse_filter()
 
-        # Save state of playing / paused and seconds progress into song.
-        self.save_resume()
-        # Save chronology tree state = "Show", "Hide", None
-        self.save_chron_state()
-        # Save if Hockey buttons are active or FF/Rewind buttons are
-        self.save_hockey_state()
+        self.save_resume()  # playing/paused and seconds progress into song.
+        self.save_chron_state()  # chronology tree state = "Show"/"Hide"
+        self.save_hockey_state()  # Hockey buttons OR FF/Rewind buttons?
+        if self.playlists.name is not None:
+            self.save_open_states()
 
         if self.play_hockey_active:
             set_tv_sound_levels(25, 100, thread=self.play_vu_meter)
@@ -11526,6 +11476,33 @@ IndexError: list index out of range
         self.save_config_for_loc(
             'hockey_state', state, TV_SOUND, Size=TV_VOLUME, Count=TV_BREAK1,
             Seconds=float(TV_BREAK2), Comments=Comments)
+
+    def get_open_states_to_list(self):
+        """
+            Get list of artists and albums that are expanded (opened)
+        """
+        self.lib_tree_open_states = []
+
+        d = self.get_config_for_loc('open_states')
+        if d is None:
+            return False
+
+        ''' json.dumps converted list of tuples to list of lists, convert back '''
+        open_states = json.loads(d['Target'])
+        for open_state_list in open_states:
+            open_state_tuple = tuple(open_state_list)
+            self.lib_tree_open_states.append(open_state_tuple)
+
+        return True
+
+    def save_open_states(self):
+        """
+            Save state of playing / paused and seconds progress into song.
+        """
+        open_states = self.get_all_open_states()
+        Comments = "Artists and Albums that were expanded when play closed."
+        self.save_config_for_loc(
+            'open_states', Target=json.dumps(open_states), Comments=Comments)
 
     # ==============================================================================
     #
@@ -11722,7 +11699,8 @@ IndexError: list index out of range
                             continue
                         # Sink is still active after sample 10 secs
                         percent = old_vol * i / 20  # Volume up 5%
-                        app_time, err = set_volume(sink, value)
+                        #app_time, err = set_volume(sink, value)  # June 24, 2023 seems wrong?
+                        app_time, err = set_volume(sink, percent)  # this looks right
                         our_time += app_time  # Total all job times
             if our_time < .04:
                 root.after(int((.04 - our_time) * 1000))  # Sleep .04 between
@@ -13541,7 +13519,8 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             return
 
         if self.state == 'delete':
-            # TODO: If deleting current playlist need to use Default Favorites
+            # TODO: Delete resume, chron_state, hockey_state and open_states
+            #       Or just set a deleted flag and not physically delete.
             self.delete_playlist()
             self.info.cast("Deleted playlist: " + self.act_name, action="delete")
             if self.curr_number_str == self.act_number_str:
@@ -13605,6 +13584,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
 #
 #       InfoCentre() class.  Name change?  InfoCentre?
 
+# noinspection SpellCheckingInspection
 '''
     Thoughts.
 
@@ -13797,7 +13777,7 @@ class InfoCentre:
             self.info.zoom() - Expand/collapse frame. Show dict.
             self.info.view() - Call zoom(), but use close button to exit.
 
-        TODO's from PHONE:
+        TODO from PHONE:
 
 Add scrollbar in gold with red slide button.
 
@@ -14280,7 +14260,7 @@ FADE_OUT_SPAN = 400     # 1/5 second to fade out
         #      "total time:", time.time() - self.start_time)
 
         #self.test_label = tk.Label(self.frame, text="I am inside a Frame", font='Arial 17 bold')
-        #self.test_label.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
+        #self.test_label.place(rel x=0.5, rely=0.5, anchor=tk.CENTER)
         #self.test_label.update()
         #self.frame.grid_propagate(True)
         #self.lib_top.update()
@@ -14983,7 +14963,7 @@ def open_files(old_cwd, prg_path, parameters, toplevel=None):
     global NEW_LOCATION  # True=Unknown music directory in parameter #1
     global LODICT  # Permanent copy of location dictionary never touched
 
-    print(r'')  # A little separation
+    print()  # A little separation
     print(r'  ######################################################')
     print(r' //////////////                            \\\\\\\\\\\\\\')
     print(r'<<<<<<<<<<<<<<    mserve - Music Server     >>>>>>>>>>>>>>')
@@ -14992,6 +14972,7 @@ def open_files(old_cwd, prg_path, parameters, toplevel=None):
 
     #print("def open_files(old_cwd, prg_path, parameters):",
     #      old_cwd, prg_path, parameters)
+    print("prg_path is not used. Review:", prg_path)
 
     ''' Has data directory been created? '''
     if os.path.exists(g.USER_DATA_DIR):
