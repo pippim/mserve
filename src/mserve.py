@@ -45,6 +45,7 @@
 #       Jun. 18 2023 - Expanding/Collapsing Information Centre. InfoCentre()
 #       June 21 2023 - 'M' splash screen disappears as late as possible.
 #       June 23 2023 - Antonia's request to highlight hovered chron_tree row.
+#       June 25 2023 - Trap corrupt music files and device off-line states.
 
 # noinspection SpellCheckingInspection
 """
@@ -55,9 +56,9 @@
 #   Playlists
 
 #     BUGS:
+#       Close playlist and use favorites doesn't clear_all_checks
 #       Shuffling Favorites then opening playlist will undo shuffle. Backup!!
 #       Pruned songs can be added to Playlist
-#       self.info.cast() for new / open time lag suppresses zoom()
 
 #     TODO:
 #       Save Playlist As... - If playlist created with 'new' option then a
@@ -327,21 +328,27 @@ except ImportError:  # Python 2
 # print ('TK Version:', tk.TkVersion)   # https://tkdocs.com/ Nov 2019 ver 8.6
 #
 
-import signal                               # Shutdown signals
+import signal  # Shutdown signals
 import subprocess32 as sp
 import threading
 import sys
+reload(sys)  # June 25, 2023 - Without these commands, os.popen() fails on OS
+sys.setdefaultencoding('utf8')  # filenames that contain unicode characters
 import os
 import shutil
 import json  # For List conversions to SQL
 import time
 import datetime
+import sqlite3  # Only needed to trap "except sqlite3...:" errors
+import traceback  # To display call stack (functions that got us here)
+
+
+from collections import OrderedDict
 
 from PIL import Image, ImageTk, ImageDraw, ImageFont
 from ttkwidgets import CheckboxTreeview
 import pickle
 from random import shuffle
-from collections import OrderedDict
 
 import getpass              # Get username for file storage
 import notify2              # send inotify over python-dbus
@@ -410,6 +417,7 @@ TMP_CURR_SONG = "/run/user/" + g.USER_ID + "/mserve.currently_playing"
 TMP_CURR_SAMPLE = "/run/user/" + g.USER_ID + "/mserve.current_sample"
 TMP_FFPROBE = "/run/user/" + g.USER_ID + "/mserve.ffprobe"
 TMP_FFMPEG = "/run/user/" + g.USER_ID + "/mserve.ffmpeg.jpg"
+TMP_ERROR = "/run/user/" + g.USER_ID + "/mserve.error"
 
 # vu_meter.py (Volume Meter) IPC file names
 VU_METER_FNAME = "/run/user/" + g.USER_ID + "/mserve.vu-meter-mono.txt"
@@ -825,7 +833,7 @@ class PlayCommonSelf:
         self.resume_song_secs = None        # Position to start playing song
 
         ''' Play Top Button frame (_btn) and Buttons (_button) '''
-        self.play_btn = None                # tk.Frame(self.play_top, bg="Blue"
+        self.play_btn_frm = None            # tk.Frame(self.play_top, bg="Blue"
         self.close_button = None            # tk.Button(text="✘ Close
         self.shuffle_button = None          # tk.Button(text=" 🔀 Shuffle",
         self.prev_button = None             # tk.Button(text="⏮  Previous"
@@ -1316,56 +1324,32 @@ class MusicTree(PlayCommonSelf):
         ''' ✘ Close Button ✘ ✔ '''
         self.lib_top.bind("<Escape>", self.close)
         self.lib_top.protocol("WM_DELETE_WINDOW", self.close)
-        self.close_text = "✘ Close"  # Variable button text
-        self.lib_tree_btn1 = tk.Button(frame3, text=self.close_text,
-                                       width=BTN_WID - 2, command=self.close)
-        self.lib_tree_btn1.grid(row=0, column=0, padx=2)
-        #if self.refresh_play_top:
-        #    thread = self.refresh_play_top
-        #else:
-        #    thread = None
-        self.tt.add_tip(self.lib_tree_btn1, anchor="nw",
+        lib_tree_btn1 = tk.Button(frame3, text="✘ Close", width=BTN_WID - 2, 
+                                  command=self.close)
+        lib_tree_btn1.grid(row=0, column=0, padx=2)
+        self.tt.add_tip(lib_tree_btn1, anchor="nw",
                         text="Close mserve and any windows mserve opened.")
 
         ''' ▶  Play Button '''
-        self.play_text = "▶  Play"  # play songs window is opened.
-        self.lib_tree_btn2 = tk.Button(frame3, text=self.play_text,
-                                       width=BTN_WID + 2, command=self.play_items)
-        self.lib_tree_btn2.grid(row=0, column=1, padx=2)
-        self.tt.add_tip(self.lib_tree_btn2, "Play selected songs.", anchor="nw")
-
-        """ June 23, 2023 - These buttons from the beginning are nuked forever
-        ''' Save button '''
-        # Floppy Disk U+1F4BE 💾  Hard Disk U+1F5B4 🖄
-        self.save_text = "💾  Save playlist"  # save songs window is opened.
-        self.lib_tree_btn3 = tk.Button(frame3, text=self.save_text, width=BTN_WID + 2,
-                                       command=self.write_playlist_to_disk)
-        self.lib_tree_btn3.grid(row=0, column=2, pad x=2)
-        self.tt.add_tip(self.lib_tree_btn3, anchor="nw",
-                        text="Save playlist (selected songs in sorted order).")
-        ''' Load button '''
-        self.load_text = "💾  Load playlist"  # Load songs window is opened.
-        self.lib_tree_btn4 = tk.Button(frame3, text=self.load_text,
-                                       width=BTN_WID + 2, command=self.load_items)
-        self.lib_tree_btn4.grid(row=0, column=3, pad x=2)
-        self.tt.add_tip(self.lib_tree_btn4, anchor="nw",
-                        text="Load new playlist (changes selections).")
-        """
+        self.play_text = "▶  Play"  # Appears when play_top is closed
+        self.lib_tree_play_btn = tk.Button(frame3, text=self.play_text,
+                                           width=BTN_WID + 2, command=self.play_items)
+        self.lib_tree_play_btn.grid(row=0, column=1, padx=2)
+        self.tt.add_tip(self.lib_tree_play_btn, "Play favorite songs.", anchor="nw")
 
         ''' Refresh Treeview Button u  1f5c0 🗀 '''
         ''' 🗘  Update differences Button u1f5d8 🗘'''
-        self.rebuild_text = "🗘 Refresh library"  # Rebuild MusicTree
-        self.lib_tree_btn5 = tk.Button(frame3, text=self.rebuild_text,
-                                       width=BTN_WID + 2, command=self.rebuild_lib_tree)
-        self.lib_tree_btn5.grid(row=0, column=4, padx=2)
-        self.tt.add_tip(self.lib_tree_btn5, anchor="ne",
+        lib_tree_btn3 = tk.Button(frame3, text="🗘 Refresh library", width=BTN_WID + 2, 
+                                  command=self.rebuild_lib_tree)
+        lib_tree_btn3.grid(row=0, column=4, padx=2)
+        self.tt.add_tip(lib_tree_btn3, anchor="ne",
                         text="Scan disk for songs added and removed.")
+
         ''' Rip CD Button 🖸 (1f5b8) '''
-        self.import_text = "🖸  Rip CD"
-        self.lib_tree_btn6 = tk.Button(frame3, text=self.import_text,
-                                       width=BTN_WID - 2, command=self.rip_cd)
-        self.lib_tree_btn6.grid(row=0, column=5, padx=2)
-        self.tt.add_tip(self.lib_tree_btn6, anchor="ne",
+        lib_tree_btn4 = tk.Button(frame3, text="🖸  Rip CD", width=BTN_WID - 2,
+                                  command=self.rip_cd)
+        lib_tree_btn4.grid(row=0, column=5, padx=2)
+        self.tt.add_tip(lib_tree_btn4, anchor="ne",
                         text="Convert songs from Audio CD to music files.")
 
         ''' Colors for tags '''
@@ -1703,49 +1687,9 @@ class MusicTree(PlayCommonSelf):
             self.playlists.top.focus_force()  # Get focus
             self.playlists.top.lift()  # Raise in stacking order
 
-        # TODO: Good time to change Play Button text (Show library)
-        """  
-
-        def clear_buttons(self):
-            # self.lib_tree_btn1 ["text"] = ""     # Close button
-            # Unicode Character “🎵” (U+1F3B5)
-            self.lib_tree_btn2["text"] = "🎵  Show library"  # Play button
-            self.play_on_top = True
-            # self.lib_tree_btn3 ["text"] = ""     # Save button
-            # self.lib_tree_btn4 ["text"] = ""     # Load button
-            # self.lib_tree_btn5 ["text"] = ""     # Export button
-            # self.lib_tree_btn6 ["text"] = ""     # Import button
-    
-        def restore_lib_buttons(self):
-            self.lib_tree_btn1["text"] = self.close_text
-            self.lib_tree_btn2["text"] = self.play_text
-            self.tt.set_text(self.lib_tree_btn2, "Play selected songs.")
-            self.lib_tree_btn3["text"] = self.save_text
-            self.lib_tree_btn4["text"] = self.load_text
-            self.lib_tree_btn5["text"] = self.rebuild_text
-            self.lib_tree_btn6["text"] = self.import_text
-
-
-        if self.play_top_is_active:  # Are we already playing songs?
-            
-            if self.play_on_top:
-                # If we had the focus, give it up
-                self.play_on_top = False
-                self.lib_tree_btn2["text"] = "🎵  Show playing"
-                self.tt.set_text(self.lib_tree_btn2, "Lift songs playing window up.")
-                self.lib_top.focus_force()  # Get focus
-                self.lib_top.lift()  # Raise in stacking order
-            else:
-                # If we didn't have focus, take it
-                self.play_on_top = True
-                self.lib_tree_btn2["text"] = "🎵  Show library"
-                self.tt.set_text(self.lib_tree_btn2, "Lift music library window up.")
-                self.play_top.focus_force()  # Get focus
-                self.play_top.lift()  # Raise in stacking order
-            # root.update()
-            self.lib_tree.update_idletasks()
-            return  # Don't start playing again
-        """
+        ''' Since lib_top is known to have focus can reset self.lib_tree_play_btn '''
+        self.play_on_top = False
+        self.set_lib_tree_play_btn()
 
     def refresh_lib_top(self):
         """ Wait until clicks to do something in lib_tree (like play music)
@@ -1753,23 +1697,26 @@ class MusicTree(PlayCommonSelf):
             TODO: Call refresh_acc_times() every 60 seconds
         """
 
+        if not self.lib_top_is_active:
+            return False  # self.close() has set to None
+
         ''' Is system shutting down? '''
         if self.killer.kill_now:
             print('\nmserve.py refresh_lib_top() closed by SIGTERM')
             self.close()
             return False  # Not required because this point never reached.
+
         ''' Always give time slice to tooltips '''
-        if not self.lib_top_is_active:
-            return False  # self.close() has set to None
         self.tt.poll_tips()  # Tooltips fade in and out. self.info piggy backing
         self.lib_top.update()  # process events in queue. E.G. message.ShowInfo()
         now = time.time()  # June 20, 2023 - Use new self.last_sleep_time
         sleep = SLEEP_NO_PLAY - int(now - self.last_sleep_time)
         sleep = sleep if sleep > 0 else 1      # Sleep minimum 1 millisecond
         self.last_sleep_time = now
-        ''' Are we already destroyed? '''
-        if not self.lib_top_is_active:
+
+        if not self.lib_top_is_active:  # Second check needed June 2023
             return False  # self.close() has set to None
+
         ''' sleep remaining time until 33ms expires '''
         self.lib_top.after(sleep)              # Sleep until next 30 fps time
         return True  # Go back to caller as success
@@ -1786,11 +1733,13 @@ class MusicTree(PlayCommonSelf):
 
         ms_font1 = (None, MON_FONTSIZE)  # Temporary for error message
         ms_font2 = (None, MON_FONTSIZE)  # Temporary for error message
-        tk.Label(self.pending_frame, text='Addition Count:',
-                 font=ms_font1).grid(row=0, column=0, sticky=tk.W, padx=2, pady=2)
+
+        tk.Label(self.pending_frame, text='Addition Count:', font=ms_font1) \
+            .grid(row=0, column=0, sticky=tk.W, padx=2, pady=2)
         self.pending_add_cnt_var = tk.Label(self.pending_frame, font=ms_font2,
                                             text="0", padx=2, pady=2, fg="Green")
         self.pending_add_cnt_var.grid(row=0, column=1, sticky=tk.W)
+
         tk.Label(self.pending_frame, text='Last Added:', font=ms_font1,
                  padx=2, pady=2).grid(row=0, column=2, sticky=tk.W, padx=2)
         self.pending_add_song_var = tk.Label(self.pending_frame, text='', fg="Green",
@@ -1802,6 +1751,7 @@ class MusicTree(PlayCommonSelf):
         self.pending_del_cnt_var = tk.Label(self.pending_frame, font=ms_font2,
                                             text="0", padx=2, pady=2, fg="Red")
         self.pending_del_cnt_var.grid(row=1, column=1, sticky=tk.W)
+
         tk.Label(self.pending_frame, text='Last Deleted:',
                  font=ms_font1, padx=2, pady=2).grid(row=1, column=2, sticky=tk.W, padx=2)
         self.pending_del_song_var = tk.Label(self.pending_frame, text='', fg="Red",
@@ -3054,7 +3004,10 @@ class MusicTree(PlayCommonSelf):
 
         # We must save current selections before LODICT changes
         if self.playlists.name is not None:
-            pass  # June 19, 2023 - Future (if self.playlists.active)
+            print("mserve.py loc_open_play() did not save playlist:",
+                  self.playlists.name)
+            self.info.cast("mserve.py loc_open_play() did not save playlist: " +
+                           self.playlists.name)
         else:
             self.save_last_selections()
         item = self.loc_tree.selection()[0]
@@ -4077,7 +4030,7 @@ class MusicTree(PlayCommonSelf):
             self.process_unchecked(item)
 
         elif self.lib_tree.tag_has("checked", item):
-            self.process_checked(item)
+            self.process_checked(item, event)
 
         else:
             # No need to test tristate, item must be checked or unchecked.
@@ -4098,22 +4051,21 @@ class MusicTree(PlayCommonSelf):
         else:
             print('process_unchecked() bad line type tag:', tags)
 
-    def process_checked(self, item):
+    def process_checked(self, item, event):
         """ We just checked the item, update totals
-
-            TODO: Adding to playlist an album or artist then all get same
-                  song number in chron tree until restart.
         """
         tags = self.lib_tree.item(item)['tags']
         if 'Artist' in tags or 'Album' in tags:
-            self.set_all_parent(item, 'Add')
+            self.set_all_parent(item, 'Add', event)
         elif 'Song' in tags:
+            if not self.validate_song_addition(item, event):
+                return  # Adding to playlist but no SQL Music Table Row exists
             self.pending_append(item, 'Add')
             self.reverse(item)
         else:
             print('process_checked() bad line type tag:', tags)
 
-    def set_all_parent(self, Id, action):
+    def set_all_parent(self, Id, action, event):
         """ ID can be an Artist or Album. action can be "Add" or "Del"
                 Are we processing an albums for artist or single album?
                 Are we turning selection on or off? (action passed)
@@ -4121,29 +4073,48 @@ class MusicTree(PlayCommonSelf):
         tags = self.lib_tree.item(Id)['tags']
         if "Artist" in tags:
             for album in self.lib_tree.get_children(Id):
-                self.set_all_songs(album, action)
+                self.set_all_songs(album, action, event)
 
         elif "Album" in tags:
-            self.set_all_songs(Id, action)
+            self.set_all_songs(Id, action, event)
 
         else:
             print("set_all_parent() error: 'Id' is neither 'Album' nor 'Artist'")
 
-    def set_all_songs(self, Id, action):
+    def set_all_songs(self, Id, action, event):
         """ set all songs selected or unselected """
-        # count = 0
         for child in self.lib_tree.get_children(Id):
-            # Check selected column being non-blank
+            '''selected column may be "" or "Adding" or "No. 999" '''
             selected = self.lib_tree.item(child)['values'][2]
-            # NOTE: selected may soon be "Pending" in addition to "No. 999"
+
+            if action == "Add" and not self.validate_song_addition(child, event):
+                continue
+
             if (selected == "" and action == "Add") or \
                     (not selected == "" and action == "Del"):
-                # (not selected == "" in tags and action == "Del"):
-                # June 10, 2023 - Remove 'in tags' it's unknown?
                 self.pending_append(child, action)
                 self.reverse(child)
-                # count += 1
-        # print(self.lib_tree.item(Id,'text'),'action:',action,'count:',count)
+
+    def validate_song_addition(self, Id, event):
+        """ If playlists, can only add songs that exist in the SQL Music Table """
+        if self.playlists.name is not None:
+            music_id = self.get_music_id_for_lib_tree_id(Id)
+            if music_id > 0:
+                return True  # Song row exists in SQL Music Table
+        else:
+            return True  # Playing favorites which doesn't need SQL Music Table
+
+        # noinspection PyProtectedMember
+        self.lib_tree._box_click(event)  # Force check or uncheck to appear
+        self.lib_tree.update()  # June 10, 2023 - checking isn't showing on screen
+
+        item = self.lib_tree.item(Id)
+        text  = "The song '" + item['text'] + "' has no Artist or Album.\n\n" + \
+                "It can't be added to playlist but can be added to favorites."
+        self.info.fact(text, 'error', 'add')
+        message.ShowInfo(self.lib_top, thread=self.get_refresh_thread(), align='left',
+                         icon='error', title="Playlists Error", text=text)
+        return False
 
     def pending_append(self, item, action):
         """ Add song to pending_additions or pending_deletions lists
@@ -4155,12 +4126,8 @@ class MusicTree(PlayCommonSelf):
         else:
             print("mserve.py pending_append(" + item + ", action):" +
                   " has invalid action:", action)
+            return
 
-        '''' Can create duplicates by add and then delete or vice versa '''
-        self.pending_duplicates()
-
-
-    def pending_duplicates(self):
         """ If song exists in pending_additions and pending_deletions
             remove the song from both lists. Duplicates occur when a song
             is checked and then unchecked or vice versa.
@@ -4207,7 +4174,6 @@ class MusicTree(PlayCommonSelf):
             # Not necessary because not activated yet anyway.
             self.file_menu.entryconfig("Save Favorites", state=tk.DISABLED)
             self.file_menu.entryconfig("Exit without saving Favorites", state=tk.DISABLED)
-
 
     def get_pending_cnt_total(self):
         """
@@ -4488,8 +4454,9 @@ $ wmctrl -l -p
         self.close_sleepers()  # Shut down running functions
         if save:
             if self.playlists.name is not None:
+                print("mserve.py main close() did not save playlist:",
+                      self.playlists.name)
                 # TODO: Why aren't we saving playlist?
-                pass  # June 19, 2023 - Future (if self.playlists.active)
             else:
                 self.save_last_selections()  # Last selections for next open
         self.tt.close(self.lib_top)  # Close tooltips under top level
@@ -4558,26 +4525,14 @@ $ wmctrl -l -p
 
     def clear_buttons(self):
         """ When new windows open, disable TreeView buttons """
-        # self.lib_tree_btn1 ["text"] = ""     # Close button
-        # Unicode Character “🎵” (U+1F3B5)
-        self.lib_tree_btn2["text"] = "🎵  Show library"  # Play button
+        self.lib_tree_play_btn["text"] = "🎵  Show library"  # Play button
         self.play_on_top = True
-        # self.lib_tree_btn3 ["text"] = ""     # Save button
-        # self.lib_tree_btn4 ["text"] = ""     # Load button
-        # self.lib_tree_btn5 ["text"] = ""     # Export button
-        # self.lib_tree_btn6 ["text"] = ""     # Import button
+        self.lib_top.update_idletasks()
 
     def restore_lib_buttons(self):
         """ When playing window closes, restore TreeView buttons """
-        self.lib_tree_btn1["text"] = self.close_text
-        self.lib_tree_btn2["text"] = self.play_text
-        self.tt.set_text(self.lib_tree_btn2, "Play selected songs.")
-        """ June 17, 2023 - Save & Load buttons never used. Nuke forever
-        self.lib_tree_btn3["text"] = self.save_text
-        self.lib_tree_btn4["text"] = self.load_text
-        """
-        self.lib_tree_btn5["text"] = self.rebuild_text
-        self.lib_tree_btn6["text"] = self.import_text
+        self.lib_tree_play_btn["text"] = self.play_text
+        self.tt.set_text(self.lib_tree_play_btn, "Play favorite songs.")
 
     def refresh_acc_times(self, first_time=False):
         """ Refresh songs last access time in Music Library treeview (lib_tree).
@@ -4637,7 +4592,7 @@ $ wmctrl -l -p
         self.lib_top.after(60000, self.refresh_acc_times)  # Update every minute
 
     def refresh_required_notify(self):
-        """ DISABLED - Needs more work. """
+        """ NOT CALLED - Needs more work. """
         # Send bubble message when first encountered, then wait 20 minutes
         # before sending again which allows time to rip CD.
         now = time.time()
@@ -4658,13 +4613,13 @@ $ wmctrl -l -p
 
     # ==============================================================================
     #
-    #       MusicTree Processing - Buttons: Save, Load, Refresh, Rip
+    #       MusicTree Processing - Refresh Library
     #
     # ==============================================================================
 
     def rebuild_lib_tree(self):
         """ If directories/songs have changed rebuild cd tree and position
-            cursor (so to speak) to first changed song (open parents).
+            to first changed song.
             Called from lib_tree's "🗘 Refresh library" button.
         """
         if self.playlists.name is not None:
@@ -5254,11 +5209,11 @@ $ wmctrl -l -p
 
     def missing_artwork_callback(self, values):
         """ Find Songs that have no artwork and update metadata
-            sql.update_metadata() is called by self.play_metadata(os_filename)
+            sql.update_metadata() is called by self.get_ffprobe_metadata(os_filename)
             The .CheckArtwork() function will call self.refresh_play_top()
         """
         os_filename = self.mus_view.column_value(values, 'os_filename')
-        meta_dict = self.play_metadata(START_DIR + os_filename)
+        meta_dict = self.get_ffprobe_metadata(START_DIR + os_filename)
         # Updates SQL Metadata too! plus self.meta_update_succeeded 
         self.meta_scan_dtb.update(os_filename)  # Refresh screen with song file name
         self.meta_scan.ChangedCounts(self.meta_update_succeeded)
@@ -5668,18 +5623,17 @@ $ wmctrl -l -p
 
         # If lambda isn't used the command is executed as soon as popup
         # menu is displayed, not when option is chosen.
+        menu.add_command(label="View Current Row", font=(None, g.MED_FONT),
+                         command=lambda: self.view_sql_row(pretty))
+        menu.add_command(label="Open in library", font=(None, g.MED_FONT),
+                         command=lambda: self.view_library(pretty))
+        menu.add_separator()
+
         if self.view == self.mus_view:
             menu.add_command(label="View Metadata", font=(None, g.MED_FONT),
                              command=lambda: self.view_metadata(pretty))
-            menu.add_command(label="Compare Lyrics", font=(None, g.MED_FONT),
-                             command=lambda: self.compare_lyrics(pretty))
             menu.add_separator()
 
-        menu.add_command(label="View Current Row", font=(None, g.MED_FONT),
-                         command=lambda: self.view_sql_row(pretty))
-        menu.add_command(label="Library", font=(None, g.MED_FONT),
-                         command=lambda: self.view_library(pretty))
-        menu.add_separator()
         menu.add_command(label="Ignore click", font=(None, g.MED_FONT),
                          command=lambda: self.close_right_click_menu(menu))
 
@@ -5705,7 +5659,7 @@ $ wmctrl -l -p
         """
         #print("pretty:", pretty.dict)
         filename = START_DIR + pretty.dict['OS Filename']
-        meta = self.play_metadata(filename, update_sql=False)
+        meta = self.get_ffprobe_metadata(filename, update_sql=False)
         #print('meta:', meta)
         pretty = sql.PrettyMeta(meta)
         self.create_window("Song ID Tags obtained with 'ffprobe' - mserve", 1400, 975)
@@ -5744,66 +5698,62 @@ $ wmctrl -l -p
                     current playing song is also red. When current song
                     ends the red might be removed?
         """
-        self.lib_top.focus_force()  # Get focus
-        self.lib_top.lift()  # Raise in stacking order
-        # Split OS Filename into components
         # TODO: Check 'No Album' string
         music_id = pretty.dict['SQL Music Row Id']  # hist & music have same
+        ''' SQL History has music_id with zero '''
+        if music_id is 0:
+            text = "Music Id 0 is not a real music song.\n" + \
+                   "It cannot be opened in the Music Library."
+            message.ShowInfo(view.toplevel, "Music Id 0 - mserve", text,
+                             icon='warning', thread=self.get_refresh_thread())
+            self.info.fact(text, 'warning', 'open')
+            return
+
         d = sql.music_get_row(music_id)
         if d is None:
-            print("mserve.py-view_library() music_id not found:", music_id)
+            text = "Music Id: '" + music_id + "' not found.\n" + \
+                   "Reason unknown."
+            message.ShowInfo(view.toplevel, "Music Id Not Found - mserve", text,
+                             icon='error', thread=self.get_refresh_thread())
+            self.info.fact(text, 'error', 'open')
+            print("mserve.py view_library() music_id not found:", music_id)
             return
+
+        self.lib_top.focus_force()  # Get focus
+        self.lib_top.lift()  # Raise in stacking order
+
+        # TODO: Faster performance and less code using:
+        # self.song_list.index(PRUNED_DIR + d['OsFileName'])
 
         groups = d['OsFileName'].split(os.sep)
         Artist = groups[0]
         Album = groups[1]
         Song = groups[2]
         song_found = False
-        # print("Artist, Album, Song:", Artist, Album, Song)
+        
         for artist_iid in self.lib_tree.get_children():
-            # print("artist_iid:", artist_iid)
             artist = self.lib_tree.item(artist_iid)['text']
             if artist == Artist:
-                # print("Matching artist:", artist)
                 self.lib_tree.item(artist_iid, 'open')
                 for album_iid in self.lib_tree.get_children(artist_iid):
-                    # print("album_iid:", album_iid)
                     album = self.lib_tree.item(album_iid)['text']
                     if album == Album:
-                        # print("Matching album:", album)
                         self.lib_tree.item(album_iid, 'open')
                         for song_iid in self.lib_tree.get_children(album_iid):
                             song = self.lib_tree.item(song_iid)['text']
-                            # print("individual song found:", song)
                             if song == Song:
-                                # print('found song:', song)
                                 song_found = True
                                 self.lib_tree.see(song_iid)  # Ensure song visible
                                 break
 
         if not song_found:
-            print("mserve.py - view_library() couldn't find song:", groups)
+            text = "Music Id: '" + music_id + "' not found.\n" + \
+                   "No matching song Artist/Album/Title in Music Library."
+            message.ShowInfo(view.toplevel, "No Match in Music Library - mserve", text,
+                             icon='error', thread=self.get_refresh_thread())
+            self.info.fact(text, 'error', 'open')
+            print("mserve.py view_library() No match in Music Library:", music_id)
             return
-
-    def compare_lyrics(self, pretty):
-        """ Display lyrics available on all websites.
-        
-            Show history of what, where and when is stored on file already.
-            Show if lyrics were edited and when. Also when time index edited.
-            Show 100 google search results filtered and blacklisted.
-            Show actual lyrics from eight most popular lyric websites.
-
-        """
-        self.create_window("Retrieve Backup - mserve", 1400, 975)
-        pretty.scrollbox = self.scrollbox
-
-        if pretty.sql_row_id is None:
-            self.scrollbox.insert("end", "BACKUP has been deleted!\n\n")
-            return
-
-        pretty.backup_display(self.scrollbox)
-        # Note self.scrollbox defined in multiple places, reduce in future
-        # self.hdr_top.geometry('%dx%d+%d+%d' % (1400, 975, xy[0], xy[1]))
 
     def create_window(self, title, width, height, top=None):
         """ Place Window top-left of parent window with PANEL_HGT padding
@@ -6020,16 +5970,23 @@ $ wmctrl -l -p
         global LODICT, START_DIR
 
         if self.playlists.name is not None:
-            self.playlists.save_playlist()
+            print("mserve.py save_last_selection() serious ERROR:" +
+                  " playlists.name should be blank:", self.playlists.name)
             return
 
-        ''' If self.saved_selections not populated, grab all checked songs '''
+        ''' If self.saved_selections not populated, grab all checked songs 
+
+        REMOVE OLD CODE: self.saved_selections are updated by pending_apply()
+
         if len(self.saved_selections) == 0:
             self.saved_selections = self.lib_tree.tag_has("songsel")
-
-        ''' All song selections cleared, next startup uses previous save '''
-        if len(self.saved_selections) == 0:
-            return
+            # BUG June 25, 2023. Above could be cause:
+            # Favorites were resorted into alphabetical order after working
+            # in L003 and then opened L004. Had also closed play_top before
+            # exiting. Not sure which actually caused bug.
+            print("mserve.py save_last_selection() WARNING: Saving " +
+                  "Favorites in alphabetical order")
+        '''
 
         ''' Save expanded/collapsed state of Artists & Albums '''
         self.lib_tree_open_states = self.get_all_open_states()
@@ -6046,6 +6003,13 @@ $ wmctrl -l -p
             # Occurs when there are no locations defined whatsoever
             print('Checking to save:', lc.FNAME_LAST_LOCATION)
             print("No 'iid' found in 'LODICT' for:", START_DIR)
+            return  # June 25, 2023 - Added return
+
+        ''' Two songs needed to save, next startup uses previous save '''
+        if len(self.saved_selections) < 2:
+            print("mserve.py save_last_selection() WARNING: Need at least " +
+                  "two songs to save favorites.")
+            return
 
         ''' Save full path of selected songs in current play order '''
         save_songs = []
@@ -6243,6 +6207,7 @@ $ wmctrl -l -p
         """ Called from self.pending_reset() and self.playlists.apply_callback()
         """
         ext.t_init('Apply totals to Artists & Albums + set checkbox')
+        self.lib_tree_open_states = []
         for Artist in self.lib_tree.get_children():  # Read all Artists
             self.clear_item_check_and_open(Artist, force_close=True)
             for Album in self.lib_tree.get_children(Artist):  # Read all Albums
@@ -6376,23 +6341,18 @@ $ wmctrl -l -p
             if self.play_on_top:
                 # If we had the focus, give it up
                 self.play_on_top = False
-                self.lib_tree_btn2["text"] = "🎵  Show playing"
-                self.tt.set_text(self.lib_tree_btn2, "Lift songs playing window up.")
                 self.lib_top.focus_force()  # Get focus
                 self.lib_top.lift()  # Raise in stacking order
             else:
                 # If we didn't have focus, take it
                 self.play_on_top = True
-                self.lib_tree_btn2["text"] = "🎵  Show library"
-                self.tt.set_text(self.lib_tree_btn2, "Lift music library window up.")
                 self.play_top.focus_force()  # Get focus
                 self.play_top.lift()  # Raise in stacking order
-            # root.update()
-            self.lib_tree.update_idletasks()
+            self.set_lib_tree_play_btn()  # Reset button to reflect play running
             return  # Don't start playing again
 
         ''' Opening play window. Set text in library window button tool tip'''
-        self.tt.set_text(self.lib_tree_btn2, "Lift music library window up.")
+        self.tt.set_text(self.lib_tree_play_btn, "Lift music library window up.")
 
         ''' Count number of songs selected. '''
         self.play_top_sink = ""     # Fix error if self.play_top_sink is not ""
@@ -6418,10 +6378,8 @@ $ wmctrl -l -p
                                 parent=self.lib_top)
             return
 
-        ''' Make parent buttons invisible so user doesn't try to click '''
+        ''' Set lib_tree_play_btn text the open play_top window '''
         self.clear_buttons()
-        # Option 2 instead of self.clear_buttons()
-        # self.lib_top.withdraw()               # Make invisible but still active
         self.play_top = tk.Toplevel()
         self.play_top.minsize(g.WIN_MIN_WIDTH, g.WIN_MIN_HEIGHT)
         self.play_top_is_active = True
@@ -6685,10 +6643,10 @@ $ wmctrl -l -p
         self.lyrics_score_scroll_y.grid(row=0, column=1, rowspan=2, sticky='ns')
         self.lyrics_score_box['yscrollcommand'] = self.lyrics_score_scroll_y.set
 
-        """ build_play_buttons() replaces Commercial button with Rewind button and
+        """ build_play_btn_frm() replaces Commercial button with Rewind button and
             replaces Intermission button with Fast Forward button. 
         """
-        self.build_play_buttons()  # Placement varies if Hockey enabled
+        self.build_play_btn_frm()  # Placement varies if Hockey enabled
 
         ''' F4 Frame for Playlist (Chronology) '''
         self.F4 = tk.Frame(self.play_top, borderwidth=BTN_BRD_WID,
@@ -6721,13 +6679,32 @@ $ wmctrl -l -p
         while self.play_top_is_active:  # Loop whilst play window is open
             # May 29, 2023 - When resuming buttons do not have art color assigned
             # June 18, 2023 - play_start() now called from self.apply_playlists() too.
-            self.play_start(resume=resume, chron_state=chron_state)
+            if not self.play_start(resume=resume, chron_state=chron_state):
+                self.play_close()  # Catastrophic error that can't be backed out of
+                break
             resume = False  # We can only resume once
             chron_state = None  # Extra safety
             self.play_from_start = True  # Review variable usage... it's weird.
 
         self.play_top_pid = 0  # Can only be one
         self.play_top_sink = ""  # That's all folks... Until play is reopened
+
+    def set_lib_tree_play_btn(self):
+        """ set text for lib_tree_btn to start playing, show playing or show library. """
+        if not self.lib_top_is_active:
+            return  # Closing down
+
+        if self.play_top_is_active:  # Are we already playing songs?
+            if self.play_on_top:
+                #self.lib_tree_play_btn["text"] = "🎵  Show library"
+                #self.tt.set_text(self.lib_tree_play_btn, "Lift music library window up.")
+                pass
+            else:
+                self.lib_tree_play_btn["text"] = "🎵  Show playing"
+                self.tt.set_text(self.lib_tree_play_btn, "Lift songs playing window up.")
+        else:
+            self.restore_lib_buttons()
+        self.lib_tree.update_idletasks()
 
     def toggle_hockey(self):
         """ Swap buttons between Hockey Commercial & Hockey Intermission and
@@ -6739,49 +6716,53 @@ $ wmctrl -l -p
                      "Cannot toggle FF/Rewind buttons when hockey countdown running.\n\n" +
                      "Click the time remaining button and cancel countdown.\n")
             # Even though message appears on lib_top we know play_top has the thread
-            #thread = self.get_refresh_thread()
-            message.ShowInfo(self.lib_top, text=quote, align='center', 
+            message.ShowInfo(self.lib_top, text=quote, align='center',
                              thread=self.get_refresh_thread(),
                              title="Cannot toggle FF/Rewind Buttons Now - mserve")
+            self.info.fact(quote)
             return
 
         self.play_hockey_allowed = not self.play_hockey_allowed  # Flip switch
-        # Code is duplicated
         if self.play_hockey_allowed:
-            self.view_menu.entryconfigure(1, label="Enable FF/Rewind buttons")
+            self.view_menu.entryconfigure(2, label="Enable FF/Rewind buttons")
+            self.info.fact("Enable FF/Rewind buttons")
         else:
-            self.view_menu.entryconfigure(1, label="Use TV Commercial buttons")
+            self.view_menu.entryconfigure(2, label="Use TV Commercial buttons")
+            self.info.fact("Use TV Commercial buttons")
 
-        self.tt.close(self.play_btn)  # Remove old tooltip buttons in play_btn frame
-        self.play_btn.grid_forget()
-        self.play_btn.destroy()
-        self.build_play_buttons()
-        # TODO: Below is a shortcut. Better methodology required.
+        if not self.play_top_is_active:
+            return
+
+        self.tt.close(self.play_btn_frm)  # Remove old tooltip buttons in play_btn frame
+        self.play_btn_frm.grid_forget()
+        self.play_btn_frm.destroy()
+        self.build_play_btn_frm()
+        ''' Lift play_top to see new button frame '''
         self.play_top.lift()
         self.play_on_top = True
 
-    def build_play_buttons(self):
+    def build_play_btn_frm(self):
         """ Create frame for play_top buttons.
             Dynamically create buttons depending on 'play_hockey_allowed' state.
         """
 
         ''' Frame for Buttons '''
-        self.play_btn = tk.Frame(self.play_top, bg="Olive",
-                                 borderwidth=BTN_BRD_WID, relief=tk.GROOVE)
-        self.play_btn.grid(row=3, column=0, sticky=tk.NSEW)
+        self.play_btn_frm = tk.Frame(self.play_top, bg="Olive",
+                                     borderwidth=BTN_BRD_WID, relief=tk.GROOVE)
+        self.play_btn_frm.grid(row=3, column=0, sticky=tk.NSEW)
         # Leave empty row #2 for F3 frame (was row=2)
-        self.play_btn.grid_rowconfigure(0, weight=1)
-        self.play_btn.grid_columnconfigure(0, weight=0)
+        self.play_btn_frm.grid_rowconfigure(0, weight=1)
+        self.play_btn_frm.grid_columnconfigure(0, weight=0)
 
         if self.play_hockey_allowed:
-            button_list = ["Close", "Shuffle", "PP", "Prev", "Next", "Com", "Int", "Chron"]
+            button_list = ["Close", "Shuffle", "Prev", "Com", "PP", "Int", "Next", "Chron"]
         else:
             button_list = ["Close", "Shuffle", "Prev", "Rew", "PP", "FF", "Next", "Chron"]
 
         for col, name in enumerate(button_list):
             if name == "Close":
                 """" Close Button ✘ """
-                self.close_button = tk.Button(self.play_btn, text="✘ Close",
+                self.close_button = tk.Button(self.play_btn_frm, text="✘ Close",
                                               width=BTN_WID2 - 6,
                                               command=self.play_close)
                 self.close_button.grid(row=0, column=col, padx=2, sticky=tk.W)
@@ -6792,14 +6773,14 @@ $ wmctrl -l -p
             elif name == "Shuffle":
                 ''' Shuffle Button Em space + u 1f500 = 🔀 '''
                 # BIG_SPACE = " "         # UTF-8 (2003) aka Em Space
-                self.shuffle_button = tk.Button(self.play_btn, text=" 🔀 Shuffle",
+                self.shuffle_button = tk.Button(self.play_btn_frm, text=" 🔀 Shuffle",
                                                 width=BTN_WID2 - 3, command=self.play_shuffle)
                 self.shuffle_button.grid(row=0, column=col, padx=2, sticky=tk.W)
                 self.tt.add_tip(self.shuffle_button, "Shuffle songs into random order.",
                                 anchor="sw")
             elif name == "PP":  # TODO: Check current pp_state and dynamically format
                 ''' Pause/Play Button '''
-                self.pp_button = tk.Button(self.play_btn, text=self.pp_pause_text,
+                self.pp_button = tk.Button(self.play_btn_frm, text=self.pp_pause_text,
                                            width=BTN_WID2 - 5, command=self.pp_toggle)
                 self.pp_button.grid(row=0, column=col, padx=2)
                 text = "Pause music, pause artwork and\nallow manual lyrics scrolling."
@@ -6810,7 +6791,7 @@ $ wmctrl -l -p
                 # June 17, 2023: Change 🠈 to last track button emoji (u+23ee) ⏮
                 self.prev_button_text = self.previous_text
                 self.prev_button = \
-                    tk.Button(self.play_btn, text=self.prev_button_text, width=BTN_WID2 - 2,
+                    tk.Button(self.play_btn_frm, text=self.prev_button_text, width=BTN_WID2 - 2,
                               command=lambda s=self: s.song_set_ndx('prev'))
                 self.prev_button.grid(row=0, column=col, padx=2, sticky=tk.W)
                 self.tt.add_tip(self.prev_button, "Play previous song.",
@@ -6820,7 +6801,7 @@ $ wmctrl -l -p
                 # BIG_SPACE = " "         # UTF-8 (2003) aka Em Space
                 # June 17, 2023: Change 🠊 to next track button 23ED ⏭
                 self.next_button = \
-                    tk.Button(self.play_btn, text=" Next ⏭ ", width=BTN_WID2 - 5,
+                    tk.Button(self.play_btn_frm, text=" Next ⏭ ", width=BTN_WID2 - 5,
                               command=lambda s=self: s.song_set_ndx('next'))
                 self.next_button.grid(row=0, column=col, padx=2, sticky=tk.W)
                 self.tt.add_tip(self.next_button, "Play next song in playlist.",
@@ -6830,7 +6811,7 @@ $ wmctrl -l -p
                 self.tt.close(self.com_button)  # Remove old tooltip from list
                 # 📺 | television (U+1F4FA) @ Graphic
                 #self.play_hockey_active = False  # U+1f3d2 🏒
-                self.com_button = tk.Button(self.play_btn, text="📺  Commercial",
+                self.com_button = tk.Button(self.play_btn_frm, text="📺  Commercial",
                                             anchor=tk.CENTER,
                                             width=BTN_WID2 + 3, command=lambda
                                             s=self: s.start_hockey(TV_BREAK1))
@@ -6840,7 +6821,7 @@ $ wmctrl -l -p
                                 "Turn down TV volume whilst playing.", anchor="sw")
             elif name == "Int":
                 ''' Hockey Intermission Button '''
-                self.int_button = tk.Button(self.play_btn, text="🏒  Intermission",
+                self.int_button = tk.Button(self.play_btn_frm, text="🏒  Intermission",
                                             anchor=tk.CENTER,
                                             width=BTN_WID2 + 3, command=lambda
                                             s=self: s.start_hockey(TV_BREAK2))
@@ -6850,7 +6831,7 @@ $ wmctrl -l -p
                                 "Turn down TV volume whilst playing.", anchor="se")
             elif name == "Rew":
                 ''' Rewind Button -10 sec '''
-                self.rew_button = tk.Button(self.play_btn, text="⏪  -" + REW_FF_SECS + " sec",
+                self.rew_button = tk.Button(self.play_btn_frm, text="⏪  -" + REW_FF_SECS + " sec",
                                             width=BTN_WID2 - 3, command=lambda
                                             s=self: s.song_rewind())
                 self.rew_button.grid(row=0, column=col, padx=2, sticky=tk.W)
@@ -6858,7 +6839,7 @@ $ wmctrl -l -p
                                 " seconds back.", anchor="sw")
             elif name == "FF":
                 ''' Fast Forward Button +10 sec'''
-                self.ff_button = tk.Button(self.play_btn, text="+" + REW_FF_SECS + " sec  ⏩",
+                self.ff_button = tk.Button(self.play_btn_frm, text="+" + REW_FF_SECS + " sec  ⏩",
                                            width=BTN_WID2 - 3, command=lambda
                                            s=self: s.song_ff())
                 self.ff_button.grid(row=0, column=col, padx=2, sticky=tk.W)
@@ -6868,7 +6849,7 @@ $ wmctrl -l -p
                 ''' Show/Hide Playlist Chronology button (Frame 4) '''
                 self.play_list_hide = False  # DO THIS ONCE?
                 self.chron_button = tk.Button(
-                    self.play_btn, text="🖸 Hide Chronology",
+                    self.play_btn_frm, text="🖸 Hide Chronology",
                     width=BTN_WID2 + 5, command=lambda s=self: s.play_show_hide())
                 self.chron_button.grid(row=0, column=col, padx=2, sticky=tk.W)
         
@@ -6877,7 +6858,7 @@ $ wmctrl -l -p
                        "double the size of spinning artwork."
                 self.tt.add_tip(self.chron_button, text, anchor="se")
             else:
-                print("mserve.py build_play_buttons() Bad button name:", name)
+                print("mserve.py build_play_btn_frm() Bad button name:", name)
 
         if self.pp_state is "Paused":  # Initially defined as if playing
             self.set_pp_button_text()  # Button text reflects match play/pause state
@@ -7121,9 +7102,21 @@ $ wmctrl -l -p
             self.kill_song()  # To ff/rewind playing song, kill last ffplay instance
         extra_opt = ffplay_extra_opt(str(int(start_secs)), fade_in=2)
 
-        ''' Launch ffplay to play song using extra_opt for start position '''
+        ''' Launch ffplay to play song using extra_opt for start position 
+        
+            TODO: play_top_pid  --> play_ffplay_pid
+                  play_top_sink --> play_ffplay_sink
+        
+        '''
         self.play_top_pid, self.play_top_sink = \
             start_ffplay(self.current_song_path, TMP_CURR_SONG, extra_opt)
+
+        ''' Normally invalid song filename - E.G. not a music file '''
+        if self.play_top_sink == "":
+            self.play_top_pid = 0  # Don't try to kill, it's not there
+            self.corrupted_music_file(self.current_song_path)
+            return
+
         self.play_update_progress(start_secs)  # Update screen with song progress
         self.play_paint_lyrics(rewind=True)  # Highlight line currently being sung. BUG: Only
 
@@ -7132,6 +7125,21 @@ $ wmctrl -l -p
             set_volume(self.play_top_sink, 25)  # Mimic volume of paused song
             ext.stop_pid_running(self.play_top_pid)  # Sends pause signal (stop)
             self.pp_toggle()  # toggle pause to begin playing
+
+    def corrupted_music_file(self, path):
+        """ Did not get sink for song so either pulse error or song < .1 second long
+            which is invalid song file. Finally, test by ffmpeg failed.
+        """
+        quote = ("\n" + path + "\n\n"
+                 "This music file is invalid. It cannot be played.\n\n" +
+                 "Possibly the device location is off-line.\n\n" +
+                 "Highlight and use <Control>+C to copy name.")
+
+        message.ShowInfo(self.lib_top, text=quote, align='center', icon='error',
+                         thread=self.get_refresh_thread(),
+                         title="Invalid music file - mserve")
+        self.info.fact(quote, 'error', 'open')
+
 
     def song_set_ndx(self, seq):
         """ Set index to previous song, next song or restart song at start.
@@ -7414,8 +7422,8 @@ $ wmctrl -l -p
         self.current_song_path = self.real_path(list_index)
 
         ''' Populate display with metadata using ffprobe '''
-        ext.t_init("self.play_metadata()")
-        self.play_metadata(self.current_song_path)
+        ext.t_init("self.get_ffprobe_metadata()")
+        self.get_ffprobe_metadata(self.current_song_path)
         #global E_WIDTH
         E_WIDTH = 32
         self.current_song_artist.set(make_ellipsis(self.Artist, E_WIDTH))
@@ -7475,12 +7483,18 @@ $ wmctrl -l -p
         self.play_top_pid, self.play_top_sink = \
             start_ffplay(self.current_song_path, TMP_CURR_SONG, extra_opt)
 
+        ''' Normally invalid song filename - E.G. not a music file '''
+        if self.play_top_sink == "":
+            self.play_top_pid = 0  # Don't try to kill, it's not there
+            self.corrupted_music_file(self.current_song_path)
+            return False # TODO: Restore screen? Play next? What to do now?
+
         self.current_song_t_start = time.time()  # For pp_toggle, whether resume or not
         if resume:
             # Just woken up from system sleep or reboot. Restore song at save point.
             # May 29, 2023 - When resuming buttons do not have art color assigned
             self.play_update_progress(self.resume_song_secs)
-            if self.resume_state == "Paused":
+            if self.resume_state == "Paused":  # Was resume saved as paused?
                 set_volume(self.play_top_sink, 25)
                 ext.stop_pid_running(self.play_top_pid)
                 # Set Pause status to match resume pause status
@@ -7505,6 +7519,7 @@ $ wmctrl -l -p
             self.queue_next_song()  # Save indices & next song as appropriate
         else:
             pass  # A long running process made play_refresh_top() run out.
+        return True
 
     def queue_next_song(self):
         if self.current_song_path is not "":  # next/prev set new name?
@@ -7687,7 +7702,9 @@ $ wmctrl -l -p
         self.play_top_pid = self.check_play_top_pid()
         if self.play_top_pid == 0:
             self.queue_next_song()
-            self.play_start(real_start=False)  # Start song & come back
+            if not self.play_start(real_start=False):  # Start song & come back
+                self.play_close()  # Catastrophic error that can't be backed out of
+                return False
             # play_to_end() is not called by self.play_start() so original
             # instance is still frozen until this parent ends.
             return True
@@ -7741,23 +7758,24 @@ $ wmctrl -l -p
             self.current_progress.set(str('%.1f' % self.current_song_secs) +
                                       " seconds of: " + str(self.saved_DurationSecs))
 
-    def play_metadata(self, path, update_sql=True):
+    def get_ffprobe_metadata(self, path, update_sql=True):
         """ WARNING: Called from multiple places
             Get metadata for current song
             NOTE: .wav files have no metadata so when Artist, Album or Track
                   is None use OS filename segments.
         """
         # Called by self.sam_top when self.play_top may NOT be active!
-        # print('mserve.py play_metadata() path:', path)
+        # print('mserve.py get_ffprobe_metadata() path:', path)
         # if not self.play_top_is_active: return             # Play window closed?
+
         self.metadata = OrderedDict()
-        # ffplay already output /tmp/mserve.currently has control chars YUK
         ext.t_init("ffprobe")
-        result = os.popen('ffprobe ' + '"' + path + '"' +
-                          ' 2>' + TMP_FFPROBE).read().strip()
-        ext.t_end('no_print')
+        cmd = 'ffprobe ' + '"' + path + '"' + ' 2>' + TMP_FFPROBE
+        result = os.popen(cmd).read().strip()
+        ext.t_end('no_print')  # ffprobe: 0.3202049732
+
         if len(result) > 1:
-            print('mserve.py play_metadata() ffprobe result:', result)
+            print('mserve.py get_ffprobe_metadata() ffprobe result:', result)
 
         ext.t_init("parse " + TMP_FFPROBE)
         ''' Create self.metadata{} dictionary '''
@@ -7789,7 +7807,7 @@ $ wmctrl -l -p
         # list_index = int(self.saved_selections[self.ndx])  # May 2, 2023 No self.ndx
         # rpath = self.song_list[list_index].split(os.sep)  # when called by sample 10 secs
         rpath = path.split(os.sep)  # May 2, 2023 - replacement for metadata
-        # print('mserve.py play_metadata() rpath:', rpath[-3], rpath[-2], rpath[-1])
+        # print('mserve.py get_ffprobe_metadata() rpath:', rpath[-3], rpath[-2], rpath[-1])
 
         self.Artist = self.metadata.get('ARTIST', "None")  # If not in dict, use "None"
         if self.Artist == "None":
@@ -7805,6 +7823,14 @@ $ wmctrl -l -p
         self.Genre = self.metadata.get('GENRE', "None")
         self.Track = self.metadata.get('TRACK', "None")
         self.Date = self.metadata.get('DATE', "None")
+        self.Artist = toolkit.uni_str(self.Artist)
+        self.Album = toolkit.uni_str(self.Album)
+        self.Title = toolkit.uni_str(self.Title)
+        self.Genre = toolkit.uni_str(self.Genre)
+        self.Track = toolkit.uni_str(self.Track)
+        self.Date = toolkit.uni_str(self.Date)
+        self.Duration = "" if self.Duration is None else self.Duration
+        self.Duration = toolkit.uni_str(self.Duration)
         self.Duration = self.metadata.get('DURATION', "0,0").split(',')[0]
         self.Duration = self.Duration.split('.')[0]
         self.DurationSecs = self.convert_seconds(self.Duration)  # Note must save in parent
@@ -7829,8 +7855,8 @@ $ wmctrl -l -p
                                         self.Album, self.Title, self.Genre, self.Track,
                                         self.Date, self.DurationSecs, self.Duration)
             else:
-                print('mserve.py play_metadata() path:', path)
-                print('mserve.py play_metadata() Missing START_DIR:', START_DIR)
+                print('mserve.py get_ffprobe_metadata() path:', path)
+                print('mserve.py get_ffprobe_metadata() Missing START_DIR:', START_DIR)
         return self.metadata  # Not always used by caller.
     
     @staticmethod
@@ -8505,35 +8531,46 @@ $ wmctrl -l -p
         """ turn on auto scrolling, it can be overridden from saved steps or
             if left-clicking on lyrics to set lyrics line to time index.
         """
-        webscrape.delete_files()  # Cleanup last run
+        # webscrape.delete_files()  # Cleanup last run
         self.lyrics_line_count = 1  # Average about 45 lines
 
+        ''' uni_str = byte_str.encode("utf-8")  DOES NOT WORK !!! 
+                https://stackoverflow.com/questions/4182603/
+                how-to-convert-a-string-to-utf-8-in-python
+        '''
         artist = ext.shell_quote(self.Artist)  # backslash in front of '
         song = ext.shell_quote(self.Title)     # and " in variables
-
         # 'Bob Seeger & The Silver Bullet Band' finds nothing, while just
         # 'Bob Seeger' finds 'Shakedown' song.
         artist = artist.split('&', 1)[0]
+        comment = time.asctime(time.localtime(time.time()))
 
         if self.lyrics_scrape_pid == 0:
             # Only start new search if last one is finished.
-            # Redundant test since we aren't called until true.
-
-            # May 23/2023 - MusicId is 0 or 2,255 
-            #MusicId = sql.music_id_for_song(self.work_sql_key)
             MusicId = sql.music_id_for_song(self.play_make_sql_key())
-            # TODO: June 3, 2023 - MusicId can be 0 so we need to bail out
+
+            ''' MusicId is 0 when no Artist or Album '''
             if MusicId is None or MusicId == 0:
+                self.info.cast("Songs with no Artist or no Album cannot be scraped.")
                 return
-            sql.hist_add(time.time(), MusicId, g.USER, 'scrape',
-                         'parm', artist.encode("utf-8"), song.encode("utf-8"),
-                         "", 0, 0, 0.0,
-                         time.asctime(time.localtime(time.time())))
-            # June 10, 2023 - sqlite3.ProgrammingError: You must not use
-            # 8-bit bytestrings unless you use a text_factory that can
-            # interpret 8-bit bytestrings (like text_factory = str). It
-            # is highly recommended that you instead just switch your
-            # application to Unicode strings.  Add encode("utf-8")
+
+            try:
+                sql.hist_add(time.time(), MusicId, g.USER, 'scrape', 'parm',
+                             artist, song, "", 0, 0, 0.0, comment)
+                self.info.fact("Begin scraping lyrics for song: " + song)
+            except sqlite3.Error as er:
+                print('SQLite error: %s' % (' '.join(er.args)))
+                print("Exception class is: ", er.__class__)
+                print('SQLite traceback: ')
+                exc_type, exc_value, exc_tb = sys.exc_info()
+                print(traceback.format_exception(exc_type, exc_value, exc_tb))
+                ''' Move this error trapping into sql.py
+                    Then remove: import sqlite3 
+                            and: import trace 
+                '''
+                self.info.cast("sqlite3.ProgrammingError: " + artist, 'error', 'update')
+                return
+
             sql.con.commit()
             # Aug 25 fudge parameter list to skip no_parameters()
             parm = '"' + artist + ' ' + song + '" ' + str(MusicId)
@@ -8599,8 +8636,9 @@ $ wmctrl -l -p
             lines = ws_file.readlines()
             for line in lines:
                 # Skip lines with all whitespace
-                if not line.isspace():
-                    self.lyrics_score_box.insert(tk.END, line)
+                #if not line.isspace():
+                #    self.lyrics_score_box.insert(tk.END, line)
+                self.lyrics_score_box.insert(tk.END, line)  # Space is needed.
 
         self.lyrics_score_box.update()  # Is this necessary? CONFIRMED YES
         self.lyrics_score_box.configure(state="disabled")
@@ -10193,6 +10231,13 @@ IndexError: list index out of range
                     ' -t ' + str(int(self.sync_duration))
         self.sync_ffplay_pid, self.sync_ffplay_sink = \
             start_ffplay(self.work_song_path, TMP_CURR_SAMPLE, extra_opt)
+
+        ''' Normally invalid song filename - E.G. not a music file '''
+        if self.sync_ffplay_sink == "":
+            self.corrupted_music_file(self.work_song_path)
+            self.sync_ffplay_pid = 0  # Don't try to kill, it's not there
+            return  # TODO: Restore screen? Play next? What to do now?
+
         self.sync_music_start_time = time.time()  # Music is playing now
         set_volume(self.sync_ffplay_sink, 0)  # Turn off volume
         ext.stop_pid_running(self.sync_ffplay_pid)  # Pause the music
@@ -10739,6 +10784,14 @@ IndexError: list index out of range
         extra_opt = ' -ss ' + str(self.sync_start) + ' -t 2'
         self.sync_ffplay_pid, self.sync_ffplay_sink = \
             start_ffplay(self.work_song_path, TMP_CURR_SAMPLE, extra_opt)
+
+        ''' Normally invalid song filename - E.G. not a music file '''
+        if self.sync_ffplay_sink == "":
+            self.corrupted_music_file(self.work_song_path)
+            self.sync_ffplay_pid = 0  # Don't try to kill, it's not there
+            return  # TODO: Restore screen? Play next? What to do now?
+        
+
         # set_volume(self.sync_ffplay_sink, 100)  # TODO: Why is volume
         # at 0% after first line so, we have to force 100% volume now?
 
@@ -11092,7 +11145,7 @@ IndexError: list index out of range
         self.play_frm.configure(bg=self.background)
         toolkit.config_all_labels(self.play_top, fg=self.foreground,
                                   bg=self.background)
-        self.play_btn.configure(bg=self.background)
+        self.play_btn_frm.configure(bg=self.background)
         toolkit.config_all_buttons(self.play_top, fg=self.background,
                                    bg=self.foreground)
 
@@ -11120,6 +11173,12 @@ IndexError: list index out of range
         self.play_rotated_value = 0  # Set art rotation (spinning) degrees
         self.play_art_slide_count = 0  # Set art slide count
         self.play_art_fade_count = 0  # Set art fade in count
+
+    def get_music_id_for_lib_tree_id(self, Id):
+        full_path = self.real_path(int(Id))
+        sql_path = full_path[len(PRUNED_DIR):]
+        music_id = sql.music_id_for_song(sql_path)
+        return music_id  # If music_id is 0, then OsFileName is not in SQL Music Table
 
     def real_path(self, ndx):
         """
@@ -11162,9 +11221,7 @@ IndexError: list index out of range
         if self.playlists.name is not None:
             self.playlists.act_id_list = []
             for Id in self.saved_selections:
-                full_path = self.real_path(int(Id))
-                sql_path = full_path[len(PRUNED_DIR):]
-                music_id = sql.music_id_for_song(sql_path)
+                music_id = self.get_music_id_for_lib_tree_id(Id)
                 if music_id == 0:
                     toolkit.print_trace()
                     print("sql.music_id_for_song(insert_path[len(PRUNED_DIR):])")
@@ -11539,7 +11596,7 @@ IndexError: list index out of range
 
         ''' Get metadata using ffprobe '''
         # How is this working when self.ndx is for current playlist song?
-        self.play_metadata(path)
+        self.get_ffprobe_metadata(path)
         if sample == 'middle':
             # convert float self.DurationSecs to string
             start_secs = str(int(self.DurationSecs / 2))
@@ -11547,6 +11604,23 @@ IndexError: list index out of range
         else:
             start_secs = "0"
             duration_secs = str(int(self.DurationSecs))
+
+        ''' Start ffplay and get our Linux PID and Pulseaudio Input Sink # '''
+        extra_opt = ' -ss ' + start_secs + ' -t ' + duration_secs  # self.ffplay_extra_opt
+        """ June 24, 2023 - Future revision: Fade in controlled by ffplay """
+        # extra_opt = ffplay_extra_opt(start, fade_in=1)
+
+        self.sam_top_pid, self.sam_top_sink = \
+            start_ffplay(path, TMP_CURR_SAMPLE, extra_opt)
+
+        ''' Probably invalid song filename - E.G. not a music file '''
+        if self.sam_top_sink == "":
+            self.corrupted_music_file(path)
+            self.sam_top_pid = 0  # Don't try to kill, it's not there
+            return  # No window mounted yet so nothing to clean up.
+
+        set_volume(self.sam_top_sink, 0)  # Turn off volume
+        ext.stop_pid_running(self.sam_top_pid)  # Pause the music
 
         ''' Create window '''
         self.sam_top = tk.Toplevel()
@@ -11609,16 +11683,7 @@ IndexError: list index out of range
         self.sam_top.bind("<Escape>", self.sample_close)
         self.sam_top.protocol("WM_DELETE_WINDOW", self.sample_close)
 
-        ''' Start ffplay and get our Linux PID and Pulseaudio Input Sink # '''
-        extra_opt = ' -ss ' + start_secs + ' -t ' + duration_secs
-
-        self.sam_top_pid, self.sam_top_sink = \
-            start_ffplay(path, TMP_CURR_SAMPLE, extra_opt)
-
         ext.t_init("sample_song()")  # Start 10 seconds now
-        set_volume(self.sam_top_sink, 0)  # Turn off volume
-        ext.stop_pid_running(self.sam_top_pid)  # Pause the music
-
         ''' During first second reduce other sound applications 
             NOTE: at same time we increase our volume which was set at 0.
             
@@ -11630,6 +11695,7 @@ IndexError: list index out of range
         for i in range(1, 21):  # 20 steps
             if self.sam_top_is_active is False:
                 break
+            """ June 24, 2023 - Future revision: Fade in controlled by ffplay """
             our_time, err = set_volume(self.sam_top_sink, int(i * 5))  # Volume up 5%
             # To get 1-20 you need 1,21 range!
             for active_sink in old_sinks:
@@ -11665,10 +11731,7 @@ IndexError: list index out of range
             if elapsed >= fade_secs:
                 break  # Need fade out time
             try:
-                #ext.kill_pid_running(self.sam_top_pid)   # Kill the music
-                # self.sam_top.update_idletasks()        # These don't work. You
-                # root.update_idletasks()                #  can google it.
-                self.sam_top.update()  # Only way that works!
+                self.sam_top.update()
                 self.sam_top.after(100)
                 elapsed += .105
             except OSError:
@@ -11692,15 +11755,14 @@ IndexError: list index out of range
             # Turn volume back up for sinks we turned down earlier
             for active_sink in active_sinks:
                 app_sink, app_vol, app_name = active_sink
-                for old_sink in old_sinks:
-                    old_sink, old_vol, old_name = old_sink
+                for sink in old_sinks:
+                    old_sink, old_vol, old_name = sink
                     if old_sink == app_sink and not old_sink == self.sam_top_sink:
                         if old_sink == self.play_top_sink:
                             continue
                         # Sink is still active after sample 10 secs
                         percent = old_vol * i / 20  # Volume up 5%
-                        #app_time, err = set_volume(sink, value)  # June 24, 2023 seems wrong?
-                        app_time, err = set_volume(sink, percent)  # this looks right
+                        app_time, err = set_volume(old_sink, percent)
                         our_time += app_time  # Total all job times
             if our_time < .04:
                 root.after(int((.04 - our_time) * 1000))  # Sleep .04 between
@@ -12225,7 +12287,7 @@ IndexError: list index out of range
         """ Remove 'chron_sel' tag applied to last song and apply 'normal' tag
             Append 'chron_sel' tag and remove 'normal' tag from selected.
             Format extended line information to 'chron_sel' if
-            self.play_metadata() has been called for song.
+            self.get_ffprobe_metadata() has been called for song.
 
         """
         old = self.chron_tree.tag_has("chron_sel")
@@ -13645,8 +13707,10 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
 
     Thank goodness there is no thread=self.get_refresh_thread() needed so the
         Playlists() class nightmare isn't relived !
-        
-    Opening playlists slows down from <1 second to over 7 seconds. See bug:
+
+======================================================================        
+
+Opening playlists slows down from <1 second to over 7 seconds.
 
 ----------------------------------------------------------------------
 SLOWDOWN BUG: https://gitlab.gnome.org/GNOME/gnome-shell/-/issues/3125
@@ -14034,7 +14098,7 @@ Add previous_text and restart _text constants for play_top previous button.
         ''' Read all dictionaries and stuff into CustomScrolledText object '''
         for read_dict in self.list:
             ''' Calculate length of line draw '''
-            line_draw = int(self.width / MON_FONTSIZE * .6)
+            line_draw = int(self.width / MON_FONTSIZE * .63)
             self._str_to_text_frame(
                 "─" * line_draw + "┨ " + tmf.ago(read_dict['time']))
             # Use read_dict to keep self.dict intact
@@ -14361,6 +14425,14 @@ def start_ffplay(song, tmp_name, extra_opt):
                 -af "a fade=type=in:start_time=99:duration=3"
     """
 
+    ''' Sanity Check - Is it a music file? Is network online? '''
+    ext.t_init('Music File Sanity Check')
+    os.popen('ffmpeg -v error -i "' + song + '" -f null - 2>' + TMP_ERROR)
+    stat = os.stat(TMP_ERROR)
+    ext.t_end('print')
+    if stat.st_size > 0:  # Valid music files have size 0
+        return 0, ""  # No PID, no Sink
+
     ''' Get old Input Sinks before ffplay starts '''
     loop_cnt = 0
     old_sink = sink_list("ffplay")
@@ -14370,7 +14442,7 @@ def start_ffplay(song, tmp_name, extra_opt):
         # was needed but allow up to 250 ms. No need to call
         # refresh_play_top() because no song = no spinning graphics.
         loop_cnt += 1  # If we finish loop could be dead 'ffplay'
-        root.after(5)
+        root.after(5)  # Allow 250ms for old ffplay to clean up.
         old_sink = sink_list("ffplay")
     #print("start_ffplay(song, tmp_name, extra_opt) loop_cnt:",
     #      song, tmp_name, extra_opt, loop_cnt)  # Largest loop_cnt = 1
@@ -14397,7 +14469,7 @@ def start_ffplay(song, tmp_name, extra_opt):
         ''' May 22, 2023 to support kill and restart using FF / Rewind buttons '''
         if loop_cnt == 500:
             print('Waited > 2.5+ seconds, aborting start_ffplay() get sink')
-            return found_pid, found_sink
+            return found_pid, found_sink  # Invalid song file ends after .1 sec
 
         root.after(5)
 
@@ -14659,16 +14731,10 @@ def set_volume(target_sink, percent):
 def set_tv_sound_levels(start_percent, end_percent, thread=None):
     """
         Set Firefox tv sound levels to given percentage
-        Always percent 25 for going down and percent 100 for going up
+        Ending percent is 25 when going down and 100 when going up
     """
-    # Firefox may have multiple entries
-    tv_sound_list = sink_list(TV_SOUND)
-    # Gently ramp up volume across all sinks at once instead of one at a time
+    tv_sound_list = sink_list(TV_SOUND)  # Browser can have multiple entries
     step_volume(tv_sound_list, start_percent, end_percent, 10, .05, thread=thread)
-    ''' Prior to June 4, 2023 
-    for index in tv_sound_list:
-        set_volume(index, end_percent)
-    '''
 
 
 def ffmpeg_artwork(path, width, height):
@@ -14682,10 +14748,9 @@ def ffmpeg_artwork(path, width, height):
         os.remove(TMP_FFMPEG)
 
     # noinspection SpellCheckingInspection
-    result = os.popen('ffmpeg -nostdin -y -vn -an -r 1 -i ' +
-                      '"' + path + '" '
-                      + TMP_FFMPEG + ' 2>' + TMP_FFPROBE). \
-        read().strip()
+    cmd = 'ffmpeg -nostdin -y -vn -an -r 1 -i ' + '"' + path + '" ' + \
+          TMP_FFMPEG + ' 2>' + TMP_FFPROBE
+    result = os.popen(cmd).read().strip()
 
     # noinspection SpellCheckingInspection
     ''' ffmpeg options

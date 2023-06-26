@@ -3,7 +3,9 @@
 
 # ==============================================================================
 #
-#       webscrape.py - Search and scrape internet for song lyrics
+#   webscrape.py - Search and scrape internet for song lyrics
+#
+#   June 25 2023 - Use toolkit.uni_str(line)
 #
 # ==============================================================================
 
@@ -59,8 +61,8 @@ import os.path
 import json
 import time
 
-reload(sys)
-sys.setdefaultencoding('utf8')
+reload(sys)  # Without these commands, os.popen() fails on OS
+sys.setdefaultencoding('utf8')  # filenames that contain unicode characters
 
 import requests
 from six.moves import urllib            # Python 2/3 compatibility library
@@ -298,7 +300,8 @@ def google_search(search):
                 LYRICSMODE = t
             if 'www.letssingit.com' in t:
                 LETSSINGIT = t
-            if '//genius.com' in t:  # Trap out //dekgenius.com
+            if 'www.lyricfind.com' in t:  # Try substitute
+                #if '//genius.com' in t:  # Trap out //dekgenius.com
                 GENIUS = t
             if 'www.musixmatch.com' in t:
                 MUSIXMATCH = t
@@ -343,7 +346,7 @@ def add_whitelist(text):
 def scrape(search):
     global lyrics_output
     if GENIUS:
-        get_from_genius()
+        get_from_genius()  # TODO: June 25, 2023 now it is lyricfind.com
 
     # We didn't find anything in genius.com
     if len(lyrics_output) == 0:
@@ -390,10 +393,49 @@ def scrape(search):
     # Save file
     with open(SCRAPE_LYRICS_FNAME, "w") as outfile:
         for line in lyrics_output:
-            outfile.write(line + "\n")
+            outfile.write(toolkit.uni_str(line) + "\n")
 
 
 def get_from_genius():
+    """ Glitch Chis de Burgh Spaceman splits one line into three:
+
+            And over
+            a village
+            he halted his craft
+
+        Reason is HTML extra <span> and <br/> that should be ignored.
+        Screenshot of code: 'beautiful soup fails .get_text.png'
+
+[Verse 1: Chris De Burgh]
+<br>
+A spaceman came travelling on his ship from afar
+<br>
+<a href="/2172507/Chris-de-burgh-a-spaceman-came-travelling/Twas-light-years-of-time-since-his-mission-did-start"
+class="ReferentFragmentdesktop__ClickTarget-sc-110r0d9-0 cehZkS"><span class="ReferentFragmentdesktop__Highlight-sc-110r0d9-1 jAzSMw">
+'Twas light years of time since his mission did start</span></a>
+<span tabindex="0" style="position:absolute;opacity:0;width:0;height:0;pointer-events:none;z-index:-1"></span>
+<span><span tabindex="0" style="position:absolute;opacity:0;width:0;height:0;pointer-events:none;z-index:-1"></span>
+<span tabindex="0" style="position:absolute;opacity:0;width:0;height:0;pointer-events:none;z-index:-1"></span></span>
+<br>
+
+And over <a href="/2172512/Chris-de-burgh-a-spaceman-came-travelling/A-village"
+class="ReferentFragmentdesktop__ClickTarget-sc-110r0d9-0 cehZkS"><span class="ReferentFragmentdesktop__Highlight-sc-110r0d9-1 jAzSMw">
+a village</span></a>
+<span tabindex="0" style="position:absolute;opacity:0;width:0;height:0;pointer-events:none;z-index:-1"></span>
+<span><span tabindex="0" style="position:absolute;opacity:0;width:0;height:0;pointer-events:none;z-index:-1"></span>
+<span tabindex="0" style="position:absolute;opacity:0;width:0;height:0;pointer-events:none;z-index:-1"></span></span>
+he halted his craft
+<br>
+
+<a href="/2172509/Chris-de-burgh-a-spaceman-came-travelling/And-it-hung-in-the-sky-like-a-star-just-like-a-star"
+class="ReferentFragmentdesktop__ClickTarget-sc-110r0d9-0 cehZkS"><span class="ReferentFragmentdesktop__Highlight-sc-110r0d9-1 jAzSMw">
+And it hung in the sky like a star, just like a star</span></a>
+<span tabindex="0" style="position:absolute;opacity:0;width:0;height:0;pointer-events:none;z-index:-1"></span>
+<span><span tabindex="0" style="position:absolute;opacity:0;width:0;height:0;pointer-events:none;z-index:-1"></span>
+<span tabindex="0" style="position:absolute;opacity:0;width:0;height:0;pointer-events:none;z-index:-1"></span></span>
+<br><br>
+
+    """
     global lyrics_output
 
     url = GENIUS
@@ -403,13 +445,20 @@ def get_from_genius():
         for tag in soup.select('div[class^="Lyrics__Container"], \
                                .song_body-lyrics p'):
             t = tag.get_text(strip=True, separator='\n')
+            t = tag.get_text()
             if t:
-                # print(t)
                 lyrics_output.append(t)
+
+            # https://stackoverflow.com/a/17639192/6929343
+            #soup = BeautifulSoup(tag)
+            #for linebreak in soup.find_all('br'):
+            #    t = linebreak.extract()
+            #    if t:
+            #        lyrics_output.append(t)
     except:
         lyrics_output.append('Error occurred retrieving genius.com lyrics')
         lyrics_output.append(url)
-        lyrics_output.append('Search String: ' + search)
+        lyrics_output.append('Search String: ' + SEARCH)
 
 
 def get_from_azlyrics():

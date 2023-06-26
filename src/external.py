@@ -9,6 +9,7 @@ from __future__ import print_function   # Must be first import
 
 import signal                           # Trap shutdown to close files
 import os
+import subprocess
 import errno
 import time
 import datetime
@@ -52,6 +53,23 @@ def h(float_time):
     """ Print 24 hour clock with milliseconds """
     f_time = datetime.datetime.fromtimestamp(float_time)
     return f_time.strftime("%H:%M:%S.%f")
+
+
+def tail(f, n, offset=0):
+    """
+    https://stackoverflow.com/a/136280/6929343 Python 2 version give deprecation warning
+    so use Python 3 version instead.
+      
+    :param f: Filename to tail
+    :param n: Number of lines at end of file
+    :param offset: Generates error so comment out
+    :return lines: list of last n lines in the filename
+    """
+    proc = subprocess.Popen(['tail', '-n', str(n + offset), f], stdout=subprocess.PIPE)
+    lines = proc.stdout.readlines()
+    #return lines[:, -offset]
+    # TypeError: list indices must be integers, not tuple
+    return lines
 
 
 def which(cmd, path=None):
@@ -146,9 +164,7 @@ def check_pid_running(active_pid):
 
 
 def shell_quote(s):
-    """ Escape quotes in shell variable names
-        Rename to "google_search_string_massage(s)"?
-    """
+    """ Escape quotes in shell variable names """
     ''' E.G.
             def play_lyrics_from_web(self):
             """ turn on auto scrolling, it can be overridden from saved steps or
@@ -166,8 +182,8 @@ def shell_quote(s):
 
 def kill_pid_running(active_pid):
     """ Kill running process we launched earlier. """
-    if active_pid == 0:
-        print("kill_pid_running() ERROR: argument is '0'")
+    if active_pid < 2:
+        print("kill_pid_running() ERROR: argument 'active_pid' is:", active_pid)
         return 0                    # Programmer error
 
     try:
@@ -175,7 +191,7 @@ def kill_pid_running(active_pid):
         return True                 # pid killed
     except OSError:
         toolkit.print_trace()
-        print("kill_pid_running() ERROR: os.kill failed")
+        print("kill_pid_running() ERROR: os.kill failed for PID:", active_pid)
         return 0                    # pid has finished
 
 

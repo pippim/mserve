@@ -285,20 +285,54 @@ def config_all_canvas(level, **kwargs):
         config_all_canvas(v, **kwargs)
 
 
+def uni_str(s):
+    """ After much headbanging a bullet proof single call for all strings  """
+
+    '''
+        Previously used: good_str = bad_str.encode('utf-8')
+        Bullet-proof is: good_str = unicode(bad_str, 'utf-8')
+
+        Test data song by "Filter" titled "I’m Not the Only One"
+        Notice the apostrophe ’ is not '
+
+        grephere .encode | wc
+            198    1026   15219  # 198 uses of ".encode('utf-8') to upgrade
+    '''
+
+    try:
+        if PYTHON_VER == 3:
+            return s
+    except NameError:  # global name 'PYTHON_VER' is not defined
+        print("toolkit.py uni_str() exception: " +
+              "global name 'PYTHON_VER' is not defined")
+        return s
+
+    if s is None:
+        print_trace()
+        print("toolkit.py uni_str() string is None:", s, type(s))
+        return s  # Already unicode, cannot do twice or get error message:
+        # TypeError: decoding Unicode is not supported
+
+    if isinstance(s, unicode):
+        print("toolkit.py uni_str() already unicode:", s, type(s))
+        return s  # Already unicode, cannot do twice or get error message:
+        # TypeError: decoding Unicode is not supported
+
+    if isinstance(s, str):
+        return unicode(s, 'utf-8')
+
+    print("toolkit.py uni_str(): Unknown data type:", s, type(s))
+    return s
+
+
 def normalize_tcl(s):
     """
-
-        Used by bserve.py and maybe mserve.py in future.
-
         Fixes error:
-
           File "/usr/lib/python2.7/lib-tk/ttk.py", line 1339, in insert
             res = self.tk.call(self._w, "insert", parent, index, *opts)
         _tkinter.TclError: character U+1f3d2 is above the 
             range (U+0000-U+FF FF) allowed by Tcl
-
         From: https://bugs.python.org/issue21084
-
     """
     astral = re.compile(r'([^\x00-\uffff])')
     new_s = ""

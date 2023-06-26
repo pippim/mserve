@@ -18,12 +18,12 @@
 from __future__ import print_function       # Must be first import
 from __future__ import unicode_literals     # Unicode errors fix
 
-import sqlite3
 import os
 import re
 import json
 import time
 import datetime
+import sqlite3
 from collections import namedtuple, OrderedDict
 
 
