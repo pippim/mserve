@@ -13,6 +13,14 @@
 #
 #       May. 07 2023 - Convert gmtime to localtime. Before today needs update.
 #       Jun. 04 2023 - Use OsFileNameBlacklist() class for reading by song
+#
+#   TODO:
+
+#    Need to fix file modification time which will make it greater than
+#    creation time (not birth time which is unused) which is the time it
+#    was copied to the directory and permissions were established. Use
+#    ID3 tag: CREATION_TIME : 2012-08-20 17:06:42
+#
 #==============================================================================
 
 from __future__ import print_function       # Must be first import
@@ -264,22 +272,22 @@ def open_db():
     ''' Functions to fix errors in SQL database '''
     # fd = FixData("Thu Jun 10 23:59:59 2023")  # Class for common fix functions
 
+    # fd.del_music_ids(3939, 5000, update=False)  # Leave range 3939-5000 for awhile
     # Patch run Jun 02, 2023 with "update=True". 39 Music Ids deleted 3908->3946
     # Patch run Jun 07, 2023 with "update=True". 1 Music Ids deleted 2186->2186
     # Patch run Jun 10, 2023 with "update=True". 160 Music Ids deleted 3908->4067
     # Jun 11, 2023 Duplicate "The Very Best Things". 14 Music Ids deleted 1092->1105
     # Jun 11, 2023 Duplicate "The Very Best Things". 14 Music Ids deleted 1106->1119
-    # fd.del_music_ids(3939, 5000, update=False)  # Leave range 3939-5000 for awhile
 
-    # Patch run May 23, 2023 with "update=True". 66 corrupt scrape-parm deleted
     #fd.fix_scrape_parm(update=False)
+    # Patch run May 23, 2023 with "update=True". 66 corrupt scrape-parm deleted
 
-    # Patch run May 15, 2023 with "update=True". 290 duplicate meta-edit deleted
     #fd.fix_meta_edit(update=False)
+    # Patch run May 15, 2023 with "update=True". 290 duplicate meta-edit deleted
 
+    #fd.fix_utc_dates(update=False)
     # NEVER RUN fd.fix_utc_dates() AGAIN OR PERMANENT DAMAGE !!!!!!!!!!!!!!!
     # Patch run May 12, 2023 with "update=True". Thousands converted utc to local
-    #fd.fix_utc_dates(update=False)
 
 
 def close_db():

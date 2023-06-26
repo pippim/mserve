@@ -43,7 +43,12 @@ except ImportError:
     PYTHON_VER = "2"
 # print ("Python version: ", PYTHON_VER)
 
-import subprocess32 as sp
+try:
+    import subprocess32 as sp
+    SUBPROCESS_VER = '32'
+except ImportError:  # No module named subprocess32
+    import subprocess as sp
+    SUBPROCESS_VER = 'native'
 import re
 import time
 from datetime import datetime

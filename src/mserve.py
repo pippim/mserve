@@ -45,7 +45,7 @@
 #       Jun. 18 2023 - Expanding/Collapsing Information Centre. InfoCentre()
 #       June 21 2023 - 'M' splash screen disappears as late as possible.
 #       June 23 2023 - Antonia's request to highlight hovered chron_tree row.
-#       June 25 2023 - Trap corrupt music files and device off-line states.
+#       June 25 2023 - Check corrupt music files and device off-line.
 
 # noinspection SpellCheckingInspection
 """
@@ -58,7 +58,6 @@
 #     BUGS:
 #       Close playlist and use favorites doesn't clear_all_checks
 #       Shuffling Favorites then opening playlist will undo shuffle. Backup!!
-#       Pruned songs can be added to Playlist
 
 #     TODO:
 #       Save Playlist As... - If playlist created with 'new' option then a
@@ -83,32 +82,40 @@
 #   4. Artist/Album/Title tree (aat_tree)  # probably subject to typo's
 #   5. Collapsed OS walk (cow_tree)  # Sounds cool plus CoW used in industry
 #   6. Grouped Song Files (gsf_tree)  # Same problem as osf and sounds like groupies
+#   7. All Music Files (all_tree)  #
 
 #   Rename  'self.saved_selections' -> 'self.play_order_iid'
 #           'self.saved_selections' -> 'self.play_iid_seqs'
-#           'self.saved_selections' -> 'self.playlist_iid'
+#           'self.saved_selections' -> 'self.playlist_iids'
 #           'self.saved_selections' -> 'self.play_lib_iid'
 #           'self.saved_selections' -> 'self.sel_lib_iids'
 #           'self.saved_selections' -> 'self.sel_lib_tree_iids'
-#           'self.saved_playlist'   -> 'self.playlist_paths'  # Already DONE :(
-#               Must reverse above too close to 'playlists' class created in June 2023
+#           'self.saved_selections' -> 'self.play_iids'
+
+#           'self.saved_playlist'   -> 'self.playlist_paths'    # Already DONE
 #           'self.playlist_paths'   -> 'self.sel_lib_paths'
 #           'self.playlist_paths'   -> 'self.sel_lib_tree_paths'
+#           'self.playlist_paths'   -> 'self.play_paths'
+#           'self.playlist_paths'   -> 'self.fav_paths'         # Misleading when Playlists()
+
 #           'self.song_list'        -> 'self.lib_tree_paths'
 #           'self.song_list'        -> 'self.lib_song_paths'
+#           'self.song_list'        -> 'self.all_paths'         # Already DONE
+
 #           'self.ndx'              -> 'self.curr_iid_ndx'
 #           'self.ndx'              -> 'self.play_curr_ndx'
 #           'self.ndx'              -> 'self.play_ndx'
 #           'self.ndx'              -> 'self.seq_ndx'
 #           'self.ndx'              -> 'self.sel_ndx'
 #           'self.ndx'              -> 'self.iid_ndx'
-#           'self.ndx'              -> 'self.song_ndx'
 #           New Variable            -> 'self.play_curr_iid'     # self.saved_selections[self.ndx]
 #           New Variable            -> 'self.sel_iid'           # self.saved_selections[self.ndx]
+#           New Variable            -> 'self.sel_iid'           # self.saved_selections[self.ndx]
+#           New Variable            -> 'self.play_iid'          # self.saved_selections[self.ndx]
 #           'START_DIR'             -> 'MUSIC_DIR'              X shadows music_dir just created
 
 #       RENAME VARIABLES SHORT LIST:
-#           'self.song_list'        -> 'self.lib_song_paths'
+#           'self.all_paths'        -> 'self.lib_song_paths'
 
 #                       THIS GROUP
 #           'self.playlist_paths'   -> 'self.sel_lib_paths'
@@ -125,7 +132,7 @@
 #           'self.ndx'              -> 'self.curr_lib_ndx'
 #           New Variable            -> 'self.curr_lib_iid'      # = self.saved_selections[self.ndx]
 #           New Variable            -> 'self.curr_lib_path'     # = self.playlist_paths[self.ndx]
-#                                      Same as self.song_list[int(self.saved_selections[self.ndx])
+#                                      Same as self.all_paths[int(self.saved_selections[self.ndx])
 
 #                       THIS GROUP
 #           'self.ndx'              -> 'self.lib_curr_ndx'
@@ -135,10 +142,15 @@
 #           'self.ndx'              -> 'self.curr_sel_ndx'
 #           New Variable            -> 'self.curr_sel_iid'      # = self.saved_selections[self.ndx]
 #           New Variable            -> 'self.curr_sel_path'     # = self.playlist_paths[self.ndx]
-#                                      Same as self.song_list[int(self.saved_selections[self.ndx])
+#                                      Same as self.all_paths[int(self.saved_selections[self.ndx])
 
 #       RENAME FUNCTIONS:
 #           'self.song_set_ndx()'   -> 'self.set_sel_ndx()'
+
+#    Need to fix file modification time which will make it greater than
+#       creation time (not birth time which is unused) which is the time it
+#       was copied to the directory and permissions were established. Use
+#       ID3 tag: CREATION_TIME : 2012-08-20 17:06:42
 
 #   Location processing is 1500 lines and really is never used after setup. Move
 #       to separate file? Add generic processing for synchronizing programming
@@ -329,7 +341,12 @@ except ImportError:  # Python 2
 #
 
 import signal  # Shutdown signals
-import subprocess32 as sp
+try:
+    import subprocess32 as sp
+    SUBPROCESS_VER = '32'
+except ImportError:  # No module named subprocess32
+    import subprocess as sp
+    SUBPROCESS_VER = 'native'
 import threading
 import sys
 reload(sys)  # June 25, 2023 - Without these commands, os.popen() fails on OS
@@ -866,6 +883,7 @@ class PlayCommonSelf:
 
         self.play_top_pid = 0               # Integer for ffplay PID
         self.play_top_sink = ""             # String for ffplay Pulse Audio
+        self.file_ctl = None                # instance of FileControl() class
         self.metadata = None                # {}
         self.Artist = None                  # metadata.get('ARTIST', "None")
         self.Album = None                   # metadata.get('ALBUM', "None")
@@ -1078,8 +1096,8 @@ class MusicTree(PlayCommonSelf):
                                      toplevel=None, width=1000)
         self.ndx = 0  # Start song index
         self.play_from_start = True  # We start as normal
-        self.song_list = song_list
-        # self.song_list = song_list = SORTED_LIST = make_sorted_list(START_DIR)
+        self.all_paths = song_list
+        # self.all_paths = song_list = SORTED_LIST = make_sorted_list(START_DIR)
 
         self.lib_top = tk.Toplevel()
         self.lib_top_is_active = True
@@ -1199,6 +1217,10 @@ class MusicTree(PlayCommonSelf):
             pending=self.get_pending_cnt_total, enable_lib_menu=self.enable_lib_menu,
             thread=self.get_refresh_thread, play_close=self.play_close,
             display_lib_title=self.display_lib_title, info=self.info)
+
+        ''' Last File Access Time overrides. E.G. Look but do not touch. '''
+        self.file_ctl = FileControl(self.lib_top, self.info)
+
         #self.build_lib_menu()  # Menu bar with File-Edit-View dropdown submenus
         self.set_title_suffix()  # At this point (June 18, 2023) it will be "Favorites"
 
@@ -1630,7 +1652,7 @@ class MusicTree(PlayCommonSelf):
                 continue
             full_path = PRUNED_DIR + d['OsFileName']
             self.playlist_paths.append(full_path)
-            ndx = self.song_list.index(full_path)
+            ndx = self.all_paths.index(full_path)
             iid = str(ndx)
             self.saved_selections.append(iid)
 
@@ -1874,7 +1896,7 @@ class MusicTree(PlayCommonSelf):
 
         for delete_iid in self.pending_deletions:
 
-            delete_path = self.song_list[int(delete_iid)]
+            delete_path = self.all_paths[int(delete_iid)]
             try:
                 delete_play_path_ndx = self.playlist_paths.index(delete_path)
                 delete_play_ndx_list.append(delete_play_path_ndx)
@@ -1965,7 +1987,7 @@ class MusicTree(PlayCommonSelf):
         insert_play_paths = []
         insert_music_ids = []
         for insert_iid in self.pending_additions:
-            insert_path = self.song_list[int(insert_iid)]
+            insert_path = self.all_paths[int(insert_iid)]
             insert_play_paths.append(insert_path)
             dprint("Building playlist path:", insert_path)
 
@@ -2101,8 +2123,10 @@ class MusicTree(PlayCommonSelf):
     def get_refresh_thread(self):
         if self.play_top_is_active:
             thread = self.refresh_play_top
-        else:
+        elif self.lib_top_is_active:
             thread = self.refresh_lib_top
+        else:
+            thread = None  # June 26 2023 - Return None when destroyed
         return thread
 
     def pending_reset(self, ShowInfo=True):
@@ -2152,7 +2176,7 @@ class MusicTree(PlayCommonSelf):
         # print('PRUNED_COUNT:', PRUNED_COUNT)
         start_dir_sep = start_dir_sep - PRUNED_COUNT
 
-        for i, os_name in enumerate(self.song_list):
+        for i, os_name in enumerate(self.all_paths):
 
             # split /mnt/music/Artist/Album/Song.m4a into list
             '''
@@ -2281,7 +2305,7 @@ class MusicTree(PlayCommonSelf):
         # print('PRUNED_COUNT:', PRUNED_COUNT)
         start_dir_sep = start_dir_sep - PRUNED_COUNT
 
-        for i, os_name in enumerate(self.song_list):
+        for i, os_name in enumerate(self.all_paths):
 
             # split /mnt/music/Artist/Album/Song.m4a into list
             '''
@@ -3661,7 +3685,7 @@ class MusicTree(PlayCommonSelf):
         # do_debug_steps = 0 # DEBUGGING
         last_i = 0
 
-        for i, os_name in enumerate(self.song_list):
+        for i, os_name in enumerate(self.all_paths):
             self.cmp_top.update()  # Allow close button to abort right away
 
             # Experimental doesn't work! Solution is to make this function
@@ -4083,8 +4107,18 @@ class MusicTree(PlayCommonSelf):
 
     def set_all_songs(self, Id, action, event):
         """ set all songs selected or unselected """
+        last_time = time.time()
+        thread = self.get_refresh_thread()
         for child in self.lib_tree.get_children(Id):
-            '''selected column may be "" or "Adding" or "No. 999" '''
+            ''' Preparing for future. May probe each song for duration '''
+            now = time.time()
+            elapsed = now - last_time  # TODO: make two line function
+            if elapsed > 30:  # TODO: make three line function
+                # Refresh takes about 3 ms on average to run
+                thread()  # Call refresh thread
+                last_time = now
+
+            ''' Selected column may be "" or "Adding" or "No. 999" '''
             selected = self.lib_tree.item(child)['values'][2]
 
             if action == "Add" and not self.validate_song_addition(child, event):
@@ -4686,7 +4720,7 @@ $ wmctrl -l -p
         shutil.copy(lc.FNAME_LAST_PLAYLIST, lc.FNAME_LAST_PLAYLIST + ".bak")
 
         SORTED_LIST = SortedList2
-        self.song_list = SORTED_LIST
+        self.all_paths = SORTED_LIST
         self.lib_tree.delete(*self.lib_tree.get_children())
         # Copied from __init__
         dtb = message.DelayedTextBox(title="Building music view",
@@ -5053,7 +5087,7 @@ $ wmctrl -l -p
 
         '''  🖸 (1f5b8) - Update Metadata '''
         self.mus_view_btn6 = tk.Button(frame3, text="🖸  Update Metadata",
-                                       width=g.BTN_WID - 2, command=self.missing_artwork)
+                                       width=g.BTN_WID, command=self.missing_artwork)
         self.mus_view_btn6.grid(row=0, column=5, padx=2)
         self.tt.add_tip(self.mus_view_btn6,
                         "Apply metadata & show missing artwork.", anchor="ne")
@@ -5171,7 +5205,7 @@ $ wmctrl -l -p
         """
         if self.mus_search:
             self.mus_search.close()
-        #thread = self.get_refresh_thread()
+
         answer = message.AskQuestion(
             self.mus_top, thread=self.get_refresh_thread(),
             title="Songs with no Artwork confirmation - mserve", confirm='no',
@@ -5203,9 +5237,11 @@ $ wmctrl -l -p
             "Metadata unchanged: " + "{:,}".\
             format(self.meta_scan.meta_data_unchanged) + "\n\n" + \
             "Click 'OK' to close. Then reload window for metadata refresh.\n"
-        #thread = self.get_refresh_thread()
-        message.ShowInfo(self.mus_top, "Update Metadata & Metadata Summary", text, 
+
+        title = "Update Metadata & Metadata Summary"
+        message.ShowInfo(self.mus_top, title, text, 
                          thread=self.get_refresh_thread())
+        self.info.fact(title + "\n\n" + text)
 
     def missing_artwork_callback(self, values):
         """ Find Songs that have no artwork and update metadata
@@ -5213,6 +5249,7 @@ $ wmctrl -l -p
             The .CheckArtwork() function will call self.refresh_play_top()
         """
         os_filename = self.mus_view.column_value(values, 'os_filename')
+        # TODO: Verify last access time is not effected
         meta_dict = self.get_ffprobe_metadata(START_DIR + os_filename)
         # Updates SQL Metadata too! plus self.meta_update_succeeded 
         self.meta_scan_dtb.update(os_filename)  # Refresh screen with song file name
@@ -5659,6 +5696,7 @@ $ wmctrl -l -p
         """
         #print("pretty:", pretty.dict)
         filename = START_DIR + pretty.dict['OS Filename']
+        # TODO: Verify last access time is not touched
         meta = self.get_ffprobe_metadata(filename, update_sql=False)
         #print('meta:', meta)
         pretty = sql.PrettyMeta(meta)
@@ -5723,7 +5761,7 @@ $ wmctrl -l -p
         self.lib_top.lift()  # Raise in stacking order
 
         # TODO: Faster performance and less code using:
-        # self.song_list.index(PRUNED_DIR + d['OsFileName'])
+        # self.all_paths.index(PRUNED_DIR + d['OsFileName'])
 
         groups = d['OsFileName'].split(os.sep)
         Artist = groups[0]
@@ -6025,7 +6063,7 @@ $ wmctrl -l -p
                 continue
 
             ndx = int(s_ndx)  # string to integer
-            save_songs.append(self.song_list[ndx])  # Get full path
+            save_songs.append(self.all_paths[ndx])  # Get full path
 
         with open(lc.FNAME_LAST_PLAYLIST, "wb") as f:
             pickle.dump(save_songs, f)  # Save song list
@@ -6161,11 +6199,11 @@ $ wmctrl -l -p
         spam_count = 0
         for song in self.playlist_paths:
             try:
-                ndx = self.song_list.index(song)
+                ndx = self.all_paths.index(song)
             except ValueError:
                 if spam_count < 10:
                     print('Not found:', song)
-                    # print(self.song_list[spam_count])
+                    # print(self.all_paths[spam_count])
                     spam_count += 1
                 continue
             iid = str(ndx)
@@ -7013,7 +7051,15 @@ $ wmctrl -l -p
             step_volume(self.play_top_sink, self.max_volume_override(),
                         25, 10, .05, thread=self.play_vu_meter)
             ext.stop_pid_running(self.play_top_pid)  # Pause the music
+
+            #ext.t_init('get_curr_ffplay_secs(TMP_CURR_SONG)' + TMP_CURR_SONG)
             self.secs_before_pause = get_curr_ffplay_secs(TMP_CURR_SONG)
+            #ext.t_end('print')  # 0.0004520416 then 0.0004031658 then 0.0001831055
+
+            #ext.t_init('work_list = ext.tail(TMP_CURR_SONG, 1)')
+            #work_list = ext.tail(TMP_CURR_SONG, 1)
+            #ext.t_end('print')  # 0.0261890888 then 0.0173239708 then 0.0082201958
+
             self.pp_state = "Paused"  # Was Playing now is Paused
             self.set_pp_button_text()
             if self.play_hockey_active:
@@ -7423,6 +7469,7 @@ $ wmctrl -l -p
 
         ''' Populate display with metadata using ffprobe '''
         ext.t_init("self.get_ffprobe_metadata()")
+        # TODO: Verify last access time is not touched
         self.get_ffprobe_metadata(self.current_song_path)
         #global E_WIDTH
         E_WIDTH = 32
@@ -7759,15 +7806,39 @@ $ wmctrl -l -p
                                       " seconds of: " + str(self.saved_DurationSecs))
 
     def get_ffprobe_metadata(self, path, update_sql=True):
-        """ WARNING: Called from multiple places
-            Get metadata for current song
+        """ Get metadata for current song
             NOTE: .wav files have no metadata so when Artist, Album or Track
                   is None use OS filename segments.
+
+        TODO: 'ffplay' will reset last access time. We don't want to do that here
+              Use 'touch' command
+
+Start by resetting last access time each time ffplay starts or ffmpeg is run.
+
+If duration of ffplay is less than 10 seconds total run time - total pause seconds
+ then allow. Otherwise reset time with each pause, next, restart.
+
+Grab initial in set_play_ndx() function but reset last song first.
+
+How long is time buffer in ffplay before it reads next chunk of time?
+
+Just stat the file after starting, pausing, unpausing, killing and use info.fact
+to record. It's all easy peasy now!
+
+
+CODE:
+
+stat = os.stat(full_path)  # Get all stat attributes of file
+self.update_song_last_play_time(iid)  # Update treeview
+os.popen('touch -a -c ' + '"' + full_path + '"')  # -a = access time
+
         """
         # Called by self.sam_top when self.play_top may NOT be active!
         # print('mserve.py get_ffprobe_metadata() path:', path)
         # if not self.play_top_is_active: return             # Play window closed?
 
+        self.file_ctl.new(path)
+        self.file_ctl.cast()
         self.metadata = OrderedDict()
         ext.t_init("ffprobe")
         cmd = 'ffprobe ' + '"' + path + '"' + ' 2>' + TMP_FFPROBE
@@ -7805,7 +7876,7 @@ $ wmctrl -l -p
 
         # Get OS path as Artist, Album, Title in case meta doesn't exist.
         # list_index = int(self.saved_selections[self.ndx])  # May 2, 2023 No self.ndx
-        # rpath = self.song_list[list_index].split(os.sep)  # when called by sample 10 secs
+        # rpath = self.all_paths[list_index].split(os.sep)  # when called by sample 10 secs
         rpath = path.split(os.sep)  # May 2, 2023 - replacement for metadata
         # print('mserve.py get_ffprobe_metadata() rpath:', rpath[-3], rpath[-2], rpath[-1])
 
@@ -7857,6 +7928,7 @@ $ wmctrl -l -p
             else:
                 print('mserve.py get_ffprobe_metadata() path:', path)
                 print('mserve.py get_ffprobe_metadata() Missing START_DIR:', START_DIR)
+        self.file_ctl.close()
         return self.metadata  # Not always used by caller.
     
     @staticmethod
@@ -8868,7 +8940,7 @@ $ wmctrl -l -p
             Lyrics were either retrieved from the internet (takes 2 seconds) or
             from SQL row in table Music indexed by OsFileName. There may be
             duplicates so read until Music.OsArtist and Music.OsAlbum match as
-            well. Use SORTED_LIST or self.song_list
+            well. Use SORTED_LIST or self.all_paths
 
         """
         if self.lyrics_edit_is_active:
@@ -11185,7 +11257,7 @@ IndexError: list index out of range
             Convert '/(NoArtist)/<No Album>/song.m4a' to: '/song.m4a'
             Regular '/Artist/Album/song.m4a' isn't changed.
         """
-        rpath = self.song_list[ndx]
+        rpath = self.all_paths[ndx]
         # Strip out /<No Artist> and /<No Album> strings added earlier
         rpath = rpath.replace(os.sep + NO_ARTIST_STR, '', 1)
         rpath = rpath.replace(os.sep + NO_ALBUM_STR, '', 1)
@@ -12775,6 +12847,173 @@ class Volume:
 
 # ==============================================================================
 #
+#   FileControl() Last File Access Time overrides. E.G. Look but do not touch.
+#
+# ==============================================================================
+
+class FileControl:
+    """ Usage:
+
+        self.file_ctl = FileControl(path)
+
+        Functions:
+            close(self):
+
+    """
+
+    def __init__(self, parent, info=None):
+        """
+
+            stat.ST_UID - User id of the owner.
+            stat.ST_GID - Group id of the owner.
+            stat.ST_SIZE - Size in bytes of a plain file; amount of data waiting on some special files.
+            stat.ST_ATIME - Time of last access.
+            stat.ST_MTIME - Time of last modification.
+            stat.ST_CTIME - The “ctime” as reported by the operating system.
+
+        """
+        ''' self-ize parameter list '''
+        self.tk_top = parent        # Tkinter Toplevel window used by parent
+        self.info = info            # Parent's InfoCentre() instance
+
+        ''' Fields for when a new file is declared 
+
+            When > 50 % of song played (Fast Forward doesn't count), then allow
+            last access time to stick. Otherwise reset to saved settings when
+            file was declared with .new(path)
+             
+            functions .log('start'), .log('stop') and .log('end') populated
+            self.statuses and last instance is found in self.state.
+        '''
+        self.statuses = None        # List of tuples (status, time.time())
+        self.state = None           # == self.status[-1][0] - start/stop/end
+        self.stat = os.stat(path)   # Reset with each .new(path) call
+
+        ''' Future fields for when FileControl() controls music too. '''
+        self.action = None          # Action to perform ??? UNDEFINED
+        self.pid = 0                # Linux Process Identification Number (Job #)
+        self.sink = ""              # Pulse Audio Output Sink "999L" string
+        self.vol = 100              # Output volume level
+
+    def new(self, path, action=None):
+        if self.path is not None:
+            if self.info is not None:
+                self.info.cast("FileControl.new() self.path is not None:", self.path)
+            self.close()
+
+        self.path = path
+        self.action = action        # Action to perform ??? UNDEFINED
+        self.stat = os.stat(path)   # Keep original stat until .close()
+
+    def log(self, state):
+        """
+
+        :param state: 'start' = Playing, 'stop' = Paused, 'end' = killed
+        :return: True but later could be False for sanity check errors
+        """
+        last_state = self.state
+        self.state = state
+        state_tuple = (self.state, time.time())
+        self.statuses.append(state_tuple)
+        if self.state == 'start' and (last_state is None or last_state == 'stop'):
+            return True
+        if self.state == 'stop' and last_state == 'start':
+            return True
+        if self.state == 'kill' and (last_state == 'start' or last_state == 'stop'):
+            return True
+
+        text = "FileControl.log(state) programming error.\n\n"
+        text += "New state passed is:\t" + self.state
+        text += "\nBut last state was:\t" + last_state
+        text += "\n\nCheck console log for traceback"
+        toolkit.print_trace()
+        self.cast(text, 'error', 'add')
+
+    def cast(self):
+        """ Only call when InfoCentre() instance passed during __init__
+                stat.ST_UID - User id of the owner.
+                stat.ST_GID - Group id of the owner.
+                stat.ST_SIZE - Size in bytes of a plain file; amount of data waiting on some special files.
+                stat.ST_ATIME - Time of last access.
+                stat.ST_MTIME - Time of last modification.
+                stat.ST_CTIME - The “ctime” as reported by the operating system.
+
+
+        """
+        if self.info is None:
+            print("Cannot cast when no InfoCentre() instance passed during __init__")
+            return
+
+        text = self.path + "\n"
+        text += "Access Time:\t" + time.asctime(time.localtime(self.stat.st_atime))
+        text += "\t\t\t\tUser ID:\t" + str(self.stat.st_uid) + "\n"
+        text += "Modify Time:\t" + time.asctime(time.localtime(self.stat.st_mtime))
+        text += "\t\t\t\tGroup ID:\t" + str(self.stat.st_gid) + "\n"
+        text += "Create Time:\t" + time.asctime(time.localtime(self.stat.st_ctime))
+        text += "\t\t\t\tInode No:\t" + str(self.stat.st_ino) + "\n"
+        self.info.cast(text)
+
+    def close(self):
+        """ 
+            When > 50 % of song played (Fast Forward doesn't count), then allow
+            last access time to stick. Otherwise reset to saved settings when
+            file was declared with .new(path)
+             
+            functions .log('start'), .log('stop') and .log('end') populated
+            self.statuses and last instance is found in self.state.
+
+        :return: 
+        """
+        self.path = None
+        self.stat = None
+        self.status = None      # List of tuples with each status & time
+
+    def restore(self):
+        """ Restore file to original access time """
+        old_atime = self.stat.st_atime
+
+
+# ==============================================================================
+#
+#       Refresh() class.
+#
+# ==============================================================================
+
+class Refresh:
+    """ Usage:
+
+        self.refresh = Refresh(30, self.get_refresh_thread)
+
+        Functions:
+            check(self):
+
+    """
+
+    def __init__(self, ms, get_thread_func):
+        """
+
+        """
+        ''' self-ize parameter list '''
+        self.ms = ms
+        self.get_thread_func = get_thread_func
+
+        ''' Working fields '''
+        self.last_time = time.time()
+
+    def check(self):
+        now = time.time()
+        elapsed = now - self.last_time
+        if elapsed >= ms:
+            thread = self.get_thread_func()  # Initial thread can change
+            thread()  # Update window animations and check for input
+            # NOTE: Should be option to delay new checkbox when current running
+            self.last_time = now  # Do we want current time instead ???
+            return True  # Right time for refresh
+        return False  # Time isn't right
+
+
+# ==============================================================================
+#
 #       Playlist() class.
 #
 # ==============================================================================
@@ -12899,7 +13138,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                  apply_callback=None, enable_lib_menu=None, play_close=None,
                  tooltips=None, thread=None, display_lib_title=None):
         """
-            TODO: How to change self.play_top_title text when playlist changes?
+
         """
         ''' self-ize parameter list '''
         self.parent = parent  # FOR NOW self.parent MUST BE: lib_top
@@ -14491,6 +14730,12 @@ def get_curr_ffplay_secs(tmp_name):
     last_time = 0
     second_last = 0
     time_count = 0
+    ''' File format (approximately the last 256 bytes positioned to with seek).
+        79.21 M-A:  0.000 fd=   0 aq=   23KB vq=    0KB sq=    0B f=0/0   \r  # 69 bytes  
+        79.24 M-A:  0.000 fd=   0 aq=   23KB vq=    0KB sq=    0B f=0/0   \r  
+        79.27 M-A: -0.000 fd=   0 aq=   23KB vq=    0KB sq=    0B f=0/0   \r  
+        79.30 M-A: -0.000 fd=   0 aq=   22KB vq=    0KB sq=    0B f=0/0   \r'  # 69 bytes    
+    '''
     with open(tmp_name, "rb") as f:
         f.seek(-256, os.SEEK_END)  # 256 from end. Note minus sign
         x = f.read()

@@ -61,7 +61,7 @@ import os.path
 import json
 import time
 
-reload(sys)  # Without these commands, os.popen() fails on OS
+reload(sys)  # June 25, 2023 - Without these commands, os.popen() fails on OS
 sys.setdefaultencoding('utf8')  # filenames that contain unicode characters
 
 import requests
@@ -300,13 +300,14 @@ def google_search(search):
                 LYRICSMODE = t
             if 'www.letssingit.com' in t:
                 LETSSINGIT = t
-            if 'www.lyricfind.com' in t:  # Try substitute
-                #if '//genius.com' in t:  # Trap out //dekgenius.com
+            if '//genius.com' in t:  # Trap out //dekgenius.com
                 GENIUS = t
             if 'www.musixmatch.com' in t:
                 MUSIXMATCH = t
             if 'www.lyricsplanet.com' in t:  # Not sure if '//' or 'www.' prefix
                 LYRICSPLANET = t
+
+            #if 'www.lyricfind.com' in t:  # Try substitute
 
             # New method February 21/2021
             for i, website in enumerate(WEBSITE_LIST):

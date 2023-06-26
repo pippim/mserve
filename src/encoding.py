@@ -51,7 +51,12 @@ except ImportError:  # Python 2
     PYTHON_VER = "2"
 # print ("Python version: ", PYTHON_VER)
 
-import subprocess32 as sp
+try:
+    import subprocess32 as sp
+    SUBPROCESS_VER = '32'
+except ImportError:  # No module named subprocess32
+    import subprocess as sp
+    SUBPROCESS_VER = 'native'
 # import threading
 import re
 import time
@@ -2484,15 +2489,21 @@ class ObsoleteCustomScrolledText(scrolledtext.ScrolledText):
 
 # ==============================================================================
 #
-#       MetaScan class - Search Metadata
+#       MetaScan class - Search Metadata for Artwork
 #
 # ==============================================================================
 
 class MetaScan:
-    """ Search Metadata
+    """ Search Metadata for artwork
+
         Example DATA:
-            STREAM #0:0(und): Audio: aac (LC) (mp4a / 0x6134706D), 44100 Hz, stereo, fltp, 270 kb/s (default)
+
+            STREAM #0:0(und): Audio: aac (LC) (mp4a / 0x6134706D), 44100 Hz, 
+                stereo, fltp, 270 kb/s (default)
+
             STREAM #0:1: Video: png, rgba(pc), 225x225, 90k tbr, 90k tbn, 90k tbc
+
+        NOTE: Only used by mserve.py. May want to relocate there???
 
     """
 
@@ -2509,7 +2520,7 @@ class MetaScan:
         self.meta_dict = None
 
     def CheckArtwork(self, meta_dict):
-        """ :param meta_dict Key/Value Pairs of ID tags 
+        """ :param meta_dict: Key/Value Pairs of ID tags 
             :returns True if Song File has artwork, False if "Video" not found
         """
         if self.thread:
@@ -2526,7 +2537,7 @@ class MetaScan:
         return False
 
     def ChangedCounts(self, flag):
-        """ :parameter meta_dict Key/Value Pairs of ID tags """
+        """ :parameter flag: True =  """
         if flag:
             self.meta_data_updated += 1
         else:

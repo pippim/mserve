@@ -9,7 +9,13 @@ from __future__ import print_function   # Must be first import
 
 import signal                           # Trap shutdown to close files
 import os
-import subprocess
+try:
+    import subprocess32 as sp
+    SUBPROCESS_VER = '32'
+except ImportError:  # No module named subprocess32
+    import subprocess as sp
+    SUBPROCESS_VER = 'native'
+
 import errno
 import time
 import datetime
@@ -59,13 +65,15 @@ def tail(f, n, offset=0):
     """
     https://stackoverflow.com/a/136280/6929343 Python 2 version give deprecation warning
     so use Python 3 version instead.
-      
+
+    sp is alias for subprocess32 or subprocess
+
     :param f: Filename to tail
     :param n: Number of lines at end of file
     :param offset: Generates error so comment out
     :return lines: list of last n lines in the filename
     """
-    proc = subprocess.Popen(['tail', '-n', str(n + offset), f], stdout=subprocess.PIPE)
+    proc = sp.Popen(['tail', '-n', str(n + offset), f], stdout=sp.PIPE)
     lines = proc.stdout.readlines()
     #return lines[:, -offset]
     # TypeError: list indices must be integers, not tuple
@@ -97,7 +105,7 @@ def launch_command(ext_name, toplevel=None):
         UPGRADE: https://stackoverflow.com/a/19152273/6929343
         # Can't use shell=True if you want the pid of `du`, not the
         # shell, so we have to do the redirection to file ourselves
-        proc = subprocess.Popen("/usr/bin/du folder", stdout=file("1.txt", "ab"))
+        proc = sp.Popen("/usr/bin/du folder", stdout=file("1.txt", "ab"))
         print "PID:", proc.pid
         print "Return code:", proc.wait()
     """
