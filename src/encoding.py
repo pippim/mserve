@@ -2547,7 +2547,7 @@ class MetaScan:
         return False
 
     def ChangedCounts(self, flag):
-        """ :parameter flag: True =  """
+        """ :parameter flag: Can be True, False or None """
         if flag:
             self.meta_data_updated += 1
         else:

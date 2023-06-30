@@ -1,6 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from __future__ import print_function  # Must be first import
+from __future__ import with_statement  # Error handling for file opens
+
 # ==============================================================================
 #
 #       mserve.py (Music Server) - Manage Music in multiple locations
@@ -49,8 +52,7 @@
 #       June 26 2023 - New classes Refresh() and FileControl()
 
 # noinspection SpellCheckingInspection
-'''
-
+"""
 # TODO:
 # -----------------------------------------------------------------------------
 
@@ -85,61 +87,61 @@
 #   6. Grouped Song Files (gsf_tree)  # Same problem as osf and sounds like groupies
 #   7. All Music Files (all_tree)  # Difficult if using "sel". E.G. "sel_all_ndx"
 
-RENAME VARIABLES:
-    'self.saved_selections' -> 'self.play_order_iid'
-    'self.saved_selections' -> 'self.play_iid_seqs'
-    'self.saved_selections' -> 'self.playlist_iids'
-    'self.saved_selections' -> 'self.play_lib_iid'
-    'self.saved_selections' -> 'self.sel_lib_iids'
-    'self.saved_selections' -> 'self.sel_lib_tree_iids'
-    'self.saved_selections' -> 'self.play_iids'
-    'self.saved_selections' -> 'self.select_iids'
-    'self.saved_selections' -> 'self.sel_iids'
-    'self.saved_selections' -> 'self.fav_iid_list'
-    'self.saved_selections' -> 'self.play_iid_list'
+#   RENAME VARIABLES:
+#       'self.saved_selections' -> 'self.play_order_iid'
+#       'self.saved_selections' -> 'self.play_iid_seqs'
+#       'self.saved_selections' -> 'self.playlist_iids'
+#       'self.saved_selections' -> 'self.play_lib_iid'
+#       'self.saved_selections' -> 'self.sel_lib_iids'
+#       'self.saved_selections' -> 'self.sel_lib_tree_iids'
+#       'self.saved_selections' -> 'self.play_iids'
+#       'self.saved_selections' -> 'self.select_iids'
+#       'self.saved_selections' -> 'self.sel_iids'
+#       'self.saved_selections' -> 'self.fav_iid_list'
+#       'self.saved_selections' -> 'self.play_iid_list'
 
-    'self.saved_playlist'   -> 'self.playlist_paths'    # Already DONE
-    'self.playlist_paths'   -> 'self.sel_lib_paths'
-    'self.playlist_paths'   -> 'self.sel_lib_tree_paths'
-    'self.saved_playlist'   -> 'self.select_paths'
-    'self.playlist_paths'   -> 'self.play_paths'
-    'self.playlist_paths'   -> 'self.fav_paths'         # Misleading when Playlists()
-    'self.playlist_paths'   -> 'self.select_paths'
-    'self.playlist_paths'   -> 'self.fav_path_list'     # Misleading when Playlists()
-    'self.playlist_paths'   -> 'self.play_path_list'
+#       'self.saved_playlist'   -> 'self.playlist_paths'    # Already DONE
+#       'self.playlist_paths'   -> 'self.sel_lib_paths'
+#       'self.playlist_paths'   -> 'self.sel_lib_tree_paths'
+#       'self.saved_playlist'   -> 'self.select_paths'
+#       'self.playlist_paths'   -> 'self.play_paths'
+#       'self.playlist_paths'   -> 'self.fav_paths'         # Misleading when Playlists()
+#       'self.playlist_paths'   -> 'self.select_paths'
+#       'self.playlist_paths'   -> 'self.fav_path_list'     # Misleading when Playlists()
+#       'self.playlist_paths'   -> 'self.play_path_list'
 
-    'self.song_list'        -> 'self.lib_tree_paths'
-    'self.song_list'        -> 'self.lib_song_paths'
-    'self.song_list'        -> 'self.all_paths'         # Already DONE
+#       'self.song_list'        -> 'self.lib_tree_paths'
+#       'self.song_list'        -> 'self.lib_song_paths'
+#       'self.song_list'        -> 'self.all_paths'         # Already DONE
 
-    'self.ndx'              -> 'self.curr_iid_ndx'
-    'self.ndx'              -> 'self.play_curr_ndx'
-    'self.ndx'              -> 'self.play_ndx'          # June 29, 2023 11 AM - Flavor De Jure
-    'self.ndx'              -> 'self.seq_ndx'
-    'self.ndx'              -> 'self.select_ndx'
-    'self.ndx'              -> 'self.sel_ndx'
-    'self.ndx'              -> 'self.sel_curr_ndx'
-    'self.ndx'              -> 'self.iid_ndx'
-    'self.ndx'              -> 'self.fav_ndx'           # Misleading when Playlists()
+#       'self.ndx'              -> 'self.curr_iid_ndx'
+#       'self.ndx'              -> 'self.play_curr_ndx'
+#       'self.ndx'              -> 'self.play_ndx'          # June 29, 2023 11 AM - Flavor De Jure
+#       'self.ndx'              -> 'self.seq_ndx'
+#       'self.ndx'              -> 'self.select_ndx'
+#       'self.ndx'              -> 'self.sel_ndx'
+#       'self.ndx'              -> 'self.sel_curr_ndx'
+#       'self.ndx'              -> 'self.iid_ndx'
+#       'self.ndx'              -> 'self.fav_ndx'           # Misleading when Playlists()
 
-    New variable replace '_ndx' -> 'self.____iid"       # self.saved_selections[self.ndx]
-    New variable replace '_ndx' -> 'self.____path"      # self.playlist_paths[self.ndx]
-    New variable replace '_ndx' -> 'self.____pid"
-    New variable replace '_ndx' -> 'self.____sink"
+#       New variable replace '_ndx' -> 'self.____iid"       # self.saved_selections[self.ndx]
+#       New variable replace '_ndx' -> 'self.____path"      # self.playlist_paths[self.ndx]
+#       New variable replace '_ndx' -> 'self.____pid"
+#       New variable replace '_ndx' -> 'self.____sink"
 
-RENAME FUNCTIONS:
-    'self.song_set_ndx()'   -> 'self.set_sel_ndx()'
-    'self.song_set_ndx()'   -> 'self.set_select_ndx()'
-    'self.song_set_ndx()'   -> 'self.change_select_ndx()'
-    'self.song_set_ndx()'   -> 'self.play_new_song()'
-    'self.song_set_ndx()'   -> 'self.play_set_ndx()'
-    Advantage of changing "self.song_" to "self.play_" is below too:
-        self.song_artist_var.set(make_ellipsis(self.play_ctl.Artist, E_WIDTH))
-        self.song_album_var.set(make_ellipsis(self.play_ctl.Album, E_WIDTH))
-        self.song_title_var.set(make_ellipsis(self.play_ctl.Title, E_WIDTH))
+#   RENAME FUNCTIONS:
+#       'self.song_set_ndx()'   -> 'self.set_sel_ndx()'
+#       'self.song_set_ndx()'   -> 'self.set_select_ndx()'
+#       'self.song_set_ndx()'   -> 'self.change_select_ndx()'
+#       'self.song_set_ndx()'   -> 'self.play_new_song()'
+#       'self.song_set_ndx()'   -> 'self.play_set_ndx()'
+#       Advantage of changing "self.song_" to "self.play_" is below too:
+#           self.song_artist_var.set(make_ellipsis(self.play_ctl.Artist, E_WIDTH))
+#           self.song_album_var.set(make_ellipsis(self.play_ctl.Album, E_WIDTH))
+#           self.song_title_var.set(make_ellipsis(self.play_ctl.Title, E_WIDTH))
 
-    'self.play_insert()'    -> 'self.add_selected()'
-    'self.play_insert()'    -> 'self.insert_selection()'
+#       'self.play_insert()'    -> 'self.add_selected()'
+#       'self.play_insert()'    -> 'self.insert_selection()'
 
 #    Need to fix file modification time which will make it greater than
 #       creation time (not birth time which is unused) which is the time it
@@ -224,7 +226,6 @@ RENAME FUNCTIONS:
 #
 # =============================================================================
 
-
 CALL:
     m "/mnt/music/Users/Person/Music/iTunes/iTunes Media/Music/"
 
@@ -298,15 +299,12 @@ TODO'S:
            pactl, pgrep, pqiv, ps, stat, touch, wmctrl, xclip, xdotool, xprop
 
     Compare Location - Make background process so music player keeps spinning
-
+"""
     
-'''
+
 # inspection SpellCheckingInspection
 
 # identical imports in message.py and similar in location.py
-
-from __future__ import print_function  # Must be first import
-from __future__ import with_statement  # Error handling for file opens
 
 # from __future__ import unicode_literals     # Unicode errors fix
 
@@ -889,6 +887,7 @@ class PlayCommonSelf:
         self.play_ctl = None                # instance of FileControl() class
         self.sam_ctl = None
         self.sync_ctl = None                # instance of FileControl() class
+        self.mus_ctl = None
         self.DurationSecs = None            # NOTE: Must save in parent
         self.meta_update_succeeded = None   # sql may refuse to update metadata
 
@@ -1684,6 +1683,15 @@ class MusicTree(PlayCommonSelf):
         if self.playlists.top:
             self.playlists.top.focus_force()  # Get focus
             self.playlists.top.lift()  # Raise in stacking order
+
+        ''' Synchronizing lyrics to time index controls music '''
+        if self.syn_top_is_active:
+            # Although launched by play_top this probably won't hurt
+            self.sync_time_index_lift()  # Raise window focus to top
+
+        ''' Sampling random song in lib_tree '''
+        if self.sam_top_is_active:
+            self.sample_song_lift()  # Raise in stacking order
 
         ''' Since lib_top is known to have focus can reset self.lib_tree_play_btn '''
         self.play_on_top = False
@@ -4264,8 +4272,10 @@ class MusicTree(PlayCommonSelf):
 
         menu = tk.Menu(root, tearoff=0)
         menu.post(event.x_root, event.y_root)
-        self.info.cast("InfoCentre() works here but breaks in sample_song()")
-        print("self.info:", self.info)
+        # June 30, 2023 bug hunting
+        #self.info.cast("InfoCentre() works here but breaks in sample_song()")
+        #print("self.info:", self.info)
+
         # If lambda isn't used the command is executed as soon as popup
         # menu is displayed, not when option is chosen.
         # self.info.cast is broken in sample_song so use 's=self: s.'
@@ -5198,7 +5208,7 @@ $ wmctrl -l -p
         if answer.result != 'yes':
             return
 
-        mus_ctl = FileControl(self.lib_top, self.info)  # Class to get metadata
+        self.mus_ctl = FileControl(self.lib_top, self.info)  # Class to get metadata
 
         self.meta_scan = encoding.MetaScan(self.mus_top, self.get_refresh_thread())
         self.meta_scan_dtb = message.DelayedTextBox(title="SQL Music Table Scan",
@@ -5249,13 +5259,16 @@ $ wmctrl -l -p
 
         # TODO: Replacement for self.get_ffprobe_metadata that uses play_ctl() class
         #       and updates sql metadata columns of Music Table row for OsFileName
-        mus_ctl.new(PRUNED_DIR + os_filename)  # get metadata
-        self.update_sql_metadata(mus_ctl)
+        self.mus_ctl.new(PRUNED_DIR + os_filename)  # get metadata
+        if len(self.mus_ctl.audio) == 0:
+            # Not a valid music file
+            return False
+        result = self.update_sql_metadata(self.mus_ctl)
         self.meta_scan_dtb.update(os_filename)  # Refresh screen with song file name
-        self.meta_scan.ChangedCounts(self.meta_update_succeeded)
+        self.meta_scan.ChangedCounts(result)
 
-        has_art = self.meta_scan.CheckArtwork(meta_dict)
-        mus_ctl.close()  # close filename and clear class/static variables
+        has_art = self.meta_scan.CheckArtwork(self.mus_ctl.metadata)
+        self.mus_ctl.close()  # close filename and clear class/static variables
         return has_art
 
     # noinspection PyUnusedLocal
@@ -6543,7 +6556,7 @@ $ wmctrl -l -p
         self.play_frm.grid_columnconfigure(5, weight=1)
         self.play_frame3 = tk.Frame(self.play_frm)
         self.play_frame3.grid(row=0, rowspan=5, column=5,
-                          padx=PAD_X, pady=PAD_X, sticky=tk.NSEW)
+                              padx=PAD_X, pady=PAD_X, sticky=tk.NSEW)
         self.play_frame3.grid_rowconfigure(1, weight=1)
         self.play_frame3.grid_columnconfigure(0, weight=1)
 
@@ -6673,9 +6686,11 @@ $ wmctrl -l -p
             self.ndx = 0  # Control for current song 0 = 1st
 
         ''' Remove splash screen if we were called with it. '''
+        #self.lib_top.bind("<FocusIn>", self.handle_lib_top_focus)
+        self.play_top.bind("<FocusIn>", self.handle_play_top_focus)
+
         #if self.splash_toplevel:
         #    self.splash_toplevel.withdraw()  # Remove splash screen
-
         #root.update()  # Remove June 21, 2023 - Not needed
         #root.after(1000)  # Remove May 9, 2023. Why was a WHOLE SECOND here???
 
@@ -6698,6 +6713,27 @@ $ wmctrl -l -p
 
         self.play_top_pid = 0  # Can only be one
         self.play_top_sink = ""  # That's all folks... Until play is reopened
+
+    def handle_play_top_focus(self, _event):
+        """
+            When sample_song() or Playlists() windows are active,
+            always stays above Music Library (lib_top).
+
+            Credit: https://stackoverflow.com/a/44615104/6929343
+
+        :param _event: Ignored
+        :return: None
+        """
+        if not self.play_top_is_active:
+            return  # Play window closed?
+
+        ''' Synchronizing lyrics to time index controls music '''
+        if self.syn_top_is_active:
+            self.sync_time_index_lift()  # Raise window focus to top
+
+        ''' Sampling random song in lib_tree '''
+        if self.sam_top_is_active:
+            self.sample_song_lift()  # Raise in stacking order
 
     def set_lib_tree_play_btn(self):
         """ set text for lib_tree_btn to start playing, show playing or show library. """
@@ -7866,6 +7902,8 @@ $ wmctrl -l -p
         # print('mserve.py get_ffprobe_metadata() path:', path)
         # if not self.play_top_is_active: return             # Play window closed?
 
+        # noinspection SpellCheckingInspection
+        '''
         self.metadata = OrderedDict()
         ext.t_init("mserve.py get_ffprobe_metadata()")
         cmd = 'ffprobe ' + '"' + path + '"' + ' 2>' + TMP_FFPROBE
@@ -7876,7 +7914,7 @@ $ wmctrl -l -p
             print('mserve.py get_ffprobe_metadata() ffprobe result:', result)
 
         ext.t_init("parse " + TMP_FFPROBE)
-        ''' Create self.metadata{} dictionary '''
+        # Create self.metadata{} dictionary 
         with open(TMP_FFPROBE) as f:
             for line in f:
                 line = line.rstrip()  # remove \r and \n
@@ -7948,6 +7986,8 @@ $ wmctrl -l -p
         self.update_sql_metadata(path)
 
         return self.metadata  # Not always used by caller.
+        '''
+        print("DO NOT CALL deprecated():", path, self.lib_top)
 
     def update_sql_metadata(self, file_ctl):
         """ Legacy code crafted to new function June 28, 2023.
@@ -7968,6 +8008,8 @@ $ wmctrl -l -p
         else:
             print('mserve.py update_sql_metadata() path:', file_ctl.path)
             print('mserve.py update_sql_metadata() Missing PRUNED_DIR:', PRUNED_DIR)
+
+        return self.meta_update_succeeded  # For future switch away from self.
 
     def play_spin_art(self):
         """
@@ -11264,7 +11306,7 @@ IndexError: list index out of range
 
         # Apply color code to Lyrics
         self.play_frame3.config(bg=hex_background,
-                            highlightbackground=hex_foreground)
+                                highlightbackground=hex_foreground)
         self.lyrics_score_box.config(bg=hex_background, fg=hex_foreground,
                                      highlightbackground=hex_foreground)
         self.lyrics_score_box.tag_config('highlight', background=hex_foreground,
@@ -11683,16 +11725,15 @@ IndexError: list index out of range
 
             When you click "Close" the master playlist keeps playing when you
             exit top library???
+
+            TODO: There is something in here breaking InfoCentre.zoom() usage
+                  of self.tt - Tooltips 'piggy_back' feature
+
         """
 
         ''' Are we already playing middle clip? '''
-        print("self.info:", self.info)
-        self.info.cast("sample_song() called Id: " + Id)
-        print("sample_song() called Id: " + Id)
         if self.sam_top_is_active:
-            self.sam_top.focus_force()  # Get focus
-            self.sam_top.lift()  # Raise in stacking order
-            root.update()
+            self.sample_song_lift()
             return  # Don't want to start playing again
 
         ''' Are we synchronizing lyrics? It has control of music player '''
@@ -11702,15 +11743,14 @@ IndexError: list index out of range
 
         ''' Build full song path '''
         path = self.real_path(int(Id))
-        self.info.cast("sample start using path: " + path)
         self.sam_top_pid = 0  # ffplay Process ID
         self.sam_top_sink = ""  # Pulse audio sink number
 
         ''' Last File Access Time overrides. E.G. Look but do not touch. '''
         self.sam_ctl = FileControl(self.lib_top, self.info)
-        print(self.info)
-        print(self.sam_ctl.info)
-        self.info.cast("self.sam_ctl = FileControl(self.lib_top, self.info)")
+        #print(self.info)
+        #print(self.sam_ctl.info)
+        #self.info.cast("self.sam_ctl = FileControl(self.lib_top, self.info)")
         self.sam_ctl.new(path)  # Get metadata for music file
         if len(self.sam_ctl.audio) == 0:
             print(self.sam_ctl.metadata)
@@ -11722,7 +11762,7 @@ IndexError: list index out of range
             str(self.sam_ctl.fade_in_sec) + "\nself.sam_ctl.fade_out_sec, \t" + str(self.sam_ctl.fade_out_sec) +\
             "\nself.sam_ctl.dead_start, \t" + str(self.sam_ctl.dead_start) + "\nself.sam_ctl.ff_name, \t" + \
             str(self.sam_ctl.ff_name) + "\n"
-        self.info.cast(text)
+        #self.info.cast(text)
         print(text)
 
         ''' Set start (beginning or middle) and duration (all or 10 seconds) '''
@@ -11738,10 +11778,10 @@ IndexError: list index out of range
         #extra_opt = ffplay_extra_opt(start_secs, fade_in=1, duration_secs=duration_secs)
         #self.sam_top_pid, self.sam_top_sink = \
         #    start_ffplay(path, TMP_CURR_SAMPLE, extra_opt)
+        ''' Fade in and out for one second. True = start in paused state. '''
         self.sam_top_pid, self.sam_top_sink = \
-            self.sam_ctl.start(start_secs, duration_secs, 1, 0,
-                               True, TMP_CURR_SAMPLE)
-        #self.sam_ctl.start(start_secs, duration_secs, 1, 1,
+            self.sam_ctl.start(start_secs, duration_secs, 1, 1,
+                               TMP_CURR_SAMPLE, True)
 
         if not self.validate_pa_sink(self.sam_top_sink, path):
             ''' Pulse Audio failed to get sink '''
@@ -11911,6 +11951,7 @@ IndexError: list index out of range
         """ Close self.sam_top - Sample random song """
         if self.sam_top_is_active is False:
             return  # We are already closed
+        self.sam_ctl.close()  # Close FileControl(), reset ATIME
         self.tt.close(self.sam_top)  # Close tooltips under top level
         self.sam_top_is_active = False
         root.update()
@@ -11928,6 +11969,10 @@ IndexError: list index out of range
         self.wrap_up_popup()  # Set color tags and counts
         if self.sam_paused_music:  # Did we pause music player?
             self.pp_toggle()  # Resume playing
+
+    def sample_song_lift(self):
+        self.sam_top.focus_force()  # Get focus
+        self.sam_top.lift()  # Raise in stacking order
 
     # ==============================================================================
     #
@@ -13334,7 +13379,7 @@ class FileControl(FileControlCommonSelf):
         return ImageTk.PhotoImage(resized_art), resized_art
 
     def start(self, start_sec=0.0, limit_sec=0.0, fade_in_sec=0.0, 
-              fade_out_sec=0.0, dead_start=None, ff_name=None):
+              fade_out_sec=0.0, ff_name=None, dead_start=None):
         """ Start playing song with parameters passed
         :param start_sec: Seconds offset to start playing at
         :param limit_sec: Number of seconds to play. 0 = play all
@@ -13348,14 +13393,15 @@ class FileControl(FileControlCommonSelf):
         self.limit_sec = limit_sec          # Number of seconds to play. 0 = play all
         self.fade_in_sec = fade_in_sec      # Number of seconds to fade in
         self.fade_out_sec = fade_out_sec    # Number of seconds to fade out
+        self.ff_name = ff_name              # TMP_CURR_SONG, etc.
         self.dead_start = dead_start        # Number of seconds to fade out
-        self.ff_name = ff_name
         # When action = 'start'
         # start = seconds offset to start song at. If 0.0, start at beginning
         # duration = seconds to play song for. If 0.0, entire song, skip duration set
         # fade_in = seconds to fade in for. If continuing, manually adjust volume
         # fade_out = seconds to fade out for. If pausing or ending, manually adjust
 
+        # noinspection SpellCheckingInspection
         ''' OLD WAYS OF PARENTS:
         
         sam_top = tk
@@ -13439,20 +13485,22 @@ class FileControl(FileControlCommonSelf):
         extra_opt += ' -t ' + str(duration_secs)  # could be int or float
 
     return extra_opt
-        '''
+
         text = "FileControl.start(self.start_sec, \t" + str(self.start_sec) +\
             "\nself.limit_sec, \t" + str(self.limit_sec) + "\nself.fade_in_sec, \t" +\
             str(self.fade_in_sec) + "\nself.fade_out_sec, \t" + str(self.fade_out_sec) +\
             "\nself.dead_start, \t" + str(self.dead_start) + "\nself.ff_name, \t" + \
             self.ff_name + "\n"
         self.info.cast(text)
+        self.info.cast("extra_opt:", extra_opt)
+        self.info.cast("self.pid, self.sink: \t" + str(self.pid) + ", " + self.sink)
+        '''
         extra_opt = ffplay_extra_opt(self.start_sec, self.fade_in_sec,
                                      self.fade_out_sec, self.limit_sec)
-        self.info.cast("extra_opt:", extra_opt)
+        #self.info.cast("extra_opt: \t" + extra_opt)
         self.pid, self.sink = start_ffplay(self.path, self.ff_name, extra_opt)
-        self.info.cast("self.pid, self.sink: \t" + str(self.pid) + ", " + self.sink)
 
-        ''' bad sink?'''
+        ''' bad sink? '''
         if self.sink == "":
             # Pulse Audio failed to get sink we cannot do dead_start
             if self.pid > 0:
@@ -13482,12 +13530,12 @@ class FileControl(FileControlCommonSelf):
         return self.pid, self.sink
 
     def restart(self, start_sec=0.0, limit_sec=0.0, fade_in_sec=0.0, 
-                fade_out_sec=0.0, dead_start=None, ff_name=None):
+                fade_out_sec=0.0, ff_name=None, dead_start=None):
         """ Call start and register new PID and Sink # """
         self.end(kill=False)
-        ''' self.start() will call self.log() '''
+        ''' self.start() will call self.log() sam_ctl.start( '''
         self.start(start_sec, limit_sec, fade_in_sec, 
-                   fade_out_sec, dead_star, tff_name)
+                   fade_out_sec, ff_name, dead_start)
         return self.pid, self.sink
 
     def stop(self):
@@ -14866,11 +14914,43 @@ class InfoCentre:
 
             :param show_close: Display a close button and extend visible time
         """
-        print("Zoom() called.")
+        print("InfoCentre.zoom() called.", tmf.ago(time.time()))
         ''' If zoom already active cannot create another frame  '''
         if self.frame:
             #print("Trying to .cast() or .view() when .zoom() already active")
+            self.tt.get_dict(self.widget)
+            # Fake widget get query to force queue in Tooltips???
+
+            ''' Sanity Check - sample_song() info.cast's last four hours 
+                InfoCentre.zoom() called. 8:24 AM - Just now
+                sample_song() called Id: 414
+                InfoCentre.zoom() called. 8:24 AM - Just now
+                <mserve.InfoCentre instance at 0x7fc1b2414f80>
+                <mserve.InfoCentre instance at 0x7fc1b2414f80>
+                InfoCentre.zoom() called. 8:42 AM - Just now
+                InfoCentre.zoom() called. 8:51 AM - Just now
+                InfoCentre.zoom() called. 9:07 AM - Just now
+                InfoCentre.zoom() called. 9:16 AM - Just now
+                InfoCentre.zoom() called. 9:24 AM - Just now
+                InfoCentre.zoom() called. 10:11 AM - Just now
+                InfoCentre.zoom() called. 11:18 AM - Just now
+                InfoCentre.zoom() called. 11:27 AM - Just now
+                InfoCentre.zoom() called. 11:53 AM - Just now
+            '''
+            elapsed = time.time() - self.dict["time"]
+            print("InfoCentre.zoom() elapsed:", elapsed)
+            if elapsed > 300.0:
+                print("InfoCentre.zoom() waited 5 minutes to close.")
+                print('\nInfoCentre.zoom() tooltips self.widget dictionary END:')
+                tt_dict = self.tt.get_dict(self.widget)
+                print(tt_dict, "\n")  # 'enter_time' = 1688148501.804852
+                self.tt_close()
             return
+
+
+        ''' TODO: bind Control + C to copy. '''
+
+
 
         ''' Get current lib_top coordinates and current playing song '''
         # During init there was no size for window
@@ -14879,7 +14959,7 @@ class InfoCentre:
         self.song_playing = self.lib_tree.tag_has("play_sel")
         # print("song_playing:", self.song_playing)
 
-        ''' Recycled code needs local variables defined '''
+        ''' Recycled test needs local instead of static variable defined '''
         text = self.dict['text']
 
         ''' June 21, 2023 - test work fields, leave for now '''
@@ -14956,8 +15036,15 @@ class InfoCentre:
             # Limitation: 'visible_delay' must be greater than 'fade_out_span'
         )
 
+        #tt_dict = self.tt.get_dict(self.widget)
+        #print('\nInfoCentre.zoom() tooltips self.widget dictionary BEFORE:')
+        #print(tt_dict, "\n")
         ''' Start Tooltips() by saying mouse hovered over the text widget. '''
         self.tt.log_event('enter', self.widget, 10, 5)  # x=10, y=5
+        #self.tt.poll_tips()
+        #print('\nInfoCentre.zoom() tooltips self.widget dictionary AFTER:')
+        #print(tt_dict, "\n")  # 'enter_time' = 1688148501.804852
+        # Funny tt_dict is live reference that didn't need updating....
 
     def _close_clicked(self):
         """ When close button clicked tell Tooltips to start fading out """
@@ -15223,8 +15310,9 @@ def ffplay_extra_opt(start=None, fade_in=3, fade_out=0.0, duration_secs=0.0):
         extra_opt += ' -af "afade=type=in:start_time=' + str(start) + \
                      ':duration=' + str(fade_in) + '"'  # fade-in time
 
-    if fade_out and float(fade_out) > 0.0:
-        fade_start = float(duration_secs) - float(fade_out)
+    if fade_out and float(fade_out) > 0.0 and \
+            duration_secs and float(duration_secs) > 0.0:
+        fade_start = float(start) + float(duration_secs) - float(fade_out)
         if fade_start < 0.0:
             print("ffplay_extra_opt() Programming error. fade_out:",
                   fade_out, " | duration_secs:", duration_secs)
@@ -15324,6 +15412,7 @@ def start_ffplay(song, tmp_name, extra_opt):
     ext_name = 'ffplay -autoexit ' + '"' + song + '" ' + extra_opt + \
                ' -nodisp 2>' + tmp_name
 
+    # noinspection SpellCheckingInspection
     '''
     ext_name = 'ffplay -autoexit ' + '"' + song + '" ' + extra_opt + \
                ' -nodisp 2>' + tmp_name

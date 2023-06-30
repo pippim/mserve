@@ -2109,6 +2109,7 @@ class ToolTips(CommonTip):
 
         # All widgets except "piggy_back" are bound to three common functions
         if self.tool_type is not 'piggy_back':
+            # 'piggy_back' functions will send fake <Enter> and <Leave> events
             self.widget.bind('<Enter>', self.enter)
             self.widget.bind('<Leave>', self.leave)
             self.widget.bind('<Motion>', self.motion)
@@ -2465,6 +2466,14 @@ class ToolTips(CommonTip):
   
         print_trace()          
         print('ERROR: set_text(): tip not found')
+
+    def get_dict(self, widget):
+        """ Debugging tool for external caller to get a widget's dictionary """
+        for self.dict in self.tips_list:
+            if self.dict['widget'] == widget:
+                return self.dict
+        print('ERROR: get_dict(): self.dict for "widget" not found', widget)
+
 
     def toggle_position(self, widget):
         """ If tip window's position is below widget, set above. 
