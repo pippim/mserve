@@ -795,7 +795,6 @@ def save_window_geom(name, geom):
             return False
     else:
         # First time add the record
-        # sql.hist_add(time.time(), 0, lc.USER, 'window', name, geom,
         sql.hist_add(time.time(), 0, g.USER, 'window', name, geom,
                      'saved on exit, loaded on starting', None, 0, 0, 0.0,
                      "Used in conjunction with 'screen' History Record Id #")

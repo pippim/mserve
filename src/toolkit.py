@@ -404,6 +404,10 @@ def unique_key(key, dictionary):
 def tv_tag_add(tv, iid, new, strict=False):
     """ Treeview tag function """
     tags = tv.item(iid)['tags']
+    # BUG tags is <type 'str'>
+    if isinstance(tags, str):
+        print("tv_tag_add got tags type:", type(tags))
+        tags = []
     if new not in tags:
         tags.append(new)
         tv.item(iid, tags=tags)
@@ -418,16 +422,23 @@ def tv_tag_add(tv, iid, new, strict=False):
 def tv_tag_insert_first(tv, iid, new, strict=False):
     """ Treeview tag function """
     tags = tv.item(iid)['tags']
-    if new not in tags:
-        tags.insert(0, new)
-        tv.item(iid, tags=tags)
-        return True
-    else:
-        if strict:
-            print_trace()
-            print("'insert_first' tag: '" + new + 
-                  "' already in treeview 'tags' list:", tags)
-        return False
+    # BUG tags is <type 'str'>
+    if isinstance(tags, str):
+        print("tv_tag_insert_first got tags type:", type(tags))
+        tags = []
+    try:
+        if new not in tags:
+            tags.insert(0, new)
+            tv.item(iid, tags=tags)
+            return True
+        else:
+            if strict:
+                print_trace()
+                print("'insert_first' tag: '" + new +
+                      "' already in treeview 'tags' list:", tags)
+            return False
+    except AttributeError:  # 'str' object has no attribute 'insert'
+        print("toolkit.py tv_tag_insert_first() tags not a list:", tags, type(tags))
 
 
 def tv_tag_replace(tv, iid, old, new, strict=False):
@@ -487,8 +498,6 @@ class CustomScrolledText(scrolledtext.ScrolledText):
 
             import tkinter.scrolledtext as scrolledtext
 
-
-        TODO: Direct copied from ~/mserve/encoding.py so put into toolkit.py
 
     example:
 

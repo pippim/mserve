@@ -29,6 +29,16 @@ from __future__ import with_statement  # Error handling for file opens
 # import gtk                     # Doesn't work. Use xclip instead
 # gtk.set_interactive(False)
 
+# noinspection SpellCheckingInspection
+'''
+Buried in functions:
+from mutagen.flac import FLAC as audio_file
+from mutagen.oggvorbis import OggVorbis as audio_file
+
+from mutagen.oggvorbis import OggVorbis
+from mutagen.flac import Picture
+'''
+
 try:
     import tkinter as tk
     import tkinter.ttk as ttk
@@ -2573,25 +2583,6 @@ class MetaScan:
         Audio CD sampling frequency is 44.1 KHz
         Audio CD bit rate is always 1,411 kilobits per second (Kbps). The MP3 format can range from around
         96 to 320Kbps, and streaming services like Spotify range from around 96 to 160Kbps.
-
-Code to desk check for converting gmtime to localtime prior to May 7, 2023 
-./sql.py:517:    SourceDetail = time.asctime(time.localtime(Time))
-./sql.py:518:    Comments = "Found: " + time.asctime(time.localtime(time.time()))
-./sql.py:615:    Comments = Action + " time: " + time.asctime(time.localtime(time.time()))
-./sql.py:665:    SourceDetail = time.asctime(time.localtime(Time))
-./sql.py:703:    Comments = "Removed: " + time.asctime(time.localtime(time.time()))
-./sql.py:786:        SourceDetail = time.asctime(time.localtime(Time))
-./sql.py:985:        SourceDetail = time.asctime(time.localtime(Time))
-./sql.py:1136:                         time.asctime(time.localtime(time.time())))
-./mserve.py:6791:                         time.asctime(time.localtime(time.time())))
-./encoding.py:676:                   "Get disc ID: " + time.asctime(time.localtime(time.time())))
-./encoding.py:757:             "Get releases list: " + time.asctime(time.localtime(time.time())))
-./encoding.py:805:                "Get cover art: " + time.asctime(time.localtime(time.time())))
-./encoding.py:1103:                    " Finished: " + time.asctime(time.localtime(time.time())))
-./encoding.py:1162:        #print('finished: ' + time.asctime(time.localtime(time.time())))
-./encoding.py:1170:            "encoded: " + time.asctime(time.localtime(time.time())))
-./encoding.py:1175:            "finished: " + time.asctime(time.localtime(time.time())))
-
 
     """
 

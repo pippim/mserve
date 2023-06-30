@@ -538,10 +538,12 @@ def update_metadata(key, artist, album, song, genre, tracknumber, date,
     # text_factory = str). It is highly recommended that you instead just
     # switch your application to Unicode strings.
     # TODO: Check for Python 3 may be required because Unicode is default type
-    artist = artist.decode("utf8")  # Queensrÿche
+    #artist = artist.decode("utf8")  # Queensrÿche
     # inspection SpellCheckingInspection
-    album = album.decode("utf8")
-    song = song.decode("utf8")
+    #album = album.decode("utf8")
+    #song = song.decode("utf8")
+
+    ''' June 28, 2023 - song.decode("utf-8") has been removed. Need to test '''
     if type(date) is str:
         if date != "None":  # See "She's No Angel" by April Wine.
             # Problem with date "1993-01-26"
@@ -1496,9 +1498,9 @@ class PrettyMusic:
         self.part_start = [0]  # First heading starts at field #0
 
         # List of part section headings at part_start[] list above
-        self.part_names = ['Operating System Information',
-                           'Metadata (if song played)',
-                           'Webscrape lyric score retrieved',
+        self.part_names = ['SQL and Operating System Information',
+                           'Metadata (available after song played once)',
+                           'Lyrics score (usually after Webscraping)',
                            'History Time - Row Number      ' +
                            ' | Type - Action - Master - Detail - Comments',
                            'Metadata modified']
