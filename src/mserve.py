@@ -11748,6 +11748,9 @@ IndexError: list index out of range
 
         ''' Last File Access Time overrides. E.G. Look but do not touch. '''
         self.sam_ctl = FileControl(self.lib_top, self.info)
+        # sam_top references the fields in sam_ctl. It doesn't have play_ctl
+        # because play_top can be closed
+        #self.sam_ctl = FileControl(self.sam_top, self.info)
         #print(self.info)
         #print(self.sam_ctl.info)
         #self.info.cast("self.sam_ctl = FileControl(self.lib_top, self.info)")
@@ -13098,6 +13101,14 @@ class FileControl(FileControlCommonSelf):
 
     """
 
+    def __init__(self, parent, info):
+        """
+        """
+        FileControlCommonSelf.__init__(self)
+        ''' self-ize parameter list '''
+        self.tk_top = parent        # Tkinter Toplevel window used by parent
+        self.info = info            # Parent's InfoCentre() instance
+
     def new(self, path, action=None):
         """
         Declare new song file.
@@ -13120,15 +13131,6 @@ class FileControl(FileControlCommonSelf):
         if self.action == 'start':
             self.start(self.start_sec, self.limit_sec,
                        self.fade_in_sec, self.fade_out_sec)
-
-
-    def __init__(self, parent, info):
-        """
-        """
-        FileControlCommonSelf.__init__(self)
-        ''' self-ize parameter list '''
-        self.tk_top = parent        # Tkinter Toplevel window used by parent
-        self.info = info            # Parent's InfoCentre() instance
 
     def get_metadata(self):
         """ Use ffprobe to write metadata to file TMP_FFPROBE
@@ -13551,6 +13553,23 @@ class FileControl(FileControlCommonSelf):
     def elapsed(self):
         """ How many seconds have elapsed """
         self.elapsed_secs = get_curr_ffplay_secs(self.ff_name)
+
+    def check_pid(self):
+        """ Check if PID is still running. Else song is over. """
+        if self.pid == 0:
+            return 0
+
+        # If self.pid active it means song is still playing
+        try:
+            # os.kill 2nd parameter with 0 checks if process is active
+            os.kill(self.pid, 0)
+        except OSError:
+            # Do not blank out self.current_song! It controls song_set_ndx('next')
+            self.pid = 0
+            self.sink = ""
+            return 0  # Song has ended
+
+        return self.pid
 
     def end(self, kill=True):
         """ Kill Song and calculate what percentage was truly played.
@@ -14914,7 +14933,7 @@ class InfoCentre:
 
             :param show_close: Display a close button and extend visible time
         """
-        print("InfoCentre.zoom() called.", tmf.ago(time.time()))
+        #print("InfoCentre.zoom() called.", tmf.ago(time.time()))
         ''' If zoom already active cannot create another frame  '''
         if self.frame:
             #print("Trying to .cast() or .view() when .zoom() already active")
@@ -14938,17 +14957,39 @@ class InfoCentre:
                 InfoCentre.zoom() called. 11:53 AM - Just now
             '''
             elapsed = time.time() - self.dict["time"]
-            print("InfoCentre.zoom() elapsed:", elapsed)
-            if elapsed > 300.0:
-                print("InfoCentre.zoom() waited 5 minutes to close.")
-                print('\nInfoCentre.zoom() tooltips self.widget dictionary END:')
-                tt_dict = self.tt.get_dict(self.widget)
-                print(tt_dict, "\n")  # 'enter_time' = 1688148501.804852
+            #print("InfoCentre.zoom() elapsed:", elapsed)
+            ''' 
+                Spent many hours bug hunting but resort to this patch.
+                When mserve.py.sample_song() is called it calls
+                self.sam_ctl = FileControl(self_lib_top, self.info)
+                    "FileControl() class"
+                self.sam_ctl.new().. uses self.info.cast()
+                    "InfoCentre() class"
+                self.info.cast()... uses self.tt_add()
+                    "ToolTips() class"
+                    
+                For some reason though, .zoom() freezes up below. This
+                patch simply forces .zoom() to free itself up from
+                Tooltips deadly kiss. (not really a deadly kiss but
+                sounds appropriate)
+            '''
+            if elapsed > 10.0:
+                #print("InfoCentre.zoom() waited 10 seconds to close.")
+                #print('\nInfoCentre.zoom() tooltips self.widget dictionary END:')
+                #tt_dict = self.tt.get_dict(self.widget)
+                #print(tt_dict, "\n")  # 'enter_time' = 1688148501.804852
+                #hold_list = self.list  # Gotta think this through...
                 self.tt_close()
+                # self.list = hold_list  # Totally wipes out entries
+                self.zoom()
             return
 
 
-        ''' TODO: bind Control + C to copy. '''
+        ''' TODO: bind Control + C to copy text from customScrolledText 
+        
+        lyrics_score_box does this
+        
+        '''
 
 
 
@@ -14995,6 +15036,9 @@ class InfoCentre:
         self.text.config(highlightthickness=0, borderwidth=0)
         self.text.vbar.config(troughcolor='black', bg='gold')
 
+        ''' Below allows <Control> + C to copy from text scrollbox '''
+        self.text.configure(state="normal")
+
         ''' Read all dictionaries and stuff into CustomScrolledText object '''
         for i, read_dict in enumerate(self.list):
 
@@ -15018,6 +15062,9 @@ class InfoCentre:
 
             if not show_close:  # No close button is displayed
                 break  # Called by .cast() so only most recent message displayed
+
+        self.text.update()  # Is this necessary? CONFIRMED YES
+        self.text.configure(state="disabled")
 
         ''' .view() has close button, but .cast() doesn't. '''
         if show_close:
@@ -15240,8 +15287,8 @@ FADE_OUT_SPAN = 400     # 1/5 second to fade out
         Called from Tooltips when ready for message to be displayed.
         :return: None
         """
-        print("InfoCentre() tt_ready() message can be displayed now.",
-              "total time:", time.time() - self.start_time)
+        #print("InfoCentre() tt_ready() message can be displayed now.",
+        #      "total time:", time.time() - self.start_time)
 
         #self.test_label = tk.Label(self.frame, text="I am inside a Frame", font='Arial 17 bold')
         #self.test_label.place(rel x=0.5, rely=0.5, anchor=tk.CENTER)
