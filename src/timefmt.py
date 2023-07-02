@@ -144,23 +144,31 @@ LAST_WEEK = 60 * 60 * 24 * 7        # Formatted dates
 LAST_YEAR = LAST_WEEK * 52          # Formatted dates
 
 
-def ago(Time):
-    """ Format time as 99 xx ago. """
+def ago(Time, seconds=False):
+    """ Format time as 99 xx ago.
+        Modified June 30, 2023 to include seconds in time.
+    """
 
     now = time.time()
     fmt_time = datetime.datetime.fromtimestamp(Time)
 
     ''' If < 12 hours ago use:  "hh:mm XM - 99 Hours ago"
+           OR if seconds=True:  "hh:mm:ss XM - 99 Hours ago"
         If < 1 week ago use:    "DayName - 9 Days ago"
         If < 1 year ago use:    "MonName DD - 9 Months ago"
         else use:               "MMM DD YYYY - 99 Years ago"
     '''
     difference = now - Time
-    if difference < (12 * 60 * 60):             # Last 12 hours?
-        fmt = fmt_time.strftime("%I:%M %p")       # Set HH:MM xm
-        # Leading zero?
-        if fmt.startswith("0"):                # HH: starts with 0?
-            fmt = fmt.replace("0", "", 1)
+    if difference < (12 * 60 * 60):  # Last 12 hours?
+        if seconds:  # Caller requested Seconds to print?
+            fmt = fmt_time.strftime("%I:%M:%S %p")  # Set HH:MM:SS xm
+        else:
+            fmt = fmt_time.strftime("%I:%M %p")  # Set HH:MM xm
+        # Leading zero in HH:MM?
+        fmt = fmt.lstrip('0')
+        #if fmt.startswith("0"):  # HH: starts with 0?
+        #    # June 23, 2023 probably a zstrip command
+        #    fmt = fmt.replace("0", "", 1)
         # How many minutes or hours ago?
         minutes = difference / 60
         if minutes < 1.0:

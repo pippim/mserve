@@ -3,6 +3,9 @@
 
 from __future__ import print_function  # Must be first import
 from __future__ import with_statement  # Error handling for file opens
+# from __future__ import unicode_literals  # Not needed.
+import warnings  # 'warnings' advises which commands aren't supported
+warnings.simplefilter('default')  # in future Python versions.
 
 # ==============================================================================
 #
@@ -90,7 +93,7 @@ from __future__ import with_statement  # Error handling for file opens
 #   RENAME VARIABLES:
 #       'self.saved_selections' -> 'self.play_order_iid'
 #       'self.saved_selections' -> 'self.play_iid_seqs'
-#       'self.saved_selections' -> 'self.playlist_iids'
+#       'self.saved_selections' -> 'self.playlist_iids'  # Depends on next section
 #       'self.saved_selections' -> 'self.play_lib_iid'
 #       'self.saved_selections' -> 'self.sel_lib_iids'
 #       'self.saved_selections' -> 'self.sel_lib_tree_iids'
@@ -100,34 +103,34 @@ from __future__ import with_statement  # Error handling for file opens
 #       'self.saved_selections' -> 'self.fav_iid_list'
 #       'self.saved_selections' -> 'self.play_iid_list'
 
-#       'self.saved_playlist'   -> 'self.playlist_paths'    # Already DONE
+#       'self.saved_playlist'   -> 'self.playlist_paths'  # Already DONE
 #       'self.playlist_paths'   -> 'self.sel_lib_paths'
 #       'self.playlist_paths'   -> 'self.sel_lib_tree_paths'
-#       'self.saved_playlist'   -> 'self.select_paths'
-#       'self.playlist_paths'   -> 'self.play_paths'
-#       'self.playlist_paths'   -> 'self.fav_paths'         # Misleading when Playlists()
 #       'self.playlist_paths'   -> 'self.select_paths'
-#       'self.playlist_paths'   -> 'self.fav_path_list'     # Misleading when Playlists()
+#       'self.playlist_paths'   -> 'self.play_paths'
+#       'self.playlist_paths'   -> 'self.fav_paths'  # Misleading when Playlists()
+#       'self.playlist_paths'   -> 'self.select_paths'
+#       'self.playlist_paths'   -> 'self.fav_path_list'  # Misleading when Playlists()
 #       'self.playlist_paths'   -> 'self.play_path_list'
 
 #       'self.song_list'        -> 'self.lib_tree_paths'
 #       'self.song_list'        -> 'self.lib_song_paths'
-#       'self.song_list'        -> 'self.all_paths'         # Already DONE
+#       'self.song_list'        -> 'self.all_paths'  # Already DONE
 
 #       'self.ndx'              -> 'self.curr_iid_ndx'
 #       'self.ndx'              -> 'self.play_curr_ndx'
-#       'self.ndx'              -> 'self.play_ndx'          # June 29, 2023 11 AM - Flavor De Jure
+#       'self.ndx'              -> 'self.play_ndx'  # June 29, 2023 11 AM - Flavor De Jure
 #       'self.ndx'              -> 'self.seq_ndx'
 #       'self.ndx'              -> 'self.select_ndx'
 #       'self.ndx'              -> 'self.sel_ndx'
 #       'self.ndx'              -> 'self.sel_curr_ndx'
 #       'self.ndx'              -> 'self.iid_ndx'
-#       'self.ndx'              -> 'self.fav_ndx'           # Misleading when Playlists()
+#       'self.ndx'              -> 'self.fav_ndx'  # Misleading when Playlists()
 
-#       New variable replace '_ndx' -> 'self.____iid"       # self.saved_selections[self.ndx]
-#       New variable replace '_ndx' -> 'self.____path"      # self.playlist_paths[self.ndx]
-#       New variable replace '_ndx' -> 'self.____pid"
-#       New variable replace '_ndx' -> 'self.____sink"
+#       Derivatives of   '_ndx' -> 'self.---_iid"   # self.saved_selections[self.ndx]
+#       Derivatives of   '_ndx' -> 'self.---_path"  # self.playlist_paths[self.ndx]
+#       Derivatives of   '_ndx' -> 'self.---_pid"   # No longer necessary with
+#       Derivatives of   '_ndx' -> 'self.---_sink"  # play_ctl.pid & play_ctl.sink
 
 #   RENAME FUNCTIONS:
 #       'self.song_set_ndx()'   -> 'self.set_sel_ndx()'
@@ -135,6 +138,7 @@ from __future__ import with_statement  # Error handling for file opens
 #       'self.song_set_ndx()'   -> 'self.change_select_ndx()'
 #       'self.song_set_ndx()'   -> 'self.play_new_song()'
 #       'self.song_set_ndx()'   -> 'self.play_set_ndx()'
+#       'self.song_set_ndx()'   -> 'self.set_play_ndx()'    # July 1, 2023 5:28pm
 #       Advantage of changing "self.song_" to "self.play_" is below too:
 #           self.song_artist_var.set(make_ellipsis(self.play_ctl.Artist, E_WIDTH))
 #           self.song_album_var.set(make_ellipsis(self.play_ctl.Album, E_WIDTH))
@@ -306,10 +310,7 @@ TODO'S:
 
 # identical imports in message.py and similar in location.py
 
-# from __future__ import unicode_literals     # Unicode errors fix
 
-import warnings
-warnings.simplefilter('default')
 
 try:
     import tkinter as tk
@@ -386,7 +387,7 @@ import toolkit              # Functions for tkinter-tool kit interface
 import timefmt as tmf       # Format date and time
 import webscrape            # Get song lyrics via web scrape
 
-# Subdirectory in ~/python
+# Subdirectory /pulsectl under directory where mserve.py located
 from pulsectl import pulsectl
 
 # Poor man's locale circa 2020 stuff that needs to be upgraded
@@ -498,9 +499,10 @@ TV_VOLUME = 60          # Hockey TV mserve play music at 60% volume level
 TV_SOUND = "Firefox"    # Hockey broadcast is aired on Firefox browser
 
 ''' Update last access time after X % of song has been played. '''
-ATIME_THRESHOLD = 90    # 90% of song played will update last access.
-# NOTE: FF through a song 10 seconds doesn't fool calculations.
-#       Rewind and replaying same 10 seconds will fool calculations.
+ATIME_THRESHOLD = 80    # playing 80% of song updates last access to now.
+# NOTE: FF and Rewind buttons reset time played to 0.
+#       Simply getting metadata or artwork always resets access time to
+#       the original time making it "untouched" by mserve.
 
 # Number of seconds to Rewind or Fast Forward a song. Must be string
 REW_FF_SECS = "10"
@@ -543,8 +545,8 @@ def make_sorted_list(start_dir, toplevel=None, idle=None):
 
     '''
 
-    global PRUNED_COUNT  # When no topdir and artist or album used.
-    global PRUNED_DIR
+    global PRUNED_COUNT  # No topdir. Started pointing at artist or album.
+    global PRUNED_DIR    # The real topdir if started normally
 
     if NEW_LOCATION:
         # print('WIP:', start_dir, "may point to topdir, Artist or Album")
@@ -882,14 +884,11 @@ class PlayCommonSelf:
         ''' Frame for Playlist Chronology '''
         self.F4 = None                      # tk.Frame(self.play_top, bg="Black
 
-        self.play_top_pid = 0               # Integer for ffplay PID
-        self.play_top_sink = ""             # String for ffplay Pulse Audio
         self.play_ctl = None                # instance of FileControl() class
         self.sam_ctl = None
         self.sync_ctl = None                # instance of FileControl() class
         self.mus_ctl = None
         self.DurationSecs = None            # NOTE: Must save in parent
-        self.meta_update_succeeded = None   # sql may refuse to update metadata
 
         # Popup menu
         self.mouse_x = None
@@ -965,8 +964,6 @@ class PlayCommonSelf:
         ''' Sample middle of song '''
         self.sam_top = None                 # tk.Toplevel()
         self.sam_paused_music = None        # We will resume play later
-        self.sam_top_pid = None             # Process ID
-        self.sam_top_sink = None            # Pulse Audio sink
 
         ''' Play Chronology '''
         self.chron_tree = None              # ttk.Treeview Playlist Chronology
@@ -2237,7 +2234,7 @@ class MusicTree(PlayCommonSelf):
             fsize = str(round(converted, CFG_DECIMAL_PLACES))
 
             # Format date as "Abbreviation - 99 Xxx Ago"
-            ftime = tmf.ago(float(stat.st_atime))
+            ftime = tmf.ago(float(stat.st_atime), seconds=True)
 
             ''' Add the song '''
             self.lib_tree.insert(
@@ -2358,7 +2355,7 @@ class MusicTree(PlayCommonSelf):
             fsize = str(round(converted, CFG_DECIMAL_PLACES))
 
             # Format date as "Abbreviation - 99 Xxx Ago"
-            ftime = tmf.ago(float(stat.st_atime))
+            ftime = tmf.ago(float(stat.st_atime), seconds=True)
 
             ''' Add the song, iid is explicitly assigned as the song index.
                 For artists and album the iid was auto assigned with a prefix
@@ -4839,9 +4836,24 @@ $ wmctrl -l -p
         print()
 
         if self.play_ctl.metadata is not None:
-            print("\nLast song played - 'ffprobe' (self.metadata)")
+            print("\nLast file accessed - 'ffprobe' (self.play_ctl.metadata)")
             for i in self.play_ctl.metadata:
                 print(i, ":", self.play_ctl.metadata[i])
+
+        if self.sam_ctl.metadata is not None:
+            print("\nLast file accessed - 'ffprobe' (self.sam_ctl.metadata)")
+            for i in self.sam_ctl.metadata:
+                print(i, ":", self.sam_ctl.metadata[i])
+
+        if self.sync_ctl.metadata is not None:
+            print("\nLast file accessed - 'ffprobe' (self.sync_ctl.metadata)")
+            for i in self.sync_ctl.metadata:
+                print(i, ":", self.sync_ctl.metadata[i])
+
+        if self.mus_ctl.metadata is not None:
+            print("\nLast file accessed - 'ffprobe' (self.mus_ctl.metadata)")
+            for i in self.mus_ctl.metadata:
+                print(i, ":", self.mus_ctl.metadata[i])
 
         if sql.ofb.blacks is not None:
             print("\nSQL Blacklisted songs")
@@ -4860,7 +4872,7 @@ $ wmctrl -l -p
         print("PRUNED_COUNT:", PRUNED_COUNT)
         print("TV_VOLUME:", TV_VOLUME)
 
-        print("pending_apply debug print flag DPRINT_ON:", DPRINT_ON)
+        print("pending_apply() debug print flag DPRINT_ON:", DPRINT_ON)
         print("self.get_pending_cnt_total():", self.get_pending_cnt_total())
 
         print("\nOpened Location dictionary that never changes LODICT:")
@@ -4877,7 +4889,7 @@ $ wmctrl -l -p
         # Need SQL version 3.22 for INTO option, current is 3.11
         #sql.con.execute("VACUUM INTO '/run/user/1000/mserve library.db'")
 
-        if pulse_working:
+        if PULSE_WORKS:
             ''' Fast method using pulse audio direct interface '''
             print("\nPulse Audio - sink_input_list (sound sources)")
             print("="*51, "\n")
@@ -4939,7 +4951,6 @@ $ wmctrl -l -p
 
         print("\n=======================================\n")
 
-        #thread = self.get_refresh_thread()
         message.ShowInfo(self.lib_top, "DEBUG - mserve.py",
                          "Check command line (CLI) for output", 
                          thread=self.get_refresh_thread())
@@ -5252,23 +5263,17 @@ $ wmctrl -l -p
 
         ''' Reading through filenames in mus_view.tree which also has music ID '''
         os_filename = self.mus_view.column_value(values, 'os_filename')
-
-        # TODO: Verify last access time is not effected below
-        #meta_dict = self.get_ffprobe_metadata(PRUNED_DIR + os_filename)
-        # Updates SQL Metadata too! plus self.meta_update_succeeded 
-
-        # TODO: Replacement for self.get_ffprobe_metadata that uses play_ctl() class
-        #       and updates sql metadata columns of Music Table row for OsFileName
         self.mus_ctl.new(PRUNED_DIR + os_filename)  # get metadata
-        if len(self.mus_ctl.audio) == 0:
+        if self.mus_ctl.invalid_file:
             # Not a valid music file
             return False
         result = self.update_sql_metadata(self.mus_ctl)
+        # Update SQL metadata columns of Music Table using OsFileName key
         self.meta_scan_dtb.update(os_filename)  # Refresh screen with song file name
         self.meta_scan.ChangedCounts(result)
 
         has_art = self.meta_scan.CheckArtwork(self.mus_ctl.metadata)
-        self.mus_ctl.close()  # close filename and clear class/static variables
+        self.mus_ctl.close()  # close filename and reset last access time
         return has_art
 
     # noinspection PyUnusedLocal
@@ -6390,7 +6395,7 @@ $ wmctrl -l -p
 
         ''' Reset text in lib_top "Show library" play button tool tip'''
         self.tt.set_text(self.lib_tree_play_btn, "Lift music library window up.")
-        self.play_top_sink = ""     # Fix error if self.play_top_sink is not ""
+        self.play_ctl.sink = ""     # Fix error if self.play_ctl.sink is not ""
         if self.play_ctl.path is not None:
             self.play_ctl.close()  # Update last song & reset class variables 
 
@@ -6679,9 +6684,7 @@ $ wmctrl -l -p
         self.F4.grid_columnconfigure(0, weight=1)  # Note weight to stretch
         self.build_chronology()  # Treeview in play order
 
-        ''' Start at first listbox entry selected '''
-        self.play_top_pid = 0  # Can only be one
-        self.play_top_sink = ""
+        ''' Start at first playlist entry? '''
         if self.play_from_start:  # Caller can set starting index
             self.ndx = 0  # Control for current song 0 = 1st
 
@@ -6703,16 +6706,12 @@ $ wmctrl -l -p
             # May 29, 2023 - When resuming buttons do not have art color assigned
             # June 18, 2023 - play_one_song() now called from self.apply_playlists() too.
             if not self.play_one_song(resume=resume, chron_state=chron_state):
-                self.play_ctl.close()
                 self.play_close()  # Catastrophic error that can't be backed out of
                 break
             self.play_ctl.close()  # Update last song's last access if > 50% played
             resume = False  # We can only resume once
             chron_state = None  # Extra safety
             self.play_from_start = True  # Review variable usage... it's weird.
-
-        self.play_top_pid = 0  # Can only be one
-        self.play_top_sink = ""  # That's all folks... Until play is reopened
 
     def handle_play_top_focus(self, _event):
         """
@@ -7054,15 +7053,15 @@ $ wmctrl -l -p
 
         if self.pp_state is "Playing":
             # Volume down in 10 steps of 7.5% with .05 sec in-between, end @ 25%
-            # def step_volume(sink, p_start, p_stop, steps, interval, thread=None):
             # maximum volume is usually 100% but 60% or so during hockey commercials
-            step_volume(self.play_top_sink, self.max_volume_override(),
+            step_volume(self.play_ctl.sink, self.max_volume_override(),
                         25, 10, .05, thread=self.play_vu_meter)
-            ext.stop_pid_running(self.play_top_pid)  # Pause the music
-            self.play_ctl.log('stop')  # For keeping track of total time played
+            self.play_ctl.stop()
 
+            ''' TODO: probably don't need self.secs_before_pause anymore '''
             #ext.t_init('get_curr_ffplay_secs(TMP_CURR_SONG)' + TMP_CURR_SONG)
-            self.secs_before_pause = get_curr_ffplay_secs(TMP_CURR_SONG)
+            #self.secs_before_pause = get_curr_ffplay_secs(TMP_CURR_SONG)
+            self.secs_before_pause = self.play_ctl.elapsed()
             #ext.t_end('print')  # 0.0004520416 then 0.0004031658 then 0.0001831055
 
             #ext.t_init('work_list = ext.tail(TMP_CURR_SONG, 1)')
@@ -7082,11 +7081,12 @@ $ wmctrl -l -p
             # Volume at 25% turned up in 10 steps of .05 sec to maximum volume
             if start_music:
                 # When called from Next/Previous Song button, no song yet
-                ext.continue_pid_running(self.play_top_pid)  # Audio PID
+                #ext.continue_pid_running(self.play_ctl.pid)  # Audio PID
                 self.current_song_t_start = time.time()
-                self.play_ctl.log('start')  # For keeping track of total time played
+                self.play_ctl.cont()
+                #self.play_ctl.log('start')  # For keeping track of total time played
                 # maximum volume is usually 100% but 60% or so during hockey commercials
-                step_volume(self.play_top_sink, 25, self.max_volume_override(),
+                step_volume(self.play_ctl.sink, 25, self.max_volume_override(),
                             10, .05, thread=self.play_vu_meter)
             self.pp_state = "Playing"  # Was Paused now is Playing
             self.set_pp_button_text()
@@ -7137,10 +7137,10 @@ $ wmctrl -l -p
         self.info.cast("song_rewind() pp_state: \t" + self.pp_state +
                        "  | play_ctl.path: \t" + self.play_ctl.path)
         if self.current_song_secs < float(REW_CUTOFF):
+            # song_set_ndx -> wrapup_song -> kill_song -> play_ctl.close()
             self.song_set_ndx('restart')  # Was less than 12 seconds so restart
-            self.play_ctl.close()
             self.play_ctl.new(self.current_song_path)  # FF/Rewind resets time played
-            self.play_ctl.log('start')  # For keeping track of total time played
+            #self.play_ctl.log('start')  # For keeping track of total time played
             return
 
         new_time = self.current_song_secs - float(REW_FF_SECS)
@@ -7157,47 +7157,59 @@ $ wmctrl -l -p
             self.song_set_ndx('next')  # Was less than 12 seconds left so next song.
             self.play_ctl.close()
             self.play_ctl.new(self.current_song_path)  # FF/Rewind resets time played
-            self.play_ctl.log('start')  # For keeping track of total time played
+            #self.play_ctl.log('start')  # For keeping track of total time played
             return
 
         start_secs = self.current_song_secs + float(REW_FF_SECS)
         self.song_ff_rew_common(start_secs)  # Kill song and start 10 seconds later
 
     def song_ff_rew_common(self, start_secs):
-        """ Shared function for for song_ff() and song_rew() functions """
-        if self.play_top_pid > 0:  # Song is currently playing
-            self.kill_song()  # To ff/rewind playing song, kill last ffplay instance
-        extra_opt = ffplay_extra_opt(str(int(start_secs)), fade_in=2)
+        """ Shared function for for song_ff() and song_rew() functions
 
-        ''' Launch ffplay to play song using extra_opt for start position 
-        
-            TODO: play_top_pid  --> play_ffplay_pid
-                  play_top_sink --> play_ffplay_sink
-        
-        '''
-        self.play_top_pid, self.play_top_sink = \
-            start_ffplay(self.current_song_path, TMP_CURR_SONG, extra_opt)
+            TODO: In future, a 'restart' log event will be generated for
+                  FF and Rewind actions. This will replace current chain:
+                    .close() -> .end() -> .new() -> .start()
 
-        if not self.validate_pa_sink(self.play_top_sink, self.current_song_path):
-            ''' Pulse Audio failed to get sink. We already know it's valid music file '''
-            self.play_top_pid = 0  # Don't try to kill, it's not there
-            return
+        """
+        if self.play_ctl.pid > 0:  # Song is currently playing
+            self.play_ctl.restart(start_secs)
+        else:
+            toolkit.print_trace()
+            print("FF/Rewind no song to kill???")
 
-        self.play_ctl.close()
-        self.play_ctl.new(self.current_song_path)  # FF/Rewind resets time played
-        self.play_ctl.log('start')  # For keeping track of total time played
+        if not self.validate_pa_sink(self.play_ctl.sink, self.play_ctl.path):
+            ''' Pulse Audio error getting sink '''
+            if self.play_ctl.pid > 0:
+                self.info.cast("Runaway Orphan PID to catch: \t" +
+                               self.play_ctl.pid, 'error')
+                self.play_ctl.pid = 0  # .sink is already blank
+            self.play_ctl.close()  # reset last access time
+            return  # No window mounted yet so nothing to clean up.
+
+        text = "FileControl.start(self.play_ctl.start_sec, \t" + str(self.play_ctl.start_sec) +\
+            "\nself.play_ctl.limit_sec, \t" + str(self.play_ctl.limit_sec) + "\nself.play_ctl.fade_in_sec, \t" +\
+            str(self.play_ctl.fade_in_sec) + "\nself.play_ctl.fade_out_sec, \t" + str(self.play_ctl.fade_out_sec) +\
+            "\nself.play_ctl.dead_start, \t" + str(self.play_ctl.dead_start) + "\nself.play_ctl.ff_name, \t" + \
+            str(self.play_ctl.ff_name) + "\n"
+        #self.info.cast(text)  # For debugging
+        #print(text)  # For debugging
+
         self.play_update_progress(start_secs)  # Update screen with song progress
         self.play_paint_lyrics(rewind=True)  # Highlight line currently being sung. BUG: Only
 
         if self.pp_state == "Paused":
             ''' Was paused. Stop newly created ffplay to reflect pause. Then begin play '''
-            set_volume(self.play_top_sink, 25)  # Mimic volume of paused song
-            ext.stop_pid_running(self.play_top_pid)  # Sends pause signal (stop)
-            self.play_ctl.log('stop')  # For keeping track of total time played
+            set_volume(self.play_ctl.sink, 25)  # Mimic volume of paused song
+            self.play_ctl.stop()
             self.pp_toggle()  # toggle pause to begin playing
 
     def corrupted_music_file(self, path):
-        """ Not a valid music file or device off-line """
+        """ Not a valid music file or device off-line 
+            After sync_ctl is converted then single parameter (file_ctl)
+            can be passed and from that pid, sink and path are obtained.
+            Then expanded error messages with size of file, python-magic,
+            etc.
+        """
         quote = ("\n" + path + "\n\n"
                  "This music file is invalid. It cannot be played.\n\n" +
                  "Possibly the device location is off-line.\n\n" +
@@ -7209,14 +7221,20 @@ $ wmctrl -l -p
         self.info.fact(quote, 'error', 'open')
 
     def validate_pa_sink(self, sink, path):
-        """ Validate Pulse Audio Sink. Must not be blank """
-        if sink != "":  # A blank sink indicates sink not found
+        """ Validate Pulse Audio Sink. Must not be blank 
+            After sync_ctl is converted then single parameter (file_ctl)
+            can be passed and from that pid, sink and path are obtained.
+            Then expanded error messages with orphaned PID.
+        """
+        # A blank sink indicates sink not found
+        if sink != "":  
             return True  # TODO: Add more checks for valid sink is working
 
-        ''' Did not get sink for song so could be Pulse Audio crashed. '''
+        ''' Did not get sink for song. It could be Pulse Audio crashed. '''
         quote = ("\n" + path + "\n\n"
-                 "Attempted to play above music file. Failed to get\n" +
-                 "Pulse Audio sink. Please check system settings.")
+                 "Attempted to play above music file. Failed\n" +
+                 "to getPulse Audio sink number:" + str(sink) +
+                 "\n\nPlease check Pulse Audio settings with pavucontrol.")
 
         message.ShowInfo(self.lib_top, text=quote, align='center', icon='error',
                          thread=self.get_refresh_thread(),
@@ -7327,11 +7345,26 @@ $ wmctrl -l -p
                 break  # Playlist Number is attached (visible) in chron_tree
 
     def wrapup_song(self):
-        self.kill_song()  # Kill if song is playing
+        """ Called from pending_apply(), song_set_ndx(),
+            chron_apply_filter(), chron_reverse_filter and play_close()
+        """
+        # When paused music at 50%, even though ffplay closes need to
+        # set volume to 100% because next load of ffplay inherits setting.
+        if self.play_ctl.sink is not "":
+            set_volume(self.play_ctl.sink, 100)
+
+        # If no internet web scraping process could be running for entire song
+        if self.lyrics_scrape_pid is not 0:
+            ext.kill_pid_running(self.lyrics_scrape_pid)
+            self.lyrics_scrape_pid = 0
+
+        # Kill song (if running) and update last access time
+        self.play_ctl.close()  # calls .end() which update last access
+
         if len(self.saved_selections) == 0:
             # Cannot get treeview iid if self.saved_selections[] is empty list
             return  # Empty list.  May 24, 2023 - should not be making this
-                    #  test at late stage. Better 'self.play_top_pid == 0:'
+                    #  test at late stage. Better 'self.play_ctl.pid == 0:'
 
         iid = self.saved_selections[self.ndx]  # Get treeview song ID
         album = self.lib_tree.parent(iid)
@@ -7464,23 +7497,20 @@ $ wmctrl -l -p
         ''' Get our song_list index number from user treeview selections '''
         if self.ndx > len(self.saved_selections) - 1:
             self.ndx = 0  # Restarted smaller list
-        iid = self.saved_selections[self.ndx]  # Library Treeview iid for song
-        self.last_started = self.ndx  # Catch fast clicking Next
+        self.last_started = self.ndx  # Catch fast clicking Next/Prev Buttons
 
-        ''' Open current playing song in Library Treeview '''
-        list_index = int(iid)
+        ''' Highlight current song in Library Treeview '''
+        iid = self.saved_selections[self.ndx]  # Library Treeview iid for song
         album = self.lib_tree.parent(iid)
         artist = self.lib_tree.parent(album)
 
         ''' Build full song path from song_list[] '''
-        # TODO: Get SQLite3 row which may have originally been recorded with
-        #       different OS directory name or song name which was later
-        #       changed.
+        list_index = int(iid)  # list_index variable reused couple pages down
         self.current_song_path = self.real_path(list_index)
 
         ''' Verify it's a real song - May want to do this after .see() '''
         self.play_ctl.new(self.current_song_path)
-        if len(self.play_ctl.audio) == 0:
+        if self.play_ctl.invalid_file:
             print(self.play_ctl.metadata)
             self.corrupted_music_file(self.current_song_path)  # No blocking dialog box
             return False  # TODO: Restore screen? Play next? What to do now?
@@ -7562,85 +7592,93 @@ $ wmctrl -l -p
         ''' Start song with ffplay & Update tree view's last played time
             If resume is passed we are starting up or changing location 
         '''
+        ''' June 18, 2023 - Default for music to be playing '''
+        self.pp_state = "Playing"
+        self.set_pp_button_text()
+
+        ''' Launch ffplay to play song using extra_opt for start position '''
+        dead_start = False
+        start_secs = 0.0
         if resume:
-            # Convert float type read from SQL History Column "Seconds"
+            if self.resume_state == "Paused":
+                # When resume saved music was paused
+                dead_start = True
             if not isinstance(self.resume_song_secs, float):
                 self.resume_song_secs = 0.0  # Fix error May 31, 2023
                 print("self.resume_song_secs was not type 'float'. Force to:",
                       self.resume_song_secs)
-            extra_opt = ffplay_extra_opt(int(self.resume_song_secs))
-        else:
-            extra_opt = ''  # Not system startup, play song normally
+            start_secs = self.resume_song_secs
 
-        ''' June 18, 2023 - Default for music to be playing '''
-        self.pp_state = "Playing"
-        self.set_pp_button_text()
-        self.play_ctl.log('start')  # For keeping track of total time played
+        ''' Start ffplay and get Linux PID and Pulseaudio Input Sink # '''
+        self.play_ctl.start(start_secs, 0, 1, 0, TMP_CURR_SONG, dead_start)
+        # Fade in over 1 second.
 
-        ''' Launch ffplay to play song using extra_opt for start position '''
-        self.play_top_pid, self.play_top_sink = \
-            start_ffplay(self.current_song_path, TMP_CURR_SONG, extra_opt)
+        if not self.validate_pa_sink(self.play_ctl.sink, self.play_ctl.path):
+            ''' Pulse Audio error getting sink '''
+            if self.play_ctl.pid > 0:
+                self.info.cast("Runaway Orphan PID to catch: \t" +
+                               self.play_ctl.pid, 'error')
+                self.play_ctl.pid = 0  # .sink is already blank
+            self.play_ctl.close()  # reset last access time
+            return False
 
-        if not self.validate_pa_sink(self.play_top_sink, self.current_song_path):
-            ''' Pulse Audio failed to get sink. We already know it's valid music file '''
-            self.play_top_pid = 0  # Don't try to kill, it's not there
-            return False  # self.play_ctl.close() called after we return.
+        text = "FileControl.start(self.play_ctl.start_sec, \t" + str(self.play_ctl.start_sec) +\
+            "\nself.play_ctl.limit_sec, \t" + str(self.play_ctl.limit_sec) + "\nself.play_ctl.fade_in_sec, \t" +\
+            str(self.play_ctl.fade_in_sec) + "\nself.play_ctl.fade_out_sec, \t" + str(self.play_ctl.fade_out_sec) +\
+            "\nself.play_ctl.dead_start, \t" + str(self.play_ctl.dead_start) + "\nself.play_ctl.ff_name, \t" + \
+            str(self.play_ctl.ff_name) + "\n"
+        #self.info.cast(text)  # For debugging
+        #print(text)  # For debugging
 
         self.current_song_t_start = time.time()  # For pp_toggle, whether resume or not
+
         if resume:
             # Just woken up from system sleep or reboot. Restore song at save point.
             # May 29, 2023 - When resuming buttons do not have art color assigned
             self.play_update_progress(self.resume_song_secs)
             if self.resume_state == "Paused":  # Was resume saved as paused?
-                set_volume(self.play_top_sink, 25)
-                ext.stop_pid_running(self.play_top_pid)
-                self.play_ctl.log('stop')  # For keeping track of total time played
-                # Set Pause status to match resume pause status
-                #self.pp_toggle(start_music=False)  # Pause to match resume state
-                self.pp_state = "Paused"  # Was Playing now is Paused
+                set_volume(self.play_ctl.sink, 25)
+                # Set Play/Pause status to paused
+                self.pp_state = "Paused"  # Was Playing state by default
                 self.set_pp_button_text()
                 self.play_update_progress(self.resume_song_secs)  # Reset variables
                 self.play_paint_lyrics()  # Highlight line currently being sung
+
             self.resume_state = None
             self.resume_song_secs = None
 
         # update treeview display and position treeview to current song
-        self.update_lib_tree_song(self.current_song_path, list_index)
+        self.update_lib_tree_song(list_index)
 
-        ''' Remove splash screen if we were called with it. '''
+        ''' Remove 'M' splash screen when mserve.py was called by 'm'. '''
         if self.splash_toplevel:
             self.splash_toplevel.withdraw()  # Remove splash screen
             self.splash_toplevel = None
 
         if real_start:
             self.play_to_end()  # play song until end
-            self.queue_next_song()  # Save indices & next song as appropriate
+            self.queue_next_song()  # Save Lyrics Index & set next song
         else:
             pass  # A long running process made play_refresh_top() run out of music
 
-        # self.play_ctl.log('end')  <- This is done by kill_song() function
-        self.play_ctl.close()
+        self.play_ctl.close()  # Set last access time for song just finished
+
         return True
 
     def queue_next_song(self):
         if self.current_song_path is not "":  # next/prev set new name?
             # Song ended naturally so select next in list
-            # TODO: Save should be in children processes not here
             self.play_save_time_index()  # Save lyrics & time index
-
-            # TODO: Set OsAccessTime in Music Table
-
             self.song_set_ndx('next')
 
-    def update_lib_tree_song(self, full_path, iid):
+    def update_lib_tree_song(self, iid):
         """ Update file's last played time in tkinter treeview.
             Linux only updates last access time once per day so use
             touch command to update last access. For example:
             https://opensource.com/article/20/6/linux-noatime
         """
-        os.popen('touch -a -c ' + '"' + full_path + '"')  # -a = access time
-        stat = os.stat(full_path)  # Get all stat attributes of file
-        self.lib_tree.set(iid, 'StatTime', float(stat.st_atime))
+        _old_time, new_time = self.play_ctl.touch_it()
+        self.lib_tree.set(iid, 'StatTime', new_time)
         self.update_song_last_play_time(iid)  # Update treeview
         self.lib_tree.see(iid)  # Position listbox
 
@@ -7648,7 +7686,7 @@ $ wmctrl -l -p
         """ Called by self.update_lib_tree_song() and self.refresh_acc_times()
         """
         a_time = self.lib_tree.set(iid, 'StatTime')
-        f_time = tmf.ago(float(a_time))  # Pretty time format
+        f_time = tmf.ago(float(a_time), seconds=True)  # Pretty time format
         self.lib_tree.set(iid, 'Access', f_time)
 
     def play_to_end(self):
@@ -7675,38 +7713,10 @@ $ wmctrl -l -p
             if not self.last_started == self.ndx:
                 return  # Fast clicking Next/Prev buttons
 
-            self.play_top_pid = self.check_play_top_pid()
-            if self.play_top_pid == 0:
+            if not self.play_ctl.check_pid():
                 return
 
-            """ May 23, 2023 - Common function self.check_play_top_pid() 
-            # If self.play_top_pid active song is playing
-            try:
-                # os.kill 2nd parameter with 0 checks if process is active
-                os.kill(self.play_top_pid, 0)
-            except OSError:
-                # Do not blank out self.current_song! It controls song_set_ndx('next')
-                self.play_top_pid = 0
-                self.play_top_sink = ""
-                return  # Song has ended
-            """
             self.refresh_play_top()  # Rotate art, refresh vu meter
-
-    def check_play_top_pid(self):
-        if self.play_top_pid == 0:
-            return 0
-
-        # If self.play_top_pid active song is playing
-        try:
-            # os.kill 2nd parameter with 0 checks if process is active
-            os.kill(self.play_top_pid, 0)
-        except OSError:
-            # Do not blank out self.current_song! It controls song_set_ndx('next')
-            self.play_top_pid = 0
-            self.play_top_sink = ""
-            return 0  # Song has ended
-
-        return self.play_top_pid
 
     def refresh_play_top(self):
         """
@@ -7718,13 +7728,6 @@ $ wmctrl -l -p
         April 24, 2023 - Must return something so checks in message.py will
             know a function is being passed as valid "thread=..." parameter.
         """
-
-        # TODO: tool.thread() needs update to check if called from
-        #       multiple places there is no need to repeat what was
-        #       just done < 20 ms ago (or whatever the shortest run
-        #       time happens to be).
-
-        # DEBUG LOST TIME of .25 seconds or so
 
         ''' Is system shutting down? '''
         if self.killer.kill_now:
@@ -7804,13 +7807,13 @@ $ wmctrl -l -p
                 Current song would end before completion. Also a song can end
                 when .ShowInfo is active. So play next song in list.
         '''
-        self.play_top_pid = self.check_play_top_pid()
-        if self.play_top_pid == 0:  # Music has stopped playing
+        #self.play_ctl.pid = self.check_play_top_pid()
+        self.play_ctl.check_pid()
+        if self.play_ctl.pid == 0:  # Music has stopped playing
             self.play_ctl.close()   # Update last song's last access time
             self.queue_next_song()  # Queue up next song in list
             ''' Play next song and if error, bail out '''
             if not self.play_one_song(real_start=False):  # Start song & come back
-                self.play_ctl.close()
                 self.play_close()   # Catastrophic error that can't be backed out of
                 return False
             self.play_ctl.close()   # Update our song's last access time
@@ -7839,7 +7842,7 @@ $ wmctrl -l -p
 
     def play_update_progress(self, start_secs=None):
         """ Calculate song progress. This is approximate value. Exact value
-            obtained using: get_curr_ffplay_secs(tmp_name)
+            obtained using: self.play_ctl.elapsed()
 
         :param start_secs: Optional. Song is starting at seconds passed.
         """
@@ -7867,149 +7870,26 @@ $ wmctrl -l -p
             self.current_progress.set(str('%.1f' % self.current_song_secs) +
                                       " seconds of: " + str(self.saved_DurationSecs))
 
-    def deprecated_get_ffprobe_metadata(self, path):
-        """ Get metadata for current song
-            NOTE: .wav files have no metadata so when Artist, Album or Track
-                  is None use OS filename segments.
-
-        TODO: 'ffplay' will reset last access time. We don't want to do that here
-              Use 'touch' command
-
-            Start by resetting last access time each time ffplay starts or 
-            ffmpeg is run.
-            
-            If duration of ffplay is less than 10 seconds total run time - 
-            total pause seconds then allow. Otherwise reset time with each 
-            pause, next, restart.
-            
-            Grab initial in set_play_ndx() function but reset last song first.
-            
-            How long is time buffer in ffplay before it reads next chunk of time?
-            
-            Just stat the file after starting, pausing, un-pausing, killing 
-            and use info.fact to record. It's all easy peasy now!
-            
-            CODE:
-                stat = os.stat(full_path)  # Get all stat attributes of file
-                self.update_song_last_play_time(iid)  # Update treeview
-                os.popen('touch -a -c ' + '"' + full_path + '"')  # -a = access time
-
-        """
-
-        # Called by self.sam_top when self.play_top may NOT be active!
-        # TODO: self.get_ffprobe_metadata() is called by missing_artwork()
-        #       to update sql metadata for every song.
-        # print('mserve.py get_ffprobe_metadata() path:', path)
-        # if not self.play_top_is_active: return             # Play window closed?
-
-        # noinspection SpellCheckingInspection
-        '''
-        self.metadata = OrderedDict()
-        ext.t_init("mserve.py get_ffprobe_metadata()")
-        cmd = 'ffprobe ' + '"' + path + '"' + ' 2>' + TMP_FFPROBE
-        result = os.popen(cmd).read().strip()
-        ext.t_end('no_print')  # ffprobe: 0.0891180038 0.0842001438 0.0855870247
-
-        if len(result) > 1:
-            print('mserve.py get_ffprobe_metadata() ffprobe result:', result)
-
-        ext.t_init("parse " + TMP_FFPROBE)
-        # Create self.metadata{} dictionary 
-        with open(TMP_FFPROBE) as f:
-            for line in f:
-                line = line.rstrip()  # remove \r and \n
-                # print('line:', line)
-                if line.startswith('  configuration:'):
-                    continue
-                if line.startswith('Input #0, '):
-                    val = line.split('Input #0, ')[1]
-                    self.metadata['INPUT #0'] = val
-                    continue
-                # noinspection PyBroadException
-                try:
-                    (key, val) = line.split(':', 1)  # Split first ':' only
-                except:
-                    continue  # No ':' on line
-                key = key.strip()  # strip leading and
-                val = val.strip()  # trailing whitespace
-                if key is not "" and val is not "":
-                    # Convert all keys to upper case for simpler lookups
-                    key_unique = toolkit.unique_key(key.upper(), self.metadata)
-                    # Key "Stream #0" appears twice
-                    self.metadata[key_unique] = val
-        ext.t_end('no_print')
-
-        # Get OS path as Artist, Album, Title in case meta doesn't exist.
-        # list_index = int(self.saved_selections[self.ndx])  # May 2, 2023 No self.ndx
-        # rpath = self.all_paths[list_index].split(os.sep)  # when called by sample 10 secs
-        rpath = path.split(os.sep)  # May 2, 2023 - replacement for metadata
-        # print('mserve.py get_ffprobe_metadata() rpath:', rpath[-3], rpath[-2], rpath[-1])
-
-        self.Artist = self.metadata.get('ARTIST', "None")  # If not in dict, use "None"
-        if self.Artist == "None":
-            # TODO: "<No Artist>" string substitution
-            self.Artist = rpath[-3].encode('utf-8')  # .wav files have no metadata
-        self.Album = self.metadata.get('ALBUM', "None")
-        if self.Album == "None":
-            # TODO: "<No Album>" string substitution
-            self.Album = rpath[-2].encode('utf-8')
-        self.Title = self.metadata.get('TITLE', "None")
-        if self.Title == "None":
-            self.Title = rpath[-1].encode('utf-8')
-        self.Genre = self.metadata.get('GENRE', "None")
-        self.Track = self.metadata.get('TRACK', "None")
-        self.Date = self.metadata.get('DATE', "None")
-        self.Artist = toolkit.uni_str(self.Artist)
-        self.Album = toolkit.uni_str(self.Album)
-        self.Title = toolkit.uni_str(self.Title)
-        self.Genre = toolkit.uni_str(self.Genre)
-        self.Track = toolkit.uni_str(self.Track)
-        self.Date = toolkit.uni_str(self.Date)
-        # June 27 2023 - Below has been working but wasted coding
-        self.Duration = "" if self.Duration is None else self.Duration
-        self.Duration = toolkit.uni_str(self.Duration)
-        self.Duration = self.metadata.get('DURATION', "0.0,0").split(',')[0]
-        self.Duration = self.Duration.split('.')[0]
-        self.DurationSecs = convert_seconds(self.Duration)  # Note must save in parent
-
-        self.info.fact(
-            "ffprobe song: " + self.Title +
-            "\nArtist:\t" + self.Artist +
-            "\nAlbum:\t" + self.Album +
-            "\nTrack:\t" + self.Track +
-            "\tDate:\t" + self.Date +
-            "\tDuration:\t" + self.Duration
-        )
-
-        # Update sql library Music Table with metadata tags
-        # Return value set in variable self.meta_update_succeeded
-        self.update_sql_metadata(path)
-
-        return self.metadata  # Not always used by caller.
-        '''
-        print("DO NOT CALL deprecated():", path, self.lib_top)
-
-    def update_sql_metadata(self, file_ctl):
+    @staticmethod
+    def update_sql_metadata(file_ctl):
         """ Legacy code crafted to new function June 28, 2023.
-
-            self.meta_update_succeeded was used by grandparent.
-            Now grandparent can call direct and simple return True/False
-            can be returned instead of setting self.meta_update_succeeded.
         """
-        self.meta_update_succeeded = None  # Wasn't called
+        meta_update_succeeded = None
         if file_ctl.path.startswith(PRUNED_DIR):
             sql_key = file_ctl.path[len(PRUNED_DIR):]  # Remove prefix from filename
             # returns true if metadata changed and row updated
-            self.meta_update_succeeded = \
+            meta_update_succeeded = \
                 sql.update_metadata(
                     sql_key, file_ctl.Artist, file_ctl.Album, file_ctl.Title,
                     file_ctl.Genre, file_ctl.Track, file_ctl.Date,
                     file_ctl.DurationSecs, file_ctl.Duration)
         else:
+            # Not really an error but needs more testing and enhancing
             print('mserve.py update_sql_metadata() path:', file_ctl.path)
             print('mserve.py update_sql_metadata() Missing PRUNED_DIR:', PRUNED_DIR)
+            pass
 
-        return self.meta_update_succeeded  # For future switch away from self.
+        return meta_update_succeeded
 
     def play_spin_art(self):
         """
@@ -10329,7 +10209,7 @@ Failed to get sink input information: No such entity
         self.sync_begin_buttons.grid()  # Display our buttons
 
     def sync_start_ffplay(self, others=True, calculate=True):
-        """ Start ffplay and get our Linux PID and Pulseaudio Input Sink #
+        """ Start ffplay and get Linux PID and Pulseaudio Input Sink #
             others = Turn down volume of other applications
             calculate = calculate self.sync_start & self.sync_duration
 
@@ -11489,39 +11369,6 @@ IndexError: list index out of range
             # If tagged as currently playing, remove it.
             self.populate_chron_tree()  # Rebuild with new song
 
-    def kill_song(self):
-        """ WARNING: Called from multiple places """
-        # When paused music at 50%, even though ffplay closes need to
-        # set volume to 100% because next load of ffplay inherits setting.
-        if self.play_top_sink is not "":
-            #self.play_100()
-            set_volume(self.play_top_sink, 100)
-            self.play_top_sink = ""
-
-        # If no internet web scraping process could be running for entire song
-        if self.lyrics_scrape_pid is not 0:
-            ext.kill_pid_running(self.lyrics_scrape_pid)
-            self.lyrics_scrape_pid = 0
-
-        if self.play_top_pid > 0:
-            # If music playing then kill the process ID
-            ext.kill_pid_running(self.play_top_pid)
-            self.play_top_pid = 0
-            self.play_ctl.log('end')
-            self.play_ctl.close()  # Will generate multiple .close() method calls
-            # What about fast clicking when song doesn't even start playing? 
-
-    def play_100(self):
-
-        #        print("self.play_top_sink:", self.play_top_sink)
-        if self.play_top_sink is not "":
-            try:
-                os.popen('pactl set-sink-input-volume ' +
-                         self.play_top_sink + ' 100%') \
-                    .read().strip().splitlines()
-            except TypeError:  # TypeError: cannot concatenate 'str' and 'list' objects
-                print("mserve.py play_100() self.play_top_sink:", self.play_top_sink)
-
     # noinspection PyUnusedLocal
     def play_close(self, *args):
         # TODO: last_selections aren't being saved. When clicking play again
@@ -11529,6 +11376,9 @@ IndexError: list index out of range
 
         if not self.play_top_is_active:
             return  # play_close() already run.
+
+        self.tt.close(self.play_top)  # Close tooltips under top level
+        self.play_ctl.close()  # If playing song update last access time
 
         # Reverse filters so proper song index is saved
         if self.chron_filter is not None:
@@ -11551,7 +11401,6 @@ IndexError: list index out of range
         last_playlist_geom = monitor.get_window_geom_string(
             self.play_top, leave_visible=False)
         monitor.save_window_geom('playlist', last_playlist_geom)
-        self.tt.close(self.play_top)  # Close tooltips under top level
 
         # Save song playing seconds and paused/playing state to SQL
 
@@ -11720,82 +11569,64 @@ IndexError: list index out of range
 
     def sample_song(self, Id, sample='middle'):
         """
-            Sample middle 10 seconds of a song. Turn down other applications
-            when starting and restore other application when ending.
-
-            When you click "Close" the master playlist keeps playing when you
-            exit top library???
+            Sample middle 10 seconds or full song. Turn down other applications
+            when starting and restore other application volume when ending.
 
             TODO: There is something in here breaking InfoCentre.zoom() usage
                   of self.tt - Tooltips 'piggy_back' feature
 
         """
-
-        ''' Are we already playing middle clip? '''
-        if self.sam_top_is_active:
-            self.sample_song_lift()
-            return  # Don't want to start playing again
-
-        ''' Are we synchronizing lyrics? It has control of music player '''
-        if self.syn_top_is_active:
-            self.sync_time_index_lift()
-            return
-
         ''' Build full song path '''
         path = self.real_path(int(Id))
-        self.sam_top_pid = 0  # ffplay Process ID
-        self.sam_top_sink = ""  # Pulse audio sink number
 
         ''' Last File Access Time overrides. E.G. Look but do not touch. '''
         self.sam_ctl = FileControl(self.lib_top, self.info)
+        # June 30, 2023 debugging stuff that was never really solved and
+        #   patched with JACK-HAMMER
         # sam_top references the fields in sam_ctl. It doesn't have play_ctl
         # because play_top can be closed
-        #self.sam_ctl = FileControl(self.sam_top, self.info)
-        #print(self.info)
-        #print(self.sam_ctl.info)
+        #self.sam_ctl = FileControl(self.sam_top, self.info)  # For debugging
+        #print(self.info)  # For debugging
+        #print(self.sam_ctl.info)  # For debugging
         #self.info.cast("self.sam_ctl = FileControl(self.lib_top, self.info)")
+
+        ''' Sanity check to see if file really has music inside '''
         self.sam_ctl.new(path)  # Get metadata for music file
-        if len(self.sam_ctl.audio) == 0:
+        if self.sam_ctl.invalid_file:
             print(self.sam_ctl.metadata)
             self.corrupted_music_file(path)  # Non-blocking dialog box
-            return  # Active flag has not bet set so no cleanup needed
+            ''' Sanity check - Should .close() or .end() be used??? '''
+            self.sam_ctl.close()  # reset last access time to original value
+            return
+
+        ''' Set start (beginning or middle) and duration (all or 10 seconds) '''
+        if sample == 'middle':
+            start = self.DurationSecs / 2 - 5.0
+            limit = 10.0
+        else:
+            start = 0.0  # 'full' sample, start at beginning
+            limit = self.DurationSecs  # Cannot use 0.0 because fade-out
+
+        ''' Start ffplay and get Linux PID and Pulseaudio Input Sink # '''
+        self.sam_ctl.start(start, limit, 1, 1, TMP_CURR_SAMPLE, True)
+        # Fade in and out for one second. True = start in paused state.
+
+        if not self.validate_pa_sink(self.sam_ctl.sink, self.sam_ctl.path):
+            ''' Pulse Audio error getting sink '''
+            if self.sam_ctl.pid > 0:
+                self.info.cast("Runaway Orphan PID to catch: \t" +
+                               self.sam_ctl.pid, 'error')
+                self.sam_ctl.pid = 0  # .sink is already blank
+            self.sam_ctl.close()  # reset last access time
+            return  # No window mounted yet so nothing to clean up.
 
         text = "FileControl.start(self.sam_ctl.start_sec, \t" + str(self.sam_ctl.start_sec) +\
             "\nself.sam_ctl.limit_sec, \t" + str(self.sam_ctl.limit_sec) + "\nself.sam_ctl.fade_in_sec, \t" +\
             str(self.sam_ctl.fade_in_sec) + "\nself.sam_ctl.fade_out_sec, \t" + str(self.sam_ctl.fade_out_sec) +\
             "\nself.sam_ctl.dead_start, \t" + str(self.sam_ctl.dead_start) + "\nself.sam_ctl.ff_name, \t" + \
             str(self.sam_ctl.ff_name) + "\n"
-        #self.info.cast(text)
-        print(text)
-
-        ''' Set start (beginning or middle) and duration (all or 10 seconds) '''
-        if sample == 'middle':
-            # convert float self.DurationSecs to string
-            start_secs = str(int(self.DurationSecs / 2))
-            duration_secs = "10"
-        else:
-            start_secs = "0"
-            duration_secs = str(int(self.DurationSecs))  # seems to end to soon?
-
-        ''' Start ffplay and get our Linux PID and Pulseaudio Input Sink # '''
-        #extra_opt = ffplay_extra_opt(start_secs, fade_in=1, duration_secs=duration_secs)
-        #self.sam_top_pid, self.sam_top_sink = \
-        #    start_ffplay(path, TMP_CURR_SAMPLE, extra_opt)
-        ''' Fade in and out for one second. True = start in paused state. '''
-        self.sam_top_pid, self.sam_top_sink = \
-            self.sam_ctl.start(start_secs, duration_secs, 1, 1,
-                               TMP_CURR_SAMPLE, True)
-
-        if not self.validate_pa_sink(self.sam_top_sink, path):
-            ''' Pulse Audio failed to get sink '''
-            if self.sam_top_pid > 0:
-                self.info.cast("Runaway Orphan PID to catch: \t",
-                               self.sam_top_pid)
-                self.sam_top_pid = 0
-            return  # No window mounted yet so nothing to clean up.
-
-        #set_volume(self.sam_top_sink, 0)  # Turn off volume
-        #ext.stop_pid_running(self.sam_top_pid)  # Pause the music
+        #self.info.cast(text)  # For debugging
+        #print(text)  # For debugging
 
         ''' Create window '''
         self.sam_top = tk.Toplevel()
@@ -11864,19 +11695,19 @@ IndexError: list index out of range
             TODO: Port code from self.sync_begin() with refined volume steps
         '''
         old_sinks = sink_master()  # build list of tuples
-        ext.continue_pid_running(self.sam_top_pid)  # Resume playing music
+        self.sam_ctl.cont()
 
         for i in range(1, 21):  # 20 steps
             if self.sam_top_is_active is False:
                 break
             """ June 27, 2023 - Fade in NOW controlled by ffplay """
-            our_time, err = set_volume(self.sam_top_sink, int(i * 5))  # Volume up 5%
+            our_time, err = set_volume(self.sam_ctl.sink, int(i * 5))  # Volume up 5%
             # To get 1-20 you need 1,21 range!
             for active_sink in old_sinks:
                 app_sink, app_vol, app_name = active_sink
-                if app_sink == self.sam_top_sink:
+                if app_sink == self.sam_ctl.sink:
                     continue  # Skip our sink!
-                if app_sink == self.play_top_sink:
+                if app_sink == self.play_ctl.sink:
                     continue
                 try:
                     percent = int(app_vol) - (int(app_vol) * i / 20)  # Reduce by 5%
@@ -11912,7 +11743,7 @@ IndexError: list index out of range
                 elapsed += .105
             except OSError:
                 print("Should not be here! Increase elapsed time")
-                self.sam_top_pid = 0  # Leave sink open
+                self.sam_ctl.pid = 0  # Leave sink open
                 break
 
         ''' Over last second restore volume on other sound applications
@@ -11923,9 +11754,9 @@ IndexError: list index out of range
         for i in range(1, 21):  # 20 steps
             # May be closed but still need to restore others' volumes
             percent = 100 - i * 5
-            if self.sam_top_sink is not "":
+            if self.sam_ctl.sink is not "":
                 # Set our playing sample's volume down by 5%
-                our_time, err = set_volume(self.sam_top_sink, percent)
+                our_time, err = set_volume(self.sam_ctl.sink, percent)
             else:
                 our_time = 0.0  # Time used so far
             # Turn volume back up for sinks we turned down earlier
@@ -11933,8 +11764,8 @@ IndexError: list index out of range
                 app_sink, app_vol, app_name = active_sink
                 for sink in old_sinks:
                     old_sink, old_vol, old_name = sink
-                    if old_sink == app_sink and not old_sink == self.sam_top_sink:
-                        if old_sink == self.play_top_sink:
+                    if old_sink == app_sink and not old_sink == self.sam_ctl.sink:
+                        if old_sink == self.play_ctl.sink:
                             continue
                         # Sink is still active after sample 10 secs
                         percent = old_vol * i / 20  # Volume up 5%
@@ -11960,14 +11791,9 @@ IndexError: list index out of range
         root.update()
         root.after(350)  # Give some volume ramp-down time
 
-        if self.sam_top_pid > 0:
-            # If music still playing kill it
-            ext.kill_pid_running(self.sam_top_pid)
         if os.path.isfile(TMP_CURR_SAMPLE):
             os.remove(TMP_CURR_SAMPLE)  # Clean up /tmp directory
 
-        self.sam_top_pid = 0  # Can only be one
-        self.sam_top_sink = ""  # This and above line Mar 1, 2021.
         self.sam_top.destroy()  # Close the window
         self.wrap_up_popup()  # Set color tags and counts
         if self.sam_paused_music:  # Did we pause music player?
@@ -12998,9 +12824,13 @@ class FileControlCommonSelf:
         ''' Fields for when a new file is declared '''
         self.statuses = []          # List of tuples (self.state, time.time())
         self.state = None           # == self.status[-1][0] - start/stop/end
-        self.stat_start = None            # At time of .new(path) initialization
-        self.stat_end = None      # At time of .close()
+        self.stat_start = None      # Snapshot at .new(path) initialization
+        self.stat_end = None        # Snapshot at .close()- stat.ST_ATIME
+        self.atime_done = None      # Did we calculate percent play and reset atime?
         self.path = None            # Full pathname to music file
+        self.time_played = None     # How many seconds song was played
+        self.time_stopped = None    # How many seconds song was paused
+        self.percent_played = None  # self.time_played * 100 / self.DurationSecs
 
         ''' Fields required for Sanity Check '''
         self.metadata = None        # Dictionary containing metadata from music file
@@ -13011,27 +12841,32 @@ class FileControlCommonSelf:
         self.metadata = None        # Dictionary containing metadata from music file
         self.artwork = []           # List of lines about artwork found
         self.audio = []             # List of lines about audio streams found
+        self.valid_file = None      # len(self.audio) > 0
+        self.invalid_file = None    # len(self.audio) == 0
         self.Artist = None          # self.metadata.get('ARTIST', "None")
         self.Album = None           # self.metadata.get('ALBUM', "None")
         self.Title = None           # self.metadata.get('TITLE', "None")
         self.Genre = None           # self.metadata.get('GENRE', "None")
         self.Track = None           # self.metadata.get('TRACK', "None")
         self.Date = None            # self.metadata.get('DATE', "None")
+        # Important note this is not the duration played, called self.limit
         self.Duration = None        # self.metadata.get('DURATION', "0.0,0")
         self.DurationSecs = None    # hh:mm:ss sting converted to int seconds
 
-        ''' Future fields for when FileControl() controls music too. '''
+        ''' Static variables for music control. '''
         self.action = None          # Action to perform ??? UNDEFINED
         self.pid = 0                # Linux Process Identification Number (Job #)
         self.sink = ""              # Pulse Audio Output Sink "999L" string
         self.vol = 100              # Output volume level
+        self.elapsed_secs = 0.0     # How much of song has been played so far?
+
+        ''' Parameters passed to FileControl.start() method '''
         self.start_sec = 0.0        # Seconds offset to start playing at
         self.limit_sec = 0.0        # Number of seconds to play. 0 = play all
         self.fade_in_sec = 0.0      # Number of seconds to fade in
         self.fade_out_sec = 0.0     # Number of seconds to fade out
-        self.dead_start = None
-        self.elapsed_secs = 0.0
-        self.ff_name = None
+        self.dead_start = None      # Start song and pause it immediately
+        self.ff_name = None         # TMP_CURR_SONG, etc.
 
         ''' All play_top variables for conversion consideration '''
 
@@ -13059,8 +12894,6 @@ class FileControlCommonSelf:
         ''' Sample middle of song '''
         self.sam_top = None  # tk.Toplevel()
         self.sam_paused_music = None  # We will resume play later
-        self.sam_top_pid = None  # Process ID
-        self.sam_top_sink = None  # Pulse Audio sink
 
         ''' Play Chronology '''
         self.chron_tree = None  # ttk.Treeview Playlist Chronology
@@ -13089,17 +12922,7 @@ class FileControlCommonSelf:
 
 
 class FileControl(FileControlCommonSelf):
-    """ Usage:
-
-        self.play_ctl = FileControl(path)
-
-        Methods:
-            new()
-            get_artwork()
-            close()
-
-
-    """
+    """ Control Music Files, including play, pause, end """
 
     def __init__(self, parent, info):
         """
@@ -13108,6 +12931,7 @@ class FileControl(FileControlCommonSelf):
         ''' self-ize parameter list '''
         self.tk_top = parent        # Tkinter Toplevel window used by parent
         self.info = info            # Parent's InfoCentre() instance
+        self.last_path = None       # Not used as of July 1, 2023
 
     def new(self, path, action=None):
         """
@@ -13121,16 +12945,15 @@ class FileControl(FileControlCommonSelf):
             self.info.cast("FileControl.new() last path still open:", self.path)
             self.close()
 
+        self.last_path = self.path  # Might be used in future, not July 1, 2023
         self.path = path            # Full path to music file
         self.action = action        # Action to perform
         self.stat_start = os.stat(path)   # Keep original stat until .close()
         self.cast_stat(self.stat_start)
         self.get_metadata()         # Get all specifications into self.metadata
         self.check_metadata()       # Get audio and video (artwork) specs
-
-        if self.action == 'start':
-            self.start(self.start_sec, self.limit_sec,
-                       self.fade_in_sec, self.fade_out_sec)
+        self.touch_it()             # Last access time is now time.time()
+        self.log('new')             # Initial event for base timeline
 
     def get_metadata(self):
         """ Use ffprobe to write metadata to file TMP_FFPROBE
@@ -13216,12 +13039,13 @@ class FileControl(FileControlCommonSelf):
             "\tDate:\t" + self.Date + \
             "\tDuration:\t" + self.Duration + "\n"
 
-        audio_found = False
         for entry in self.audio:
-            audio_found = True
             text += "Audio: \t" + entry + "\n"
 
-        if audio_found:
+        self.valid_file = len(self.audio) > 0
+        self.invalid_file = not self.valid_file
+
+        if self.valid_file:
             audio_pattern = ("Audio:", "Green", "Black")
         else:
             audio_pattern = ("Audio:", "Red", "White")
@@ -13239,7 +13063,7 @@ class FileControl(FileControlCommonSelf):
                     audio_pattern,
                     ("Artwork:", "Green", "Black")]
 
-        if audio_found:
+        if self.valid_file:
             self.info.fact(text, 'info', patterns=patterns)
         else:
             self.info.cast(text, 'error', patterns=patterns)
@@ -13271,13 +13095,14 @@ class FileControl(FileControlCommonSelf):
 
         state_tuple = (self.state, time.time())
         self.statuses.append(state_tuple)
+        if self.state == 'new' and last_state is None:
+            return True
         if self.state == 'start' and \
-                (last_state is None or last_state == 'stop'):
+                (last_state == 'new' or last_state == 'stop'):
             return True
         if self.state == 'stop' and last_state == 'start':
             return True
-        if self.state == 'end' and \
-                (last_state == 'start' or last_state == 'stop'):
+        if self.state == 'end' and last_state != 'end':
             return True
 
         text = "FileControl.log(state) programming error.\n\n"
@@ -13291,16 +13116,19 @@ class FileControl(FileControlCommonSelf):
 
     def cast_stat(self, stat):
         """
+        Debugging information.
+
         os.stat.ST_... fields
             stat.ST_UID - User id of the owner.
             stat.ST_GID - Group id of the owner.
             stat.ST_SIZE - Size in bytes of a plain file;...
-            stat.ST_ATIME - Time of last access.
+            stat.st_atime - Time of last access.
             stat.ST_MTIME - Time of last modification.
             stat.ST_CTIME - The “ctime” as reported by the operating system.
         :param stat: Either self.stat_start or self.stat_end
         """
-        ''' Which stat was passed? '''
+
+        ''' Which stat was passed as parameter?: stat_start or stat_end? '''
         stack = traceback.extract_stack()
         filename, lineno, function_name, code = stack[-2]
         try:
@@ -13314,12 +13142,12 @@ class FileControl(FileControlCommonSelf):
         text += "\t\t\t\tUser ID:\t" + str(stat.st_uid) + "\n"
         text += "Modify Time:\t\t" + time.asctime(time.localtime(stat.st_mtime))
         text += "\t\t\t\tGroup ID:\t" + str(stat.st_gid) + "\n"
-        text += "Create Time:\t\t" + time.asctime(time.localtime(stat.st_ctime))
+        text += "Change Time:\t\t" + time.asctime(time.localtime(stat.st_ctime))
         text += "\t\t\t\tInode No:\t" + str(stat.st_ino) + "\n"
         patterns = [(vars_name, "White", "Black"),
                     ("Access Time:", "Green", "Black"),
                     ("Modify Time:", "Green", "Black"),
-                    ("Create Time:", "Green", "Black"),
+                    ("Change Time:", "Green", "Black"),
                     ("User ID:", "Green", "Black"),
                     ("Group ID:", "Green", "Black"),
                     ("Inode No:", "Green", "Black")]
@@ -13364,13 +13192,13 @@ class FileControl(FileControlCommonSelf):
         '''
 
         if len(result) > 1:
-            self.info.cast("FileControl() get_artwork: Unknown Error:\n" +
+            self.info.cast("FileControl.get_artwork(): Unknown Error:\n" +
                            result)
             return None, None
 
         if not os.path.isfile(TMP_FFMPEG):
             # Song has no artwork that ffmpeg can identify.
-            self.info.cast("FileControl() get_artwork: Programming Error:\n" +
+            self.info.cast("FileControl.get_artwork(): Programming Error:\n" +
                            "No artwork for:\n\n" + self.path + "\n\n"
                            "However this error should have been caught above.")
             return None, None
@@ -13387,8 +13215,8 @@ class FileControl(FileControlCommonSelf):
         :param limit_sec: Number of seconds to play. 0 = play all
         :param fade_in_sec: Number of seconds to fade in
         :param fade_out_sec: Number of seconds to fade out
-        :param dead_start: Set to volume to 0 and immediately stop play
         :param ff_name: Filename containing ffplay output. E.G TMP_CURR_SONG
+        :param dead_start: Set to volume to 0 and immediately stop play
         :return self.pid, self.sink:
         """
         self.start_sec = start_sec          # Seconds offset to start playing at
@@ -13402,104 +13230,16 @@ class FileControl(FileControlCommonSelf):
         # duration = seconds to play song for. If 0.0, entire song, skip duration set
         # fade_in = seconds to fade in for. If continuing, manually adjust volume
         # fade_out = seconds to fade out for. If pausing or ending, manually adjust
+        # ff_name = Filename used by ffplay, ffmpeg and ffprobe with command
+        #           Output. In this case it is ffplay output only.
+        # dead_start = After starting song set volume to zero and stop running.
+        #              When starting with fade-in there is no sound "pop"
 
-        # noinspection SpellCheckingInspection
-        ''' OLD WAYS OF PARENTS:
-        
-        sam_top = tk
-
-        self.sam_ctl = FileControl(self.lib_top, self.info)  
-        # Should destroy when function ends so no need to close
-        self.sam_ctl.new(path)  # Get metadata for music file
-        if len(self.sam_ctl.audio) == 0:
-            print(self.sam_ctl.metadata)
-            self.corrupted_music_file(path)  # Non-blocking dialog box
-            return  # Active flag has not bet set so no cleanup needed
-
-        if sample == 'middle':
-            # convert float self.DurationSecs to string
-            start_secs = str(int(self.DurationSecs / 2))
-            duration_secs = "10"
-        else:
-            start_secs = "0"
-            duration_secs = str(int(self.DurationSecs))  # seems to end to soon?
-
-        extra_opt = ffplay_extra_opt(start_secs, fade_in=1, duration_secs=duration_secs)
-        self.sam_top_pid, self.sam_top_sink = \
-            start_ffplay(path, TMP_CURR_SAMPLE, extra_opt)
-
-        if not self.validate_pa_sink(self.sam_top_sink, path):
-            # Pulse Audio failed to get sink
-            self.sam_top_pid = 0  # Don't try to kill, it's not there
-            return  # No window mounted yet so nothing to clean up.
-
-        set_volume(self.sam_top_sink, 0)  # Turn off volume
-        ext.stop_pid_running(self.sam_top_pid)  # Pause the music
-
-
-        NEW WAY:
-
-        #extra_opt = ffplay_extra_opt(start_secs, fade_in=1, duration_secs=duration_secs)
-        self.sam_top_pid, self.sam_top_sink = \
-            sam_ctl.start(start_secs, duration_secs, 1, 1, 
-                          dead_start=True, TMP_CURR_SAMPLE)
-
-        # Repeat validation done in .start()
-        if not self.validate_pa_sink(self.sam_top_sink, path):
-            # Pulse Audio failed to get sink
-            self.sam_top_pid = 0  # Don't try to kill, it's not there
-            return  # No window mounted yet so nothing to clean up.
-
-        #set_volume(self.sam_top_sink, 0)  # Turn off volume
-        #ext.stop_pid_running(self.sam_top_pid)  # Pause the music
-        
-        
-
-    ffplay_extra_opt(start=None, fade_in=3, fade_out=0.0, duration_secs=0.0):
-    """ Format extra_opt string to start playing song at x seconds
-        :param start: whole number string or int to start playing song
-        :param fade_in: Start volume at 0% and go to 100% over fade_in
-        :param fade_out: Lower volume to 0% during fade_out.
-        :param duration_secs: Optional duration to play, E.G. 10 seconds
-            if fade_out is being used then duration_secs must be provided.
-        :return extra_opt: formatted string passed to ffplay command
-    """
-    if start is None:
-        start = 0
-    extra_opt = ' -ss ' + str(start)  # start position
-
-    if fade_in and float(fade_in) > 0.0:
-        # noinspection SpellCheckingInspection
-        extra_opt += ' -af "afade=type=in:start_time=' + str(start) + \
-                     ':duration=' + str(fade_in) + '"'  # fade-in time
-
-    if fade_out and float(fade_out) > 0.0:
-        fade_start = float(duration_secs) - float(fade-out)
-        if fade_start < 0.0:
-            print("ffplay_extra_opt() Programming error. fade_out:",
-                  fade_out, " | duration_secs:", duration_secs)
-        else:
-            # noinspection SpellCheckingInspection
-            extra_opt += ' -af "afade=type=out:start_time=' + str(fade_start) + \
-                         ':duration=' + str(fade_out) + '"'
-
-    if duration_secs and float(duration_secs) > 0.0:
-        extra_opt += ' -t ' + str(duration_secs)  # could be int or float
-
-    return extra_opt
-
-        text = "FileControl.start(self.start_sec, \t" + str(self.start_sec) +\
-            "\nself.limit_sec, \t" + str(self.limit_sec) + "\nself.fade_in_sec, \t" +\
-            str(self.fade_in_sec) + "\nself.fade_out_sec, \t" + str(self.fade_out_sec) +\
-            "\nself.dead_start, \t" + str(self.dead_start) + "\nself.ff_name, \t" + \
-            self.ff_name + "\n"
-        self.info.cast(text)
-        self.info.cast("extra_opt:", extra_opt)
-        self.info.cast("self.pid, self.sink: \t" + str(self.pid) + ", " + self.sink)
-        '''
+        ''' extra options passed to ffplay for fade-in, etc. '''
         extra_opt = ffplay_extra_opt(self.start_sec, self.fade_in_sec,
                                      self.fade_out_sec, self.limit_sec)
-        #self.info.cast("extra_opt: \t" + extra_opt)
+
+        '''   B I G   T I C K E T   E V E N T   '''
         self.pid, self.sink = start_ffplay(self.path, self.ff_name, extra_opt)
 
         ''' bad sink? '''
@@ -13510,35 +13250,32 @@ class FileControl(FileControlCommonSelf):
             ''' When caller sees self.sink is blank, they will issue error '''
             return self.pid, self.sink
 
+        self.log('start')  # Dead start will add 1 to 3 seconds to time played
+
         if dead_start:
             set_volume(self.sink, 0)  # Turn off volume
             ext.stop_pid_running(self.pid)  # Pause the music
-            # No need to log a start and a stop.
-            return self.pid, self.sink
+            self.log('stop')
 
-        self.log('start')  # Must occur after dead_start
         return self.pid, self.sink
 
-    def rewind(self, seconds):
-        """ Rewind song. Requires kill and new start under same file path """
-        self.end(kill=False)
-        print(seconds)
-        return self.pid, self.sink
+    def restart(self, start_secs):
+        """
+            Kill current running PID as a new one will be established
+        :param start_secs:
+        :return self.pid, self.sink:
+        """
+        if self.check_pid():
+            ext.kill_pid_running(self.pid)
+            self.pid = 0  # def kill_song already does this
+            self.sink = ""
 
-    def forward(self, seconds):
-        """ Fast forward song. Requires kill and new start under same file path """
-        self.end(kill=False)
-        print(seconds)
-        return self.pid, self.sink
+        ''' Song may be paused already '''
+        if self.state != 'stop':
+            self.log('stop')  # There is no 'kill' code
 
-    def restart(self, start_sec=0.0, limit_sec=0.0, fade_in_sec=0.0, 
-                fade_out_sec=0.0, ff_name=None, dead_start=None):
-        """ Call start and register new PID and Sink # """
-        self.end(kill=False)
-        ''' self.start() will call self.log() sam_ctl.start( '''
-        self.start(start_sec, limit_sec, fade_in_sec, 
-                   fade_out_sec, ff_name, dead_start)
-        return self.pid, self.sink
+        self.start(start_sec=start_secs, limit_sec=0.0, fade_in_sec=0.5,
+                   fade_out_sec=0.0, ff_name=self.ff_name, dead_start=False)
 
     def stop(self):
         """ Stop playing (pause) """
@@ -13553,13 +13290,14 @@ class FileControl(FileControlCommonSelf):
     def elapsed(self):
         """ How many seconds have elapsed """
         self.elapsed_secs = get_curr_ffplay_secs(self.ff_name)
+        return self.elapsed_secs  # In case parent requested
 
     def check_pid(self):
         """ Check if PID is still running. Else song is over. """
         if self.pid == 0:
+            self.sink = ""
             return 0
 
-        # If self.pid active it means song is still playing
         try:
             # os.kill 2nd parameter with 0 checks if process is active
             os.kill(self.pid, 0)
@@ -13571,49 +13309,179 @@ class FileControl(FileControlCommonSelf):
 
         return self.pid
 
-    def end(self, kill=True):
+    def end(self):
         """ Kill Song and calculate what percentage was truly played.
 
-            When kill=False that means caller will be killing song
-            or song has already been killed.
+            If duration of ffplay is less than x percentage total run time
+            restore original access time. Same holds true for all
+            get_metadata() and get_artwork() calls if music never played.
+
+            TODO: Confusion over .close() and .end() both being called.
+                  .close() will call .end() but .end() never calls .close()
+
         """
-        if kill:
-            self.kill()  # self.kill() will log('end') just in case kill()
-            # is called separately and end() is never called.
+        if self.check_pid():
+            ext.kill_pid_running(self.pid)
+            self.pid = 0  # def kill_song already does this
+            self.sink = ""
+
+        ''' Was .end() already called? '''
+        if (self.state and self.state == 'end') or self.atime_done:
+            ''' Already called? '''
+            text = "InfoCentre.end() called twice.\n" +\
+                   "\tself.state: \t\t" + str(self.state) +\
+                   "\n\tself.atime_done:\t" + str(self.atime_done) +\
+                   "\n\tUse 'View' dropdown menu, 'Show Debug' for traceback."
+            print(text)
+            self.info.cast(text, 'error', 'update')
+            if self.atime_done:
+                return  # Last access time has already been updated
         else:
             self.log('end')
 
-    def kill(self):
-        """ Kill song's ffplay PID """
-        ext.kill_pid_running(self.pid)
-        self.log('end')
-        self.pid = 0  # def kill_song
-        self.sink = ""
+        if self.stat_end is None:
+            ''' Below duplicated if self.close() was just called '''
+            self.stat_end = os.stat(self.path)  # get current timestamps
+            self.cast_stat(self.stat_end)  # Show in InfoCentre
+
+        ''' loop through statuses[] to get time played and time stopped '''
+        self.calc_time_played()
+
+        ''' Uncomment to test
+        text = "Time Statistics:\t\t" + self.path +\
+               "\nTime played: \t\t" + str(self.time_played) + \
+               "\nTime stopped:\t\t" + str(self.time_stopped) + \
+               "\nPercent play:\t\t" + str(self.percent_played)
+        patterns = [("Time Statistics:", "White", "Black"),
+                    ("Time played:", "Green", "Black"),
+                    ("Time stopped:", "Green", "Black"),
+                    ("Percent play:", "Green", "Black")]
+        self.info.cast(text, 'info', 'update', patterns)
+        '''
+
+        '''   B I G   T I C K E T   E V E N T   '''
+        if self.percent_played < float(ATIME_THRESHOLD):
+            ''' Didn't play long enough. Restore original access time '''
+            old_time, new_time = self.touch_it(self.stat_start)
+            patterns = [("Restoring last access for:", "White", "Black"),
+                        ("Current time:", "Green", "Black"),
+                        ("Original time:", "Green", "Black")]
+            self.info.cast("Restoring last access for: \t" + self.Title +
+                           "\n\tCurrent time:  \t" +
+                           tmf.ago(old_time).strip() +
+                           "\n\tOriginal time: \t" +
+                           tmf.ago(new_time).strip(),
+                           patterns=patterns)
+
+
+        #start_atime = self.stat_start.st_atime
+        #end_atime = self.stat_start.st_atime
+        #print("start_atime:", tmf.ago(start_atime, seconds=True),
+        #      "end_atime:", tmf.ago(end_atime, seconds=True))
+
+        self.atime_done = True  # Extra precaution time isn't done twice
+
+    def touch_it(self, new_stat=None):
+        """
+        Linux "touch" command to set last access time. When a file is accessed
+        Linux doesn't update access time until end of day. Do it immediately so
+        lib_top.tree will reflect when each song was played instantly.
+
+        If less than threshold percentage of song is played (defaults to 80%)
+        then reset last access time as if song was not played.
+
+        NOTE: The file's "Change Time" is updated whenever touch is run
+
+        :param new_stat: Optional stat.st_time to force, otherwise current time.
+        :return old_time, new_time:
+        """
+
+        ''' Old (current) access time before it is forced. '''
+        old_stat = os.stat(self.path)
+        old_atime = old_stat.st_atime
+
+        if new_stat:
+            ''' The forced time passed. Likely self.stat_start instance '''
+            forced_atime = new_stat.st_atime
+            date_str = datetime.datetime.fromtimestamp(forced_atime)\
+                .strftime('%Y-%m-%d %H:%M:%S')
+            cmd = 'touch -a -c -d"' + date_str + '" "' + self.path + '"'
+        else:
+            ''' Force last access time to current time '''
+            cmd = 'touch -a -c ' + '"' + self.path + '"'
+
+        ''' Change access time to forced. '''
+        result = os.popen(cmd).read().strip()
+        if len(result) > 1:
+            self.info.cast("FileControl.touch_it(): Unknown Error:\n" +
+                           result)
+            return None, None
+
+        forced_stat = os.stat(self.path)
+        forced_atime = forced_stat.st_atime
+
+        #delta = forced_atime - old_atime
+        #print("InfoCentre.touch_it() time delta:", delta)
+        # InfoCentre.touch_it() time delta: 0.0
+        # InfoCentre.touch_it() time delta: 301.0
+        # InfoCentre.touch_it() time delta: -302.0
+
+        return old_atime, forced_atime
+
+    def calc_time_played(self):
+        """
+            Calculate time played, time paused and percent time played.
+
+            TODO: In future, a 'restart' log event will be generated for
+                  FF and Rewind actions. This will replace current chain:
+                    .close() -> .end() -> .new() -> .start()
+
+        :return time_played, time_stopped, percent_played: Not used.
+        """
+        self.time_played = self.time_stopped = self.percent_played = 0.0
+
+        last_action, last_time = self.statuses[0]  # 'new', time.time()
+
+        for status in self.statuses:  # list of tuples (action, time)
+            delta = status[1] - last_time
+            if last_action == 'start':
+                self.time_played += delta
+            if last_action == 'stop':
+                self.time_stopped += delta
+            last_action, last_time = status  # 'start'/'stop'/'end', time
+
+        self.percent_played = \
+            float(self.time_played) * 100 / float(self.DurationSecs)
+
+        #return self.time_played, self.time_stopped, self.percent_played
 
     def close(self):
         """ 
-            When > 50 % of song played (Fast Forward doesn't count), then allow
-            last access time to stick. Otherwise reset to saved settings when
+            When > 80 % of song played (Fast Forward resets to 0%), then set
+            last access time to now. When < 80% reset to saved settings when
             file was declared with .new(path)
              
             functions .log('start'), .log('stop') and .log('end') populated
-            self.statuses and last instance is found in self.state.
-
-        :return: 
+            self.statuses with status and event time.
         """
         if self.path is None:
             return  # Already closed.
-        self.stat_end = os.stat(self.path)   # Keep original stat until .close()
-        self.cast_stat(self.stat_end)  # Show in InfoCentre
+        if self.stat_end is None:
+            ''' Below duplicated if self.end() was just called '''
+            self.stat_end = os.stat(self.path)  # get current timestamps
+            self.cast_stat(self.stat_end)  # Show in InfoCentre
+
+        ''' Call .end() if not already logged or if Last Access Time not set '''
+        if self.state and self.state is not 'end':
+            self.end()  # calculate percent played and restore access time
+        if not self.atime_done:
+            self.end()  # calculate percent played and restore access time
+
         self.path = None
         self.stat_start = None
         self.stat_end = None
+        self.atime_done = None
         self.statuses = []      # List of tuples with each status & time
-
-    def restore(self):
-        """ Restore file to original access time """
-        old_atime = self.stat.st_atime
-        print(old_atime)
 
 
 # ==============================================================================
@@ -15565,16 +15433,38 @@ def sink_list(program):
     return indices
 
 
-# TODO move into initialization routine
-# After calling 11 times crashes so call outside of sink_master()
-pulse_working = True
+# TODO: Move into functions that use pulse<Instance>.<Method> or
+#                                    pulse<Instance>.<Class/Static Variable>
+# Existing functions now need to use: pulse = get_pulse_control()
+PULSE_WORKS = True
 try:
+    ext.t_init("pulse = pulsectl.Pulse()")
     pulse = pulsectl.Pulse()
     # print("pulse:", dir(pulse))
+    ext.t_end('no_print')  # 0.0037407875
 
 except Exception as p_err:  # CallError, socket.error, IOError (pidfile), OSError (os.kill)
-    pulse_working = False
-    raise PulseError('Failed to connect to pulse {} {}'.format(type(p_err), p_err))
+    PULSE_WORKS = False
+    raise pulsectl.PulseError('mserve.py get_pulse_control() Failed to ' +
+                              'connect to pulse {} {}'.format(type(err), err))
+
+
+def get_pulse_control():
+    """ Seemed like a good idea at the time but, it crashes after being
+        called a few times.
+    """
+    ext.t_init("pulse = pulsectl.Pulse()")
+    try:
+        pulse_instance = pulsectl.Pulse()
+    except Exception as err:  # CallError, socket.error, IOError (pidfile), OSError (os.kill)
+        raise pulsectl.PulseError('mserve.py get_pulse_control() Failed to ' +
+                                  'connect to pulse {} {}'.format(type(err), err))
+        pulse_instance = None
+
+    ext.t_end('no_print')  # from: 0.0017430782 to 0.0037407875
+
+    # print("pulse:", dir(pulse))
+    return pulse_instance
 
 
 def sink_master():
@@ -15586,7 +15476,7 @@ def sink_master():
     all_sinks = []                              # List of tuples
 
     # If Python pulseaudio is working, use the fast method
-    if pulse_working:
+    if PULSE_WORKS:
         for sink in pulse.sink_input_list():
             this_volume = str(sink.volume)
             # sink.volume = channels = 2, volumes = [100 % 100 %]
@@ -15647,13 +15537,13 @@ def lock_step_volume():
         if self.sam_top_is_active is False:
             break
         """ June 27, 2023 - Fade in NOW controlled by ffplay """
-        our_time, err = set_volume(self.sam_top_sink, int(i * 5))  # Volume up 5%
+        our_time, err = set_volume(self.sam_ctl.sink, int(i * 5))  # Volume up 5%
         # To get 1-20 you need 1,21 range!
         for active_sink in old_sinks:
             app_sink, app_vol, app_name = active_sink
-            if app_sink == self.sam_top_sink:
+            if app_sink == self.sam_ctl.sink:
                 continue  # Skip our sink!
-            if app_sink == self.play_top_sink:
+            if app_sink == self.play_ctl.sink:
                 continue
             try:
                 percent = int(app_vol) - (int(app_vol) * i / 20)  # Reduce by 5%
@@ -15732,7 +15622,8 @@ def set_volume(target_sink, percent):
     #print("\n set_volume() -- looking for sink:", target_sink,
     #      "setting volume to:", percent, "%",
     #      "float(percent) / 100.0:", float(percent) / 100.0)
-    if pulse_working:
+    # If Python pulseaudio is working, use the fast method
+    if PULSE_WORKS:
         ''' Fast method using pulse audio direct interface '''
         ext.t_init('set_volume() -- pulse.volume_change')
         err = None  # No known pulsectl errors have appeared yet
@@ -15742,7 +15633,7 @@ def set_volume(target_sink, percent):
                 job_time = ext.t_end('no_print')
                 return job_time, err
 
-    if pulse_working and pulse_error_cnt < 10:
+    if PULSE_WORKS and pulse_error_cnt < 10:
         pulse_error_cnt += 1  # Limit to 10 errors printed
         print("\nmserve.py set_volume() pulsectl missing sink:", target_sink)
         all_sinks = list()

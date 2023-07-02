@@ -191,7 +191,8 @@ def shell_quote(s):
 def kill_pid_running(active_pid):
     """ Kill running process we launched earlier. """
     if active_pid < 2:
-        print("kill_pid_running() ERROR: argument 'active_pid' is:", active_pid)
+        print("external.kill_pid_running() ERROR: argument" +
+              " 'active_pid' is:", active_pid)
         return 0                    # Programmer error
 
     try:
@@ -199,7 +200,8 @@ def kill_pid_running(active_pid):
         return True                 # pid killed
     except OSError:
         toolkit.print_trace()
-        print("kill_pid_running() ERROR: os.kill failed for PID:", active_pid)
+        print("external.kill_pid_running() ERROR: os.kill " + 
+              " failed for PID:", active_pid)
         return 0                    # pid has finished
 
 
