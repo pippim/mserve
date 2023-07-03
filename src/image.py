@@ -133,6 +133,8 @@ def make_image(text, image_w=200, image_h=200):
 
     # Size of font depends on width of image - '/6' to '/7' on  October 7 2020
     icon_font = ImageFont.truetype("DejaVuSans.ttf", int(float(image_w) / 7))
+    # July 3, 2023 - looking for unicode support plus popular usage
+    # Looking for play icon - perhaps just draw it like triangle/chevron open?
 
     ''' July 2, 2023 - Support multi-line text'''
     text_width = text_height = 0
