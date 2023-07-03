@@ -12,6 +12,7 @@
 from __future__ import print_function       # Must be first import
 
 from appdirs import *   # Get application & storage directory names
+import tempfile         # Gets TMP_DIR /tmp, C:\Temp, etc.
 import os               # USER_ID = str(os.get uid())
 import pwd              # USER = pwd.get pw uid(os.get uid()).pw_name
 
@@ -23,6 +24,7 @@ USER_DATA_DIR = None    # /home/user/.local/share/mserve
 MSERVE_DIR = None       # /home/user/.config/mserve <- historically wrong
                         # Bad name. It implies where mserve programs are
 PROGRAM_DIR = None
+TEMP_DIR = None
 
 # Same values used by gnome-terminal to prevent window shrinking too small
 WIN_MIN_WIDTH = 142
@@ -62,7 +64,8 @@ def init():
         5   pw_dir      User home directory
         6   pw_shell    User command interpreter
     """
-    global USER, USER_ID, HOME, USER_DATA_DIR, USER_CONFIG_DIR, MSERVE_DIR, PROGRAM_DIR
+    global USER, USER_ID, HOME, USER_DATA_DIR, USER_CONFIG_DIR, MSERVE_DIR
+    global PROGRAM_DIR, TEMP_DIR
 
     if USER is not None:
         # print('User already set:', USER, USER_ID, HOME)
@@ -77,9 +80,17 @@ def init():
     USER_DATA_DIR = MSERVE_DIR = user_data_dir(appname, app_author)
     # print("USER_DATA_DIR:", USER_DATA_DIR)
     USER_CONFIG_DIR = user_config_dir(appname, app_author)
-    MSERVE_DIR += os.sep
+
+    if not MSERVE_DIR.endswith(os.sep):
+        MSERVE_DIR += os.sep
     PROGRAM_DIR = os.path.dirname(os.path.realpath(__file__))
-    PROGRAM_DIR += os.sep
+
+    if not PROGRAM_DIR.endswith(os.sep):
+        PROGRAM_DIR += os.sep
     # print("USER_CONFIG_DIR:", USER_CONFIG_DIR)
+
+    TEMP_DIR = tempfile.gettempdir()
+    if not TEMP_DIR.endswith(os.sep):
+        TEMP_DIR += os.sep
 
 # End of global_variables.py

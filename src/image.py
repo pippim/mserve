@@ -6,7 +6,8 @@
 #
 #           import image as img
 #
-#   Jun. 19 2023 - Reduce triangle (chevrons) clicking errors with white space.
+#   June 19 2023 - Reduce triangle (chevrons) clicking errors with white space.
+#   July 02 2023 - make_image() - Support multi-line text.
 #
 #==============================================================================
 
@@ -133,7 +134,13 @@ def make_image(text, image_w=200, image_h=200):
     # Size of font depends on width of image - '/6' to '/7' on  October 7 2020
     icon_font = ImageFont.truetype("DejaVuSans.ttf", int(float(image_w) / 7))
 
-    text_width, text_height = icon_font.getsize(text)
+    ''' July 2, 2023 - Support multi-line text'''
+    text_width = text_height = 0
+    for line in text.split("\n"):
+        _width, _height = icon_font.getsize(line)
+        text_width = _width if _width > text_width else text_width
+        text_height += _height
+    #text_width, text_height = icon_font.getsize(text)
     start_x = int(int(image_w - text_width) / 2)
     start_y = int(int(image_h - text_height) / 2)
 

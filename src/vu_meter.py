@@ -5,6 +5,8 @@
 #
 #       vu_meter.py - Listen to microphone left/right and generate vu levels
 #
+#       July 02 2023 - Temporary filenames suitable for Windows and Mac.
+#
 #==============================================================================
 """
 
@@ -55,11 +57,13 @@ RATE = 44100
 INPUT_BLOCK_TIME = 0.05
 INPUT_FRAMES_PER_BLOCK = int(RATE*INPUT_BLOCK_TIME)
 SHORT_NORMALIZE = 1.0 / 32768.0
+
+''' Volume Meter IPC filenames. Change in mserve.py too '''
 # Mono output
-VU_METER_FNAME  = "/run/user/" + g.USER_ID + "/mserve.vu-meter-mono.txt"
+VU_METER_FNAME = g.TEMP_DIR + g.USER_ID + "_mserve_vu-meter-mono.txt"
 # Stereo output (Left and Right)
-VU_METER_LEFT_FNAME  = "/run/user/" + g.USER_ID + "/mserve.vu-meter-left.txt"
-VU_METER_RIGHT_FNAME  = "/run/user/" + g.USER_ID + "/mserve.vu-meter-right.txt"
+VU_METER_LEFT_FNAME = g.TEMP_DIR + g.USER_ID + "_mserve_vu-meter-left.txt"
+VU_METER_RIGHT_FNAME = g.TEMP_DIR + g.USER_ID + "_mserve_vu-meter-right.txt"
 
 
 class Amplitude(object):

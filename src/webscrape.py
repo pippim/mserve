@@ -446,11 +446,12 @@ And it hung in the sky like a star, just like a star</span></a>
         for tag in soup.select('div[class^="Lyrics__Container"], \
                                .song_body-lyrics p'):
             t = tag.get_text(strip=True, separator='\n')
-            t = tag.get_text()
             if t:
                 lyrics_output.append(t)
 
+            # Failed attempts at fixing Spaceman Came Travelling song
             # https://stackoverflow.com/a/17639192/6929343
+            #t = tag.get_text()  # Gives one big lump of text
             #soup = BeautifulSoup(tag)
             #for linebreak in soup.find_all('br'):
             #    t = linebreak.extract()
@@ -482,11 +483,11 @@ def get_from_azlyrics():
 
 
 def get_from_metrolyrics():
+    """ Load the lyrics from MetroLyrics. """
     from lxml import html
     global lyrics_output
 
     url = METROLYRICS
-    """Load the lyrics from MetroLyrics."""
     page = requests.get(url)
 
     if page.status_code > 200:

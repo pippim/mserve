@@ -252,11 +252,13 @@ class FakeEvent:
             self.y_root = int(gy) + int(gh) + 15    # Awkward
 
 
-    # ==============================================================================
-    #
-    #   message.py - ShowInfo, AskQuestion, AskString
-    #
-    # ==============================================================================
+# ==============================================================================
+#
+#   message.py - ShowInfo, AskQuestion, AskString
+#
+#   NOTE: If a refresh thread isn't passed to .ShowInfo it closes right away
+#
+# ==============================================================================
 
 
 class CommonSelf:

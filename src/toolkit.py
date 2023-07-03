@@ -496,7 +496,8 @@ class CustomScrolledText(scrolledtext.ScrolledText):
 
         REQUIRES:
 
-            import tkinter.scrolledtext as scrolledtext
+            import tkinter.scrolledtext as scrolledtext  # Python 3
+            import ScrolledText as scrolledtext  # Python 2
 
 
     example:
@@ -2221,8 +2222,10 @@ class ToolTips(CommonTip):
             return  # Widget doesn't have focus
 
         fade_in_time, fade_out_time = self.calc_fade_in_out()
+        if fade_in_time > self.now + 8:
+            print("fade_in_time starts in:", fade_in_time - self.now)
 
-        # Are we fading out?
+        # Tooltip fading out?
         if self.now > fade_out_time:
             if self.window_fading_out is False:
                 self.window_fading_out = True
@@ -2254,7 +2257,7 @@ class ToolTips(CommonTip):
             self.update_alpha(alpha)
             return
 
-        # Are we fading in?
+        # Tooltip fading in?
         if self.now > fade_in_time:
 
             # If we've already left the button, forego the creation
