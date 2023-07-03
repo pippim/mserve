@@ -721,7 +721,7 @@ class PlayCommonSelf:
         self.play_on_top = None             # Is play frame overtop library?
         self.secs_before_pause = None       # get_curr_ffplay_secs(
         self.current_song_t_start = None    # time.time() started playing
-        self.saved_DurationSecs = None      # self.DurationSecs
+        self.saved_DurationSecs = None      # self.play_ctl.DurationSecs
         self.saved_DurationMin = None       # Duration in Min:Sec.Deci
         self.current_song_secs = None       # How much time played
         self.current_song_mm_ss_d = None    # time in mm:ss.d (decisecond)
@@ -824,7 +824,7 @@ class PlayCommonSelf:
         self.work_time_list = None          # self.lyrics_time_list
         self.work_song_path = None          # self.current_song_path
         self.work_song_secs = None          # self.current_song_secs
-        self.work_DurationSecs = None       # self.DurationSecs
+        self.work_DurationSecs = None       # self.play_ctl.DurationSecs
         self.work_Title = None              # self.play_ctl.Title (song name)
         self.work_line_count = None         # self.lyrics_line_count  # FUDGE FOR Time being...
         self.lyrics_scroll_rate = None      # 1.5 = Default auto scroll rate
@@ -910,7 +910,6 @@ class PlayCommonSelf:
         self.sam_ctl = None
         self.sync_ctl = None                # instance of FileControl() class
         self.mus_ctl = None
-        self.DurationSecs = None            # NOTE: Must save in parent
 
         # Popup menu
         self.mouse_x = None
@@ -3409,12 +3408,12 @@ class MusicTree(PlayCommonSelf):
         elif self.loc_mode is 'Forget':
             self.confirm_forget(iid)
         elif self.loc_mode is 'Compare':
-            self.cmp_build_treeview(iid)
+            self.cmp_build_toplevel(iid)
         else:
             print('submit() Bad self.loc_mode:', self.loc_mode)
             return
 
-        ''' Close loc_tree when cmp_add_items() running gets error: 
+        ''' Close loc_tree when cmp_populate_tree() running gets error: 
              File "./mserve", line 1031, in loc_submit
                 self.loc_tree.delete(*self.loc_tree.get_children()) '''
         if self.loc_top_is_active is False:
@@ -3506,7 +3505,7 @@ class MusicTree(PlayCommonSelf):
     #
     # ==============================================================================
 
-    def cmp_build_treeview(self, trg_dict_iid, sbar_width=12):
+    def cmp_build_toplevel(self, trg_dict_iid, sbar_width=12):
         """ Compare target location songs to build treeview of differences.
 
             Source is current LODICT, Target it selected by user here
@@ -3535,7 +3534,7 @@ class MusicTree(PlayCommonSelf):
 
         """
 
-        # print('cmp_build_treeview() get trg_dict',t(time.time()))
+        # print('cmp_build_toplevel() get trg_dict',t(time.time()))
         trg_dict = lc.item(trg_dict_iid)  # get dictionary for iid
         self.cmp_target_dir = trg_dict['topdir']
 
@@ -3627,7 +3626,7 @@ class MusicTree(PlayCommonSelf):
         self.cmp_close_btn.grid(row=0, column=0, padx=2)
 
         ''' Create Treeview using source (START_DIR) as driver '''
-        if not self.cmp_add_items(trg_dict_iid):
+        if not self.cmp_populate_tree(trg_dict_iid):  # populate_
             self.cmp_close()  # Files are identical
             return
 
@@ -3654,7 +3653,7 @@ class MusicTree(PlayCommonSelf):
 
         return True
 
-    def cmp_add_items(self, trg_dict_iid):
+    def cmp_populate_tree(self, trg_dict_iid):
 
         """ Add Artist, Album and Song to treeview self.cmp_tree.
             Similar to add_items() in MusicTree
@@ -7188,7 +7187,7 @@ $ wmctrl -l -p
         #self.info.cast("song_ff() pp_state: \t" + self.pp_state +
         #               "  | play_ctl.path: \t" + self.play_ctl.path)
 
-        if self.current_song_secs + float(REW_FF_SECS) + 5.0 > float(self.DurationSecs):
+        if self.current_song_secs + float(REW_FF_SECS) + 5.0 > float(self.play_ctl.DurationSecs):
             #self.play_ctl.close()
             self.song_set_ndx('next')  # Was less than 12 seconds left so next song.
             # Ugly
@@ -7597,7 +7596,6 @@ $ wmctrl -l -p
         self.song_artist_var.set(make_ellipsis(self.play_ctl.Artist, E_WIDTH))
         self.song_album_var.set(make_ellipsis(self.play_ctl.Album, E_WIDTH))
         self.song_title_var.set(make_ellipsis(self.play_ctl.Title, E_WIDTH))
-        self.DurationSecs = self.play_ctl.DurationSecs  # Should rename all but takes time...
         self.saved_DurationSecs = self.play_ctl.DurationSecs
         self.saved_DurationMin = tmf.mm_ss(self.saved_DurationSecs)
         ext.t_end('no_print')
@@ -9371,7 +9369,7 @@ OSError: [Errno 2] No such file or directory: ''
             menu.add_command(label="Basic time index", font=(None, MED_FONT),
                              command=lambda: self.play_train_lyrics())
             menu.add_command(label="Fine-tune time index", font=(None, MED_FONT),
-                             command=lambda: self.play_sync_time_index())
+                             command=lambda: self.sync_build_toplevel())
             menu.add_separator()
             menu.add_command(label="Ignore click", font=(None, MED_FONT),
                              command=lambda: menu.unpost())
@@ -9675,7 +9673,7 @@ OSError: [Errno 2] No such file or directory: ''
         self.work_time_list = self.lyrics_time_list
         self.work_song_path = self.current_song_path
         self.work_song_secs = self.current_song_secs
-        self.work_DurationSecs = self.DurationSecs
+        self.work_DurationSecs = self.play_ctl.DurationSecs
         self.work_Title = self.play_ctl.Title  # Temporary until sync_ctl class instance used
         self.work_line_count = self.lyrics_line_count
 
@@ -9782,19 +9780,21 @@ OSError: [Errno 2] No such file or directory: ''
     #
     # ==============================================================================
 
-    def play_sync_time_index(self, sbar_width=12):
+    def sync_build_toplevel(self, sbar_width=12):
         """ Fine-tune time index (Synchronize Time Index to Lyrics)
 
-            WARNING: work_time_list, new_time_list and lyrics_time_list are
-                     used differently.
+            lyrics_time_list is copied into work_time_list
+            work_time_list is copied into new_time_list
+            changes are made to new_time_list. If posted then
+            new -> work -> update SQL and lyrics_time_list
 
             Startup check to ensure at least 80% of lines already synchronized.
             If not ShowInfo with basic sync instructions.
 
-            Create master_frame covering play_top frame. master_frame contains:
-                frame1: information labels, non-stretchable
-                frame2: time index treeview, stretchable
-                frame3: control buttons, non-stretchable
+            self.sync_ctl = FileControl(self.sync_top, self.info)
+            self.sync_ctl.new(self.current_song_path)
+            if not self.sync_ctl.test_middle():
+                self.sync_close()
 
             Pause music if playing
             Set default checkbox for the lyrics line currently playing           
@@ -9820,7 +9820,7 @@ OSError: [Errno 2] No such file or directory: ''
         # If already active, move window to foreground.
         if self.sync_top_is_active:
             self.sync_time_index_lift()  # Raise window focus to top
-            print('play_sync_time_index(): Should not be here a second time.')
+            print('sync_build_toplevel(): Should not be here a second time.')
             return  # Don't want to start again
 
         # 80% threshold required. Instructions window mounted if not reached.
@@ -9857,8 +9857,8 @@ OSError: [Errno 2] No such file or directory: ''
               File "/usr/lib/python2.7/lib-tk/Tkinter.py", line 1540, in __call__
                 return self.func(*args)
               File "./mserve", line 5058, in <lambda>
-                self.play_sync_time_index(), font=(None, MED_FONT))
-              File "./mserve", line 5300, in play_sync_time_index
+                self.sync_build_toplevel(), font=(None, MED_FONT))
+              File "./mserve", line 5300, in sync_build_toplevel
                 self.sync_start = time.time()
             UnboundLocalError: local variable 'time' referenced before assignment
         '''
@@ -9951,7 +9951,7 @@ OSError: [Errno 2] No such file or directory: ''
         self.sync_tree.tag_configure("checked", image=self.check2[2])
 
         ''' Create Treeview item list '''
-        self.sync_create_treeview_list()
+        self.sync_populate_tree()
 
         ''' sync lyrics Treeview Scrollbars '''
         # Create a vertical scrollbar linked to the frame.
@@ -9962,9 +9962,9 @@ OSError: [Errno 2] No such file or directory: ''
 
         ''' sync lyrics treeview Colors '''
         self.sync_tree.tag_configure('normal', background=self.background,
-                                    foreground=self.foreground)
+                                     foreground=self.foreground)
         self.sync_tree.tag_configure('sync_sel', background=self.foreground,
-                                    foreground=self.background)
+                                     foreground=self.background)
 
         ''' Synchronize lyrics / Treeview Buttons 
             To hide use:    self.sync_top_buttons.grid_remove()
@@ -10148,8 +10148,8 @@ OSError: [Errno 2] No such file or directory: ''
 
         self.sync_top.update()
 
-    def sync_create_treeview_list(self):
-        """ Called from two places """
+    def sync_populate_tree(self):
+        """ Called from sync_build_toplevel() and sync_select() """
         start_time = 0.0
         duration = 0.0
         last_time = 0.0
@@ -10550,7 +10550,7 @@ IndexError: list index out of range
                 # A non-blank time was formatted so, we overrode previously
                 # TODO: Recall create treeview routine
                 self.sync_tree.delete(*self.sync_tree.get_children())
-                self.sync_create_treeview_list()
+                self.sync_populate_tree()
                 print('Start time changes (edits) removed.')
             else:
                 print('You can only click previous line to cancel time edits.')
@@ -10843,7 +10843,7 @@ IndexError: list index out of range
 
     def sync_watch_ffplay2(self):
         """
-            Play line for 1 second then skip to next.
+            Sample All - Play line for 1 second then skip to next.
             When we first start up music already playing for length of song.
             Allow two seconds first time before killing.
             After that, kill each line after 1 second of play
@@ -10869,6 +10869,7 @@ IndexError: list index out of range
                     # Uncheck line just played via CheckboxTreeview()
                     # noinspection PyProtectedMember
                     self.sync_tree._uncheck_ancestor(str(line_no))
+                    ''' Review: Why _ancestor? Why not just _box? '''
                     line_no += 1
                     if line_no > len(self.new_time_list):
                         break
@@ -10893,7 +10894,7 @@ IndexError: list index out of range
                 break
 
     def sync_restart_ffplay(self, line_no):
-        """ Restart playing at line. Previous line already stopped.  """
+        """ Sample All - Restart playing at line number  """
         self.sync_start = self.new_time_list[line_no - 1]
         if self.sync_start < 0.0:
             self.sync_start = 0.0
@@ -10915,6 +10916,10 @@ IndexError: list index out of range
         # at 0% after first line so, we have to force 100% volume now?
 
         self.sync_music_start_time = time.time()  # Music is playing now
+        ''' Do we need? When line is clicked use self.sync_ctl.elapsed 
+            with ext.t_init() / t_end() and subtract that amount for
+            exact time clicked of song
+        '''
         # print('playing: ffplay "' + self.work_song_path +'"', extra_opt)
         # print('starting line:', line_no, 'time:', str(self.sync_start), \
         #      'PID:', self.sync_ffplay_pid, 'Sink:', self.sync_ffplay_sink)
@@ -11690,13 +11695,21 @@ IndexError: list index out of range
             self.sam_ctl.close()  # reset last access time to original value
             return
 
+        ''' July 3, 2023 - test is not needed. No problem with ffplay
+        if not self.sam_ctl.test_middle():
+            self.sam_ctl.close()
+            return
+        '''
+
         ''' Set start (beginning or middle) and duration (all or 10 seconds) '''
         if sample == 'middle':
-            start = self.DurationSecs / 2 - 5.0
+            # July 3, 2023 - BIG BUG was using self.DurationSecs which was
+            #                really self.play_ctl.DurationSecs and twice length
+            start = self.sam_ctl.DurationSecs / 2 - 5.0
             limit = 10.0
         else:
             start = 0.0  # 'full' sample, start at beginning
-            limit = self.DurationSecs  # Cannot use 0.0 because fade-out
+            limit = self.sam_ctl.DurationSecs  # Cannot use 0.0 because fade-out
             ''' Runs too long 307 seconds when song duration 4:33 '''
 
         ''' Start ffplay and get Linux PID and Pulseaudio Input Sink # '''
@@ -11787,7 +11800,9 @@ IndexError: list index out of range
         our_time, err = set_volume(self.sam_ctl.sink, 100)  # Volume up 100%
         # Doesn't matter 100% because fade-in starts at 0
 
-        ''' For songs that can't play middle 10 seconds, ffplay ends '''
+
+        ''' July 3, 2023 - test is not needed. No problem with ffplay
+         For songs that can't play middle 10 seconds, ffplay ends
         time.sleep(.2)  # Give time for ffplay to crash so PID = 0
         # Only needs .1 on test system but twice time for slower systems
 
@@ -11805,6 +11820,7 @@ IndexError: list index out of range
             # Note if a thread isn't passed to .ShowInfo it closes right away?
             self.sample_close()
             return
+        '''
 
         for i in range(1, 21):  # 20 steps
             if self.sam_top_is_active is False:
@@ -12984,58 +13000,6 @@ class FileControlCommonSelf:
         self.dead_start = None      # Start song and pause it immediately
         self.ff_name = None         # TMP_CURR_SONG, etc.
 
-        ''' All play_top variables for conversion consideration '''
-
-        ''' Compare locations variables '''
-        self.cmp_top = None  # Compare Locations toplevel - NEW?
-        self.cmp_target_dir = None  # OS directory comparing to
-        self.cmp_tree = None  # Treeview
-        self.cmp_close_btn = None  # Doesn't need to be instanced
-        self.update_differences_btn = None
-        self.src_mt = None  # Source modification time
-        self.trg_mt = None  # Target modification time
-        self.cmp_msg_box = None  # message.Open()
-
-        ''' Refresh items - inotify '''
-        self.last_inotify_time = None  # now
-        self.next_message_time = None  # now + (60 * 20)
-
-        self.loc_mode = None  # Used by loc_submit()
-        self.loc_iid = None  # location internal ID
-        self.location_text = None  # Mode: show, add, etc.
-
-        ''' Rip CD class (separate module) '''
-        self.rip_cd_class = None
-
-        ''' Sample middle of song '''
-        self.sam_top = None  # tk.Toplevel()
-        self.sam_paused_music = None  # We will resume play later
-
-        ''' Play Chronology '''
-        self.chron_tree = None  # ttk.Treeview Playlist Chronology
-        self.chron_last_row = None  # Last row highlighted with cursor
-        self.chron_last_tag_removed = None  # 'normal' or 'chron_sel' was removed for highlight
-        self.chron_filter = None  # 'time_index', 'over_5', [ARTIST NAME]
-        self.chron_attached = []  # list of attached chronology tree id's
-        self.chron_detached = []  # list of detached id's to restore
-        self.chron_org_ndx = None  # original song index 'self.ndx'
-
-
-        ''' SQL miscellaneous variables '''
-        self.meta_scan = None  # Class for song metadata searching
-        self.meta_scan_dtb = None  # metadata searching delayed textbox
-        # NOTE: self.view used for both SQL Music and SQL History.
-        #       self.view is the left-click and right-click menu for single row
-        self.view = None  # Shared view for SQL Music and SQL History
-        self.common_top = None  # Top level clone for SQL Music or History
-        # NOTE: self.hdr_top is window opened drilling down into treeview heading too
-        self.hdr_top = None  # hdr, iid & scrollbox for create_window()
-        self.view_iid = None  # Treeview IID of row ID clicked on
-        self.scrollbox = None  # Used by self.create_window()
-
-        ''' last_sleep_time for mor accurate 30 frames per second (fps) '''
-        self.last_sleep_time = time.time()
-
 
 class FileControl(FileControlCommonSelf):
     """ Control Music Files, including play, pause, end """
@@ -13340,7 +13304,49 @@ class FileControl(FileControlCommonSelf):
             (width, height), Image.ANTIALIAS)
         return ImageTk.PhotoImage(resized_art), resized_art, original_art
 
-    def start(self, start_sec=0.0, limit_sec=0.0, fade_in_sec=0.0, 
+    def test_middle(self):
+        """ ffplay will fail playing middle of some songs. This test is
+            used by sample_song() and sync_build_toplevel().
+
+            July 3, 2023 - 20 minutes after writing discovered this isn't
+            needed. Keep around for documenting how FileControl() works.
+        """
+
+        if self.DurationSecs < 20:
+            return False  # Not even a real song.
+
+        old_silent = self.silent
+        self.silent = True  # Don't broadcast what happens next
+        start = self.DurationSecs / 2
+        # Start halfway through, duration 5 seconds, with 4 second fade in
+        self.start(start, 5, 4, 1, TMP_CURR_SAMPLE, True)
+        time.sleep(.1)
+        self.cont()
+        time.sleep(.2)  # If ffplay breaks, job crashes in .1 second
+        pid = self.check_pid()
+        self.end()  # Kill song and restore last access time.
+        self.silent = old_silent  # Restore original broadcast setting
+
+        ''' Reset statuses '''
+        self.statuses = []
+        self.state = None
+        self.atime_done = False
+        self.log('new')
+
+        if pid != 0:
+            return True
+
+        text = "The following song cannot be played in the middle:\n"
+        text += self.path
+        text += "\n\nHowever, you may still be able to play the song normally and"
+        text += "\neven perform Basic Time Indexing (Lyrics Synchronization).\n\n"
+        text += "You will not be able to sample middle 10 seconds of song or\n"
+        text += "perform Fine-Tune Time Indexing (Lyrics Synchronization).\n\n"
+        text += "The problem occurred because 'ffplay' crashed 0.2 seconds\n"
+        text += "into playing the middle 5 seconds of the song."
+        self.info.cast(text, 'error')
+
+    def start(self, start_sec=0.0, limit_sec=0.0, fade_in_sec=0.0,
               fade_out_sec=0.0, ff_name=None, dead_start=None):
         """ Start playing song with parameters passed
         :param start_sec: Seconds offset to start playing at
@@ -13370,7 +13376,7 @@ class FileControl(FileControlCommonSelf):
         ''' extra options passed to ffplay for fade-in, etc. '''
         extra_opt = ffplay_extra_opt(self.start_sec, self.fade_in_sec,
                                      self.fade_out_sec, self.limit_sec)
-        ''' uncomment for debugging 
+        ''' uncomment for debugging '''
         text = "FileControl.start(self.start_sec, \t" + str(self.start_sec) +\
             "\nself.limit_sec, \t" + str(self.limit_sec) + "\nself.fade_in_sec, \t" +\
             str(self.fade_in_sec) + "\nself.fade_out_sec, \t" + str(self.fade_out_sec) +\
@@ -13379,7 +13385,7 @@ class FileControl(FileControlCommonSelf):
         self.info.cast("FileControl.start() extra_opt:\n" + extra_opt)
         self.info.cast(text)  # For debugging
         #print(text)  # For debugging
-        '''
+
 
         '''   B I G   T I C K E T   E V E N T   '''
         self.pid, self.sink = start_ffplay(self.path, self.ff_name, extra_opt)
@@ -13392,7 +13398,7 @@ class FileControl(FileControlCommonSelf):
             ''' When caller sees self.sink is blank, they will issue error '''
             return self.pid, self.sink
 
-        self.log('start')  # Dead start will add 1 to 3 seconds to time played
+        self.log('start')
 
         if dead_start:
             set_volume(self.sink, 0)  # Turn off volume
