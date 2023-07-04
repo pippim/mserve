@@ -846,6 +846,7 @@ class PlayCommonSelf:
         self.sync_top = None                # Toplevel window over play_top
         self.sync_tree = None               # CheckboxTreeview(frame2,
         self.check2 = None                  # Duplicated treeview checkboxes
+        self.sync_btn_frm = None            # Button bar built on the fly
         self.sync_top_buttons = None        # tk.Frame(self.sync_top, tk.GROOVE,
         self.sync_begin_buttons = None      # tk.Frame(self.sync_top, tk.GROOVE,
         self.sync_sample_buttons = None     # tk.Frame(self.sync_top, tk.GROOVE,
@@ -8736,6 +8737,27 @@ $ wmctrl -l -p
         print('TRAIN LYRICS:', self.play_ctl.Artist, self.play_ctl.Album,
               self.play_ctl.Title)
 
+        ''' ERROR on manual save (Luckily auto-save works when song ends):
+
+TRAIN LYRICS: Bachman-Turner Overdrive The Definitive Collection Lookin' Out For #1
+left click lyrics line not handled. line_cnt: 18 prev_line: 10 curr_line: 19
+curr_line has been reset to prev_line
+TRAIN LYRICS: Bachman-Turner Overdrive The Definitive Collection Lookin' Out For #1
+Exception in Tkinter callback
+Traceback (most recent call last):
+  File "/usr/lib/python2.7/lib-tk/Tkinter.py", line 1540, in __call__
+    return self.func(*args)
+  File "/home/rick/python/mserve.py", line 9333, in <lambda>
+    self.play_train_lyrics_done('save'),
+  File "/home/rick/python/mserve.py", line 8792, in play_train_lyrics_done
+    self.edit_current_cursor)
+  File "/usr/lib/python2.7/lib-tk/Tkinter.py", line 3120, in mark_set
+    self.tk.call(self._w, 'mark', 'set', markName, index)
+TclError: wrong # args: should be ".139661069361096.139661064270480.139661063811800.139661063819208.139661063817768 mark set markName index"
+        
+        
+        '''
+
         ''' turn off auto scrolling and use synchronized time indices '''
         self.lyrics_auto_scroll = False
         # print('previous line:', self.lyrics_prev_line, 'clicked line:', line, \
@@ -9623,22 +9645,57 @@ $ wmctrl -l -p
     def sync_build_toplevel(self, sbar_width=12):
         """ Fine-tune time index (Synchronize Time Index to Lyrics)
 
+            'sync_build_toplevel()' is a little misleading since it really
+            does everything. Previously it was called "play_sync_fine_tune".
+
             lyrics_time_list is copied into work_time_list  IS IT A DEEP COPY?
             work_time_list is copied into new_time_list  IS IT A DEEP COPY?
             changes are made to new_time_list. If posted then
             new -> work -> update SQL and lyrics_time_list
 
-            Startup check to ensure at least 80% of lines already synchronized.
-            If not ShowInfo with basic sync instructions.
+            Startup check to ensure at least 80% of lines are already
+            synchronized. If not, use message.ShowInfo with basic sync
+            instructions. This is already done.
 
-            Pause music if playing
-            Set default checkbox for the lyrics line currently playing           
+            If a class, then the name would be Synchronize(). Caller would
+            use same class for basic time indexing. That would be a subset
+            of the class's capabilities already. Common method for saving
+            work even if different song playing. Also from basic dropdown
+            they could go to advanced and vice versa.
+
+            Converting to class will save variable name space in MusicTree()
+            class.
+
+            Take out the warning when more than 3 lines are checked. It's
+            not an error and User can cancel. Also provide 'Select All' and
+            'Clear All' checkboxes buttons.
+
+            A great idea would be to include videos from the website in the
+            installation with a button to play video "How To" In the
+            meantime, the "Show me how" button opens the website's page
+            and index name (hashtag).
+
+            Special indices on website not just for help video links but
+            also where to publish machine generate tables during website
+            refresh.
+
+            Two versions of web page markdown will exist. The first has the
+            extension '.md.dev' without tables, just the index. The other real
+            extension '.md' is baked when the recipe is baked. E.G. refresh.sh.
+
+            Besides pushing tables, code snippets will also be published this
+            way. Whole classes of code can be easily maintained. Start code
+            snippet with '# snippet MyGreatCodeIndex'. At end of code snippet
+            add line with '# end MyGreatCodeIndex'
+
 
             REDESIGN OVERVIEW:
             -------------------------------------------------------------------
             Currently two separate loops:
-                Loop to sync a few full lines with one ffplay running
-                Loop to play first second of every line restarting ffplay
+
+                1. Loop to sync a few full lines with one ffplay running
+                2. Loop to play first second of every line restarting ffplay
+
             For each loop elapsed time is calculated and used to kill ffplay
             ^ NEW: new sync_ctl() has start, duration, fade in, fade out
 
@@ -9651,7 +9708,7 @@ $ wmctrl -l -p
 
             self.fine_sync would use fine_sync.sync_ctl() instance of
             FileControl() for playing current song at specific offsets.
-            
+
             The class would return new_time_list and caller updates SQL.
 
             If highlight bar used (Dodger Blue or SkyBlue3) then theme_bg
@@ -9703,6 +9760,7 @@ $ wmctrl -l -p
             self.pp_toggle()                    # Pause to synchronize lyrics
             self.sync_paused_music = True       # So we can resume play later
 
+        self.info.cast("Begin Fine-Tune Time Indexes")
 
         ''' External elements '''
         #original_music_id =
@@ -9835,10 +9893,15 @@ $ wmctrl -l -p
         self.sync_tree.tag_configure('sync_sel', background=self.theme_fg,
                                      foreground=self.theme_bg)
 
-        ''' Synchronize lyrics / Treeview Buttons 
-            To hide use:    self.sync_top_buttons.grid_remove()
-            To restore use: self.sync_top_buttons.grid()
-        '''
+        '''   B U T T O N   B A R   F R A M E   '''
+        self.sync_btn_frm = tk.Frame(self.sync_top, relief=tk.GROOVE,
+                                     background=self.theme_bg, borderwidth=BTN_BRD_WID)
+        self.sync_btn_frm.grid(row=2, column=0, padx=2, pady=2, sticky=tk.W)
+        self.sync_build_buttons()  # Defaults to 'top' for sync_top main window
+        """
+        
+        OLD SETUP keep until new setup tested
+        
         self.sync_top_buttons = tk.Frame(self.sync_top, relief=tk.GROOVE,
                                          background=self.theme_bg, borderwidth=BTN_BRD_WID)
         self.sync_top_buttons.grid(row=2, column=0, padx=2, pady=2, sticky=tk.W)
@@ -9998,6 +10061,7 @@ $ wmctrl -l -p
         toolkit.config_all_buttons(self.sync_top, fg=self.theme_bg,
                                    bg=self.theme_fg)
         self.sync_top.update_idletasks()
+        """
 
         ''' Set default checkbox for currently playing line '''
         self.sync_default_set = 0
@@ -10021,8 +10085,176 @@ $ wmctrl -l -p
                 self.sync_default_set = found
 
         self.sync_ctl = FileControl(self.sync_top, self.info)
-        self.sync_ctl.new(self.current_song)
-        #self.sync_top.update()  # Comment out July 3, 2023 to test needed
+        self.sync_ctl.new(self.current_song_path)
+
+    def sync_build_buttons(self, level='top', context='default'):
+        """ Build buttons for top_level, begin sync and sample all """
+
+        self.tt.close(self.play_btn_frm)  # Remove old tooltip buttons in play_btn frame
+        self.sync_btn_frm.grid_forget()
+        self.sync_btn_frm.destroy()
+        self.sync_top.unbind("<Escape>")
+        # Unbinds for all functions? https://bugs.python.org/issue31485
+
+        ''' Frame for Buttons '''
+        self.sync_btn_frm = tk.Frame(self.sync_top, bg="Olive",
+                                     borderwidth=BTN_BRD_WID, relief=tk.GROOVE)
+        self.sync_btn_frm.grid(row=3, column=0, sticky=tk.NSEW)
+
+        ''' Define three different button bars '''
+
+        if level == 'top':
+            button_list = ["Close", "Begin", "Delete", "Sample",
+                           "Merge", "Insert", "Save"]
+        elif level == 'sync':  # Why doesn't begin sync have a PP button too?
+            button_list = ["Sync", "DoneB", "RewindB", "CancelB"]
+        elif level == 'sample':
+            button_list = ["Sample", "DoneS", "PP", "RewindS", "CancelS"]
+        else:
+            self.info.cast("Programming error bad button level: " + level)
+            return
+
+        for col, name in enumerate(button_list):
+            if name == "Close":
+                '''  FORMERLY: self.sync_top_buttons '''
+                ''' ✘ Close Button - Cancels changes '''
+                # leading space when text begins with utf-8 symbol centers text better?
+                close = tk.Button(self.sync_btn_frm, text=" ✘ Close",
+                                  width=BTN_WID2 - 4, command=self.sync_close)
+                close.grid(row=0, column=col, padx=2, sticky=tk.W)
+                # Disable for now because Child process like "self.sync_begin()" should
+                # be trapping ESCAPE -- How do you unbind <Escape>
+                self.sync_top.bind("<Escape>", self.sync_close)
+                self.sync_top.protocol("WM_DELETE_WINDOW", self.sync_close)
+                self.tt.add_tip(close, "Close Fine-Tune Time Index window.\n" +
+                                "Abandon all changes.", anchor="nw")
+
+            elif name == "Begin":
+                ''' ▶  Begin Button - Synchronize selected lines '''
+                begin = tk.Button(self.sync_btn_frm, text=" ▶ Begin sync",
+                                  width=BTN_WID2, command=self.sync_begin)
+                begin.grid(row=0, column=col)
+                self.tt.add_tip(
+                    begin, "First check boxes for first and last line.\n" +
+                    "Then click this button to synchronize.", anchor="nw")
+
+            elif name == "Delete":
+                ''' 😒 Delete - 😒 (u+1f612) - Delete all '''
+                delete = tk.Button(self.sync_btn_frm, text=" 😒 Delete all",
+                                   width=BTN_WID2, command=self.sync_delete_all)
+                delete.grid(row=0, column=col)
+                self.tt.add_tip(
+                    delete, "When time indices are hopelessly wrong,\n" +
+                    "click this button to delete them all.", anchor="nw")
+
+            elif name == "Sample":
+                ''' 🎵  Sample all - Sample all show library '''
+                sample = tk.Button(self.sync_btn_frm, text=" 🎵 Sample all",
+                                   width=BTN_WID2, command=self.sync_sample_all)
+                sample.grid(row=0, column=col)
+                self.tt.add_tip(
+                    sample, "Click to sample the first second of every line.",
+                    anchor="nw")
+
+            elif name == "Merge":
+                ''' - Merge lines - Merge two lines together '''
+                merge = tk.Button(self.sync_btn_frm, text="- Merge lines",
+                                  width=BTN_WID2 - 2, command=self.sync_merge_lines)
+                merge.grid(row=0, column=col)
+                self.tt.add_tip(
+                    merge, "First check two or more lines. Then\n" +
+                    "click this button to merge together.", anchor="nw")
+
+            elif name == "Insert":
+                ''' + Insert line - Insert line line eg [chorus] or [bridge] '''
+                insert = tk.Button(self.sync_btn_frm, text="+ Insert line",
+                                   width=BTN_WID - 2, command=self.sync_insert_line)
+                insert.grid(row=0, column=col)
+                self.tt.add_tip(
+                    insert, "First check line to insert before. Then\n" +
+                    "click this button to insert a new line.", anchor="ne")
+
+            elif name == "Save":
+                ''' 💾  Save - Save lyrics (may be merged) and time indices '''
+                save = tk.Button(self.sync_btn_frm, text=" 💾 Save",
+                                 width=BTN_WID2 - 4, command=self.sync_save_changes)
+                save.grid(row=0, column=col)
+                self.tt.add_tip(
+                    save, "Save time indices and close\n" +
+                    "this fine-tune index window.", anchor="ne")
+
+            elif name == "Sync":
+                ''' "Sync in progress" label FORMERLY: self.sync_begin_buttons '''
+                tk.Label(self.sync_btn_frm, text="Sync in progress...",
+                         font=(None, MON_FONTSIZE), padx=10) \
+                    .grid(row=0, column=col, sticky=tk.W)
+
+            elif name == "DoneB":
+                ''' Done Button - Saves work and returns to parent '''
+                begin_doneB = tk.Button(self.sync_btn_frm, text="Done",
+                                        width=BTN_WID2 - 6, command=self.sync_begin_done)
+                begin_doneB.grid(row=0, column=col, padx=2, sticky=tk.W)
+                self.tt.add_tip(
+                    begin_doneB, "Click this button to skip\n" +
+                    "synchronizing remaining lines.", anchor="nw")
+
+            elif name == "RewindB":
+                ''' "Rewind 5 seconds" Button - Synchronize selected lines '''
+                begin_rewind = tk.Button(self.sync_btn_frm, text="Rewind 5 seconds",
+                                         width=BTN_WID2 + 2, command=self.sync_begin_rewind)
+                begin_rewind.grid(row=0, column=col, padx=2)
+                self.tt.add_tip(
+                    begin_rewind, "Click this button to stop play,\n" +
+                    "go back 5 seconds and resume play.", anchor="nw")
+
+                '''   A D D   N E W   C A N C E L   B U T T O N   '''
+
+            elif name == "Sample":
+                ''' "Sample in progress" label  FORMERLY: self.sync_sample_buttons '''
+                tk.Label(self.sync_btn_frm, text="Sample all in progress...",
+                         font=(None, MON_FONTSIZE), padx=10) \
+                    .grid(row=0, column=col, sticky=tk.W)
+
+            elif name == "DoneS":
+                ''' Done Button - Saves work and returns to parent
+                    TODO: Rename to "Apply changes" ? '''
+                sample_done = tk.Button(self.sync_btn_frm, text="Done",
+                                        width=BTN_WID2 - 6, command=self.sync_sample_done)
+                sample_done.grid(row=0, column=col, padx=2, sticky=tk.W)
+                self.tt.add_tip(sample_done, "Click this button to skip\n" +
+                                "sampling remaining lines.", anchor="nw")
+
+            elif name == "PP":
+                ''' Pause/Play Button - Toggles state '''
+                self.sync_sample_pp_state = 'Playing'
+                self.sync_sample_pp_button = \
+                    tk.Button(self.sync_btn_frm, text=self.pp_pause_text,
+                              width=BTN_WID2 - 4, command=self.sync_sample_toggle_play)
+                self.sync_sample_pp_button.grid(row=0, column=col, padx=2, sticky=tk.W)
+                self.tt.add_tip(
+                    self.sync_sample_pp_button, "Click this button to toggle\n" +
+                    "pause / playing of music.", anchor="nw")
+
+            elif name == "RewindS":
+                ''' "Rewind 5 seconds" Button 
+                    TODO: This isn't working? Why is it local and not self?
+                '''
+                sample_rewind = tk.Button(self.sync_btn_frm, text="Rewind 5 seconds",
+                                          width=BTN_WID2 + 2, command=self.sync_sample_rewind)
+                sample_rewind.grid(row=0, column=3, padx=2)
+                self.tt.add_tip(
+                    sample_rewind, "Click this button to stop play,\n" +
+                    "go back 5 seconds and resume play.", anchor="nw")
+
+                '''   A D D   N E W   C A N C E L   B U T T O N   '''
+
+            else:
+                self.info.cast("Oops unknown button name:", level)
+
+        self.sync_btn_frm.configure(bg=self.theme_bg)  # Why this and next??
+        toolkit.config_all_buttons(self.sync_top, fg=self.theme_bg,
+                                   bg=self.theme_fg)
+        self.sync_top.update_idletasks()
 
     def sync_populate_tree(self):
         """ Called from sync_build_toplevel() and sync_select() """
@@ -10090,13 +10322,7 @@ $ wmctrl -l -p
             If nothing was checked error is displayed, and we return.
             Set start time 4 seconds before first checked.
             Set end time to start of line following last checked.
-
-            Hide sync_top buttons using:    self.sync_top_buttons.grid_remove()
-            Restore sync_top buttons using: self.sync_top_buttons.grid()
-
-            Buttons and functions for self.sync_begin_buttons.grid():
-                Done - allows early exit - self.sync_begin_done()
-                Rewind 5 - rewinds 5 seconds - self.sync_begin_rewind()
+            Call self.sync_build_buttons('sync')
 
             TODO: We are still getting message syncing Janine by Trooper:
 
@@ -10125,8 +10351,11 @@ Failed to get sink input information: No such entity
 
         ''' Restore sync button grid  
             TODO: Dynamically rebuild buttons from list and leave grid alone '''
-        self.sync_top_buttons.grid_remove()  # Hide sync_top buttons
-        self.sync_begin_buttons.grid()  # Display our buttons
+        #self.sync_top_buttons.grid_remove()  # Hide sync_top buttons
+        #self.sync_begin_buttons.grid()  # Display our buttons
+
+        self.sync_build_buttons('sync')
+
         self.sync_curr_highlight = 0  # When changes move bar
         self.sync_ffplay_is_running = True  # We are now playing
         self.sync_start_ffplay()  # Sets variables; huh WHAT???
@@ -10141,8 +10370,11 @@ Failed to get sink input information: No such entity
 
         ''' Restore sync top button grid  
             TODO: Dynamically rebuild buttons from list and leave grid alone '''
-        self.sync_begin_buttons.grid_remove()  # Remove our buttons
-        self.sync_top_buttons.grid()  # Restore sync_top buttons
+        #self.sync_begin_buttons.grid_remove()  # Remove our buttons
+        #self.sync_top_buttons.grid()  # Restore sync_top buttons
+
+        self.sync_build_buttons()  # Defaults to 'top' for sync_top main window
+
         return
 
     def sync_begin_done(self):
@@ -10157,7 +10389,7 @@ Failed to get sink input information: No such entity
             Rewind 4 seconds from current spot, calculate new duration
             Restart play and ramp up only our volume
         """
-        self.sync_begin_buttons.grid_remove()  # Remove our buttons
+        #self.sync_begin_buttons.grid_remove()  # Remove our buttons
         self.sync_clean_ffplay(others=False)  # Turn down our volume
 
         if not self.sync_top_is_active or \
@@ -10184,7 +10416,7 @@ Failed to get sink input information: No such entity
         #                calculate=use existing self.sync_xxx values
         self.sync_start_ffplay(others=False, calculate=False)
         ext.kill_pid_running(old_pid)  # Kill the last ffplay
-        self.sync_begin_buttons.grid()  # Display our buttons
+        #self.sync_begin_buttons.grid()  # Display our buttons
 
     def sync_start_ffplay(self, others=True, calculate=True):
         """ Start ffplay and get Linux PID and Pulseaudio Input Sink #
@@ -10691,14 +10923,20 @@ IndexError: list index out of range
         self.sync_ffplay_is_running = True      # We are now playing
         # TODO: May be paused from last sample all that was cancelled
         self.sync_sample_pp_state = 'Playing'   # Initial pause/play
-        self.sync_top_buttons.grid_remove()      # Hide sync_top buttons
-        self.sync_sample_buttons.grid()         # Display our buttons
+
+        #self.sync_top_buttons.grid_remove()      # Hide sync_top buttons
+        #self.sync_sample_buttons.grid()         # Display our buttons
+
+        self.sync_build_buttons('sample')
+
         self.sync_start_ffplay()                # Sets variables;
         self.sync_watch_ffplay2()               # self.old_sinks
         self.sync_clean_ffplay()                # self.active_sink
         self.sync_ffplay_is_running = False     # No longer playing
-        self.sync_sample_buttons.grid_remove()  # Hide our buttons
-        self.sync_top_buttons.grid()             # Restore main buttons
+        #self.sync_sample_buttons.grid_remove()  # Hide our buttons
+        #self.sync_top_buttons.grid()             # Restore main buttons
+
+        self.sync_build_buttons()  # Defaults to 'top' for sync_top main window
 
     def sync_sample_done(self):
         """ Save changes and quit sync_sample_all() function
@@ -10741,7 +10979,7 @@ IndexError: list index out of range
             Rewind 4 seconds from current spot, calculate new duration
             Restart play and ramp up only our volume
         """
-        self.sync_begin_buttons.grid_remove()   # Remove our buttons
+        #self.sync_begin_buttons.grid_remove()   # Remove our buttons
         self.sync_clean_ffplay(others=False)    # Turn down our volume
 
         if not self.sync_top_is_active or \
@@ -10768,7 +11006,8 @@ IndexError: list index out of range
         #                calculate=use existing self.sync_xxx values
         self.sync_start_ffplay(others=False, calculate=False)
         ext.kill_pid_running(old_pid)           # Kill the last ffplay
-        self.sync_begin_buttons.grid()          # Display our buttons
+        #self.sync_begin_buttons.grid()          # Display our buttons
+
 
     def sync_watch_ffplay2(self):
         """
@@ -11082,6 +11321,7 @@ IndexError: list index out of range
             Use 80% threshold. Give advice on how to manually click each
             lyrics score line in song as it is being sung by the singer.
         """
+
         time_count = len(self.work_time_list)
         if float(self.work_line_count) > 0.0:
             percent = float(time_count) / float(self.work_line_count)
@@ -13546,17 +13786,9 @@ class FileControl(FileControlCommonSelf):
         return old_atime, forced_atime
 
     def calc_time_played(self):
-        """
-            Calculate time played, time paused and percent time played.
+        """Calc self.time_played, self.time_paused & self.percent_played. """
 
-            TODO: In future, a 'restart' log event will be generated for
-                  FF and Rewind actions. This will replace current chain:
-                    .close() -> .end() -> .new() -> .start()
-
-        :return time_played, time_stopped, percent_played: Not used.
-        """
         self.time_played = self.time_stopped = self.percent_played = 0.0
-
         last_action, last_time = self.statuses[0]  # 'new', time.time()
 
         for status in self.statuses:  # list of tuples (action, time)
@@ -13569,8 +13801,7 @@ class FileControl(FileControlCommonSelf):
 
         self.percent_played = \
             float(self.time_played) * 100 / float(self.DurationSecs)
-
-        #return self.time_played, self.time_stopped, self.percent_played
+        ''' TODO: Add self.resume_seconds then reset it to zero when done. '''
 
     def close(self):
         """ 
