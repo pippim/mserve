@@ -55,6 +55,7 @@ warnings.simplefilter('default')  # in future Python versions.
 #       June 26 2023 - New classes Refresh() and FileControl()
 #       June 29 2023 - Restore last access < 80% song play.
 #       July 02 2023 - Temporary filenames Windows/Mac. Enhance artwork.
+#       July 04 2023 - Create FineTune() class
 
 # noinspection SpellCheckingInspection
 """
@@ -1712,9 +1713,11 @@ class MusicTree(PlayCommonSelf):
             self.playlists.top.lift()  # Raise in stacking order
 
         ''' Synchronizing lyrics to time index controls music '''
-        if self.sync_top_is_active:
-            # Although launched by play_top this probably won't hurt
-            self.sync_time_index_lift()  # Raise window focus to top
+        if self.fine_tune and self.fine_tune.top_is_active:
+            self.fine_tune.top_lift()  # Need name change....
+        #if self.sync_top_is_active:
+        #    # Although launched by play_top this probably won't hurt
+        #    self.fine_tune.top_lift()  # Raise window focus to top
 
         ''' Sampling random song in lib_tree '''
         if self.sam_top_is_active:
@@ -2327,7 +2330,7 @@ class MusicTree(PlayCommonSelf):
             tags.append("songsel")
             try:
                 song_number = self.saved_selections.index(song) + 1
-                number_str = self.play_padded_number(
+                number_str = play_padded_number(
                     song_number, len(str(len(self.saved_selections))))
             except ValueError:
                 # print('mserve.py toggle_select(): song not found iid:', song)
@@ -4434,8 +4437,11 @@ $ wmctrl -l -p
             self.cmp_close()                # Extreme lags when running 'diff'
         if self.play_top_is_active:         # Is music playing?
             self.play_close()
-        if self.sync_top_is_active:          # Synchronizing lyrics time indices
-            self.sync_close()
+        if self.fine_tune and self.fine_tune.top_is_active:
+            self.fine_tune.close()
+            return
+        #if self.sync_top_is_active:          # Synchronizing lyrics time indices
+        #    self.sync_close()
         if self.sam_top_is_active:          # Sampling middle 10 seconds?
             self.sample_close()
         if self.loc_top_is_active:          # Editing Locations?
@@ -6283,7 +6289,7 @@ $ wmctrl -l -p
                         continue
                     ''' Set song checkbox tags in music library treeview '''
                     selected_count += 1
-                    number_str = self.play_padded_number(
+                    number_str = play_padded_number(
                         str(ndx+1), len(str(len(self.playlist_paths))))
                     adj_list = bs.add_select(Song, Album, Artist, number_str)
                     # Update treeview columns with selected size, count and seconds
@@ -6634,7 +6640,6 @@ $ wmctrl -l -p
             self.ndx = 0  # Control for current song 0 = 1st
 
         ''' Remove splash screen if we were called with it. '''
-        #self.lib_top.bind("<FocusIn>", self.handle_lib_top_focus)
         self.play_top.bind("<FocusIn>", self.handle_play_top_focus)
 
         #if self.splash_toplevel:
@@ -6673,8 +6678,10 @@ $ wmctrl -l -p
             return  # Play window closed?
 
         ''' Synchronizing lyrics to time index controls music '''
-        if self.sync_top_is_active:
-            self.sync_time_index_lift()  # Raise window focus to top
+        #if self.sync_top_is_active:
+        #    self.fine_tune.top_lift()  # Raise window focus to top
+        if self.fine_tune and self.fine_tune.top_is_active:
+            self.fine_tune.top_lift()  # Need name change....
 
         ''' Sampling random song in lib_tree '''
         if self.sam_top_is_active:
@@ -6992,9 +6999,12 @@ $ wmctrl -l -p
             return  # Play window closed?
 
         ''' Synchronizing lyrics to time index controls music '''
-        if self.sync_top_is_active:
-            self.sync_time_index_lift()  # Raise window focus to top
+        if self.fine_tune and self.fine_tune.top_is_active:
+            self.fine_tune.top_lift()  # Need name change....
             return
+        #if self.sync_top_is_active:
+        #    self.sync_time_index_lift()  # Raise window focus to top
+        #    return
 
         if self.pp_state is "Playing":
             # Volume down in 10 steps of 7.5% with .05 sec in-between, end @ 25%
@@ -7180,9 +7190,12 @@ $ wmctrl -l -p
             return  # Play window closed?
 
         ''' Synchronizing lyrics to time index controls music '''
-        if self.sync_top_is_active:
-            self.sync_time_index_lift()  # Raise window focus to top
+        if self.fine_tune and self.fine_tune.top_is_active:
+            self.fine_tune.top_lift()  # Need name change....
             return
+        #if self.sync_top_is_active:
+        #    self.sync_time_index_lift()  # Raise window focus to top
+        #    return
 
         self.wrapup_song()  # Close currently playing
 
@@ -7310,13 +7323,16 @@ $ wmctrl -l -p
         """
 
         ''' Synchronizing lyrics to time index controls music '''
-        if self.sync_top_is_active:
-            self.sync_time_index_lift()  # Raise window focus to top
-            # Popup message needed advising button is disabled
-            # Make function: if check_sync_in_progress: return
-            # Better yet, self.sync_top should remove all buttons on other
-            #   windows!
+        if self.fine_tune and self.fine_tune.top_is_active:
+            self.fine_tune.top_lift()  # Need name change....
             return
+        #if self.sync_top_is_active:
+        #    self.sync_time_index_lift()  # Raise window focus to top
+        #    # Popup message needed advising button is disabled
+        #    # Make function: if check_sync_in_progress: return
+        #    # Better yet, self.sync_top should remove all buttons on other
+        #    #   windows!
+        #    return
 
         ''' Want to end countdown? - second time button click '''
         if self.play_hockey_active:  # Already counting down?
@@ -7679,12 +7695,25 @@ $ wmctrl -l -p
             return False  # Used to be a "continue" statement
 
         ''' Synchronizing lyrics to time index controls music '''
+        if self.fine_tune and self.fine_tune.top_is_active:
+            self.fine_tune.top_lift()  # Raise window focus to top
+            self.fine_tune.top.update()  # Is this needed? YES!
+            sleep = 50 - (int(time.time() - now))
+            sleep = 1 if sleep < 1 else sleep   # Sleep minimum 1 millisecond
+            self.fine_tune.top.after(sleep)           # Wait until lyric sync
+            return False                        # Used to be a "continue" statement
+
+        ''' Synchronizing lyrics to time index controls music 
+
         if self.sync_top_is_active:              # Are we synchronizing lyrics?
-            self.sync_top.update()               # Is this needed? YES!
+            #self.sync_top.update()               # Is this needed? YES!
+            self.fine_tune.top.update()  # Is this needed? YES!
+            # AttributeError: 'NoneType' object has no attribute 'top'
             sleep = 50 - (int(time.time() - now))
             sleep = 1 if sleep < 1 else sleep   # Sleep minimum 1 millisecond
             self.sync_top.after(sleep)           # Wait until lyric sync
             return False                        # Used to be a "continue" statement
+        '''
 
         ''' Set previous or restart into button text '''
         if self.prev_button_text == self.previous_text:
@@ -8328,7 +8357,7 @@ $ wmctrl -l -p
 
             self.tt.set_text(self.lyrics_panel_label, text=text)
 
-        elif self.sync_top_is_active:
+        elif self.fine_tune and self.fine_tune.top_is_active:
             ''' Fine-tune mode '''
             self.lyrics_panel_text = "Disabled during Fine-tune"
             self.tt.set_text(self.lyrics_panel_label, text="Finish fine-tuning.")
@@ -8726,8 +8755,14 @@ $ wmctrl -l -p
         """ Train Lyrics was right-clicked.
         NOTE: Right click again to Save/Cancel.
 
-            WARNING: work_time_list, new_time_list and lyrics_time_list are
-                    used differently. Desk check code first!
+        TODO:
+
+        lyrics_time_list is copied into work_time_list  IS IT A DEEP COPY?
+        work_time_list is copied into new_time_list  IS IT A DEEP COPY?
+        changes are made to new_time_list. If posted then
+        new -> work -> update SQL and lyrics_time_list
+
+
         """
         if not self.lyrics_scrape_pid == 0:
             print('lyrics are being web scraped. Please wait a second.')
@@ -9003,12 +9038,14 @@ mark set markName index"
         """ Should always see two lines ahead to coming up.
             If rewinding need to see previous two lines.
         """
+        ''' July 4, 2023 try option of always showing on third line
         if rewind:
             # When rewinding song we are jumping backwards in lyrics
             line_no = self.lyrics_curr_line - 2  # show backwards
         else:
             line_no = self.lyrics_curr_line + 2  # Reveal up-coming
-
+        '''
+        line_no = self.lyrics_curr_line - 2  # Always appear on 3rd line
         if line_no > self.lyrics_line_count:
             line_no = self.lyrics_line_count
         elif line_no < 1:
@@ -9235,7 +9272,7 @@ mark set markName index"
             menu.add_command(label="Basic time index", font=(None, MED_FONT),
                              command=lambda: self.play_train_lyrics())
             menu.add_command(label="Fine-tune time index", font=(None, MED_FONT),
-                             command=lambda: self.sync_build_toplevel())
+                             command=lambda: self.start_fine_tune())
             menu.add_separator()
             menu.add_command(label="Ignore click", font=(None, MED_FONT),
                              command=lambda: menu.unpost())
@@ -9642,9 +9679,9 @@ mark set markName index"
 
     def start_fine_tune(self):
         """ Called from dropdown menu """
-        if self.sync_top_is_active:
+        if self.fine_tune and self.fine_tune.top_is_active:
             ''' The <Focus> event should trap this error '''
-            self.fine_tune.top_lift()
+            self.fine_tune.top_lift()  # Need name change....
             self.info.cast('start_fine_tune(): Should not be here a second time.')
             return
 
@@ -9657,23 +9694,41 @@ mark set markName index"
             self.pp_toggle()                    # Pause to synchronize lyrics
             self.sync_paused_music = True       # So we can resume play later
 
-        self.sync_top_is_active = True
         self.play_lyrics_rebuild_title()
         self.play_create_lyrics_work_fields()  # sql key, lyrics & time list
-        self.fine_tune = self.FineTune(
+        self.fine_tune = FineTune(
             self.play_top, self.tt, self.info, self.play_ctl, self.work_sql_key,
             self.work_lyrics_score, self.work_time_list, self.play_original_art,
             self.theme_fg, self.theme_bg,
             self.get_refresh_thread, self.fine_tune_closed_callback)
         
-    def fine_tune_closed_callback(self):
+    def fine_tune_closed_callback(self, new_lyrics_score, new_time_list):
         """ FUTURE: Called from FineTune() class """
-        self.sync_top_is_active = False
         self.play_lyrics_rebuild_title()
         if self.sync_paused_music:  # Did Fine-Tune Index pause the music?
             self.pp_toggle()  # Resume play
 
-        # TODO Save work_time_list
+        if new_lyrics_score is None or new_time_list is None:
+            self.info.cast("Changes made to lyrics score / time index not saved.")
+            return  # There were changes but not saved to SQL
+
+        if self.lyrics_score != new_lyrics_score:
+            self.lyrics_score = new_lyrics_score
+            self.play_lyrics_populate_score_box()
+
+        self.lyrics_time_list = new_time_list
+        ''' FineTune() may have deleted all time indices ''' 
+        if len(new_time_list) == 0:
+            self.play_lyrics_remove_highlights()
+            # This is awkward because we aren't using work fields but, it's not
+            # possible for next song to be playing anyway.
+            self.lyrics_prev_line = 0
+            self.lyrics_curr_line = 0
+            self.lyrics_time_scroll = False
+            self.lyrics_auto_scroll = True
+            self.lyrics_old_scroll = None  # Normal scrolling
+
+        self.play_lyrics_rebuild_title()  # def play_lyrics_rebuild_title
 
         
     # ==============================================================================
@@ -9682,80 +9737,9 @@ mark set markName index"
     #
     # ==============================================================================
 
+
     def sync_build_toplevel(self, sbar_width=12):
         """ Fine-tune time index (Synchronize Time Index to Lyrics)
-
-            'sync_build_toplevel()' is a little misleading since it really
-            does everything. Previously it was called "play_sync_fine_tune".
-
-            lyrics_time_list is copied into work_time_list  IS IT A DEEP COPY?
-            work_time_list is copied into new_time_list  IS IT A DEEP COPY?
-            changes are made to new_time_list. If posted then
-            new -> work -> update SQL and lyrics_time_list
-
-            Startup check to ensure at least 80% of lines are already
-            synchronized. If not, use message.ShowInfo with basic sync
-            instructions. This is already done.
-
-            If a class, then the name would be Synchronize(). Caller would
-            use same class for basic time indexing. That would be a subset
-            of the class's capabilities already. Common method for saving
-            work even if different song playing. Also from basic dropdown
-            they could go to advanced and vice versa.
-
-            Converting to class will save variable name space in MusicTree()
-            class.
-
-            Take out the warning when more than 3 lines are checked. It's
-            not an error and User can cancel. Also provide 'Select All' and
-            'Clear All' checkboxes buttons.
-
-            A great idea would be to include videos from the website in the
-            installation with a button to play video "How To" In the
-            meantime, the "Show me how" button opens the website's page
-            and index name (hashtag).
-
-            Special indices on website not just for help video links but
-            also where to publish machine generate tables during website
-            refresh.
-
-            Two versions of web page markdown will exist. The first has the
-            extension '.md.dev' without tables, just the index. The other real
-            extension '.md' is baked when the recipe is baked. E.G. refresh.sh.
-
-            Besides pushing tables, code snippets will also be published this
-            way. Whole classes of code can be easily maintained. Start code
-            snippet with '# snippet MyGreatCodeIndex'. At end of code snippet
-            add line with '# end MyGreatCodeIndex'
-
-
-            REDESIGN OVERVIEW:
-            -------------------------------------------------------------------
-            Currently two separate loops:
-
-                1. Loop to sync a few full lines with one ffplay running
-                2. Loop to play first second of every line restarting ffplay
-
-            For each loop elapsed time is calculated and used to kill ffplay
-            ^ NEW: new sync_ctl() has start, duration, fade in, fade out
-
-            Button Frame is hidden and restored. New rebuilds buttons using
-            list of ["Close", "Pause", "Sample All", "Sync selected", ..]
-
-            New class where: self.fine_tune = FineTune(self.play_top,
-            self.tt, self.info, self.play_ctl, self.get_refresh_thread,
-            work_time_list)
-
-            self.fine_sync would use fine_sync.sync_ctl() instance of
-            FileControl() for playing current song at specific offsets.
-
-            The class would return new_time_list and caller updates SQL.
-
-            If highlight bar used (Dodger Blue or SkyBlue3) then theme_bg
-            could clash. Use Chronology theme colors instead.
-
-            If class caller sets "sync_top_is_active" at start and removes
-            at end.
 
         """
 
@@ -10179,8 +10163,8 @@ mark set markName index"
             # time = '%9s' % time    # Regular space doesn't line up evenly
             ftime = '%.1f' % start_time
             fduration = '%.1f' % duration
-            ftime = self.play_padded_number(ftime, 8)
-            fduration = self.play_padded_number(fduration, 7, prefix="")
+            ftime = play_padded_number(ftime, 8)
+            fduration = play_padded_number(fduration, 7, prefix="")
             # FUTURE if time_override: insert with new duration else:
             self.sync_tree.insert('', 'end', iid=str(line_ndx + 1), text=ftime,
                                   values=("", line, fduration, ""),
@@ -10259,8 +10243,6 @@ Traceback (most recent call last):
   File "/home/rick/python/mserve.py", line 5908, in sync_start_ffplay
     self.sync_start + 2.0
 IndexError: list index out of range
-        :param others: = Turn down volume of other applications
-        :param calculate: = calculate self.sync_start & self.sync_duration
         """
 
         # Give 2.5-second playing countdown before line to sync
@@ -10546,7 +10528,7 @@ IndexError: list index out of range
 
     def sync_formatted_secs(self, secs, length, prefix=""):
         f_secs = '%.1f' % secs
-        return self.play_padded_number(f_secs, length, prefix)
+        return play_padded_number(f_secs, length, prefix)
 
     def sync_check_highlight(self, elapsed=None):
         """ As music plays, check if we need to reposition highlight bar.
@@ -11414,7 +11396,7 @@ IndexError: list index out of range
             self.lib_tree.item(curr_play_id, tags=tags)
 
         # Set treeview selection number
-        number_str = self.play_padded_number(
+        number_str = play_padded_number(
             self.ndx + 1, len(str(len(self.saved_selections))))
         self.lib_tree.set(iid, "Selected", number_str)
 
@@ -12324,7 +12306,7 @@ IndexError: list index out of range
 
         ''' Pad song number with spaces to line up song name evenly '''
         number_digits = len(str(len(self.saved_selections)))
-        number_str = self.play_padded_number(playlist_no, number_digits)
+        number_str = play_padded_number(playlist_no, number_digits)
 
         ''' Song title - remove track number and filename extension '''
         song_name = self.lib_tree.item(lib_tree_iid)['text']
@@ -12386,19 +12368,6 @@ IndexError: list index out of range
             pass
         if True is True:
             return line, d['LyricsTimeIndex']
-
-
-    @staticmethod
-    def play_padded_number(song_number, number_digits, prefix=NUMBER_PREFIX):
-        """ Pad song number with spaces to line up song name evenly
-            Called from refresh_acc_times() and build_chron_line()
-        """
-        padded_number = ""
-        this_digits = len(str(song_number))
-        pad_digits = number_digits - this_digits
-        for _ in range(pad_digits):
-            padded_number = padded_number + DIGIT_SPACE
-        return prefix + padded_number + str(song_number)
 
     def play_chron_highlight(self, ndx, short_line):
 
@@ -12494,40 +12463,17 @@ IndexError: list index out of range
         self.F4.update_idletasks()
 
 
-    # ==============================================================================
-    #
-    #       FineTune class - Fine-tune time index (All prefixes are "sync_")
-    #
-    # ==============================================================================
-
-
+# ==============================================================================
+#
+#       FineTune class - Fine-tune time index / Synchronize Lyrics
+#
+# ==============================================================================
 class FineTune:
     """ Fine-tune time index (Synchronize Time Index to Lyrics)
-
-        'sync_build_toplevel()' is a little misleading since it really
-        does everything. Previously it was called "play_sync_fine_tune".
-
-        lyrics_time_list is copied into work_time_list  IS IT A DEEP COPY?
-        work_time_list is copied into new_time_list  IS IT A DEEP COPY?
-        changes are made to new_time_list. If posted then
-        new -> work -> update SQL and lyrics_time_list
 
         Startup check to ensure at least 80% of lines are already
         synchronized. If not, use message.ShowInfo with basic sync
         instructions. This is already done.
-
-        If a class, then the name would be Synchronize(). Caller would
-        use same class for basic time indexing. That would be a subset
-        of the class's capabilities already. Common method for saving
-        work even if different song playing. Also from basic dropdown
-        they could go to advanced and vice versa.
-
-        Converting to class will save variable name space in MusicTree()
-        class.
-
-        Take out the warning when more than 3 lines are checked. It's
-        not an error and User can cancel. Also provide 'Select All' and
-        'Clear All' checkboxes buttons.
 
         A great idea would be to include videos from the website in the
         installation with a button to play video "How To" In the
@@ -12547,39 +12493,11 @@ class FineTune:
         snippet with '# snippet MyGreatCodeIndex'. At end of code snippet
         add line with '# end MyGreatCodeIndex'
 
-
-        REDESIGN OVERVIEW:
-        -------------------------------------------------------------------
-        Currently two separate loops:
-
-            1. Loop to sync a few full lines with one ffplay running
-            2. Loop to play first second of every line restarting ffplay
-
-        For each loop elapsed time is calculated and used to kill ffplay
-        ^ NEW: new sync_ctl() has start, duration, fade in, fade out
-
-        Button Frame is hidden and restored. New rebuilds buttons using
-        list of ["Close", "Pause", "Sample All", "Sync selected", ..]
-
-        New class where: self.fine_tune = FineTune(self.play_top,
-        self.tt, self.info, self.play_ctl, self.get_refresh_thread,
-        work_time_list)
-
-        self.fine_sync would use fine_sync.sync_ctl() instance of
-        FileControl() for playing current song at specific offsets.
-
-        The class would return new_time_list and caller updates SQL.
-
-        If highlight bar used (Dodger Blue or SkyBlue3) then theme_bg
-        could clash. Use Chronology theme colors instead.
-
-        If class caller sets "sync_top_is_active" at start and removes
-        at end.
-
     """
 
     def __init__(self, play_top, tt, info, play_ctl, work_sql_key,
                  work_lyrics_score, work_time_list, play_original_art,
+                 theme_fg, theme_bg,
                  get_refresh_thread, fine_tune_closed_callback):
         """
         """
@@ -12592,58 +12510,59 @@ class FineTune:
         self.work_lyrics_score = work_lyrics_score
         self.work_time_list = work_time_list
         self.play_original_art = play_original_art
+        self.theme_fg = theme_fg
+        self.theme_bg = theme_bg
         self.get_refresh_thread = get_refresh_thread
         self.fine_tune_closed_callback = fine_tune_closed_callback
 
         ''' Class Variables '''
-        self.sync_top_is_active = None      # When false, signal to end
-        self.sync_top = None                # Toplevel window over play_top
-        self.song_art = None                # Converted artwork
-        self.sync_tree = None               # CheckboxTreeview(frame2,
-        self.check2 = None                  # Duplicated treeview checkboxes
-        self.sync_btn_frm = None            # Button bar built on the fly
-        self.sync_top_buttons = None        # tk.Frame(self.sync_top, tk.GROOVE,
-        self.sync_begin_buttons = None      # tk.Frame(self.sync_top, tk.GROOVE,
-        self.sync_sample_buttons = None     # tk.Frame(self.sync_top, tk.GROOVE,
-        self.sync_sample_pp_state = None    # 'Playing'
-        self.sync_sample_pp_button = None   # text=self.pp_pause_text
-        self.sync_ffplay_is_running = None  # Already playing and syncing?
-        self.sync_paused_music = None       # Did sync force play to pause?
-        self.sync_changed_score = None      # Was lyrics score changed?
-        self.sync_changed_lyrics = None     # Lyrics score has changed DUPLICATE!
-        self.label_line_count = None        # Display # of lines in lyrics
-        self.sync_default_set = None        # Have tree line going into sync?
-        self.new_time_list = None           # [] time list is edited these
-        self.new_durations_list = None      # [] lists override synchronizing
-        #self.sync_first, self.sync_last = self.sync_fill_checkboxes()
-        self.sync_first = None              # First check box to synchronize
-        self.sync_last = None               # Last check box to synchronize
-        self.sync_curr_highlight = None     # When changes move bar
-        self.sync_curr_line = None          # Required for rewind buttons
-        self.sync_start = None              # Offset to start syncing at
-        self.sync_duration = None           # Duration to sync. 0 = quit
-        self.sync_music_start_time = None   # time() Music is playing now
-        self.sync_elapsed = None            # time()-sync_music_start_time
-        self.old_sinks = None               # sink_master() - list of tuples
+        self.top_is_active = None   # When false, signal to end
+        self.top = None  # Toplevel window over play_top
+        self.song_art = None  # Converted artwork image in frame 1
+        self.tree = None  # CheckboxTreeview in frame2
+        self.check2 = None  # Duplicated treeview checkboxes
+        self.btn_bar_frm = None  # Button bar built on the fly in frame 3
+        self.pp_state = None  # Sample all is 'Playing' or 'Paused'
+        self.pp_button = None  # text=self.pp_pause_text
+        self.ffplay_is_running = None  # Already playing and syncing?
+        self.sync_changed_score = None   # Was lyrics score changed?
+
+        self.line_count_var = None  # Display # of lines in lyrics
+        self.lyrics_line_count = self.work_lyrics_score.count("\n")
+        self.sync_default_set = None  # Found line matching time
+        self.new_time_list = []  # As time list is edited these
+        self.new_durations_list = []  # lists override synchronizing
+        self.first_checked = None  # First check box to synchronize
+        self.last_checked = None  # Last check box to synchronize
+        self.curr_line_highlight = None  # When changes move bar
+        self.curr_line_no = None  # Required for rewind buttons
+        self.start_sec = None  # Offset to start syncing at
+        self.limit_sec = None  # Duration to sync. 0 = quit
+        self.elapsed_secs = None  # get with sync_ctl.elapsed()
+        self.old_sinks = None  # sink_master() - list of tuples
+
+        self.sync_ctl = None
+        self.pp_play_text = "▶  Play"
+        self.pp_pause_text = "❚❚ Pause"
+
 
         self.build_toplevel()
+
+    def grab_focus(self):
+        """ Called by parent functions """
+        self.top_lift()  # Raise window focus to top
+        # Better to deactivate all menu options except "Ignore Click"
 
     def build_toplevel(self):
 
         # 80% threshold required. Instructions window mounted if not reached.
         # If class, work_ are passed in tuple and unpacked. Returned as new_
-        if not self.sync_startup_check():
-            return
+        if not self.startup_check():
+            self.close()
 
         # Set flags for child processes running
-        self.sync_ffplay_is_running = False  # Currently, playing and syncing?
-        self.sync_paused_music = False  # Important this is False now
+        self.ffplay_is_running = False  # Currently, playing and syncing?
         self.sync_changed_score = False  # For warning messages
-        self.sync_changed_lyrics = True  # Lyrics score has been changed
-
-        if self.pp_state is "Playing":  # Is music playing?
-            self.pp_toggle()  # Pause to synchronize lyrics
-            self.sync_paused_music = True  # So we can resume play later
 
         self.info.cast("Begin Fine-Tune Time Indexes")
 
@@ -12654,40 +12573,26 @@ class FineTune:
         # original_time_index
 
         ''' Create window '''
-        self.sync_top = tk.Toplevel()
-        self.sync_top.minsize(g.WIN_MIN_WIDTH, g.WIN_MIN_HEIGHT)
-        self.sync_top_is_active = True
-        # Refresh title to reflect edit mode is in progress
-        self.play_lyrics_rebuild_title()
+        self.top = tk.Toplevel()
+        self.top.minsize(g.WIN_MIN_WIDTH, g.WIN_MIN_HEIGHT)
+        self.top_is_active = True
 
         ''' Set program icon in taskbar '''
         # Not sure why other windows don't need below?
-        img.taskbar_icon(self.sync_top, 64, 'white', 'lightskyblue', 'black')
-
-        # self.sync_start = time.time()
-        '''
-            Traceback (most recent call last):
-              File "/usr/lib/python2.7/lib-tk/Tkinter.py", line 1540, in __call__
-                return self.func(*args)
-              File "./mserve", line 5058, in <lambda>
-                self.sync_build_toplevel(), font=(None, MED_FONT))
-              File "./mserve", line 5300, in sync_build_toplevel
-                self.sync_start = time.time()
-            UnboundLocalError: local variable 'time' referenced before assignment
-        '''
+        img.taskbar_icon(self.top, 64, 'white', 'lightskyblue', 'black')
 
         ''' Place Window top-left of play list window 
             TODO: Give own window with save position '''
         geometry = self.play_top.winfo_geometry()
-        self.sync_top.geometry(geometry)
-        self.sync_top.title("Fine-tune time index - mserve")
-        self.sync_top.configure(background=self.theme_bg)
-        self.sync_top.columnconfigure(0, weight=1)
-        self.sync_top.rowconfigure(1, weight=1)
+        self.top.geometry(geometry)
+        self.top.title("Fine-tune time index - mserve")
+        self.top.configure(background=self.theme_bg)
+        self.top.columnconfigure(0, weight=1)
+        self.top.rowconfigure(1, weight=1)
 
         ''' frame1 - Song information 
             TODO: Looks plain. Add image from song maybe? '''
-        frame1 = tk.Frame(self.sync_top, background=self.theme_bg,
+        frame1 = tk.Frame(self.top, background=self.theme_bg,
                           borderwidth=0)
         frame1.grid(row=0, column=0, sticky=tk.EW)
         frame1.grid_columnconfigure(0, weight=1)
@@ -12707,19 +12612,19 @@ class FineTune:
         ''' Song name and Duration Seconds '''
         # foreground=self.theme_fg, \
         ms_font = (None, MED_FONT)
-        tk.Label(frame1, text="Title: " + self.work_Title,
+        tk.Label(frame1, text="Title: " + self.play_ctl.Title,
                  font=ms_font, padx=10) \
             .grid(row=0, column=1, sticky=tk.W)
-        tk.Label(frame1, text="Total seconds: " + str(self.work_DurationSecs),
+        tk.Label(frame1, text="Total seconds: " + str(self.play_ctl.DurationSecs),
                  font=ms_font, padx=10) \
             .grid(row=0, column=2, sticky=tk.W)
 
         tk.Label(frame1, text="Artist: " + self.play_ctl.Artist,
                  font=ms_font, padx=10) \
             .grid(row=1, column=1, sticky=tk.W)
-        self.label_line_count = tk.StringVar()
-        self.label_line_count.set("Line count: " + str(self.work_line_count))
-        tk.Label(frame1, textvariable=self.label_line_count,
+        self.line_count_var = tk.StringVar()
+        self.line_count_var.set("Line count: " + str(self.lyrics_line_count))
+        tk.Label(frame1, textvariable=self.line_count_var,
                  font=ms_font, padx=10) \
             .grid(row=1, column=2, sticky=tk.W)
 
@@ -12728,7 +12633,7 @@ class FineTune:
             .grid(row=2, column=1, sticky=tk.W)
 
         ''' frame2 - Treeview Listbox'''
-        frame2 = tk.Frame(self.sync_top, background=self.theme_bg,
+        frame2 = tk.Frame(self.top, background=self.theme_bg,
                           borderwidth=BTN_BRD_WID, relief=tk.RIDGE)
         tk.Grid.rowconfigure(frame2, 1, weight=1)
         tk.Grid.columnconfigure(frame2, 0, weight=1)
@@ -12751,95 +12656,95 @@ class FineTune:
                         fieldbackground=self.theme_bg,
                         foreground=self.theme_fg)
 
-        self.sync_tree = CheckboxTreeview(
+        self.tree = CheckboxTreeview(
             frame2, columns=("new", "lyrics", "old_dur", "new_dur"),
             selectmode="none", show=('tree', 'headings',))
-        self.sync_tree.configure(style="syn.Treeview")
+        self.tree.configure(style="syn.Treeview")
 
-        self.sync_tree.column("#0", width=200, anchor='w', stretch=tk.NO)
-        self.sync_tree.heading("#0", text="Time index")
-        self.sync_tree.column("new", width=150, stretch=tk.NO)
-        self.sync_tree.heading("new", text="New Time")
-        self.sync_tree.column("lyrics", width=width, stretch=tk.YES)
-        self.sync_tree.heading("lyrics", text="Lyrics")
-        self.sync_tree.column("old_dur", width=150, stretch=tk.NO)
-        self.sync_tree.heading("old_dur", text="Duration")
-        self.sync_tree.column("new_dur", width=150, stretch=tk.NO)
-        self.sync_tree.heading("new_dur", text="New Dur.")
+        self.tree.column("#0", width=200, anchor='w', stretch=tk.NO)
+        self.tree.heading("#0", text="Time index")
+        self.tree.column("new", width=150, stretch=tk.NO)
+        self.tree.heading("new", text="New Time")
+        self.tree.column("lyrics", width=width, stretch=tk.YES)
+        self.tree.heading("lyrics", text="Lyrics")
+        self.tree.column("old_dur", width=150, stretch=tk.NO)
+        self.tree.heading("old_dur", text="Duration")
+        self.tree.column("new_dur", width=150, stretch=tk.NO)
+        self.tree.heading("new_dur", text="New Dur.")
 
-        self.sync_tree.grid(row=1, column=0, sticky=tk.NSEW)
+        self.tree.grid(row=1, column=0, sticky=tk.NSEW)
 
         ''' Treeview select item - custom select processing '''
-        # self.sync_tree.bind('<ButtonRelease-1>', self.sync_select)
+        # self.tree.bind('<ButtonRelease-1>', self.tree_select)
 
         ''' Create images for checked, unchecked and tristate '''
         # Don't use self.checkboxes list as GC destroys others with that name
         self.check2 = img.make_checkboxes(row_height - 6, self.theme_fg,
                                           self.theme_bg, 'DodgerBlue')  # SkyBlue3 not in Pillow
-        self.sync_tree.tag_configure("unchecked", image=self.check2[0])
-        self.sync_tree.tag_configure("tristate", image=self.check2[1])
-        self.sync_tree.tag_configure("checked", image=self.check2[2])
+        self.tree.tag_configure("unchecked", image=self.check2[0])
+        self.tree.tag_configure("tristate", image=self.check2[1])
+        self.tree.tag_configure("checked", image=self.check2[2])
 
         ''' Create Treeview item list '''
-        self.sync_populate_tree()
+        self.populate_treeview()
 
         ''' sync lyrics Treeview Scrollbars '''
         # Create a vertical scrollbar linked to the frame.
-        v_scroll = tk.Scrollbar(frame2, orient=tk.VERTICAL, width=sbar_width,
-                                command=self.sync_tree.yview)
+        v_scroll = tk.Scrollbar(frame2, orient=tk.VERTICAL, width=SCROLL_WIDTH,
+                                command=self.tree.yview)
         v_scroll.grid(row=1, column=1, sticky=tk.NS)
-        self.sync_tree.configure(yscrollcommand=v_scroll.set)
+        self.tree.configure(yscrollcommand=v_scroll.set)
 
         ''' sync lyrics treeview Colors '''
-        self.sync_tree.tag_configure('normal', background=self.theme_bg,
-                                     foreground=self.theme_fg)
-        self.sync_tree.tag_configure('sync_sel', background=self.theme_fg,
-                                     foreground=self.theme_bg)
+        self.tree.tag_configure('normal', background=self.theme_bg,
+                                foreground=self.theme_fg)
+        self.tree.tag_configure('sync_sel', background=self.theme_fg,
+                                foreground=self.theme_bg)
 
         '''   B U T T O N   B A R   F R A M E   '''
-        self.sync_btn_frm = tk.Frame(self.sync_top, relief=tk.GROOVE,
-                                     background=self.theme_bg, borderwidth=BTN_BRD_WID)
-        self.sync_btn_frm.grid(row=2, column=0, padx=2, pady=2, sticky=tk.W)
-        self.sync_build_buttons()  # Defaults to 'top' for sync_top main window
+        self.btn_bar_frm = tk.Frame(self.top, relief=tk.GROOVE,
+                                    background=self.theme_bg, borderwidth=BTN_BRD_WID)
+        self.btn_bar_frm.grid(row=2, column=0, padx=2, pady=2, sticky=tk.W)
+        self.build_btn_bar_frm()  # Defaults to 'top' for top main window
 
         ''' Set default checkbox for currently playing line '''
         self.sync_default_set = 0
         found = 0
         for i, start_time in enumerate(self.work_time_list):
-            if start_time > self.work_song_secs:
+            if start_time > self.play_ctl.DurationSecs:
                 # We found greater entry so target is line before
                 found = i
                 break
 
         # print('i:', i, 'found:', found, 'time:', time,
-        #      'self.work_song_secs:', self.work_song_secs)
+        #      'self.play_ctl.DurationSecs:', self.play_ctl.DurationSecs)
         if found > 1:
             # Mark the checkbox of currently playing line
-            tags = self.sync_tree.item(str(found))['tags']
+            tags = self.tree.item(str(found))['tags']
             if "unchecked" in tags:
                 tags.remove("unchecked")
                 tags.append("checked")
-                self.sync_tree.item(str(found), tags=tags)
-                self.sync_tree.see(str(found))
+                self.tree.item(str(found), tags=tags)
+                self.tree.see(str(found))
                 self.sync_default_set = found
 
-        self.sync_ctl = FileControl(self.sync_top, self.info, silent=True)
-        self.sync_ctl.new(self.current_song_path)
+        self.sync_ctl = FileControl(self.top, self.info, silent=True)
+        self.sync_ctl.new(self.play_ctl.path)
 
-    def sync_build_buttons(self, level='top'):
+    def build_btn_bar_frm(self, level='top'):
         """ Build buttons for top_level, begin sync and sample all """
-        if not self.sync_top_is_active:
+        if not self.top_is_active:
             return
-        self.tt.close(self.sync_btn_frm)  # Remove old tooltip buttons in play_btn frame
-        self.sync_btn_frm.grid_forget()
-        self.sync_btn_frm.destroy()
-        self.sync_top.unbind("<Escape>")
+        self.tt.close(self.btn_bar_frm)  # Remove old tooltip buttons in play_btn frame
+        self.btn_bar_frm.grid_forget()
+        self.btn_bar_frm.destroy()
+        self.top.unbind("<Escape>")
         # Unbinds for all functions? https://bugs.python.org/issue31485
 
         ''' Frame for Buttons '''
-        self.sync_btn_frm = tk.Frame(self.sync_top, bg="Olive",
-                                     borderwidth=BTN_BRD_WID, relief=tk.GROOVE)
-        self.sync_btn_frm.grid(row=3, column=0, sticky=tk.NSEW)
+        self.btn_bar_frm = tk.Frame(self.top, bg="Olive",
+                                    borderwidth=BTN_BRD_WID, relief=tk.GROOVE)
+        self.btn_bar_frm.grid(row=3, column=0, sticky=tk.NSEW)
 
         ''' Define three different button bars '''
 
@@ -12856,23 +12761,23 @@ class FineTune:
 
         for col, name in enumerate(button_list):
             if name == "Close":
-                '''  FORMERLY: self.sync_top_buttons '''
+                '''  FORMERLY: self.top_buttons '''
                 ''' ✘ Close Button - Cancels changes '''
                 # leading space when text begins with utf-8 symbol centers text better?
-                close = tk.Button(self.sync_btn_frm, text=" ✘ Close",
-                                  width=BTN_WID2 - 4, command=self.sync_close)
+                close = tk.Button(self.btn_bar_frm, text=" ✘ Close",
+                                  width=BTN_WID2 - 4, command=self.close)
                 close.grid(row=0, column=col, padx=2, sticky=tk.W)
-                # Disable for now because Child process like "self.sync_begin()" should
+                # Disable for now because Child process like "self.begin_sync()" should
                 # be trapping ESCAPE -- How do you unbind <Escape>
-                self.sync_top.bind("<Escape>", self.sync_close)
-                self.sync_top.protocol("WM_DELETE_WINDOW", self.sync_close)
+                self.top.bind("<Escape>", self.close)
+                self.top.protocol("WM_DELETE_WINDOW", self.close)
                 self.tt.add_tip(close, "Close Fine-Tune Time Index window.\n" +
                                 "Abandon all changes.", anchor="nw")
 
             elif name == "Begin":
                 ''' ▶  Begin Button - Synchronize selected lines '''
-                begin = tk.Button(self.sync_btn_frm, text=" ▶ Begin sync",
-                                  width=BTN_WID2, command=self.sync_begin)
+                begin = tk.Button(self.btn_bar_frm, text=" ▶ Begin sync",
+                                  width=BTN_WID2, command=self.begin_sync)
                 begin.grid(row=0, column=col)
                 self.tt.add_tip(
                     begin, "First check boxes for first and last line.\n" +
@@ -12880,8 +12785,8 @@ class FineTune:
 
             elif name == "Delete":
                 ''' 😒 Delete - 😒 (u+1f612) - Delete all '''
-                delete = tk.Button(self.sync_btn_frm, text=" 😒 Delete all",
-                                   width=BTN_WID2, command=self.sync_delete_all)
+                delete = tk.Button(self.btn_bar_frm, text=" 😒 Delete all",
+                                   width=BTN_WID2, command=self.delete_all)
                 delete.grid(row=0, column=col)
                 self.tt.add_tip(
                     delete, "When time indices are hopelessly wrong,\n" +
@@ -12889,8 +12794,8 @@ class FineTune:
 
             elif name == "Sample":
                 ''' 🎵  Sample all - Sample all show library '''
-                sample = tk.Button(self.sync_btn_frm, text=" 🎵 Sample all",
-                                   width=BTN_WID2, command=self.sync_sample_all)
+                sample = tk.Button(self.btn_bar_frm, text=" 🎵 Sample all",
+                                   width=BTN_WID2, command=self.sample_all)
                 sample.grid(row=0, column=col)
                 self.tt.add_tip(
                     sample, "Click to sample the first second of every line.",
@@ -12898,8 +12803,8 @@ class FineTune:
 
             elif name == "Merge":
                 ''' - Merge lines - Merge two lines together '''
-                merge = tk.Button(self.sync_btn_frm, text="- Merge lines",
-                                  width=BTN_WID2 - 2, command=self.sync_merge_lines)
+                merge = tk.Button(self.btn_bar_frm, text="- Merge lines",
+                                  width=BTN_WID2 - 2, command=self.merge_lines)
                 merge.grid(row=0, column=col)
                 self.tt.add_tip(
                     merge, "First check two or more lines. Then\n" +
@@ -12907,8 +12812,8 @@ class FineTune:
 
             elif name == "Insert":
                 ''' + Insert line - Insert line line eg [chorus] or [bridge] '''
-                insert = tk.Button(self.sync_btn_frm, text="+ Insert line",
-                                   width=BTN_WID - 2, command=self.sync_insert_line)
+                insert = tk.Button(self.btn_bar_frm, text="+ Insert line",
+                                   width=BTN_WID - 2, command=self.insert_line)
                 insert.grid(row=0, column=col)
                 self.tt.add_tip(
                     insert, "First check line to insert before. Then\n" +
@@ -12916,23 +12821,23 @@ class FineTune:
 
             elif name == "Save":
                 ''' 💾  Save - Save lyrics (may be merged) and time indices '''
-                save = tk.Button(self.sync_btn_frm, text=" 💾 Save",
-                                 width=BTN_WID2 - 4, command=self.sync_save_changes)
+                save = tk.Button(self.btn_bar_frm, text=" 💾 Save",
+                                 width=BTN_WID2 - 4, command=self.save_changes)
                 save.grid(row=0, column=col)
                 self.tt.add_tip(
                     save, "Save time indices and close\n" +
                           "this fine-tune index window.", anchor="ne")
 
             elif name == "Sync":
-                ''' "Sync in progress" label FORMERLY: self.sync_begin_buttons '''
-                tk.Label(self.sync_btn_frm, text="Sync in progress...",
+                ''' "Sync in progress" label FORMERLY: self.begin_sync_buttons '''
+                tk.Label(self.btn_bar_frm, text="Sync in progress...",
                          font=(None, MON_FONTSIZE), padx=10) \
                     .grid(row=0, column=col, sticky=tk.W)
 
             elif name == "DoneB":
                 ''' Done Button - Saves work and returns to parent '''
-                begin_done = tk.Button(self.sync_btn_frm, text="Done",
-                                       width=BTN_WID2 - 6, command=self.sync_begin_done)
+                begin_done = tk.Button(self.btn_bar_frm, text="Done",
+                                       width=BTN_WID2 - 6, command=self.begin_sync_done)
                 begin_done.grid(row=0, column=col, padx=2, sticky=tk.W)
                 self.tt.add_tip(
                     begin_done, "Click this button to skip\n" +
@@ -12940,8 +12845,8 @@ class FineTune:
 
             elif name == "RewindB":
                 ''' "Rewind 5 seconds" Button - Synchronize selected lines '''
-                begin_rewind = tk.Button(self.sync_btn_frm, text="Rewind 5 seconds",
-                                         width=BTN_WID2 + 2, command=self.sync_begin_rewind)
+                begin_rewind = tk.Button(self.btn_bar_frm, text="Rewind 5 seconds",
+                                         width=BTN_WID2 + 2, command=self.begin_sync_rewind)
                 begin_rewind.grid(row=0, column=col, padx=2)
                 self.tt.add_tip(
                     begin_rewind, "Click this button to stop play,\n" +
@@ -12951,37 +12856,37 @@ class FineTune:
 
             elif name == "SampleS":
                 ''' "Sample in progress" label  FORMERLY: self.sync_sample_buttons '''
-                tk.Label(self.sync_btn_frm, text="Sample all in progress...",
+                tk.Label(self.btn_bar_frm, text="Sample all in progress...",
                          font=(None, MON_FONTSIZE), padx=10) \
                     .grid(row=0, column=col, sticky=tk.W)
 
             elif name == "DoneS":
                 ''' Done Button - Saves work and returns to parent
                     TODO: Rename to "Apply changes" ? '''
-                sample_done = tk.Button(self.sync_btn_frm, text="Done",
+                sample_done = tk.Button(self.btn_bar_frm, text="Done",
                                         width=BTN_WID2 - 6,
-                                        command=self.sync_sample_done)
+                                        command=self.sample_done)
                 sample_done.grid(row=0, column=col, padx=2, sticky=tk.W)
                 self.tt.add_tip(sample_done, "Click this button to skip\n" +
                                 "sampling remaining lines.", anchor="nw")
 
             elif name == "PP":
                 ''' Pause/Play Button - Toggles state '''
-                self.sync_sample_pp_state = 'Playing'
-                self.sync_sample_pp_button = \
-                    tk.Button(self.sync_btn_frm, text=self.pp_pause_text,
-                              width=BTN_WID2 - 4, command=self.sync_sample_toggle_play)
-                self.sync_sample_pp_button.grid(row=0, column=col, padx=2, sticky=tk.W)
+                self.pp_state = 'Playing'
+                self.pp_button = \
+                    tk.Button(self.btn_bar_frm, text=self.pp_pause_text,
+                              width=BTN_WID2 - 4, command=self.toggle_play)
+                self.pp_button.grid(row=0, column=col, padx=2, sticky=tk.W)
                 self.tt.add_tip(
-                    self.sync_sample_pp_button, "Click this button to toggle\n" +
-                                                "pause / playing of music.", anchor="nw")
+                    self.pp_button, "Click this button to toggle\n" +
+                    "pause / playing of music.", anchor="nw")
 
             elif name == "RewindS":
                 ''' "Rewind 5 seconds" Button 
                     TODO: This isn't working? Why is it local and not self?
                 '''
-                sample_rewind = tk.Button(self.sync_btn_frm, text="Rewind 5 seconds",
-                                          width=BTN_WID2 + 2, command=self.sync_sample_rewind)
+                sample_rewind = tk.Button(self.btn_bar_frm, text="Rewind 5 seconds",
+                                          width=BTN_WID2 + 2, command=self.sample_rewind)
                 sample_rewind.grid(row=0, column=3, padx=2)
                 self.tt.add_tip(
                     sample_rewind, "Click this button to stop play,\n" +
@@ -12992,19 +12897,17 @@ class FineTune:
             else:
                 self.info.cast("Oops unknown button name: " + name)
 
-        self.sync_btn_frm.configure(bg=self.theme_bg)  # Why this and next??
-        toolkit.config_all_buttons(self.sync_top, fg=self.theme_bg,
+        self.btn_bar_frm.configure(bg=self.theme_bg)  # Why this and next??
+        toolkit.config_all_buttons(self.top, fg=self.theme_bg,
                                    bg=self.theme_fg)
-        self.sync_top.update_idletasks()
+        self.top.update_idletasks()
 
-    def sync_populate_tree(self):
-        """ Called from sync_build_toplevel() and sync_select() """
+    def populate_treeview(self):
+        """ Called from sync_build_toplevel() and tree_select() """
         start_time = 0.0
         duration = 0.0
         last_time = 0.0
         time_override_count = 0  # >= 1 negative durations?
-        self.new_time_list = []  # As time list is edited these
-        self.new_durations_list = []  # lists override synchronizing
         last_ndx = len(self.work_time_list) - 1
         for line_ndx, line in enumerate(self.work_lyrics_score.split('\n')):
             line = line.strip('\r')  # Microsoft Windows
@@ -13022,7 +12925,7 @@ class FineTune:
             if line_ndx > last_ndx:
                 # print('lyrics score line_ndx:', line_ndx, \
                 #       '> tine index last_ndx:', last_ndx)
-                start_time = float(play_ctl.DurationSecs)
+                start_time = float(self.play_ctl.DurationSecs)
                 duration = 0.0
             else:
                 # New values default to original
@@ -13038,12 +12941,12 @@ class FineTune:
             # time = '%9s' % time    # Regular space doesn't line up evenly
             ftime = '%.1f' % start_time
             fduration = '%.1f' % duration
-            ftime = self.play_padded_number(ftime, 8)
-            fduration = self.play_padded_number(fduration, 7, prefix="")
+            ftime = play_padded_number(ftime, 8)
+            fduration = play_padded_number(fduration, 7, prefix="")
             # FUTURE if time_override: insert with new duration else:
-            self.sync_tree.insert('', 'end', iid=str(line_ndx + 1), text=ftime,
-                                  values=("", line, fduration, ""),
-                                  tags=("normal",))
+            self.tree.insert('', 'end', iid=str(line_ndx + 1), text=ftime,
+                             values=("", line, fduration, ""),
+                             tags=("normal",))
 
         if len(self.work_time_list) != len(self.new_time_list):
             print('PROGRAM ERROR. len(self.work_time_list):',
@@ -13054,16 +12957,16 @@ class FineTune:
             messagebox.showinfo(
                 title="Time indices are NOT sequential!", icon="error",
                 message="Negative time durations need to be fixed.",
-                parent=self.sync_top)
+                parent=self.top)
 
-    def sync_begin(self):
+    def begin_sync(self):
         """ Play music and synchronize time for checked treeview lines.
 
             Fill in all blank check boxes between first and last checked.
             If nothing was checked error is displayed, and we return.
             Set start time 4 seconds before first checked.
             Set end time to start of line following last checked.
-            Call self.sync_build_buttons('begin_sync')
+            Call self.build_btn_bar_frm('begin_sync')
 
             TODO: We are still getting message syncing Janine by Trooper:
 
@@ -13076,101 +12979,101 @@ Failed to get sink input information: No such entity
             May have to append " 2>/dev/null" but that will also hide bad
             programming using "pactl" external command
         """
-        if self.sync_ffplay_is_running:
-            self.info.cast('self.sync_ffplay_is_running:')
+        if self.ffplay_is_running:
+            self.info.cast('self.ffplay_is_running:')
             return  # Already playing
 
         # Fill first and last checked boxes. At least one line must be checked.
-        self.sync_first, self.sync_last = self.sync_fill_checkboxes()
-        if self.sync_first is None:  # Error message already
+        self.first_checked, self.last_checked = self.check_all_boxes()
+        if self.first_checked is None:  # Error message already
             return  # displayed so return.
 
         '''' July 4, 2023 - more than 3 lines isn't an error. Can click Done
              if result list too large.
         '''
-        # if self.sync_last + 1 - self.sync_first > 3:
+        # if self.last_checked + 1 - self.first_checked > 3:
         #    text = "It could take a while to play more than three lines."
-        #    if self.sync_three_abort(text):
+        #    if self.four_checked_warning(text):
         #        return  # Warn > 3 checkboxes
 
-        self.sync_build_buttons('begin_sync')
+        self.build_btn_bar_frm('begin_sync')
 
-        self.sync_curr_highlight = 0  # When changes move bar
-        self.sync_ffplay_is_running = True  # We are now playing
-        self.sync_start_ffplay()  # Will turn down volume and calculate start
-        self.sync_watch_ffplay()  # self.old_sinks
-        self.sync_clean_ffplay()  # self.active_sink
-        self.sync_ffplay_is_running = False  # No longer playing
-        self.sync_build_buttons()  # Defaults to 'top' for sync_top main window
+        self.curr_line_highlight = 0  # When changes move bar
+        self.ffplay_is_running = True  # We are now playing
+        self.start_ffplay()  # Will turn down volume and calculate start
+        self.watch_ffplay()  # self.old_sinks
+        self.fade_in_others()  # self.active_sink
+        self.ffplay_is_running = False  # No longer playing
+        self.build_btn_bar_frm()  # Defaults to 'top' for top main window
 
-    def sync_start_ffplay(self):
+    def start_ffplay(self):
         """ Start ffplay and get Linux PID and Pulseaudio Input Sink #
 
-            TODO: self.sync_start, self.sync_first and self.sync_last may be
+            TODO: self.start_sec, self.first_checked and self.last_checked may be
                   greater that len(self.new_time_list)
 
 Traceback (most recent call last):
   File "/usr/lib/python2.7/lib-tk/Tkinter.py", line 1540, in __call__
     return self.func(*args)
-  File "/home/rick/python/mserve.py", line 5835, in sync_begin
-    self.sync_start_ffplay()                        # Sets variables;
-  File "/home/rick/python/mserve.py", line 5908, in sync_start_ffplay
-    self.sync_start + 2.0
+  File "/home/rick/python/mserve.py", line 5835, in begin_sync
+    self.start_ffplay()                        # Sets variables;
+  File "/home/rick/python/mserve.py", line 5908, in start_ffplay
+    self.start_sec + 2.0
 IndexError: list index out of range
         :param others: = Turn down volume of other applications
-        :param calculate: = calculate self.sync_start & self.sync_duration
+        :param calculate: = calculate self.start_sec & self.limit_sec
         """
 
         # Give 2.5-second playing countdown before line to sync
-        self.sync_start = self.new_time_list[self.sync_first - 1] - 2.5
-        self.sync_start = 0.0 if self.sync_start < 0.0 else self.sync_start
+        self.start_sec = self.new_time_list[self.first_checked - 1] - 2.5
+        self.start_sec = 0.0 if self.start_sec < 0.0 else self.start_sec
 
-        if self.sync_last + 1 < self.work_line_count:
+        if self.last_checked + 1 < self.lyrics_line_count:
             # Grab start time of line after last line to set duration+2 secs
-            self.sync_duration = self.new_time_list[self.sync_last] - \
-                                 self.sync_start + 2.0
+            self.limit_sec = self.new_time_list[self.last_checked] - \
+                                 self.start_sec + 2.0
         else:
-            # TOP: self.work_DurationSecs = self.play_ctl.DurationSecs
-            self.sync_duration = self.work_DurationSecs - self.sync_start
+            # TOP: self.play_ctl.DurationSecs = self.play_ctl.DurationSecs
+            self.limit_sec = self.play_ctl.DurationSecs - self.start_sec
 
-        self.sync_ctl.start(self.sync_start, self.sync_duration,
+        self.sync_ctl.start(self.start_sec, self.limit_sec,
                             .5, .5, TMP_CURR_SYNC, True)
         set_volume(self.sync_ctl.sink, 0)  # Turn off volume
-        self.sync_fade_down_others()
+        self.fade_out_others()
         self.sync_ctl.cont()
 
-    def sync_watch_ffplay(self):
+    def watch_ffplay(self):
         """
             Used by Begin Sync - Synchronize each line as it is played
             Allow left click to select line and set new time index
             With no overrides, lines are auto highlighted based on time index
             Exit loop when there is 1 second left to play
         """
-        self.sync_elapsed = 0.0
-        self.sync_curr_highlight = ""
-        self.sync_tree.bind("<ButtonRelease-1>", self.sync_select)
+        self.elapsed_secs = 0.0
+        self.curr_line_highlight = ""
+        self.tree.bind("<ButtonRelease-1>", self.tree_select)
         while self.sync_ctl.check_pid():
-            if not self.sync_top_is_active:
+            if not self.top_is_active:
                 return  # Window closed?
-            self.sync_elapsed = self.sync_ctl.elapsed()
-            if self.sync_elapsed + .5 > self.sync_start + self.sync_duration:
+            self.elapsed_secs = self.sync_ctl.elapsed()
+            if self.elapsed_secs + .5 > self.start_sec + self.limit_sec:
                 # Leave .5 second early so there is time to fade up others
                 break
-            self.sync_check_highlight()  # Check highlight pos.
+            self.set_highlight()  # Check highlight pos.
             refresh_thread = self.get_refresh_thread()
             refresh_thread()
 
         # Restore treeview button settings
-        if not self.sync_top_is_active:
+        if not self.top_is_active:
             return  # Window closed?
-        self.sync_tree.unbind("<ButtonRelease-1>")  # Mouse left-click
+        self.tree.unbind("<ButtonRelease-1>")  # Mouse left-click
 
         # Clear highlights and checkboxes
-        self.sync_remove_all_highlights()
-        self.sync_remove_all_checkboxes()
-        self.sync_tree.unbind("<ButtonRelease-1>")
+        self.remove_all_highlights()
+        self.remove_all_checkboxes()
+        self.tree.unbind("<ButtonRelease-1>")
 
-    def sync_begin_rewind(self):
+    def begin_sync_rewind(self):
         """ Rewind 5 seconds.
             Temporarily hide buttons so, they can't be clicked for 2 seconds
             Ramp down our currently playing volume only (don't ramp up others)
@@ -13179,126 +13082,127 @@ IndexError: list index out of range
             Restart play and ramp up only our volume
         """
 
-        if not self.sync_top_is_active or not self.sync_ctl.check_pid():
+        if not self.top_is_active or not self.sync_ctl.check_pid():
             self.info.cast("Trying to rewind with no PID")
             return
 
-        old_highlight = self.sync_curr_highlight
+        old_highlight = self.curr_line_highlight
         curr_sec = self.sync_ctl.elapsed()  # def elapsed
         if self.sync_ctl.state and self.sync_ctl.state != 'stop':
             self.sync_ctl.stop()  # If not already stopped, stop now
-        self.sync_start = curr_sec - 5
-        self.sync_start = 0.0 if self.sync_start < 0.0 else self.sync_start
-        self.sync_duration = self.work_DurationSecs - self.sync_start
-        self.sync_check_highlight(self.sync_start)  # Set self.sync_curr_highlight
-        self.sync_curr_line = self.sync_curr_highlight
+        self.start_sec = curr_sec - 5
+        self.start_sec = 0.0 if self.start_sec < 0.0 else self.start_sec
+        self.limit_sec = self.play_ctl.DurationSecs - self.start_sec
+        self.set_highlight(self.start_sec)  # Set self.curr_line_highlight
+        self.curr_line_no = self.curr_line_highlight
         ''' Set checkboxes from new highlight to old highlight '''
-        if self.sync_curr_highlight < old_highlight:
-            self.sync_checkbox_range(self.sync_curr_highlight, old_highlight)
+        if self.curr_line_highlight < old_highlight:
+            self.check_range_of_boxes(self.curr_line_highlight, old_highlight)
         else:
-            self.info.cast("Oops sync_begin_rewind(() couldn't check boxes",
+            self.info.cast("Oops begin_sync_rewind(() couldn't check boxes",
                            'error')
 
-        fade_out = self.sync_start + self.sync_duration - .5
-        self.sync_ctl.restart(self.sync_start, self.sync_duration,
+        fade_out = self.start_sec + self.limit_sec - .5
+        self.sync_ctl.restart(self.start_sec, self.limit_sec,
                               .5, fade_out, TMP_CURR_SYNC, False)
         set_volume(self.sync_ctl.sink, 100)  # Fading in from 0 anyway
 
     # noinspection PyUnusedLocal
-    def sync_select(self, event=None):
-        """ Process line clicked in treeview while music playing
-            Set new start time and recalculate duration of previous line and
-            this line.
+    def tree_select(self, event=None):
+        """ Process line left-clicked in treeview while music is playing.
+
+            Set new start time. Shorten duration of previous line and
+            increase duration of line clicked.
 
         """
         ''' TODO: event.y() fits coding conventions better than .focus() '''
-        clicked_line = int(self.sync_tree.focus())  # Line that was clicked
+        clicked_line = int(self.tree.focus())  # Line that was clicked
 
-        if clicked_line < self.sync_first or \
-                clicked_line > self.sync_last:  # Between first and last
+        if clicked_line < self.first_checked or \
+                clicked_line > self.last_checked:  # Between first and last
             text = "Only click lines between first and last checkbox."
             print(text)
             self.info.cast(text)
             return  # Ignore everything else
 
-        if clicked_line < self.sync_curr_highlight:
+        if clicked_line < self.curr_line_highlight:
             # Clicking previous line? Reset last changes back to original
-            values = self.sync_tree.item(str(clicked_line))['values']
+            values = self.tree.item(str(clicked_line))['values']
             # values[0] = new_time, values[1]=line text, values[2]=old duration
             # values[3] = new_duration
             if values[3] != "":
                 # A non-blank time was formatted so, we overrode previously
                 # TODO: Recall create treeview routine
-                self.sync_tree.delete(*self.sync_tree.get_children())
-                self.sync_populate_tree()
+                self.tree.delete(*self.tree.get_children())
+                self.populate_treeview()
                 print('Start time changes (edits) removed.')
             else:
                 print('You can only click previous line to cancel time edits.')
             return
 
-        elif clicked_line == self.sync_curr_highlight:
+        elif clicked_line == self.curr_line_highlight:
             # Clicking same line? We start later and extend previous time
             print('Start time reduced.')
             pass
 
-        elif clicked_line != self.sync_curr_highlight + 1:
+        elif clicked_line != self.curr_line_highlight + 1:
             # Clicking next line? Quicken line start time and extend duration
             print('You can only click one line ahead to make it start sooner.')
             return
 
         ''' Remove everything highlighted '''
-        self.sync_remove_all_highlights()
+        self.remove_all_highlights()
 
         ''' Highlight current line clicked '''
-        tags = self.sync_tree.item(self.sync_tree.focus())['tags']
+        tags = self.tree.item(self.tree.focus())['tags']
         if "normal" in tags:
             tags.remove("normal")
             tags.append("sync_sel")  # Apply line highlight
-            self.sync_tree.item(self.sync_tree.focus(), tags=tags)
+            self.tree.item(self.tree.focus(), tags=tags)
 
         ''' Update time and duration for line clicked. 
             TODO: self.sync_ctl.elapsed() to get song time offset. '''
         # Calculate new time
         new_time = self.sync_ctl.elapsed()
-        values = self.sync_tree.item(str(clicked_line))['values']
+        values = self.tree.item(str(clicked_line))['values']
         # values[0] = new_time, values[1]=line text, values[2]=old duration
         # values[3] = new_duration
         if clicked_line + 1 <= len(self.new_time_list):
             new_duration = self.new_time_list[clicked_line] - new_time
         else:
-            new_duration = self.work_DurationSecs - new_time
-        values[0] = self.sync_formatted_secs(new_time, 7)
-        values[3] = self.sync_formatted_secs(new_duration, 7)
+            new_duration = self.play_ctl.DurationSecs - new_time
+        values[0] = self.format_secs(new_time, 7)
+        values[3] = self.format_secs(new_duration, 7)
         # Here's the kicker, clicked line maybe beyond len(time_list[])
         # Insert additional indices as necessary.
         # TODO:
         self.new_time_list[clicked_line - 1] = new_time
         self.new_durations_list[clicked_line - 1] = new_duration
-        self.sync_tree.item(str(clicked_line), values=values)
+        self.tree.item(str(clicked_line), values=values)
 
         ''' Update duration for previous line clicked '''
         previous_line = clicked_line - 1
         if previous_line > 0:
-            values = self.sync_tree.item(str(previous_line))['values']
+            values = self.tree.item(str(previous_line))['values']
             new_duration = self.new_time_list[clicked_line - 1] - \
-                           self.new_time_list[previous_line - 1]
-            values[3] = self.sync_formatted_secs(new_duration, 7)
+                self.new_time_list[previous_line - 1]
+            values[3] = self.format_secs(new_duration, 7)
             self.new_durations_list[previous_line - 1] = new_duration
-            self.sync_tree.item(str(previous_line), values=values)
+            self.tree.item(str(previous_line), values=values)
 
         ''' Wrap up '''
         # print('tree values:',values)
         # print('new_time:', new_time)
         # Apply current selection
-        # self.sync_tree.selection_toggle(self.sync_tree.focus())
-        # print('Selected:', self.sync_tree.selection())
+        # self.tree.selection_toggle(self.tree.focus())
+        # print('Selected:', self.tree.selection())
 
         # Apply current selection
-        # self.sync_tree.selection_toggle(self.sync_tree.focus())
-        # print('Selected:', self.sync_tree.selection())
-        self.sync_curr_highlight = clicked_line
+        # self.tree.selection_toggle(self.tree.focus())
+        # print('Selected:', self.tree.selection())
+        self.curr_line_highlight = clicked_line
 
-    def sync_clean_ffplay(self):
+    def fade_in_others(self):
         """ Over last second restore volume on other sound applications
 
             Following lines need global variables devised from speed tests:
@@ -13308,13 +13212,13 @@ IndexError: list index out of range
             if sleep < 20:
         """
         # Only restore active_sinks, using self.old_sinks volume
-        # self.sync_top_active maybe False but, we still have to restore volume
+        # self.top_active maybe False but, we still have to restore volume
         active_sinks = sink_master()  # list of sinks now
 
-        # print('\n sync_clean_ffplay() sink:', self.sync_ffplay_sink,
-        #      'duration: %.2f' % self.sync_duration,
-        #      'elapsed: %.2f' % self.sync_elapsed,
-        #      'diff: %.2f' % (self.sync_duration - self.sync_elapsed), '\n')
+        # print('\n fade_in_others() sink:', self.sync_ffplay_sink,
+        #      'duration: %.2f' % self.limit_sec,
+        #      'elapsed: %.2f' % self.elapsed_secs,
+        #      'diff: %.2f' % (self.limit_sec - self.elapsed_secs), '\n')
         # loop_start = time.time()
         # time_used = time.time() - loop_start
         err = False
@@ -13339,7 +13243,7 @@ IndexError: list index out of range
                         app_time, err = set_volume(old_sink, percent)
                         s_time += app_time  # Total all system times
                         if app_time > .025:
-                            print('sync_clean_ffplay(self): app_time too large:',
+                            print('fade_in_others(self): app_time too large:',
                                   app_time, 'sink:', app_sink, 'i', i)
                     # Grab next o sink (old sink) for comparison
                 # Grab next a sink (active sink)
@@ -13376,52 +13280,52 @@ IndexError: list index out of range
         if self.sync_ctl.state and self.sync_ctl.state != 'stop':
             self.sync_ctl.stop()  # Don't want to close because path reset
 
-    def sync_begin_done(self):
-        """ End the sync_begin() function. Called by button: 'begin_done' """
+    def begin_sync_done(self):
+        """ End the begin_sync() function. Called by button: 'begin_done' """
         if self.sync_ctl.state and self.sync_ctl.state != 'stop':
             self.sync_ctl.stop()  # Don't want to close because path reset
-        self.sync_remove_all_checkboxes()  # Remove highlight done
-        self.sync_ffplay_is_running = False  # No longer playing "Playing"
-        self.sync_build_buttons()  # Defaults to 'top' for sync_top main window
+        self.remove_all_checkboxes()  # Remove highlight done
+        self.ffplay_is_running = False  # No longer playing "Playing"
+        self.build_btn_bar_frm()  # Defaults to 'top' for top main window
 
-    def sync_remove_all_highlights(self):
+    def remove_all_highlights(self):
         """ Remove everything highlighted.  TODO: shorten code """
-        for item in self.sync_tree.get_children():  # For all items
-            self.sync_tree.selection_remove(item)  # Remove selection
-            tags = self.sync_tree.item(item)['tags']  # Remove line highlight
+        for item in self.tree.get_children():  # For all items
+            self.tree.selection_remove(item)  # Remove selection
+            tags = self.tree.item(item)['tags']  # Remove line highlight
             if "sync_sel" in tags:
                 tags.remove("sync_sel")
                 tags.append("normal")
-                self.sync_tree.item(item, tags=tags)
+                self.tree.item(item, tags=tags)
 
-    def sync_remove_all_checkboxes(self):
+    def remove_all_checkboxes(self):
         """ Remove all checkboxes.  TODO: shorten code  """
-        for line in self.sync_tree.tag_has("checked"):
-            tags = self.sync_tree.item(line)['tags']
+        for line in self.tree.tag_has("checked"):
+            tags = self.tree.item(line)['tags']
             tags.remove("checked")
             tags.append("unchecked")
-            self.sync_tree.item(line, tags=tags)
+            self.tree.item(line, tags=tags)
 
-    def sync_formatted_secs(self, secs, length, prefix=""):
+    def format_secs(self, secs, length, prefix=""):
         f_secs = '%.1f' % secs
-        return self.play_padded_number(f_secs, length, prefix)
+        return play_padded_number(f_secs, length, prefix)
 
-    def sync_check_highlight(self, elapsed=None):
+    def set_highlight(self, elapsed=None):
         """ As music plays, check if we need to reposition highlight bar.
             Save processing by passing elapsed time if known
         """
 
         """ calculate line that should be highlighted """
-        # new_time = self.sync_start + self.sync_elapsed  # Where are we in song?
+        # new_time = self.start_sec + self.elapsed_secs  # Where are we in song?
         if elapsed:
             new_time = elapsed
         else:
             new_time = self.sync_ctl.elapsed()
         # if self.printed == False:
-        #    print('new_time:', new_time, 'self.sync_start:', self.sync_start, \
-        #          'self.sync_elapsed:', self.sync_elapsed)
+        #    print('new_time:', new_time, 'self.start_sec:', self.start_sec, \
+        #          'self.elapsed_secs:', self.elapsed_secs)
 
-        calculated_highlight = self.work_line_count  # Default last line
+        calculated_highlight = self.lyrics_line_count  # Default last line
         for i, entry in enumerate(self.new_time_list):
             # if self.printed == False:
             #    last_ndx = len(self.new_time_list) - 1
@@ -13435,32 +13339,32 @@ IndexError: list index out of range
         # self.printed=True                              # DEBUGGING stuff
 
         ''' If correct line already highlighted, return now '''
-        if self.sync_curr_highlight == calculated_highlight:
+        if self.curr_line_highlight == calculated_highlight:
             return
-        self.sync_tree.see(str(calculated_highlight))  # July 4 comment out
+        self.tree.see(str(calculated_highlight))  # July 4 comment out
 
-        # print('new_time:', new_time, 'self.sync_start:', self.sync_start,
-        #      'self.sync_elapsed:', self.sync_elapsed)
+        # print('new_time:', new_time, 'self.start_sec:', self.start_sec,
+        #      'self.elapsed_secs:', self.elapsed_secs)
 
         ''' Update tags to highlight current line '''
-        self.sync_remove_all_highlights()
+        self.remove_all_highlights()
 
-        self.sync_curr_highlight = calculated_highlight  # Set new current line
-        tags = self.sync_tree.item(str(self.sync_curr_highlight))['tags']
+        self.curr_line_highlight = calculated_highlight  # Set new current line
+        tags = self.tree.item(str(self.curr_line_highlight))['tags']
         tags.remove("normal")  # Remove line normal
         tags.append("sync_sel")  # Apply line highlight
-        # self.sync_tree.item(str(self.sync_curr_highlight), tags=tags)
+        # self.tree.item(str(self.curr_line_highlight), tags=tags)
         # Test if integer works when string is expected below.
-        self.sync_tree.item(self.sync_curr_highlight, tags=tags)
+        self.tree.item(self.curr_line_highlight, tags=tags)
 
-    def sync_fill_checkboxes(self):
+    def check_all_boxes(self):
         """ Fill in all blank check boxes between first and last checked.
             At least one must be checked or return False.
         """
         # Find the first and last checked boxes.
-        first_checked = self.work_line_count
+        first_checked = self.lyrics_line_count
         last_checked = 0
-        for line in self.sync_tree.tag_has("checked"):
+        for line in self.tree.tag_has("checked"):
             i_line = int(line)
             if i_line < first_checked:
                 first_checked = i_line
@@ -13471,34 +13375,34 @@ IndexError: list index out of range
         if last_checked == 0:
             messagebox.showinfo(title="Checkbox error", icon="error",
                                 message="Check at least one box.",
-                                parent=self.sync_top)
+                                parent=self.top)
             return None, None
 
         # Mark all lines between first checked and last checked.
-        self.sync_checkbox_range(first_checked, last_checked)
+        self.check_range_of_boxes(first_checked, last_checked)
 
-        self.sync_top.update_idletasks()  # Process pending events
-        self.sync_top.update()  # Update checkboxes on screen
+        self.top.update_idletasks()  # Process pending events
+        self.top.update()  # Update checkboxes on screen
         return first_checked, last_checked
 
-    def sync_checkbox_range(self, first_checked, last_checked):
+    def check_range_of_boxes(self, first_checked, last_checked):
         for line in range(first_checked, last_checked):
             # Next 5 lines can be made into global function called:
             # tree_tag_replace(tree, old, new). Return true if found.
-            tags = self.sync_tree.item(line)['tags']
+            tags = self.tree.item(line)['tags']
             if "unchecked" in tags:
                 tags.remove("unchecked")
                 tags.append("checked")
-                self.sync_tree.item(line, tags=tags)
+                self.tree.item(line, tags=tags)
 
-    def sync_delete_all(self):
+    def delete_all(self):
         """ Time Indices hopelessly out of sync so Delete them.
         """
-        if self.sync_ffplay_is_running:
+        if self.ffplay_is_running:
             return  # Already playing?
 
         answer = message.AskQuestion(
-            self.sync_top, thread=self.get_refresh_thread(),
+            self.top, thread=self.get_refresh_thread(),
             title="Delete all time indices",
             text="All times will be permanently erased!!!\n\n" +
                  'To cancel time changes, click "Close" button instead.' +
@@ -13509,63 +13413,54 @@ IndexError: list index out of range
 
         self.work_time_list = []
         self.new_time_list = []
-        # Reset variables to reflect no time indices
-        self.play_lyrics_remove_highlights()
-        # This is awkward because we aren't using work fields but, it's not
-        # possible for next song to be playing anyway.
-        self.lyrics_prev_line = 0
-        self.lyrics_curr_line = 0
-        self.lyrics_time_scroll = False
-        self.lyrics_auto_scroll = True
-        self.lyrics_old_scroll = None  # Normal scrolling
-        print('no lyrics time index')
         # Save SQL row
         if len(self.work_lyrics_score) == 0:
             self.work_lyrics_score = None
         sql.update_lyrics(self.work_sql_key, self.work_lyrics_score,
                           self.work_time_list)
         sql.hist_delete_time_index(self.work_sql_key)
-        self.sync_close()
 
-    def sync_sample_all(self):
+        self.close()  # Bail out with nothing to do
+
+    def sample_all(self):
         """ Play music 1 second for each line.
-            Mount new buttons like sync_begin has sync_begin_done,
-                 sync_begin_rewind
+            Mount new buttons like begin_sync has begin_sync_done,
+                 begin_sync_rewind
             TODO: button to instantly adjust last line just played. Tagging
                   and coming back after entire song finishes takes too much
                   time and effort.
 
         """
-        if self.sync_ffplay_is_running:
+        if self.ffplay_is_running:
             return  # Already playing
 
         # Check all boxes
-        for line in range(1, self.work_line_count):
-            tags = self.sync_tree.item(str(line))['tags']
+        for line in range(1, self.lyrics_line_count):
+            tags = self.tree.item(str(line))['tags']
             if "unchecked" in tags:
                 tags.remove("unchecked")
                 tags.append("checked")
-                self.sync_tree.item(str(line), tags=tags)
+                self.tree.item(str(line), tags=tags)
 
         # Setup first and last checked boxes. At least one line must be checked.
-        self.sync_first, self.sync_last = self.sync_fill_checkboxes()
-        if not self.sync_first:  # Error message already
-            self.info.cast("sync_sample_all() at least one check needed.")
+        self.first_checked, self.last_checked = self.check_all_boxes()
+        if not self.first_checked:  # Error message already
+            self.info.cast("sample_all() at least one check needed.")
             return  # displayed so return.
 
-        self.sync_ffplay_is_running = True  # We are now playing
-        self.sync_build_buttons('sample_all')
+        self.ffplay_is_running = True  # We are now playing
+        self.build_btn_bar_frm('sample_all')
 
-        self.sync_start_ffplay2()  # Start time & duration calculated
-        self.sync_watch_ffplay2()  # First line 2 second lead in
-        self.sync_clean_ffplay()  # Restore other sound sources
-        self.sync_ffplay_is_running = False  # No longer playing
-        self.sync_build_buttons()  # Defaults to 'top' for sync_top main window
+        self.start_ffplay2()  # Start time & duration calculated
+        self.watch_ffplay2()  # First line 2 second lead in
+        self.fade_in_others()  # Restore other sound sources
+        self.ffplay_is_running = False  # No longer playing
+        self.build_btn_bar_frm()  # Defaults to 'top' for top main window
 
-    def sync_start_ffplay2(self):
+    def start_ffplay2(self):
         """ Called by sample all which uses sync_restart() on each line
 
-            self.sync_first and self.sync_last is the line number range.
+            self.first_checked and self.last_checked is the line number range.
 
             Duration is initially the whole song and then it is restarted
             after two seconds played for each lien start.
@@ -13574,19 +13469,19 @@ IndexError: list index out of range
 
         # First line has 4 seconds. Remaining lines have 1.25 seconds
         # 1.5-second playing countdown before line to sample
-        self.sync_start = self.new_time_list[self.sync_first - 1] - .5
-        self.sync_start = 0.0 if self.sync_start < 0.0 else self.sync_start
+        self.start_sec = self.new_time_list[self.first_checked - 1] - .5
+        self.start_sec = 0.0 if self.start_sec < 0.0 else self.start_sec
 
-        self.sync_duration = self.work_DurationSecs
-        fade_out = self.sync_start + 3.25
+        self.limit_sec = self.play_ctl.DurationSecs
+        fade_out = self.start_sec + 3.25
 
-        self.sync_ctl.start(self.sync_start, self.sync_duration,
+        self.sync_ctl.start(self.start_sec, self.limit_sec,
                             .5, fade_out, TMP_CURR_SYNC, True)
-        self.sync_fade_down_others()
+        self.fade_out_others()
         self.sync_ctl.cont()  # dead_start=True. Resume play
         set_volume(self.sync_ctl.sink, 100)  # Fading in from 0 anyway
 
-    def sync_watch_ffplay2(self):
+    def watch_ffplay2(self):
         """
             Sample All - Play line for 1 second then skip to next.
             When we first start up music already playing for length of song.
@@ -13594,58 +13489,53 @@ IndexError: list index out of range
             After that, kill each line after 1 second of play
         """
         # First line has 4 seconds. Remaining lines have 1.25 seconds
-        self.sync_elapsed = 0.0
-        self.sync_curr_highlight = ""
+        self.elapsed_secs = 0.0
+        self.curr_line_highlight = ""
 
         play_seconds = 4.0  # First time play is for 4.0 seconds. Then 1.25
-        self.sync_curr_line = 1
-        elapsed = self.sync_start
+        self.curr_line_no = 1
+        elapsed = self.start_sec
 
-        while self.sync_top_is_active:
-            if self.sync_sample_pp_state is 'Paused':
-                # TODO: Sounds choppy with no ramp up/ramp down pp_toggle
-                self.sync_music_start_time = time.time()
-                # Don't use continue. Drop down to refresh_play_top()
-            else:
-                elapsed = self.sync_ctl.elapsed()
-                if elapsed > self.sync_start + play_seconds:
-                    # Uncheck line just played via CheckboxTreeview()
-                    # noinspection PyProtectedMember
-                    self.sync_tree._uncheck_ancestor(str(self.sync_curr_line))
-                    self.sync_curr_line += 1
-                    if self.sync_curr_line > len(self.new_time_list):
-                        break  # Last line has been played
-                    self.sync_tree.see(self.sync_curr_line)
-                    self.sync_restart_ffplay2(self.sync_curr_line)  # kill & new PID
+        while self.top_is_active:
+            elapsed = self.sync_ctl.elapsed()
+            if elapsed > self.start_sec + play_seconds:
+                # Uncheck line just played via CheckboxTreeview()
+                # noinspection PyProtectedMember
+                self.tree._uncheck_ancestor(str(self.curr_line_no))
+                self.curr_line_no += 1
+                if self.curr_line_no > len(self.new_time_list):
+                    break  # Last line has been played
+                self.tree.see(self.curr_line_no)
+                self.restart_ffplay2(self.curr_line_no)  # kill & new PID
 
-            self.sync_check_highlight(elapsed)  # Change highlight if necessary
+            self.set_highlight(elapsed)  # Change highlight if necessary
             refresh_thread = self.get_refresh_thread()
             refresh_thread()
             play_seconds = 1.25  # restart used .25 sec in/out .75 full volume
 
         # Clear highlights
-        if not self.sync_top_is_active:
+        if not self.top_is_active:
             return  # Window closed?
-        self.sync_remove_all_highlights()
+        self.remove_all_highlights()
         # Make first manually checked box visible (if any)
-        items = self.sync_tree.tag_has("checked")
+        items = self.tree.tag_has("checked")
         if items:
-            self.sync_tree.see(items[0])
+            self.tree.see(items[0])
 
-    def sync_restart_ffplay2(self, line_no):
+    def restart_ffplay2(self, line_no):
         """ Restart playing at line number for 1.25 seconds with
             .25 second fade in/out. Fake whole song duration but
             will restart manually
         """
-        self.sync_start = self.new_time_list[line_no - 1] - .25
-        self.sync_start = 0.0 if self.sync_start < 0.0 else self.sync_start
-        self.sync_duration = self.work_DurationSecs - self.sync_start
-        fade_out = self.sync_start + .75
-        self.sync_ctl.restart(self.sync_start, self.sync_duration,
+        self.start_sec = self.new_time_list[line_no - 1] - .25
+        self.start_sec = 0.0 if self.start_sec < 0.0 else self.start_sec
+        self.limit_sec = self.play_ctl.DurationSecs - self.start_sec
+        fade_out = self.start_sec + .75
+        self.sync_ctl.restart(self.start_sec, self.limit_sec,
                               .25, fade_out, TMP_CURR_SYNC, False)
         set_volume(self.sync_ctl.sink, 100)  # Fading in from 0 anyway
 
-    def sync_sample_rewind(self):
+    def sample_rewind(self):
         """ Sample All Rewind 5 seconds.
             Temporarily hide buttons so, they can't be clicked for 2 seconds
             Ramp down our currently playing volume only (don't ramp up others)
@@ -13653,28 +13543,28 @@ IndexError: list index out of range
             Rewind 4 seconds from current spot, calculate new duration
             Restart play and ramp up only our volume
         """
-        if not self.sync_top_is_active or not self.sync_ctl.check_pid():
+        if not self.top_is_active or not self.sync_ctl.check_pid():
             self.info.cast("Trying to rewind with no PID")
             return
 
-        old_highlight = self.sync_curr_highlight
+        old_highlight = self.curr_line_highlight
         curr_sec = self.sync_ctl.elapsed()  # def elapsed
         if self.sync_ctl.state and self.sync_ctl.state != 'stop':
             self.sync_ctl.stop()  # If not already stopped, stop now
-        self.sync_start = curr_sec - 5
-        self.sync_start = 0.0 if self.sync_start < 0.0 else self.sync_start
-        self.sync_duration = self.work_DurationSecs - self.sync_start
-        self.sync_check_highlight(self.sync_start)  # Set self.sync_curr_highlight
+        self.start_sec = curr_sec - 5
+        self.start_sec = 0.0 if self.start_sec < 0.0 else self.start_sec
+        self.limit_sec = self.play_ctl.DurationSecs - self.start_sec
+        self.set_highlight(self.start_sec)  # Set self.curr_line_highlight
         ''' Set checkboxes from new highlight to old highlight '''
-        if self.sync_curr_highlight < old_highlight:
-            self.sync_checkbox_range(self.sync_curr_highlight, old_highlight)
+        if self.curr_line_highlight < old_highlight:
+            self.check_range_of_boxes(self.curr_line_highlight, old_highlight)
         else:
-            self.info.cast("Oops sync_sample_rewind(() couldn't check boxes",
+            self.info.cast("Oops sample_rewind(() couldn't check boxes",
                            'error')
-        self.sync_curr_line = self.sync_curr_highlight
-        self.sync_restart_ffplay2(self.sync_curr_highlight)
+        self.curr_line_no = self.curr_line_highlight
+        self.restart_ffplay2(self.curr_line_highlight)
 
-    def sync_fade_down_others(self):
+    def fade_out_others(self):
         """ Turn down volume for all applications except sync """
 
         ''' During 1st second reduce other sound applications 
@@ -13689,7 +13579,7 @@ IndexError: list index out of range
 
         # To get 1-10 you need 1,11 range!  Our volume turns up 10% each step
         for i in range(1, 11):  # 10 steps
-            if not self.sync_top_is_active:
+            if not self.top_is_active:
                 return
             s_time, err = set_volume(self.sync_ctl.sink, int(i * 10))
             for app_sink, app_vol, app_name in self.old_sinks:
@@ -13701,56 +13591,52 @@ IndexError: list index out of range
             if s_time < .07:
                 root.after(int((.07 - s_time) * 1000))  # Sleep .07 per step
 
-    def sync_sample_done(self):
-        """ Save changes and quit sync_sample_all() function
+    def sample_done(self):
+        """ Save changes and quit sample_all() function
         """
         if self.sync_ctl.state and self.sync_ctl.state != 'stop':
             self.sync_ctl.stop()  # Don't want to close because path reset
-        self.sync_remove_all_checkboxes()  # Remove highlight done
-        self.sync_ffplay_is_running = False  # No longer playing "Playing"
+        self.remove_all_checkboxes()  # Remove highlight done
+        self.ffplay_is_running = False  # No longer playing "Playing"
         # If clicked "Done" while music was paused, reset for next time
-        if self.sync_sample_pp_state is 'Paused':
-            self.sync_sample_pp_state = 'Playing'
-            self.sync_sample_pp_button['text'] = self.pp_pause_text
-            # self.sync_sample_toggle_play() - Don't use - stops / starts music
-        self.sync_build_buttons()  # Defaults to 'top' for sync_top main window
+        if self.pp_state is 'Paused':
+            self.pp_state = 'Playing'
+            self.pp_button['text'] = self.pp_pause_text
+            # self.toggle_play() - Don't use - stops / starts music
+        self.build_btn_bar_frm()  # Defaults to 'top' for top main window
         ''' Need to reset highlight and checkboxes? - NO looks ok now '''
 
-    def sync_sample_toggle_play(self):
+    def toggle_play(self):
         """ Toggle pause/play during Fine-Tune Sample All
         """
-        if self.sync_sample_pp_state is 'Playing':
-            self.sync_sample_pp_state = 'Paused'
-            self.sync_sample_pp_button['text'] = self.pp_play_text
+        if self.pp_state is 'Playing':
+            self.pp_state = 'Paused'
+            self.pp_button['text'] = self.pp_play_text
             if self.sync_ctl.state and self.sync_ctl.state != 'stop':
                 self.sync_ctl.stop()  # Don't want to close because path reset
         else:
-            self.sync_sample_pp_state = 'Playing'
-            self.sync_sample_pp_button['text'] = self.pp_pause_text
+            self.pp_state = 'Playing'
+            self.pp_button['text'] = self.pp_pause_text
             # Resume(unpause) the music
             self.sync_ctl.cont()  # def cont(self
 
-        # self.sync_top.update_idletasks()  # Process pending events
-        self.sync_top.update()
+        # self.top.update_idletasks()  # Process pending events
+        self.top.update()
 
-    def sync_merge_lines(self):
+    def merge_lines(self):
         """ Merge two or more lines together.
             Error if no lines checked.
             Warning if one line checked it will be merged with next.
             Warning if more than 3 lines checked.
-
-            TODO: After merging lines and clicking 'Save' the
-                  lyrics weren't saved to text box or to file.
-
         """
         # Get first and last line numbers being processed.
         # Take care to subtract 1 when referencing corresponding list index.
-        first, last = self.sync_fill_checkboxes()  # Verify checkbox(es)
+        first, last = self.check_all_boxes()  # Verify checkbox(es)
         if first is None:
             return  # Error message already
         if first == last:
             answer = message.AskQuestion(
-                self.sync_top, thread=self.get_refresh_thread(),
+                self.top, thread=self.get_refresh_thread(),
                 title="Merge lines together",
                 text="At least two lines must be selected to merge together." +
                      "\n\nThis will merge checked line and the line after it.")
@@ -13760,24 +13646,24 @@ IndexError: list index out of range
                 return
         if last + 1 - first > 3:
             text = "Merging more than three lines can make new line too long."
-            if self.sync_three_abort(text):
+            if self.four_checked_warning(text):
                 return  # Warn > 3 checkboxes
 
-        ''' Make first line duration longer Similar to sync_select() '''
-        values = self.sync_tree.item(str(first))['values']
+        ''' Make first line duration longer Similar to tree_select() '''
+        values = self.tree.item(str(first))['values']
         # values[0] = new_time, values[1]=line text, values[2]=old duration
         # values[3] = new_duration
         if last + 1 <= len(self.new_time_list):
             # last as index is 1 past last line.
             new_duration = self.new_time_list[last] - self.new_time_list[first - 1]
         elif last <= len(self.new_time_list):
-            new_duration = self.work_DurationSecs - self.new_time_list[last - 1]
+            new_duration = self.play_ctl.DurationSecs - self.new_time_list[last - 1]
         else:
             new_duration = 0.0
-        values[3] = self.sync_formatted_secs(new_duration, 7)
+        values[3] = self.format_secs(new_duration, 7)
         # print('first-1:', first-1, 'durations:', len(self.new_durations_list))
         self.new_durations_list[first - 1] = new_duration
-        self.sync_tree.item(str(first), values=values)
+        self.tree.item(str(first), values=values)
 
         ''' Merge checked lyrics line(s) into first checked line's lyrics. 
 
@@ -13786,21 +13672,20 @@ IndexError: list index out of range
             give illusion work has been saved when it really hasn't been. So
             we will manually massage treeview line by line instead.
         '''
-        tree_count = len(self.sync_tree.get_children())  # IMPORTANT it is here!
+        tree_count = len(self.tree.get_children())  # IMPORTANT it is here!
         for i in range(first, last):
             # print('Merging line:', i+1, 'to line:', i)
-            # item = self.sync_tree.item(str(i))
+            # item = self.tree.item(str(i))
             # print('treeview item:', item)
-            # trg_item = self.sync_tree.item(str(i+1))
+            # trg_item = self.tree.item(str(i+1))
             # print('target item:', trg_item)
             ''' Update treeview lyrics line '''
-            trg_values = self.sync_tree.item(
+            trg_values = self.tree.item(
                 str(i + 1))['values']  # Get line values to delete
-            self.sync_tree.delete(str(i + 1))  # Delete from treeview
-            self.sync_delete_lyric_line(i + 1)  # Delete from lyrics score
+            self.tree.delete(str(i + 1))  # Delete from treeview
+            self.delete_line(i + 1)  # Delete from lyrics score
             values[1] = values[1] + trg_values[1]  # Merge lyrics to line
-            self.sync_tree.item(str(first),
-                                values=values)  # Update lyrics line
+            self.tree.item(str(first), values=values)  # Update lyrics line
 
             ''' Remove index in new_time_list[] and new_durations_list[] '''
             # Deleting index shifts others down so always deleting index after
@@ -13829,25 +13714,23 @@ IndexError: list index out of range
                 print('reached end of tree with trg_item:', trg_item)
                 continue
             # print('renumbering iid:', trg_item, 'to:', i)
-            item = self.sync_tree.item(str(trg_item))  # Save item to move
-            self.sync_tree.delete(str(trg_item))  # Delete item to move
-            self.sync_tree.insert('', 'end', iid=str(i), text=item['text'],
-                                  values=item['values'], tags=item['tags'])
+            item = self.tree.item(str(trg_item))  # Save item to move
+            self.tree.delete(str(trg_item))  # Delete item to move
+            self.tree.insert('', 'end', iid=str(i), text=item['text'],
+                             values=item['values'], tags=item['tags'])
             # Red rider Neruda - Power song has "Image:" dictionary key empty
             # print('renumbered from:', trg_item, 'to:', i, 'item:', item)
 
         ''' Remove all checkboxes as they won't repeat this '''
-        self.sync_remove_all_checkboxes()
+        self.remove_all_checkboxes()
 
         ''' Update new line count in label field '''
-        # Line count =
+        # self.line_count_var.set()
 
         ''' Update lyrics textbox '''
         self.sync_changed_score = True  # Lyrics score has been changed
-        # This tells the Save button to perform:
-        # self.lyrics_score_box = self.work_lyrics_score
 
-    def sync_delete_lyric_line(self, line_no):
+    def delete_line(self, line_no):
         """ Delete one line from lyrics score.
 
             Examples 1 & 2 return a table, 3 returns a string:
@@ -13865,9 +13748,9 @@ IndexError: list index out of range
             chunk1 = self.work_lyrics_score.split('\n')[0:line_no - 1]
         else:
             chunk1 = self.work_lyrics_score.split('\n')[0:]
-        if line_no < self.work_line_count:
+        if line_no < self.lyrics_line_count:
             chunk2 = self.work_lyrics_score.split('\n')[line_no:
-                                                        self.work_line_count]
+                                                        self.lyrics_line_count]
         else:
             chunk2 = self.work_lyrics_score.split('\n')[-1]
         # Merge chunks 1 & 2 for new lyrics score
@@ -13876,23 +13759,23 @@ IndexError: list index out of range
             self.work_lyrics_score += line + '\n'
         for line in chunk2:
             self.work_lyrics_score += line + '\n'
-        self.work_line_count -= 1  # Decrement line count
-        self.label_line_count.set("Line count: " + str(self.work_line_count))
+        self.lyrics_line_count -= 1  # Decrement line count
+        self.line_count_var.set("Line count: " + str(self.lyrics_line_count))
         self.sync_changed_score = True  # For warning messages
 
-    def sync_three_abort(self, msg):
+    def four_checked_warning(self, msg):
         """ Give chance to abort - allows one-liner in caller. """
-        answer = message.AskQuestion(self.sync_top, text=msg,
+        answer = message.AskQuestion(self.top, text=msg,
                                      thread=self.get_refresh_thread(),
                                      title="More than three lines checked")
         return answer.result != 'yes'
 
-    def sync_insert_line(self):
+    def insert_line(self):
         """ Insert line like [chorus], [bridge], [solo], "song lyrics line"
             Option to insert "Line(s) just copied" has added advantage of
             increasing time indices for all following lyric lines automatically.
         """
-        first, last = self.sync_fill_checkboxes()  # Verify checkbox(es)
+        first, last = self.check_all_boxes()  # Verify checkbox(es)
         if first is None:
             return  # Error message already
 
@@ -13900,21 +13783,21 @@ IndexError: list index out of range
             messagebox.showinfo(
                 title="Check only one box", icon="error",
                 message="Check the line to insert before.",
-                parent=self.sync_top)
+                parent=self.top)
             return
 
-        self.sync_remove_all_checkboxes()
+        self.remove_all_checkboxes()
 
-    def sync_save_changes(self):
+    def save_changes(self):
         """ Save changes to time indices and possibly lyrics score too.
             Lyrics score changes by 'Merge lines' or 'Insert Tag' buttons.
         """
         if self.sync_changed_score is False and \
                 self.work_time_list == self.new_time_list:
             answer = message.AskQuestion(
-                self.sync_top, thread=self.get_refresh_thread(),
+                self.top, thread=self.get_refresh_thread(),
                 title="Lyrics have NOT been fine-tuned",
-                text="Saving time indices makes no sense.")
+                text="No changes to save. Force save anyway?")
             if answer.result != 'yes':
                 return
 
@@ -13926,51 +13809,25 @@ IndexError: list index out of range
         ''' write synchronized lyrics changes to SQL database '''
         sql.update_lyrics(self.work_sql_key, self.work_lyrics_score,
                           self.new_time_list)
-        # TODO: Future save lyrics in memory after support for editing is added
-        if self.sync_changed_score:
-            # Update lyrics score textbox score_box
-            self.play_lyrics_populate_score_box()
-            self.sync_changed_score = False  # To avoid close warning
-            self.lyrics_score = self.work_lyrics_score
-            """
-            def play_lyrics_from_library(self):
-                ''' turn on auto scrolling, it can be overridden from saved steps or
-                    if left-clicking on lyrics to set lyrics line to seconds link.
-                    self.lyrics_score, self.lyrics_time_list = sql.get_lyrics(key)
-                '''
-                self.lyrics_score_box.configure(state="normal")
-                for line in self.lyrics_score:
-                    self.lyrics_score_box.insert(tk.END, line)
-                self.lyrics_score_box.update()       # Is this necessary? CONFIRMED YES
-                self.lyrics_score_box.configure(state="disabled")
+        self.new_time_list = self.work_time_list  # To prevent close warning
+        self.close()  # Close window & exit
 
-                end = self.lyrics_score_box.index('end')  # returns line.column
-                self.lyrics_line_count = int(end.split('.')[0]) - 1
-                self.work_line_count = self.lyrics_line_count # FUDGE FOR Time being...
-            """
-        # self.work_time_list = self.new_time_list        # To avoid close warning
-        self.new_time_list = self.work_time_list  # To avoid close warning
-        self.sync_close()  # Close window & exit
-        self.lyrics_time_list = self.work_time_list  # Update list in memory
+    def top_lift(self):
+        self.top.focus_force()  # Grab back window focus
+        # below is blocking other apps from getting focus
+        #self.top.lift()  # Raise stacking order
 
-    def sync_time_index_lift(self):
-        self.sync_top.focus_force()  # Grab back window focus
-        self.sync_top.lift()  # Raise stacking order
-
-    def sync_startup_check(self):
+    def startup_check(self):
         """ Check if fine-tuning time indices is appropriate.
             Use 80% threshold. Give advice on how to manually click each
             lyrics score line in song as it is being sung by the singer.
         """
 
         time_count = len(self.work_time_list)
-        if float(self.work_line_count) > 0.0:
-            percent = float(time_count) / float(self.work_line_count)
+        if float(self.lyrics_line_count) > 0.0:
+            percent = float(time_count) / float(self.lyrics_line_count)
         else:
             percent = 0.0
-
-        # Problem, with Afterlife by Avenged Sevenfold
-        # return True
 
         if percent > .8:
             return True
@@ -13981,7 +13838,7 @@ IndexError: list index out of range
                  "Fine-tuning lyrics time indices can only be done after basic\n" +
                  "synchronization is completed for at least 80% of lines.\n\n\t" +
 
-                 "Number of lines in lyrics score: " + str(self.work_line_count) + "\n\t" +
+                 "Number of lines in lyrics score: " + str(self.lyrics_line_count) + "\n\t" +
                  "Number of lines with time index: " + str(time_count) + "\n\n" +
 
                  "To perform basic lyrics synchronization:\n\n\t" +
@@ -14004,48 +13861,51 @@ IndexError: list index out of range
         return False
 
     # noinspection PyUnusedLocal
-    def sync_close(self, *args):  # *args required for lambda
+    def close(self, *args):  # *args required for lambda
         """ Close Synchronize Time Index to Lyrics window
             Modeled after sample_close() but with confirmation if changes made.
         """
-        if self.sync_changed_score or \
+        ret_lyrics_score = self.work_lyrics_score
+        ret_time_list = self.work_time_list
+        # Sometimes self.new_time_list isn't defined even though it should be []
+        # so put in extra test below to ensure it isn't None
+        if self.sync_changed_score or self.new_time_list and \
                 self.work_time_list != self.new_time_list:
             # What if they merge two lines and insert 1 Tag? then count same!
             # TODO: Ensure merge & insert set self.sync_changed_score flag
             print('self.sync_changed_score:', self.sync_changed_score)
             print('len(self.work_time_list):', len(self.work_time_list))
             print('len(self.new_time_list):', len(self.new_time_list))
+            # TypeError: object of type 'NoneType' has no len()
             print('differences:', list(set(self.work_time_list) -
                                        set(self.new_time_list)))
-            answer = message.AskQuestion(self.sync_top,
+            answer = message.AskQuestion(self.top,
                                          thread=self.get_refresh_thread(),
                                          title="Times have been fine-tuned",
                                          text="Changes will be lost!")
             if answer.result != 'yes':
                 return
-            # When you answer 'no' during restart from lib_top_close program
-            # still ends and changes are lost. So we need to find if 'Restart'
-            # is calling us and provide "Last chance to save" option.
+            else:
+                ''' Wipe out all changes '''
+                ret_lyrics_score = None
+                ret_time_list = None
 
-        self.sync_ffplay_is_running = False  # Playing and syncing?
-        self.sync_top_is_active = False  # Lyrics Time Index window open?
-        self.tt.close(self.sync_top)  # Close tooltips under top level
-        if not self.sync_ctl.sink == "":
+        self.ffplay_is_running = False  # Playing and syncing?
+        self.top_is_active = False  # Lyrics Time Index window open?
+        self.tt.close(self.top)  # Close tooltips under top level
+        if not self.sync_ctl.sink == "":  # Our sink is still running.
             # Restore volume to other applications
-            self.sync_clean_ffplay()  # Note this takes a second!
+            self.fade_in_others()  # Note this takes a second!
 
         ''' With so much time spent synchronizing set last access to now '''
         if self.sync_ctl and self.sync_ctl.state != 'end':
             self.sync_ctl.close()  # Resets last access time to original
 
-        self.sync_top.destroy()  # Close the window
-        if self.sync_paused_music:  # Did we pause music player?
-            self.pp_toggle()  # Resume playing
+        self.top.destroy()  # Close the window
         if os.path.isfile(TMP_CURR_SYNC):
             os.remove(TMP_CURR_SYNC)  # Clean up /tmp directory
 
-        self.fine_tune_closed_callback()
-
+        self.fine_tune_closed_callback(ret_lyrics_score, ret_time_list)
 
 # ==============================================================================
 #
@@ -16990,6 +16850,18 @@ def ffplay_extra_opt(start=None, fade_in=3, fade_out=0.0, duration_secs=0.0):
         extra_opt += ' -t ' + str(duration_secs)  # could be int or float
 
     return extra_opt
+
+
+def play_padded_number(song_number, number_digits, prefix=NUMBER_PREFIX):
+    """ Pad song number with spaces to line up song name evenly
+        Called from refresh_acc_times() and build_chron_line()
+    """
+    padded_number = ""
+    this_digits = len(str(song_number))
+    pad_digits = number_digits - this_digits
+    for _ in range(pad_digits):
+        padded_number = padded_number + DIGIT_SPACE
+    return prefix + padded_number + str(song_number)
 
 
 def make_ellipsis(string, cutoff):
