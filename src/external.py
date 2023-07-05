@@ -367,6 +367,7 @@ class SoundControl:
         pass
 
 
+# noinspection SpellCheckingInspection
 """
 https://trac.ffmpeg.org/wiki/AudioVolume
 
