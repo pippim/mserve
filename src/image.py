@@ -42,22 +42,8 @@ import io
 from PIL import Image, ImageTk, ImageDraw, ImageFont, ImageFilter, ImageOps
 from collections import namedtuple
 
-"""
-x11 is currently needed for GoneFishing without it get error:
+import x11                  # x11 wrapper functions for GoneFishing() class
 
-Exception in Tkinter callback
-Traceback (most recent call last):
-  File "/usr/lib/python2.7/lib-tk/Tkinter.py", line 1540, in __call__
-    return self.func(*args)
-  File "/home/rick/python/mserve.py", line 6876, in <lambda>
-    s=self: s.start_hockey(TV_BREAK1))
-  File "/home/rick/python/mserve.py", line 7433, in start_hockey
-    self.gone_fishing = img.GoneFishing(self.play_top)
-  File "/home/rick/python/image.py", line 1024, in __init__
-    self.src_wm_window = self.src_x11_window = x11.get_active_window()
-NameError: global name 'x11' is not defined
-"""
-import x11                  # Home-brewed x11 wrapper functions
 # noinspection SpellCheckingInspection
 """
 System crash in ~/bserve June 19, 2023, noticed July 5, 2023. Cause was change:

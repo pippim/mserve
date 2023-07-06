@@ -2186,7 +2186,12 @@ class ToolTips(CommonTip):
             self.dict_to_fields()
             self.process_tip()
             self.fields_to_dict()
-            self.tips_list[self.tips_index] = self.dict
+            try:
+                self.tips_list[self.tips_index] = self.dict
+            except IndexError:  # list assignment index out of range
+                # Caused by fast clicking 'Next' song. likely tt.close() run
+                break
+
 
     def process_tip(self):
         """ Check if window should be created or destroyed.

@@ -5,6 +5,8 @@
 #
 #       x11 - Module for Python X lib (X11) functions
 #
+#       July 05 2023 - Make display optional when piggy back imported.
+#
 # ==============================================================================
 
 # noinspection SpellCheckingInspection
@@ -102,6 +104,7 @@ try:
 except Xlib.error.DisplayConnectionError:
     # Can't connect to display ":0": No protocol specified
     print('Can\'t connect to display ":0": No protocol specified')
+
 
 def find_mode(iid, modes):
     """ Called by get_display_info() below """

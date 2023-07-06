@@ -1235,7 +1235,9 @@ class MusicTree(PlayCommonSelf):
         self.info = InfoCentre(self.lib_top, self.lib_tree, self.banner_frm,
                                self.banner_btn, self.build_banner_btn, self.tt)
 
-        self.info.fact("mserve started")
+        patterns = [("using directory:", "Green", "Black")]
+        self.info.fact("mserve started using directory: " + g.MSERVE_DIR,
+                       patterns=patterns)
 
         ''' Create self.playlists '''
         # thread=self.get_refresh_thread,  # Passing function for each time window opens!
@@ -6699,6 +6701,8 @@ $ wmctrl -l -p
             if not self.play_one_song(resume=resume, chron_state=chron_state):
                 self.play_close()  # Catastrophic error that can't be backed out of
                 break
+            # Fast clicking 'Next' means there is no song to close. Need to
+            # research self.last_started, self.ndx and self.current_song_path=""
             self.play_ctl.close()  # Update last song's last access if > 50% played
             ''' Rebuild last song's access time in lib_tree update_lib'''
             resume = False  # We can only resume once
@@ -7285,7 +7289,8 @@ $ wmctrl -l -p
             # TODO: Review why self.last_started not forced?
             self.ndx = int(seq)  # Jump to index passed
 
-        self.current_song_path = ""  # signal not increment song
+        # tell queue_next_song() not to call
+        self.current_song_path = ""  # Screwing up play_ctl.path?
         if self.pp_state is "Paused":  # Button reflects paused?
             # May 29, 2023 - Song already killed. No sound to turn up.
             self.pp_toggle(start_music=False)  # Turn on Playing
@@ -7497,16 +7502,12 @@ $ wmctrl -l -p
         album = self.lib_tree.parent(iid)
         artist = self.lib_tree.parent(album)
 
+        if self.last_started != self.ndx:  # Fast clicking Next button?
+            return True  # self.play_ctl.close() called after we return.
+
         ''' Build full song path from song_list[] '''
         list_index = int(iid)  # list_index variable reused couple pages down
         self.current_song_path = self.real_path(list_index)
-
-        ''' Verify it's a real song - May want to do this after .see() '''
-        self.play_ctl.new(self.current_song_path)
-        if self.play_ctl.invalid_file:
-            print(self.play_ctl.metadata)
-            self.corrupted_music_file(self.current_song_path)  # No blocking dialog box
-            return False  # TODO: Restore screen? Play next? What to do now?
 
         opened = self.lib_tree.item(artist, 'open')
         if opened is not True:
@@ -7515,6 +7516,8 @@ $ wmctrl -l -p
             self.play_opened_artist = True  # We opened artist
         else:
             self.play_opened_artist = False  # artist was already open
+        if self.last_started != self.ndx:  # Fast clicking Next button?
+            return True  # self.play_ctl.close() called after we return.
 
         opened = self.lib_tree.item(album, 'open')
         if opened is not True:
@@ -7535,7 +7538,24 @@ $ wmctrl -l -p
         self.current_song_number.set(str(self.ndx + 1) + " of: " +
                                      str(len(self.saved_selections)))
 
-        # TODO: Verify last access time is not touched
+        if self.last_started != self.ndx:  # Fast clicking Next button?
+            return True  # self.play_ctl.close() called after we return.
+
+        ''' Verify it's a real song - May want to do this after .see() '''
+        if self.current_song_path is None or self.current_song_path is "":
+            return True  # Treat like fast clicking Next button
+
+        self.play_ctl.new(self.current_song_path)
+        if self.play_ctl.path is None:
+            self.play_ctl.close()  # this caused failure but full reset needed.
+            return True  # Treat like fast clicking Next button
+
+        if self.play_ctl.invalid_file:
+            print(self.play_ctl.metadata)
+            self.corrupted_music_file(self.current_song_path)  # No blocking dialog box
+            return False  # TODO: Restore screen? Play next? What to do now?
+        if self.play_ctl.path is None:
+            return True  # Treat like fast clicking Next button
 
         ''' Populate display with metadata using ffprobe '''
         ext.t_init("play_one_song - update_sql_metadata()")
@@ -7550,7 +7570,8 @@ $ wmctrl -l -p
         self.saved_DurationSecs = self.play_ctl.DurationSecs
         self.saved_DurationMin = tmf.mm_ss(self.saved_DurationSecs)
         ext.t_end('no_print')
-        if not self.last_started == self.ndx:  # Fast clicking Next button?
+        if self.last_started != self.ndx:  # Fast clicking Next button?
+            self.play_ctl.close()
             return True  # self.play_ctl.close() called after we return.
 
         ''' Get artwork from metadata with ffmpeg '''
@@ -7558,8 +7579,9 @@ $ wmctrl -l -p
         self.set_artwork_colors()
         if not self.play_top_is_active:
             return False  # self.play_ctl.close() called after we return.
-        if not self.last_started == self.ndx:  # Catch if clicking Next
+        if self.last_started != self.ndx:  # Fast clicking Next button?
             # NOTE: Parent Artist/Album opened above is closed after return.
+            self.play_ctl.close()
             return True  # self.play_ctl.close() called after we return.
         ext.t_end('no_print')
 
@@ -7570,7 +7592,8 @@ $ wmctrl -l -p
         self.play_chron_highlight(self.ndx, False)
         if not self.play_top_is_active:
             return False  # self.play_ctl.close() called after we return.
-        if self.last_started != self.ndx:  # Catch if clicking Next too fast
+        if self.last_started != self.ndx:  # Fast clicking Next button?
+            self.play_ctl.close()
             return True  # self.play_ctl.close() called after we return.
 
         self.current_song_secs = 0  # How much time played
@@ -7589,20 +7612,23 @@ $ wmctrl -l -p
         self.set_pp_button_text()
 
         ''' Launch ffplay to play song using extra_opt for start position '''
-        dead_start = False
+        dead_mode = False
         start_secs = 0.0
-        if resume:
-            if self.resume_state == "Paused":
-                # When resume saved music was paused
-                dead_start = True
+        if resume:  # Are we resuming?
+            if self.resume_state == "Paused":  # Was music paused last time?
+                dead_mode = True  # Start song in stopped mode
             if not isinstance(self.resume_song_secs, float):
                 self.resume_song_secs = 0.0  # Fix error May 31, 2023
                 print("self.resume_song_secs was not type 'float'. Force to:",
-                      self.resume_song_secs)
+                      self.resume_song_secs)  # Take this patch out Sept/23
             start_secs = self.resume_song_secs
 
+        if self.last_started != self.ndx:  # Fast clicking Next button?
+            self.play_ctl.close()
+            return True  # self.play_ctl.close() called after we return.
+
         ''' Start ffplay and get Linux PID and Pulseaudio Input Sink # '''
-        self.play_ctl.start(start_secs, 0, 1, 0, TMP_CURR_SONG, dead_start)
+        self.play_ctl.start(start_secs, 0, 1, 0, TMP_CURR_SONG, dead_mode)
         # Fade in over 1 second.
 
         if not self.validate_pa_sink(self.play_ctl.sink, self.play_ctl.path):
@@ -7635,14 +7661,15 @@ $ wmctrl -l -p
                 # Set Play/Pause status to paused
                 self.pp_state = "Paused"  # Was Playing state by default
                 self.set_pp_button_text()
-                #self.play_update_progress(self.resume_song_secs)  # Reset variables
+                # Confirm first command and second below are required - July 5
+                self.play_update_progress(self.resume_song_secs)  # Reset variables
                 #self.play_paint_lyrics()  # Highlight line currently being sung
 
-            ''' TODO: No longer scrolling to correct place after July 4 change 
-                      Also note FF needs something like rewind=True parameter.
+            ''' TODO: July 5, 2023 was highlighting correct line but lyrics
+                      scored to wrong spot. Above and below do not work...
             '''
             #self.current_song_secs = self.resume_song_secs
-            #self.play_lyrics_time_scroll()
+            self.play_lyrics_time_scroll()
             #self.play_lyrics_see_ahead()
 
             self.resume_state = None
@@ -7726,11 +7753,11 @@ $ wmctrl -l -p
             if not self.play_top_is_active:
                 return  # Play window closing
 
-            if not self.last_started == self.ndx:
-                return  # Fast clicking Next/Prev buttons
+            if self.last_started != self.ndx:  # Different song requested
+                return  # self.song_set_ndx() used prev/next/restart
 
             if not self.play_ctl.check_pid():
-                return
+                return  # Song ended naturally
 
             self.refresh_play_top()  # Rotate art, refresh vu meter
 
@@ -10741,7 +10768,8 @@ mark set markName index"
                          command=lambda: self.close_chron_popup(menu, item))
 
         menu.tk_popup(event.x_root, event.y_root)
-        menu.bind("<FocusOut>", lambda: self.close_chron_popup(menu, item))
+        menu.bind("<FocusOut>", lambda _: self.close_chron_popup(menu, item))
+        # '_' prevents: TypeError: <lambda>() takes no arguments (1 given)
 
     def close_chron_popup(self, menu, item):
         self.chron_last_row = item  # Restore item stolen when menu built
@@ -11020,7 +11048,9 @@ mark set markName index"
         ''' Set 'chron_sel' tag and remove 'normal' tag '''
         Id = str(ndx + 1)
         tags = self.chron_tree.item(Id)['tags']  # Append 'chron_sel' tag
-        tags.remove("normal")
+        if "normal" in tags:
+            # Prevent ValueError: list.remove(x): x not in list
+            tags.remove("normal")
         tags.append("chron_sel")
         self.chron_tree.item(Id, tags=tags)
         # Add self.Album, self.Duration
@@ -11388,6 +11418,8 @@ class FineTune:
             self.info.cast("Programming error bad button level: " + level)
             return
 
+        ms_font = (None, MED_FONT)
+
         help_text = "Open new window in default web browser for\n"
         help_text += "videos and explanations on using this screen.\n"
         help_text += "https://www.pippim.com/programs/mserve.html#\n"
@@ -11397,7 +11429,7 @@ class FineTune:
                 '''  FORMERLY: self.top_buttons '''
                 ''' ✘ Close Button - Cancels changes '''
                 # leading space when text begins with utf-8 symbol centers text better?
-                close = tk.Button(self.btn_bar_frm, text=" ✘ Close",
+                close = tk.Button(self.btn_bar_frm, text=" ✘ Close", font=ms_font,
                                   width=BTN_WID2 - 4, command=self.close)
                 close.grid(row=0, column=col, padx=2, sticky=tk.W)
                 # Disable for now because Child process like "self.begin_sync()" should
@@ -11409,7 +11441,7 @@ class FineTune:
 
             elif name == "Begin":
                 ''' ▶  Begin Button - Synchronize selected lines '''
-                begin = tk.Button(self.btn_bar_frm, text=" ▶ Begin sync",
+                begin = tk.Button(self.btn_bar_frm, text=" ▶ Begin sync", font=ms_font,
                                   width=BTN_WID2, command=self.begin_sync)
                 begin.grid(row=0, column=col)
                 self.tt.add_tip(
@@ -11418,7 +11450,7 @@ class FineTune:
 
             elif name == "Delete":
                 ''' 😒 Delete - 😒 (u+1f612) - Delete all '''
-                delete = tk.Button(self.btn_bar_frm, text=" 😒 Delete all",
+                delete = tk.Button(self.btn_bar_frm, text=" 😒 Delete all", font=ms_font,
                                    width=BTN_WID2, command=self.delete_all)
                 delete.grid(row=0, column=col)
                 self.tt.add_tip(
@@ -11427,7 +11459,7 @@ class FineTune:
 
             elif name == "Sample":
                 ''' 🎵  Sample all - Sample all show library '''
-                sample = tk.Button(self.btn_bar_frm, text=" 🎵 Sample all",
+                sample = tk.Button(self.btn_bar_frm, text=" 🎵 Sample all", font=ms_font,
                                    width=BTN_WID2, command=self.sample_all)
                 sample.grid(row=0, column=col)
                 self.tt.add_tip(
@@ -11436,7 +11468,7 @@ class FineTune:
 
             elif name == "Merge":
                 ''' - Merge lines - Merge two lines together '''
-                merge = tk.Button(self.btn_bar_frm, text="- Merge lines",
+                merge = tk.Button(self.btn_bar_frm, text="- Merge lines", font=ms_font,
                                   width=BTN_WID2 - 2, command=self.merge_lines)
                 merge.grid(row=0, column=col)
                 self.tt.add_tip(
@@ -11445,7 +11477,7 @@ class FineTune:
 
             elif name == "Insert":
                 ''' + Insert line - Insert line line eg [chorus] or [bridge] '''
-                insert = tk.Button(self.btn_bar_frm, text="+ Insert line",
+                insert = tk.Button(self.btn_bar_frm, text="+ Insert line", font=ms_font,
                                    width=BTN_WID - 2, command=self.insert_line)
                 insert.grid(row=0, column=col)
                 self.tt.add_tip(
@@ -11454,7 +11486,7 @@ class FineTune:
 
             elif name == "Save":
                 ''' 💾  Save - Save lyrics (may be merged) and time indices '''
-                save = tk.Button(self.btn_bar_frm, text=" 💾 Save",
+                save = tk.Button(self.btn_bar_frm, text=" 💾 Save", font=ms_font,
                                  width=BTN_WID2 - 4, command=self.save_changes)
                 save.grid(row=0, column=col)
                 self.tt.add_tip(
@@ -11464,19 +11496,19 @@ class FineTune:
             elif name == "HelpT":
                 ''' 🔗 Help - Videos and explanations on pippim.com '''
                 help = tk.Button(self.btn_bar_frm, text="🔗 Help", width=BTN_WID2 - 4,
-                                 command=lambda: get_help("HelpT"))
+                                 font=ms_font, command=lambda: get_help("HelpT"))
                 help.grid(row=0, column=col)
                 self.tt.add_tip(help, help_text, anchor="ne")
 
             elif name == "Sync":
                 ''' "Sync in progress" label FORMERLY: self.begin_sync_buttons '''
                 tk.Label(self.btn_bar_frm, text="Sync in progress...",
-                         font=(None, MON_FONTSIZE), padx=10) \
+                         font=ms_font, padx=10) \
                     .grid(row=0, column=col, sticky=tk.W)
 
             elif name == "DoneB":
                 ''' Done Button - Saves work and returns to parent '''
-                begin_done = tk.Button(self.btn_bar_frm, text="Done",
+                begin_done = tk.Button(self.btn_bar_frm, text="Done", font=ms_font,
                                        width=BTN_WID2 - 6, command=self.begin_sync_done)
                 begin_done.grid(row=0, column=col, padx=2, sticky=tk.W)
                 self.tt.add_tip(
@@ -11486,7 +11518,8 @@ class FineTune:
             elif name == "RewindB":
                 ''' "Rewind 5 seconds" Button - Synchronize selected lines '''
                 begin_rewind = tk.Button(self.btn_bar_frm, text="Rewind 5 seconds",
-                                         width=BTN_WID2 + 2, command=self.begin_sync_rewind)
+                                         width=BTN_WID2 + 2, font=ms_font,
+                                         command=self.begin_sync_rewind)
                 begin_rewind.grid(row=0, column=col, padx=2)
                 self.tt.add_tip(
                     begin_rewind, "Click this button to stop play,\n" +
@@ -11495,21 +11528,21 @@ class FineTune:
             elif name == "HelpB":
                 ''' 🔗 Help - Videos and explanations on pippim.com '''
                 help = tk.Button(self.btn_bar_frm, text="🔗 Help", width=BTN_WID2-4,
-                                 command=lambda: get_help("HelpB"))
+                                 font=ms_font, command=lambda: get_help("HelpB"))
                 help.grid(row=0, column=col)
                 self.tt.add_tip(help, help_text, anchor="nw")
 
             elif name == "SampleS":
                 ''' "Sample in progress" label  FORMERLY: self.sync_sample_buttons '''
                 tk.Label(self.btn_bar_frm, text="Sample all in progress...",
-                         font=(None, MON_FONTSIZE), padx=10) \
+                         font=ms_font, padx=10) \
                     .grid(row=0, column=col, sticky=tk.W)
 
             elif name == "DoneS":
                 ''' Done Button - Saves work and returns to parent
                     TODO: Rename to "Apply changes" ? '''
                 sample_done = tk.Button(self.btn_bar_frm, text="Done",
-                                        width=BTN_WID2 - 6,
+                                        width=BTN_WID2 - 6, font=ms_font,
                                         command=self.sample_done)
                 sample_done.grid(row=0, column=col, padx=2, sticky=tk.W)
                 self.tt.add_tip(sample_done, "Click this button to skip\n" +
@@ -11520,7 +11553,8 @@ class FineTune:
                 self.pp_state = 'Playing'
                 self.pp_button = \
                     tk.Button(self.btn_bar_frm, text=self.pp_pause_text,
-                              width=BTN_WID2 - 4, command=self.toggle_play)
+                              width=BTN_WID2 - 4,  font=ms_font,
+                              command=self.toggle_play)
                 self.pp_button.grid(row=0, column=col, padx=2, sticky=tk.W)
                 self.tt.add_tip(
                     self.pp_button, "Click this button to toggle\n" +
@@ -11529,15 +11563,17 @@ class FineTune:
             elif name == "RewindS":
                 ''' Rewind 5 seconds Button '''
                 sample_rewind = tk.Button(self.btn_bar_frm, text="Rewind 5 seconds",
-                                          width=BTN_WID2 + 2, command=self.sample_rewind)
+                                          width=BTN_WID2 + 2, font=ms_font,
+                                          command=self.sample_rewind)
                 sample_rewind.grid(row=0, column=3, padx=2)
                 self.tt.add_tip(
                     sample_rewind, "Click this button to stop play,\n" +
-                    "go back 5 seconds and resume play.", anchor="nE")
+                    "go back 5 seconds and resume play.", anchor="ne")
 
             elif name == "HelpS":
                 ''' 🔗 Help - Videos and explanations on pippim.com '''
                 help = tk.Button(self.btn_bar_frm, text="🔗 Help", width=BTN_WID2 - 4,
+                                 font=ms_font,
                                  command=lambda: get_help("HelpS"))
                 help.grid(row=0, column=col)
                 self.tt.add_tip(help, help_text, anchor="ne")
@@ -12119,7 +12155,7 @@ Failed to get sink input information: No such entity
 
         """
 
-        # First line has 4 seconds. Remaining lines have 1.25 seconds
+        # First line has 4 seconds. Remaining lines have 2 seconds
         # 1.5-second playing countdown before line to sample
         self.start_sec = self.new_time_list[self.first_checked - 1] - .5
         self.start_sec = 0.0 if self.start_sec < 0.0 else self.start_sec
@@ -12144,11 +12180,11 @@ Failed to get sink input information: No such entity
         self.elapsed_secs = 0.0
         self.curr_line_highlight = ""
 
-        play_seconds = 4.0  # First time play is for 4.0 seconds. Then 1.25
+        play_seconds = 4.0  # First time play is for 4.0 seconds. Then 2 secs
         self.curr_line_no = 1
 
         while self.top_is_active:
-            elapsed = self.sync_ctl.elapsed()
+            elapsed = self.sync_ctl.elapsed()  # Fast .00017 seconds
             if elapsed > self.start_sec + play_seconds:
                 # Uncheck line just played via CheckboxTreeview()
                 # noinspection PyProtectedMember
@@ -12162,7 +12198,7 @@ Failed to get sink input information: No such entity
             self.set_highlight(elapsed)  # Change highlight if necessary
             refresh_thread = self.get_refresh_thread()
             refresh_thread()
-            play_seconds = 1.25  # restart used .25 sec in/out .75 full volume
+            play_seconds = 1.5  # restart used .25 in .5 out .75 full volume
 
         # Clear highlights
         # below is covered by sample_done() now called above
@@ -12182,7 +12218,7 @@ Failed to get sink input information: No such entity
         self.start_sec = self.new_time_list[line_no - 1] - .25
         self.start_sec = 0.0 if self.start_sec < 0.0 else self.start_sec
         self.limit_sec = self.play_DurationSecs - self.start_sec
-        fade_out = self.start_sec + .75
+        fade_out = self.start_sec + 1
         self.sync_ctl.restart(self.start_sec, self.limit_sec,
                               .25, fade_out, TMP_CURR_SYNC, False)
         set_volume(self.sync_ctl.sink, 100)  # Fading in from 0 anyway
@@ -13028,8 +13064,9 @@ class FileControlCommonSelf:
         self.limit_sec = 0.0        # Number of seconds to play. 0 = play all
         self.fade_in_sec = 0.0      # Number of seconds to fade in
         self.fade_out_sec = 0.0     # Number of seconds to fade out
-        self.dead_start = None      # Start song and pause it immediately
         self.ff_name = None         # TMP_CURR_SONG, etc.
+        self.dead_start = None      # Start song and pause it immediately
+        self.last_sink = None       # Tell start_ffplay what's closing
 
 
 class FileControl(FileControlCommonSelf):
@@ -13063,15 +13100,36 @@ class FileControl(FileControlCommonSelf):
                                self.path, 'error')
             self.close()
 
-        self.last_path = self.path  # Might be used in future, not July 1, 2023
+        if path is None:
+            self.info.fact("FileControl.new() was given path of 'None'")
+            return
+
         self.path = path            # Full path to music file
+        self.last_path = self.path  # Might be used in future, not July 1, 2023
         self.action = action        # Action to perform. Not used July 1, 2023
         # Keep original stat_start until .close() -> .end()
-        self.stat_start = os.stat(self.path)
-        self.cast_stat(self.stat_start)
+        # Use last_path because fast clicking Next call .close() who sets
+        if self.path is None:
+            self.info.fact("FileControl.new() path went 'None' step 1")
+            return
+        # self.path to None. Need locking feature to avoid interruption.
+        self.stat_start = os.stat(self.last_path)
+        if self.path is None:
+            self.info.fact("FileControl.new() path went 'None' step 2")
+            return
+        #self.cast_stat(self.stat_start)  # Takes too long for fast clicking
         self.get_metadata()         # Get all specifications into self.metadata
+        if self.path is None:
+            self.info.fact("FileControl.new() path went 'None' step 3")
+            return
         self.check_metadata()       # Get audio and video (artwork) specs
+        if self.path is None:
+            self.info.fact("FileControl.new() path went 'None' step 4")
+            return
         self.touch_it()             # Last access time is now time.time()
+        if self.path is None:
+            self.info.fact("FileControl.new() path went 'None' step 5")
+            return
         self.log('new')             # Initial event for base timeline
 
     def get_metadata(self):
@@ -13081,7 +13139,7 @@ class FileControl(FileControlCommonSelf):
         self.metadata = OrderedDict()
 
         ext.t_init("FileControl.get_metadata()")
-        cmd = 'ffprobe ' + '"' + self.path + '"' + ' 2>' + TMP_FFPROBE
+        cmd = 'ffprobe ' + '"' + self.last_path + '"' + ' 2>' + TMP_FFPROBE
         result = os.popen(cmd).read().strip()
         ext.t_end('no_print')
         # ffprobe on good files: 0.0858271122 0.0899128914 0.0877139568
@@ -13387,7 +13445,8 @@ class FileControl(FileControlCommonSelf):
         self.info.cast(text, 'error')
 
     def start(self, start_sec=0.0, limit_sec=0.0, fade_in_sec=0.0,
-              fade_out_sec=0.0, ff_name=None, dead_start=None):
+              fade_out_sec=0.0, ff_name=None, dead_start=None,
+              last_sink=None):
         """ Start playing song with parameters passed.
             Sanity check when start+limit > duration
 
@@ -13397,14 +13456,18 @@ class FileControl(FileControlCommonSelf):
         :param fade_out_sec: Number of seconds to fade out
         :param ff_name: Filename containing ffplay output. E.G TMP_CURR_SONG
         :param dead_start: Set to volume to 0 and immediately stop play
+        :param last_sink: Tell start_ffplay what's closing
         :return self.pid, self.sink:
         """
+
         self.start_sec = start_sec          # Seconds offset to start playing at
         self.limit_sec = limit_sec          # Number of seconds to play. 0 = play all
         self.fade_in_sec = fade_in_sec      # Number of seconds to fade in
         self.fade_out_sec = fade_out_sec    # Number of seconds to fade out
         self.ff_name = ff_name              # TMP_CURR_SONG, etc.
         self.dead_start = dead_start        # Number of seconds to fade out
+        self.last_sink = last_sink          # Tell start_ffplay what's closing
+
         # When action = 'start'
         # start = seconds offset to start song at. If 0.0, start at beginning
         # duration = seconds to play song for. If 0.0, entire song, skip duration set
@@ -13430,7 +13493,8 @@ class FileControl(FileControlCommonSelf):
         '''
 
         '''   B I G   T I C K E T   E V E N T   '''
-        self.pid, self.sink = start_ffplay(self.path, self.ff_name, extra_opt)
+        self.pid, self.sink = start_ffplay(self.path, self.ff_name,
+                                           extra_opt, last_sink)
 
         ''' Sanity check '''
         if self.start_sec > self.DurationSecs:
@@ -13460,13 +13524,15 @@ class FileControl(FileControlCommonSelf):
         return self.pid, self.sink
 
     def restart(self, start_secs, limit_sec=0.0, fade_in_sec=0.0,
-                fade_out_sec=0.0, ff_name=None, dead_start=False):
+                fade_out_sec=0.0, ff_name=None, dead_start=False,
+                last_sink=None):
         """
             Kill current running PID as a new one will be established
         """
         if self.check_pid():
             ext.kill_pid_running(self.pid)
             self.pid = 0  # def kill_song already does this
+            last_sink = self.sink
             self.sink = ""
 
         ''' Song may be paused already '''
@@ -13478,7 +13544,8 @@ class FileControl(FileControlCommonSelf):
 
         return self.start(start_sec=start_secs, limit_sec=limit_sec,
                           fade_in_sec=fade_in_sec, fade_out_sec=fade_out_sec,
-                          ff_name=ff_name, dead_start=dead_start)
+                          ff_name=ff_name, dead_start=dead_start,
+                          last_sink=last_sink)
 
     def stop(self):
         """ Stop playing (pause) """
@@ -13492,6 +13559,10 @@ class FileControl(FileControlCommonSelf):
 
     def elapsed(self):
         """ How many seconds have elapsed """
+        if self.ff_name is None or self.path is None or self.pid == 0:
+            print("FileControl.elapsed() requested when song ended")
+            return 0.0
+
         ext.t_init("FileControl.elapsed()")
         self.elapsed_secs = get_curr_ffplay_secs(self.ff_name)
         job_time = ext.t_end('no_print')  # 0.0000710487 to 0.0001909733
@@ -13534,21 +13605,25 @@ class FileControl(FileControlCommonSelf):
 
         ''' Was .end() already called? '''
         if (self.state and self.state == 'end') or self.atime_done:
+            # Reproducible when fast clicking "Next" song. Also note fast
+            # clicking isn't working and a couple seconds per song skipped
+            # before target song starts playing.
             ''' Already called? '''
             text = "InfoCentre.end() called twice.\n" +\
-                   "\tself.state: \t\t" + str(self.state) +\
+                   "\tPath: \t\t" + str(self.path) +\
+                   "\n\tself.state: \t\t" + str(self.state) +\
                    "\n\tself.atime_done:\t" + str(self.atime_done) +\
                    "\n\tUse 'View' dropdown menu, 'Show Debug' for traceback."
             print(text)
             self.info.cast(text, 'error', 'update')
-            toolkit.print_trace()  # Once sampling song and closing with X
+            #toolkit.print_trace()  # Once sampling song and closing with X
             if self.atime_done:
                 return  # Last access time has already been updated
         else:
             self.log('end')
 
         if self.path is None:
-            return
+            return  # With fast clicking 'Next' self.path can be None soon
 
         if self.stat_end is None:
             ''' Below duplicated if self.close() was just called '''
@@ -13577,24 +13652,29 @@ class FileControl(FileControlCommonSelf):
         if self.percent_played < float(ATIME_THRESHOLD):
             ''' Didn't play long enough. Restore original access time '''
             old_time, new_time = self.touch_it(self.stat_start)
+            # touch_it() returns None, None when no song path
             self.final_atime = new_time
             patterns = [("Restoring last access for:", "White", "Black"),
                         ("Current time:", "Green", "Black"),
                         ("Original time:", "Green", "Black")]
-            if self.silent:  # bugs in sample_song()
+            if self.silent and old_time is not None:
                 self.info.fact("Restoring last access for: \t" + self.Title +
                                "\n\tCurrent time:  \t" +
                                tmf.ago(old_time).strip() +
                                "\n\tOriginal time: \t" +
                                tmf.ago(new_time).strip(),
                                patterns=patterns)
-            else:
+            elif old_time is not None:
                 self.info.cast("Restoring last access for: \t" + self.Title +
                                "\n\tCurrent time:  \t" +
                                tmf.ago(old_time).strip() +
                                "\n\tOriginal time: \t" +
                                tmf.ago(new_time).strip(),
                                patterns=patterns)
+            else:
+                self.info.cast("Could not restore last access for: \t" +
+                               str(self.Title) +
+                               "\nLikely caused by fast clicking Next/Prev")
 
         #start_atime = self.stat_start.st_atime
         #end_atime = self.stat_start.st_atime
@@ -13618,12 +13698,16 @@ class FileControl(FileControlCommonSelf):
         :return old_time, new_time:
         """
 
-        ''' Old (current) access time before it is forced. '''
-        old_stat = os.stat(self.path)
-        old_atime = old_stat.st_atime
         '''' During a crash for other reasons, following popped up too '''
         #     old_atime = old_stat.st_atime
         # TypeError: coercing to Unicode: need string or buffer, NoneType found
+        if self.path is None:
+            self.info.cast("FileControl.touch_it() called with No path")
+            return None, None
+
+        ''' Old (current) access time before it is forced. '''
+        old_stat = os.stat(self.path)
+        old_atime = old_stat.st_atime
 
         if new_stat:
             ''' The forced time passed. Likely self.stat_start instance '''
@@ -13684,7 +13768,13 @@ class FileControl(FileControlCommonSelf):
             self.statuses with status and event time.
         """
         if self.path is None:
+            FileControlCommonSelf.__init__(self)  # clear all from .new() down
             return  # Already closed.
+
+        if self.state and self.state is 'end':
+            # Fast clicking next/prev, atime is never done and we call end twice
+            FileControlCommonSelf.__init__(self)  # clear all from .new() down
+            return
 
         if self.stat_end is None:
             ''' Below duplicated if self.end() was just called '''
@@ -13694,11 +13784,13 @@ class FileControl(FileControlCommonSelf):
         ''' Call .end() if not already logged or if Last Access Time not set '''
         if self.state and self.state is not 'end':
             self.end()  # calculate percent played and restore access time
-        if not self.atime_done:
-            self.end()  # calculate percent played and restore access time
+        # Fast clicking next/prev, atime is never done and we call end twice
+        #if not self.atime_done:
+        #    self.end()  # calculate percent played and restore access time
 
         ''' Call to parent: close_lib_tree_song(path, a_time) '''
-        if self.close_callback is not None and self.path is not None:
+        if self.close_callback is not None and self.path is not None and \
+                self.final_atime is not None:
             self.close_callback(self.path, self.final_atime)
 
         ''' Variables can be queried to check if song open. So clear all '''
@@ -15580,7 +15672,7 @@ def ffplay_extra_opt(start=None, fade_in=3, fade_out=0.0, duration_secs=0.0):
     return extra_opt
 
 
-def start_ffplay(song, tmp_name, extra_opt):
+def start_ffplay(song, tmp_name, extra_opt, last_sink=None):
     """ start_ffplay parameters:
             song = unquoted song name, we'll add the quotes
             tmp_name = /tmp/filename to send output of song name EG:
@@ -15592,57 +15684,49 @@ def start_ffplay(song, tmp_name, extra_opt):
                 -af "a fade=type=in:start_time=99:duration=3"
 
     """
-
-    ''' Sanity Check - Is it a music file? Is network online? 
-    
-        Code takes way too long to execute and better way is used within
-        FileControl.check_metadata() function created June 27, 2023.
-        
-        Sanity Check taken from: https://superuser.com/a/100290
-    
-        Sadly on June 28, 2023 read first comment using ffprobe is faster. 
-    '''
-    # TAKES WAY TOO LONG. USE ffprobe (.08 seconds on good songs)
-    #ext.t_init('Music File Sanity Check')
-    #os.popen('ffmpeg -v error -i "' + song + '" -f null - 2>' + TMP_ERROR)
-    #stat = os.stat(TMP_ERROR)
-    #ext.t_end('print')  # 0.2879149914 then 0.4034409523 then 0.4259519577
-
-    #if stat.st_size > 0:  # Valid music files have size 0
-    #    return 0, ""  # No PID, no Sink
-
     ''' Get old Input Sinks before ffplay starts '''
-    loop_cnt = 0
-    old_sink = sink_list("ffplay")
+    sinks = sink_list("ffplay")
+    target_sink = None
+    if last_sink is not None:
+        if sinks is not None:
+            if last_sink in sinks:
+                print("last_sink:", last_sink,
+                      "found in sinks:", sinks)
+                target_sink = last_sink
+
+    # July 5, 2023 - comment out ffplay delay below
     ''' Give time for pulseaudio to shut down last ffplay sink '''
-    while len(old_sink) > 0 and loop_cnt < 50:
+    loop_cnt = 0
+    while len(sinks) > 0 and loop_cnt < 20:
         # Relevant only for FF/Rewind button press. Only 10 ms
         # was needed but allow up to 250 ms. No need to call
         # refresh_play_top() because no song = no spinning graphics.
+
+        # Negative effect in Fine-Tune Time Index sample_all()
+        # because only 1.25 second played per lyrics line and the
+        # delay here is noticeable. It is known that play_ctl is
+        # paused and will be for duration of sample_all
+
+        # Change limit from 250ms to 25ms then to 100ms
+
+        # Pass sink that is closing down instead
+        if target_sink and target_sink not in sinks:
+            break
+
         loop_cnt += 1  # If we finish loop could be dead 'ffplay'
         root.after(5)  # Allow 250ms for old ffplay to clean up.
-        old_sink = sink_list("ffplay")
+        sinks = sink_list("ffplay")
     #print("start_ffplay(song, tmp_name, extra_opt) loop_cnt:",
     #      song, tmp_name, extra_opt, loop_cnt)  # Largest loop_cnt = 1
+    print("loop_cnt:", loop_cnt)
 
     ''' ffplay start options to redirect output to temporary file '''
     # noinspection SpellCheckingInspection
-    ext_name = 'ffplay -autoexit ' + '"' + song + '" ' + extra_opt + \
-               ' -nodisp 2>' + tmp_name
+    cmd = 'ffplay -autoexit ' + '"' + song + '" ' + extra_opt + \
+          ' -nodisp 2>' + tmp_name
 
-    # noinspection SpellCheckingInspection
-    '''
-    ext_name = 'ffplay -autoexit ' + '"' + song + '" ' + extra_opt + \
-               ' -nodisp 2>' + tmp_name
-            extra_opt += ' -af "afade=type=in:start_time=' + str(start) + \
-                     ':duration=' + "1.5" + '"'  # fade-in time
-
-    '''
-    # inspection SpellCheckingInspection
     ''' launch ffplay external command in background it polls for pid '''
-    found_pid = ext.launch_command(ext_name, toplevel=None)
-    #print(ext_name)  # Uncomment to debug
-    #found_sink = None  # May 21, 2023 functions expect "" for no sink
+    found_pid = ext.launch_command(cmd, toplevel=None)
     found_sink = ""  # May 21, 2023 functions expect "" for no sink
     if found_pid == 0:
         print('Waited 10 seconds, aborting start_ffplay() get PID')
@@ -15662,9 +15746,9 @@ def start_ffplay(song, tmp_name, extra_opt):
         root.after(5)
 
         new_sink = sink_list("ffplay")
-        if new_sink == old_sink:
+        if new_sink == sinks:
             continue
-        found_sink = list_diff(new_sink, old_sink, "start_ffplay()")
+        found_sink = list_diff(new_sink, sinks, "start_ffplay()")
         #print('found sink:', found_sink)
         break
 
