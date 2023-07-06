@@ -46,6 +46,8 @@ PANEL_HGT = 24          # Height of Unity panel
 MAX_DEPTH = 3           # Sanity check if starting at c:\ or /
 # If MAX_DEPTH changes you must update 'depth_count = [ 0, 0, 0 ]' below.
 
+HELP_URL = "https://www.pippim.com/programs/mserve.html#"
+
 
 def init():
     """ This should only be called once by the main module

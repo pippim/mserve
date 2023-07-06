@@ -59,17 +59,49 @@ import time
 from collections import namedtuple
 
 
-d = Xlib.display.Display(':0')              # d is for X11 Display object
-r = d.screen().root                         # r is for X11 Root object
+#d = Xlib.display.Display(':0')              # d is for X11 Display object
+# noinspection SpellCheckingInspection
+"""
+System crash in ~/bserve June 19, 2023, noticed July 5, 2023. Cause was change:
+Jun 17 23 - toolkit.normalize_tcl() changed to support "vwxyz" which were "?"
 
-_NET_ACTIVE_WINDOW = d.intern_atom('_NET_ACTIVE_WINDOW')
-_NET_CLIENT_LIST = d.get_atom('_NET_CLIENT_LIST')
-_NET_WM_NAME = d.get_atom('_NET_WM_NAME')
+Xlib.xauth: warning, no xauthority details available
+Traceback (most recent call last):
+  File "/home/rick/bserve/gmail-send-msg.py", line 28, in <module>
+    import gmail_api
+  File "/home/rick/bserve/gmail_api.py", line 74, in <module>
+    import external as ext          # Timing
+  File "/home/rick/bserve/external.py", line 24, in <module>
+    import toolkit
+  File "/home/rick/bserve/toolkit.py", line 58, in <module>
+    import image as img         # Pippim image.py module
+  File "/home/rick/bserve/image.py", line 45, in <module>
+    import x11                  # Home-brewed x11 wrapper functions
+  File "/home/rick/bserve/x11.py", line 62, in <module>
+    d = Xlib.display.Display(':0')              # d is for X11 Display object
+  File "/usr/lib/python2.7/dist-packages/Xlib/display.py", line 80, in __init__
+    self.display = _BaseDisplay(display)
+  File "/usr/lib/python2.7/dist-packages/Xlib/display.py", line 62, in __init__
+    display.Display.__init__(*(self, ) + args, **keys)
+  File "/usr/lib/python2.7/dist-packages/Xlib/protocol/display.py", line 129, in __init__
+    raise error.DisplayConnectionError(self.display_name, r.reason)
+Xlib.error.DisplayConnectionError: Can't connect to display ":0": No protocol specified
+"""
 
-# Note x11 uses 'height' then 'width'. Tkinter uses 'width' then 'height'.
-# Change below from author's original "height width" format.
-Geometry = namedtuple('Geometry', 'x y width height')
+try:
+    d = Xlib.display.Display(':0')              # d is for X11 Display object
+    r = d.screen().root                         # r is for X11 Root object
 
+    _NET_ACTIVE_WINDOW = d.intern_atom('_NET_ACTIVE_WINDOW')
+    _NET_CLIENT_LIST = d.get_atom('_NET_CLIENT_LIST')
+    _NET_WM_NAME = d.get_atom('_NET_WM_NAME')
+
+    # Note x11 uses 'height' then 'width'. Tkinter uses 'width' then 'height'.
+    # Change below from author's original "height width" format.
+    Geometry = namedtuple('Geometry', 'x y width height')
+except Xlib.error.DisplayConnectionError:
+    # Can't connect to display ":0": No protocol specified
+    print('Can\'t connect to display ":0": No protocol specified')
 
 def find_mode(iid, modes):
     """ Called by get_display_info() below """

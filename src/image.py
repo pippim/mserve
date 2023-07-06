@@ -42,7 +42,50 @@ import io
 from PIL import Image, ImageTk, ImageDraw, ImageFont, ImageFilter, ImageOps
 from collections import namedtuple
 
+"""
+x11 is currently needed for GoneFishing without it get error:
+
+Exception in Tkinter callback
+Traceback (most recent call last):
+  File "/usr/lib/python2.7/lib-tk/Tkinter.py", line 1540, in __call__
+    return self.func(*args)
+  File "/home/rick/python/mserve.py", line 6876, in <lambda>
+    s=self: s.start_hockey(TV_BREAK1))
+  File "/home/rick/python/mserve.py", line 7433, in start_hockey
+    self.gone_fishing = img.GoneFishing(self.play_top)
+  File "/home/rick/python/image.py", line 1024, in __init__
+    self.src_wm_window = self.src_x11_window = x11.get_active_window()
+NameError: global name 'x11' is not defined
+"""
 import x11                  # Home-brewed x11 wrapper functions
+# noinspection SpellCheckingInspection
+"""
+System crash in ~/bserve June 19, 2023, noticed July 5, 2023. Cause was change:
+Jun 17 23 - toolkit.normalize_tcl() changed to support "vwxyz" which were "?"
+
+Xlib.xauth: warning, no xauthority details available
+Traceback (most recent call last):
+  File "/home/rick/bserve/gmail-send-msg.py", line 28, in <module>
+    import gmail_api
+  File "/home/rick/bserve/gmail_api.py", line 74, in <module>
+    import external as ext          # Timing
+  File "/home/rick/bserve/external.py", line 24, in <module>
+    import toolkit
+  File "/home/rick/bserve/toolkit.py", line 58, in <module>
+    import image as img         # Pippim image.py module
+  File "/home/rick/bserve/image.py", line 45, in <module>
+    import x11                  # Home-brewed x11 wrapper functions
+  File "/home/rick/bserve/x11.py", line 62, in <module>
+    d = Xlib.display.Display(':0')              # d is for X11 Display object
+  File "/usr/lib/python2.7/dist-packages/Xlib/display.py", line 80, in __init__
+    self.display = _BaseDisplay(display)
+  File "/usr/lib/python2.7/dist-packages/Xlib/display.py", line 62, in __init__
+    display.Display.__init__(*(self, ) + args, **keys)
+  File "/usr/lib/python2.7/dist-packages/Xlib/protocol/display.py", line 129, in __init__
+    raise error.DisplayConnectionError(self.display_name, r.reason)
+Xlib.error.DisplayConnectionError: Can't connect to display ":0": No protocol specified
+"""
+
 import external as ext
 import monitor              # Screen, Monitor and Window functions
 

@@ -3,6 +3,8 @@
 #
 #       message.py - status messages, dialogs, tooltips
 #
+#       July 05 2023 - Optional help button on ShowInfo, AskQuestion, AskString
+#
 #==============================================================================
 
 """ TODO:
@@ -52,6 +54,7 @@ except ImportError:  # No module named subprocess32
 import re
 import time
 from datetime import datetime
+import webbrowser
 
 # mserve modules
 import image as img
@@ -267,7 +270,7 @@ class CommonSelf:
     """
 #    def __init__(self, parent, title=None, text=None, confirm='yes',
     def __init__(self, parent, text=None, confirm='yes',
-                 align='center', thread=None, icon='warning'):
+                 align='center', thread=None, icon='warning', help=None):
 
         self.top_level = parent     # Allows .after() calls
         self.confirm = confirm      # Append "Are you sure?" line?
@@ -277,13 +280,15 @@ class CommonSelf:
         elif callable(thread):
             self.thread = thread    # The thread runs whilst waiting for button click
         else:
-            print("message.py, CommonSelf, invalid thread= passed")
+            print("message.py, CommonSelf, invalid thread= passed:", thread)
             toolkit.print_trace()
             self.thread = None
         self.loop_no = 1            # Loop counter (not used yet)
         self.text = text            # data (text lines) for text box
         self.textbox = None         # Textbox widget
         self.icon = icon            # Warning, Error, Info, Question icons
+        self.help = help            # Future help button linking to mserve.md
+
         self.entry = None           # Tkinter Entry widget
         self.string = ""            # What the user has entered (AskString)
         self.result = None          # Defined in simpledialog already
