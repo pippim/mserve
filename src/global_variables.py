@@ -33,11 +33,12 @@ WIN_MIN_HEIGHT = 63
 # Many older Global variables first used in mmm (multiple monitors manager)
 RESTART_SLEEP = .3      # Delay for mserve close down
 KEEP_AWAKE_MS = 250     # Milliseconds between time checks
-MON_FONTSIZE = 12       # Font size for monitor name
-WIN_FONTSIZE = 11       # Font size for Window name
 BIG_FONT = 18           # Font size not used
 LARGE_FONT = 14         # Font size not used
+MON_FONTSIZE = 12       # Font size for monitor name
+WIN_FONTSIZE = 11       # Font size for Window name
 MED_FONT = 10           # Medium Font size
+
 BTN_WID = 17            # Width for buttons on main window
 BTN_WID2 = 15           # Width for buttons on play window
 BTN_BRD_WID = 3         # Width for button border
@@ -94,5 +95,12 @@ def init():
     TEMP_DIR = tempfile.gettempdir()
     if not TEMP_DIR.endswith(os.sep):
         TEMP_DIR += os.sep
+    TEMP_DIR += USER_ID + "_"  # /tmp/1000_
+
+    # Override if directory /run/user/ exists (no disk light flashing)
+    systemd = "/run/user/" + USER_ID
+    if os.path.isdir(systemd):
+        TEMP_DIR = systemd + os.sep
+
 
 # End of global_variables.py

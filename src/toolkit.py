@@ -288,6 +288,7 @@ def config_all_canvas(level, **kwargs):
 def uni_str(s):
     """ After much headbanging a bullet proof single call for all strings  """
 
+    # noinspection SpellCheckingInspection
     '''
         Previously used: good_str = bad_str.encode('utf-8')
         Bullet-proof is: good_str = unicode(bad_str, 'utf-8')
@@ -357,13 +358,13 @@ def normalize_tcl(s):
     return new_s
 
 
+# noinspection SpellCheckingInspection
 '''
 TclError: character U+1f3b5 is above the range (U+0000-U+FFFF) allowed by Tcl
 Results prior to patch made June 17, 2023. Note sometimes you can avoid using
 noramlize_tcl() function by using .encode('utf-8') See "Rainy Days" playlist
 name handling in 'mserve.py build_lib_top_playlist_name()' function.
-'''
-'''
+
 test = "abcdefghijklmnopqrstuvwxyz"
 result = normalize_tcl(test)
 print("test  :", test)      # test  : abcdefghijklmnopqrstuvwxyz
@@ -911,7 +912,7 @@ class DictTreeview:
 
     def change_column_format(self, new_format, search):
         """
-            :param format: New format. E.G. "MB"
+            :param new_format: New format. E.G. "MB"
             :param search: column name, E.G. "size"
             :returns None
         """
@@ -1060,8 +1061,10 @@ def days(seconds):
     h = tim / 3600 % 24
     d = tim / 86400
     r = str(m) + " min"
-    if h > 0: r = str(h) + " hr, " + r
-    if d > 0: r = str(d) + " day, " + r
+    if h > 0: 
+        r = str(h) + " hr, " + r
+    if d > 0: 
+        r = str(d) + " day, " + r
     return r
 
 
@@ -2558,8 +2561,8 @@ class ToolTips(CommonTip):
             if not str(self.dict['widget']).startswith(str(widget)):
                 new_list.append(self.dict)
 
-        diff = len(self.tips_list) - len(new_list)
-        # print(diff, 'Tooltips removed on close')
+        #diff = len(self.tips_list) - len(new_list)
+        #print(diff, 'Tooltips removed on close')
         self.tips_list = []
         self.tips_list = new_list
         self.log_list = []      # Flush out log list for new events
