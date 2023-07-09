@@ -1094,7 +1094,7 @@ class MusicTree(PlayCommonSelf):
     def __init__(self, toplevel, song_list, sbar_width=12):
 
         PlayCommonSelf.__init__(self)  # Define self. variables
-        ext.t_init('MusicTree() __init__(toplevel, song_list, sbar_width=12)')
+        ext.t_init('MusicTree() __init__(toplevel, song_list, pav, sbar_width=12)')
 
         # If we are started by splash screen get object, else it will be None
         self.splash_toplevel = toplevel
@@ -1200,6 +1200,8 @@ class MusicTree(PlayCommonSelf):
         ''' Expanding/collapsing information centre Frame - PART II of II '''
         self.info = InfoCentre(self.lib_top, self.lib_tree, self.banner_frm,
                                self.banner_btn, self.build_banner_btn, self.tt)
+
+        pav.registerInfoCentre(self.info)  # Wasn't available earlier
 
         patterns = [("using directory:", "Green", "Black")]
         self.info.fact("mserve started using directory: " + g.MSERVE_DIR,
@@ -1750,6 +1752,7 @@ class MusicTree(PlayCommonSelf):
 
         ''' Always give time slice to tooltips '''
         self.tt.poll_tips()  # Tooltips fade in and out. self.info piggy backing
+        pav.poll_fades()
         self.lib_top.update()  # process events in queue. E.G. message.ShowInfo()
 
         if not self.lib_top_is_active:  # Second check needed June 2023
@@ -4674,9 +4677,9 @@ $ wmctrl -l -p
             return
 
         self.tv_vol = tvVolume(parent=self.lib_top, tooltips=self.tt,
-                             thread=self.get_refresh_thread(),
-                             save_callback=self.get_hockey_state,
-                             playlists=self.playlists)
+                               thread=self.get_refresh_thread(),
+                               save_callback=self.get_hockey_state,
+                               playlists=self.playlists, info=self.info)
 
     def show_debug(self):
         """ Debugging - show monitors, tooltips and full metadata
@@ -7056,25 +7059,17 @@ $ wmctrl -l -p
         if self.pp_state is "Playing":
             # Volume down in 10 steps of 7.5% with .05 sec in-between, end @ 25%
             # maximum volume is usually 100% but 60% or so during hockey commercials
-            step_volume(self.play_ctl.sink, self.max_volume_override(),
+            step_volume(self.play_ctl.sink, self.get_max_volume(),
                         25, 10, .05, thread=self.play_vu_meter)
+            # TODO: losing and gaining second or two at times
+            self.secs_before_pause = self.play_ctl.elapsed()  # Must call before .stop()
+            #self.play_update_progress(start_secs=elapsed)
             self.play_ctl.stop()
-
-            ''' TODO: probably don't need self.secs_before_pause anymore '''
-            #ext.t_init('get_curr_ffplay_secs(TMP_CURR_SONG)' + TMP_CURR_SONG)
-            #self.secs_before_pause = get_curr_ffplay_secs(TMP_CURR_SONG)
-            self.secs_before_pause = self.play_ctl.elapsed()
-            #ext.t_end('print')  # 0.0004520416 then 0.0004031658 then 0.0001831055
-
-            #ext.t_init('work_list = ext.tail(TMP_CURR_SONG, 1)')
-            #work_list = ext.tail(TMP_CURR_SONG, 1)
-            #ext.t_end('print')  # 0.0261890888 then 0.0173239708 then 0.0082201958
-
             self.pp_state = "Paused"  # Was Playing now is Paused
             self.set_pp_button_text()
             if self.play_hockey_active:
-                set_tv_sound_levels(25, 100, thread=self.play_vu_meter)
                 # Restore TV sound to 100%
+                set_tv_sound_levels(25, 100, thread=self.play_vu_meter)
         else:
             ''' Important: self.song_set_ndx() repeats some of below.
                            Check there when changing below.
@@ -7086,13 +7081,15 @@ $ wmctrl -l -p
             # Volume at 25% turned up in 10 steps of .05 sec to maximum volume
             self.current_song_t_start = time.time()
             self.play_ctl.cont()
+            elapsed = self.play_ctl.elapsed()  # Must call after .cont()
+            #self.play_update_progress(start_secs=elapsed)
             # maximum volume is usually 100% but 60% or so during hockey commercials
-            step_volume(self.play_ctl.sink, 25, self.max_volume_override(),
+            step_volume(self.play_ctl.sink, 25, self.get_max_volume(),
                         10, .05, thread=self.play_vu_meter)
             self.pp_state = "Playing"  # Was Paused now is Playing
             self.set_pp_button_text()
 
-    def max_volume_override(self):
+    def get_max_volume(self):
         if self.play_hockey_active:
             max_vol = TV_VOLUME  # During hockey ads less than 100%
             # Uncomment line below to really hear the difference
@@ -7786,6 +7783,7 @@ $ wmctrl -l -p
         now = time.time()
         root.update_idletasks()
         self.tt.poll_tips()
+        pav.poll_fades()
 
         ''' May be called from Library with no music playing (tooltip)  '''
         if not self.play_top_is_active:
@@ -7885,7 +7883,7 @@ $ wmctrl -l -p
         :param start_secs: Optional. Song is starting at seconds passed.
         """
         if start_secs:
-            # Specific seconds passed by resume, FF or Rewind button
+            # Exact seconds elapsed is passed
             self.current_song_secs = start_secs
             self.current_song_t_start = time.time() - start_secs
             if self.pp_state is "Playing":
@@ -12701,12 +12699,14 @@ class BatchSelect:
 #
 # ==============================================================================
 
+
 class tvVolume:
     """ Usage by caller:
 
     self.tv_vol = tvVolume(parent, name, title, text, tooltips=self.tt,
-                         thread=self.get_refresh_thread(),
-                         save_callback=self.save_callback)
+                           thread=self.get_refresh_thread(),
+                           save_callback=self.save_callback
+                           playlists=self.playlists, info=self.info)
           - Music must be playing (name=ffplay) or at least a song paused.
           - save_callback=function that will reread new variables saved.
 
@@ -12716,18 +12716,20 @@ class tvVolume:
     """
 
     def __init__(self, parent=None, name="ffplay", title=None, text=None,
-                 tooltips=None, thread=None, save_callback=None, playlists=None):
+                 tooltips=None, thread=None, save_callback=None, playlists=None,
+                 info=None):
         """
         """
         # self-ize parameter list
         self.parent = parent    # self.parent
-        self.name = name            # ALSA / Pulse Audio sink number (str)
+        self.name = name            # Process name to search for current volume
         self.title = title          # E.G. "Set volume for mserve"
         self.text = text            # "Adjust mserve volume to match other apps"
         self.tt = tooltips          # Tooltips pool for buttons
         self.thread = thread        # E.G. self.get_refresh_thread()
-        self.save_callback = save_callback
+        self.save_callback = save_callback  # Set hockey fields to new values
         self.playlists = playlists
+        self.info = info
 
         self.last_volume = None
         self.last_sink = None
@@ -12830,26 +12832,36 @@ class tvVolume:
             self.close()
 
         if self.last_volume is None:
-            message.ShowInfo(self.parent, "No Sound is playing.",
-                             "Cannot adjust volume until a song is playing.",
+            title = "No Sound is playing."
+            text = "Cannot adjust volume until a song is playing."
+            message.ShowInfo(self.parent, title, text,
                              icon='warning', thread=self.thread)
+            self.info.cast(title + "\n" + text, 'warning')
             self.close()
 
         if self.top:  # May have been closed above.
             self.top.update_idletasks()
 
     def get_volume(self, name=None):
-        """ Get volume of 'ffplay' before we start
-        """
+        """ Get volume of 'ffplay' before modification and at end """
         if name is None:
-            name = self.name
+            name = self.name  # self.name defaults to "ffplay"
+
+        all_sinks = pav.get_all_sinks()  # Recreates pav.sinks_now
+        for Sink in all_sinks:
+            if Sink.name == name:
+                return int(Sink.volume), Sink.sink_no_str
+
+        '''
+        # TODO: Upgrade to pav.get_volume_by_name()?
         all_sinks = sink_master()
+        # TODO: Upgrade to pav.get_volume_by_name()?
         for entry in all_sinks:
             sink, volume, app_name = entry
             if app_name == name:
                 #print("get_volume():", volume)
                 return int(volume), sink
-            
+        '''
         return None, None
     
     def set_sink(self, value=None):
@@ -12976,8 +12988,10 @@ class tvVolume:
 
         ''' Adjust volume for playing mserve song back to starting level '''
         curr_volume, curr_sink = self.get_volume()  # last_sink may have changed
-        step_volume(curr_sink, curr_volume, self.last_volume, 10, .05,
-                    self.thread)
+        # without parameter TV_SOUND, the name "ffplay" will be used.
+        #step_volume(curr_sink, curr_volume, self.last_volume, 10, .05,
+        #            self.thread)
+        pav.fade(curr_sink, curr_volume, self.last_volume, 1)  # 1 second fade
 
     # noinspection PyUnusedLocal
     def apply(self, *args):
@@ -13447,8 +13461,7 @@ class FileControl(FileControlCommonSelf):
         self.info.cast(text, 'error')
 
     def start(self, start_sec=0.0, limit_sec=0.0, fade_in_sec=0.0,
-              fade_out_sec=0.0, ff_name=None, dead_start=None,
-              last_sink=None):
+              fade_out_sec=0.0, ff_name=None, dead_start=None, last_sink=None):
         """ Start playing song with parameters passed.
             Sanity check when start+limit > duration
 
@@ -13496,8 +13509,9 @@ class FileControl(FileControlCommonSelf):
         '''
 
         '''   B I G   T I C K E T   E V E N T   '''
+        # TODO: Move start_ffplay() code up to self.start_ffplay()
         self.pid, self.sink = start_ffplay(self.path, self.ff_name,
-                                           extra_opt, last_sink)
+                                           extra_opt, toplevel=self.tk_top)
 
         ''' Sanity check '''
         if self.start_sec > self.DurationSecs:
@@ -15611,7 +15625,7 @@ def ffplay_extra_opt(start=None, fade_in=3, fade_out=0.0, duration_secs=0.0):
     return extra_opt
 
 
-def start_ffplay(song, tmp_name, extra_opt, last_sink=None):
+def start_ffplay(song, tmp_name, extra_opt, toplevel=None, last_sink=None):
     """ start_ffplay parameters:
             song = unquoted song name, we'll add the quotes
             tmp_name = /tmp/filename to send output of song name EG:
@@ -15627,10 +15641,12 @@ def start_ffplay(song, tmp_name, extra_opt, last_sink=None):
     :param song: unquoted song name, we'll add the quotes
     :param tmp_name: = /tmp/filename to send output of song name
     :param extra_opt: can be blank or, overrides to start, fade, etc.
+    :param toplevel: When passed gets .after(sleep) time.
     :param last_sink: pass sink number which may still be running.
+    :return pid, sink: Linux Process ID and Pulse Audio Sink Number
     """
 
-    ''' Get old Input Sinks before ffplay starts '''
+    ''' Get old Input Sinks before ffplay starts 
     sinks = sink_list("ffplay")
     target_sink = None
     if last_sink is not None:
@@ -15639,7 +15655,7 @@ def start_ffplay(song, tmp_name, extra_opt, last_sink=None):
                 target_sink = last_sink  # Found sink to wait on
 
     # July 5, 2023 - comment out ffplay delay below
-    ''' Give time for pulseaudio to shut down last ffplay sink '''
+    # Give time for pulseaudio to shut down last ffplay sink 
     loop_cnt = 0
     while len(sinks) > 0 and loop_cnt < 20:
         # Relevant only for FF/Rewind button press. Only 10 ms
@@ -15660,7 +15676,7 @@ def start_ffplay(song, tmp_name, extra_opt, last_sink=None):
         loop_cnt += 1  # If we finish loop could be dead 'ffplay'
         root.after(5)  # Allow 250ms for old ffplay to clean up.
         sinks = sink_list("ffplay")
-
+    '''
     #print("loop_cnt:", loop_cnt)  # sample_all - first time 20, then 1
     # For next/prev song: loop_cnt = 0 because no other ffplay exists.
 
@@ -15670,19 +15686,19 @@ def start_ffplay(song, tmp_name, extra_opt, last_sink=None):
           ' -nodisp 2>' + tmp_name
 
     ''' launch ffplay external command in background it polls for pid '''
-    found_pid = ext.launch_command(cmd, toplevel=None)
+    found_pid = ext.launch_command(cmd, toplevel=toplevel)
     found_sink = ""  # May 21, 2023 functions expect "" for no sink
     if found_pid == 0:
         print('Waited 10 seconds, aborting start_ffplay() get PID')
         return found_pid, found_sink
 
-    ''' Get New Input Sinks for ffplay '''
+    ''' Get New Input Sinks for ffplay 
     loop_cnt = 0
     while True:
         # Give time for `ffplay` to create pulseaudio sink.
         loop_cnt += 1
         # Nov 6/22 not enough loops when system lags, change 20 to 500
-        ''' May 22, 2023 to support kill and restart using FF / Rewind buttons '''
+        # May 22, 2023 to support kill and restart using FF / Rewind buttons
         if loop_cnt == 500:
             print('Waited > 2.5+ seconds, aborting start_ffplay() get sink')
             return found_pid, found_sink  # Invalid song file ends after .1 sec
@@ -15695,13 +15711,18 @@ def start_ffplay(song, tmp_name, extra_opt, last_sink=None):
         found_sink = list_diff(new_sink, sinks, "start_ffplay()")
         #print('found sink:', found_sink)
         break
+    '''
+    found_sink = pav.find(found_pid, toplevel=toplevel)
+    if not found_sink:
+        found_sink = ""  # pretty much same thing as 'None' anyway...
 
     return found_pid, found_sink
 
 
 def get_curr_ffplay_secs(tmp_name):
     """
-        July 5, 2023 - Should no longer use. FileControl.get_elapsed() does this.
+        July 5, 2023 - Should no longer call directly.
+        FileControl.get_elapsed() calls get_curr_ffplay_secs(tmp_name).
 
         Get elapsed play time from ffplay output file in RAM
         If resuming play, first time is unreliable so return second time.
@@ -15784,20 +15805,6 @@ except Exception as p_err:  # CallError, socket.error, IOError (pidfile), OSErro
                               'connect to pulse {} {}'.format(type(err), err))
 
 
-def get_pulse_control():
-    """ Seemed like a good idea at the time but, it crashes after being
-        called a few times.
-    """
-    ext.t_init("pulse = pulsectl.Pulse()")
-    try:
-        pulse_instance = pulsectl.Pulse()
-    except Exception as err:  # CallError, socket.error, IOError (pidfile), OSError (os.kill)
-        raise pulsectl.PulseError('mserve.py get_pulse_control() Failed to ' +
-                                  'connect to pulse {} {}'.format(type(err), err))
-    ext.t_end('no_print')  # from: 0.0017430782 to 0.0037407875
-    return pulse_instance
-
-
 def sink_master():
     """ Get PulseAudio list of all sinks
         Return list of tuples with sink #, flat volume and application name
@@ -15858,34 +15865,6 @@ def sink_master():
 
     ''' return list of tuples (sink#, volume percent, application name) '''
     return all_sinks
-
-
-def lock_step_volume():
-    """ Used by sample song and fine-tune time index
-
-    """
-    for i in range(1, 21):  # 20 steps
-        if self.sam_top_is_active is False:
-            break
-        """ June 27, 2023 - Fade in NOW controlled by ffplay """
-        our_time, err = set_volume(self.sam_ctl.sink, int(i * 5))  # Volume up 5%
-        # To get 1-20 you need 1,21 range!
-        for active_sink in old_sinks:
-            app_sink, app_vol, app_name = active_sink
-            if app_sink == self.sam_ctl.sink:
-                continue  # Skip our sink!
-            if app_sink == self.play_ctl.sink:
-                continue
-            try:
-                percent = int(app_vol) - (int(app_vol) * i / 20)  # Reduce by 5%
-            except ValueError:
-                percent = 0
-                print("mserve.py sample_song() invalid app_vol:", app_vol)
-            app_time, err = set_volume(app_sink, percent)  # Volume down 5%
-            our_time += app_time  # Total all job times
-            self.sam_top.update()  # Poll for close button
-        if our_time < .05:
-            root.after(int((.05 - our_time) * 1000))  # Sleep .05 per step
 
 
 def step_volume(sink, p_start, p_stop, steps, interval, thread=None):
@@ -15963,6 +15942,7 @@ def set_volume(target_sink, percent):
                 pulse.volume_set_all_chans(sink, float(percent) / 100.0)
                 job_time = ext.t_end('no_print')
                 return job_time, err
+        ext.t_end('no_print')
 
     if PULSE_WORKS and pulse_error_cnt < 10:
         pulse_error_cnt += 1  # Limit to 10 errors printed
@@ -16011,57 +15991,6 @@ def set_tv_sound_levels(start_percent, end_percent, thread=None):
     """
     tv_sound_list = sink_list(TV_SOUND)  # Browser can have multiple entries
     step_volume(tv_sound_list, start_percent, end_percent, 10, .05, thread=thread)
-
-
-def deprecated_ffmpeg_artwork(path, width, height):
-    """
-
-        DEPRECATED June 27 2023 - Replaced by FileControl.get_artwork()
-
-        Use ffmpeg to get artwork for song into TMP_FFMPEG filename.
-        Messages go to TMP_FFPROBE filename which is ignored for now.
-        
-        Called from:
-
-        play_one_song() which calls set_artwork_colors()
-        sample_song()
-    """
-
-    # Don't reuse last artwork
-    if os.path.isfile(TMP_FFMPEG):
-        os.remove(TMP_FFMPEG)
-
-    # noinspection SpellCheckingInspection
-    ext.t_init("'ffmpeg -nostdin -y -vn -an -r 1 -i '")
-    # noinspection SpellCheckingInspection
-    cmd = 'ffmpeg -nostdin -y -vn -an -r 1 -i ' + '"' + path + '" ' + \
-          TMP_FFMPEG + ' 2>' + TMP_FFPROBE
-    result = os.popen(cmd).read().strip()
-    ext.t_end('no_print')  # 0.1054868698 0.1005489826 0.0921740532
-
-    # noinspection SpellCheckingInspection
-    ''' ffmpeg options
-    -nostdin to suppress: Press [q] to stop, [?] for help
-    -y to supppress error when file exists
-    -vn = skip video
-    -vn = skip audio
-    -r 1 = frame rate 1
-    -i = input filename
-    2> = redirect stderr (where stdout is written) to filename
-    '''
-
-
-    if len(result) > 1:
-        return None, None
-
-    if not os.path.isfile(TMP_FFMPEG):
-        # Song has no artwork that ffmpeg can identify.
-        return None, None
-
-    original_art = Image.open(TMP_FFMPEG)
-    resized_art = original_art.resize(
-        (width, height), Image.ANTIALIAS)
-    return ImageTk.PhotoImage(resized_art), resized_art, original_art
 
 
 def storage_artwork(width, height):
@@ -16452,6 +16381,9 @@ def open_files(old_cwd, prg_path, parameters, toplevel=None):
     print("End of open_files()")
 
 
+pav = None
+
+
 def main(toplevel=None, cwd=None, parameters=None):
     """
     Establish our file locations from sys.argv or last used location
@@ -16467,6 +16399,7 @@ def main(toplevel=None, cwd=None, parameters=None):
     global START_DIR  # Music directory. E.G. "/home/USER/Music
     global NEW_LOCATION  # True=Unknown music directory in parameter #1
     global LODICT  # June 1, 2023 - Wasn't declared global before today
+    global pav  # July 8, 2023 - global until start_ffplay relocated
 
     ''' cwd is saved and passed by "m" before calling mserve.py '''
     prg_path = os.path.dirname(os.path.realpath(__file__))
@@ -16581,7 +16514,8 @@ def main(toplevel=None, cwd=None, parameters=None):
         # June 3, 2023 -  sql.create_tables(): 0.0638458729
 
     pav = vup.PulseAudio()
-    print(pav.sinks_at_init)
+    #print("pav.pulse_is_working:", pav.pulse_is_working)
+    #print(pav.sinks_at_init)
 
     MusicTree(toplevel, SORTED_LIST)  # Build treeview of songs
 

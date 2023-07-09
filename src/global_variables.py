@@ -23,8 +23,8 @@ USER_CONFIG_DIR = None  # /home/user/.config/mserve
 USER_DATA_DIR = None    # /home/user/.local/share/mserve
 MSERVE_DIR = None       # /home/user/.config/mserve <- historically wrong
                         # Bad name. It implies where mserve programs are
-PROGRAM_DIR = None
-TEMP_DIR = None
+PROGRAM_DIR = None      # Directory where mserve.py is stored.
+TEMP_DIR = None         # Directory for temporary files /run/user/1000 preferred
 
 # Same values used by gnome-terminal to prevent window shrinking too small
 WIN_MIN_WIDTH = 142
