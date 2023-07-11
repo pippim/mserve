@@ -5,11 +5,14 @@
 #
 #       global_variables.py - Global variables shared by all mserve modules
 #
-#       May 19, 2023 - appdirs for universal application & storage directories
+#       May. 19 2023 - appdirs for universal application & storage directories
+#       July 10 2023 - Begin mserve_config.py development (check dependencies)
 #
 # ==============================================================================
 
 from __future__ import print_function       # Must be first import
+
+import mserve_config as cfg
 
 from appdirs import *   # Get application & storage directory names
 import tempfile         # Gets TMP_DIR /tmp, C:\Temp, etc.
@@ -56,7 +59,7 @@ def init():
         
             import global_variables as g
             
-        Later on they can reference 'g.USER' to get the User Login Name.
+        Then reference 'g.USER' to get the User Login Name.
         or 'g.USER_ID' to get the Numerical User ID
 
         0   pw_name     Login name
@@ -102,5 +105,6 @@ def init():
     if os.path.isdir(systemd):
         TEMP_DIR = systemd + os.sep
 
+    cfg.init()
 
 # End of global_variables.py

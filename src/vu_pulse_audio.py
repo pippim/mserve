@@ -57,6 +57,8 @@ import external as ext
 import timefmt as tmf
 import toolkit
 
+who_am_i = "vu_pulse_audio.py PulseAudio."
+
 
 class PulseAudio:
     """ Manage list of dictionaries created from Pulse Audio information.
@@ -87,8 +89,9 @@ class PulseAudio:
         self.curr_pid_sink = None
         self.aliens = None  # To turn down all apps except 'ffplay'
 
-        self.sinks_now = None  # used to compare for new sinks showing up
-        self.last_sink_input_list = None  # Save .002 to .009 seconds
+        self.sinks_now = None  # mserve formatted list of tuple sinks
+        self.last_sink_input_list = None  # = self.pulse.sink_input_list()
+
         self.get_all_sinks()  # saves to self.sinks_now
         self.sinks_at_init = self.sinks_now
         self.spam_count = 0  # Prevent error message flooding
@@ -118,11 +121,11 @@ class PulseAudio:
         self.dict['history'] = []  # Used for debugging
         self.dict['last_time'] = now  # Just for debugging
         # If sink_no_str is already being faded, reverse it
-        self.reverse_fade(sink_no_str)
-        # Add new fade job into queue where it will be processed every .033 secs
-        self.fade_list.append(self.dict)
+        if not self.reverse_fade(self.dict, now):  # When True, an existing fade
+            # Add new fade job into queue where it will be processed every .033 secs
+            self.fade_list.append(self.dict)
 
-    def reverse_fade(self, sink_no_str):
+    def reverse_fade(self, new_dict, now):
         """ Fade was already started now needs to reverse.
             For example, pause was clicked and fade out started. Then
             1/4 second later play was clicked but only 75% way through the
@@ -137,16 +140,33 @@ class PulseAudio:
 
             Also the sink objects aren't being saved to the self.sinks_now
         """
-        for i, search_dict in enumerate(self.fade_list):
-            if search_dict['sink_no_str'] == sink_no_str:
-                # Keep everything except duplicate
-                self.fade_list = \
-                    [x for x in self.fade_list if x['sink_no_str'] != sink_no_str]
-                # New beginning percent is where fade left off last time
-                self.dict['curr_perc'] = search_dict['curr_perc']
+        who = who_am_i + "reverse_fade(): "
+        now = time.time()
+        self.dict = new_dict
+        for i, scan_dict in enumerate(self.fade_list):
+            if scan_dict['sink_no_str'] == self.dict['sink_no_str']:
+                search_dict = dict(scan_dict)  # Make shallow copy, will lose 'history'
+
+                # Replace original fade with opposite fading
+                elapsed = now - search_dict['start_time']
+                new_duration = search_dict['duration'] - elapsed
+                # What new duration is different than last duration?
+                if self.dict['duration'] != search_dict['duration']:
+                    print(who, "self.dict['duration']:", self.dict['duration'],
+                          "search_dict['duration']:", search_dict['duration'])
+                self.dict['duration'] = new_duration
+                # New beginning volume percent is where fade left off last cycle
                 self.dict['begin_perc'] = search_dict['curr_perc']
-                return True
-        return False
+                # Debugging fields not normally accessed
+                self.dict['curr_perc'] = search_dict['curr_perc'] 
+                # Replace fade(sink_no_str, begin, end, duration,
+                #              finish_cb=None, arg_cb=None)
+                print(who + "started for sink:", self.dict['sink_no_str'],
+                      "from:", self.dict['begin_perc'],
+                      "to:", self.dict['end_perc'])
+                self.fade_list[i] = self.dict
+                return True  # Did reverse previous fade
+        return False  # Did not reverse previous fade
     
     def poll_fades(self):
         """ Every 33ms (in theory) process next step of fade job
@@ -177,7 +197,7 @@ class PulseAudio:
         """ Every 33ms (in theory) process next step of fade job
             When finished, set volume to final amount (end_perc)
         """
-        who = "vu_pulse_audio.py PulseAudio.poll_fades(): "
+        who = who_am_i + "poll_fades_debug(): "
         ext.t_init('self.pav.poll()')
         now = time.time()
         start_count = len(self.fade_list)
@@ -267,7 +287,7 @@ class PulseAudio:
         """ Uses self.sinks_now which was set the last time that
             self.get_all_sinks() was run.
         """
-        who = "vu_pulse_audio.py PulseAudio.set_volume(): "
+        who = who_am_i + "get_volume(): "
         if refresh:
             self.get_all_sinks()  # Populates self.sinks_now[]
         for Sink in self.sinks_now:
@@ -283,7 +303,7 @@ class PulseAudio:
             DO NOT use: volume_change_all_chans() which changes volume by
                         adjustment percentage.
         """
-        who = "vu_pulse_audio.py PulseAudio.set_volume(): "
+        who = who_am_i + "set_volume(): "
         # print("\n set_volume() -- looking for sink:", target_sink,
         #      "setting volume to:", percent, "%",
         #      "float(percent) / 100.0:", float(percent) / 100.0)
@@ -292,9 +312,44 @@ class PulseAudio:
             ''' Fast method using pulse audio direct interface '''
             ext.t_init(who + '-- pulse.volume_change')
             err = None  # No known pulsectl errors have appeared yet
-            for sink in self.pulse.sink_input_list():
+            try:
+                self.last_sink_input_list = self.pulse.sink_input_list()
+            except pulsectl.pulsectl.PulseOperationFailed as err:  # 56
+                # noinspection SpellCheckingInspection
+                '''
+SECOND Exception HAPPENED AFTER `pulseaudio -k` to fix FIRST EXCEPTION
+  File "/home/rick/python/pulsectl/pulsectl.py", line 523, in _pulse_op_cb
+    if not self._actions[act_id]: raise PulseOperationFailed(act_id)
+pulsectl.pulsectl.PulseOperationFailed: 56
+                
+                '''
+                print(who + "pulsectl.pulsectl.PulseOperationFailed:", err)
+                return None, str(err)
+
+            for sink in self.last_sink_input_list:
                 if str(sink.index) == target_sink:
-                    self.pulse.volume_set_all_chans(sink, float(percent) / 100.0)
+                    try:
+                        self.pulse.volume_set_all_chans(sink, float(percent) / 100.0)
+                    except pulsectl.pulsectl.PulseOperationFailed as err:  # 144
+                        # noinspection SpellCheckingInspection
+                        '''
+FIRST Exception HAPPENED AFTER CHANGING SOUND OUTPUT DEVICES
+
+  File "/home/rick/python/pulsectl/pulsectl.py", line 800, in volume_set_all_chans
+    self.volume_set(obj, obj.volume)
+  File "/home/rick/python/pulsectl/pulsectl.py", line 794, in volume_set
+    method(obj.index, vol)
+  File "/home/rick/python/pulsectl/pulsectl.py", line 634, in _wrapper
+    except c.pa.CallError as err: raise PulseOperationInvalid(err.args[-1])
+  File "/usr/lib/python2.7/contextlib.py", line 24, in __exit__
+    self.gen.next()
+  File "/home/rick/python/pulsectl/pulsectl.py", line 523, in _pulse_op_cb
+    if not self._actions[act_id]: raise PulseOperationFailed(act_id)
+pulsectl.pulsectl.PulseOperationFailed: 144
+                        '''
+                        print(who + "pulsectl.pulsectl.PulseOperationFailed:", err)
+                        return None, str(err)
+
                     for i, S in enumerate(self.sinks_now):
                         if S.sink_no_str == target_sink:
                             Replace = namedtuple('Sink',
@@ -360,7 +415,7 @@ class PulseAudio:
         :param thread: Used to be toplevel, then tried play_refresh() & failed
         :return sink: Pulse Audio sink number or None if pid not found
         """
-
+        who = who_am_i + "find(): "
         #print("\nPulse working\n", self.get_all_sinks())
         #self.pulse_is_working = False
         #print("\nPulse NOT working\n", self.get_all_sinks())
@@ -385,7 +440,18 @@ class PulseAudio:
                     if str(self.last_pid_sink) == self.curr_pid_sink:
                         self.info_cast("Same sink used twice in row: " +
                                        self.curr_pid_sink)
-                    return str(Sink.sink_no_str)
+                    ''' If too quick the volume is 'None' so drop down to wait.
+                        Also the sink# is 1 less than the real sink# later after
+                        the Volume is no longer 'None'.
+                    '''
+                    if Sink.volume is not None:
+                        return str(Sink.sink_no_str)
+                    else:
+                        ''' Volume is 'None' so wait 5 ms. '''
+                        print(who + "sink:", Sink.sink_no_str,
+                              "has volume of:", Sink.volume)
+                        break  # Infinite loop when break used.
+                        #return str(Sink.sink_no_str)
 
             ext.t_init('pav.find')
             self.poll_fades()
@@ -538,6 +604,9 @@ class PulseAudio:
     def get_pulse_control(self):
         """ Seemed like a good idea at the time but, it crashes after being
             called a few times.
+            
+            Morale of the story: ONLY CALL pulsectl ONCE !
+
         """
         self.pulse_is_working = True
         ext.t_init("pulse = pulsectl.Pulse()")
@@ -548,10 +617,68 @@ class PulseAudio:
             raise pulsectl.PulseError('mserve.py get_pulse_control() Failed to ' +
                                       'connect to pulse {} {}'.format(type(err), err))
         ext.t_end('no_print')  # from: 0.0017430782 to 0.0037407875
+        # noinspection SpellCheckingInspection
+        ''' Random tinkering
+
+            1. Output to SONY BRAVIA TV - nvidia card:
+                >>> pulse.sink_list()
+                [<PulseSinkInfo at 7f3c2a188850 - 
+                description=u'GM204 High Definition Audio Controller Digital Stereo (HDMI)', 
+                index=0L, mute=0, name=u'alsa_output.pci-0000_01_00.1.hdmi-stereo', 
+                channels=2, volumes=[100% 100%]>, 
+
+                <PulseSinkInfo at 7f3c2a188250 - 
+                description=u'Built-in Audio Analog Stereo', 
+                index=2L, mute=0, name=u'alsa_output.pci-0000_00_1f.3.analog-stereo', 
+                channels=2, volumes=[52% 52%]>]
+
+                    NOTE: last index=2L
+
+            2. Output to TCL/GOOGLE TV - intel chipset:
+                >>> pulse.sink_list()
+                [<PulseSinkInfo at 7f3c2a188f50 - 
+                description=u'GM204 High Definition Audio Controller Digital Stereo (HDMI)', 
+                index=0L, mute=0, name=u'alsa_output.pci-0000_01_00.1.hdmi-stereo', 
+                channels=2, volumes=[100% 100%]>, 
+
+                <PulseSinkInfo at 7f3c2a1a8110 - 
+                description=u'Built-in Audio Digital Stereo (HDMI)', 
+                index=3L, mute=0, name=u'alsa_output.pci-0000_00_1f.3.hdmi-stereo', 
+                channels=2, volumes=[100% 100%]>]
+
+                    NOTE: last index=3L
+                          'Built-in Audio Digital Stereo (HDMI)'
+                          'alsa_output.pci-0000_00_1f.3.hdmi-stereo'
+                          pavucontrol does NOT update VU meter DB level bar
+
+            3. Output to LAPTOP speakers - intel chipset:
+                >>> pulse.sink_list()
+                [<PulseSinkInfo at 7f3c2a188850 -
+                 description=u'GM204 High Definition Audio Controller Digital Stereo (HDMI)', 
+                 index=0L, mute=0, name=u'alsa_output.pci-0000_01_00.1.hdmi-stereo', 
+                 channels=2, volumes=[100% 100%]>, 
+
+                 <PulseSinkInfo at 7f3c2a1a8610 - 
+                 description=u'Built-in Audio Analog Stereo', 
+                 index=4L, mute=0, name=u'alsa_output.pci-0000_00_1f.3.analog-stereo', 
+                 channels=2, volumes=[52% 52%]>]
+
+                    NOTE: last index=4L
+                          'Built-in Audio Analog Stereo'
+                          'alsa_output.pci-0000_00_1f.3.analog-stereo'
+
+            4. Output to TCL/GOOGLE TV - intel chipset:
+                ... Same as before ...
+
+                    NOTE: last index=5L
+                          pavucontrol does NOT update VU meter DB level bar
+
+        '''
         return self.pulse
 
 
 #class Sink(namedtuple('Sink', 'sink_no_str, volume, name, pid, user')):
+# Future class
 
 
 # global functions
@@ -560,6 +687,9 @@ def parse_line_for_assigned_value(line, search, current):
 
         If already found, return the original value. Sample line:
             application.process.id = "14765"
+
+        Make this a global function in case another module needs same
+        function someday...
 
     """
     if current:

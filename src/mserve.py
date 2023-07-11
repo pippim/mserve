@@ -61,6 +61,7 @@ warnings.simplefilter('default')  # in future Python versions.
 #       July 02 2023 - Temporary filenames Windows/Mac. Enhance artwork.
 #       July 04 2023 - Create FineTune() class. Major bugs worked out.
 #       July 05 2023 - Create Help buttons that open pippim website pages.
+#       July 07 2023 - Begin vu_pulse_audio.py for pulsectl.Pulse interface.
 #       July 09 2023 - New PA fading - faster, easier, smaller & more robust.
 
 # noinspection SpellCheckingInspection
@@ -247,6 +248,7 @@ REQUIRES:
     sudo apt install python-pyaudio          # For VU meters
     sudo apt install python-requests         # Get Cover Art
     sudo apt install python-subprocess32     # To compare locations
+    sudo apt install python-simplejson       # automatically installed Ubuntu
     sudo apt install python-tk               # Tkinter (default in Windows & Mac)
     sudo apt install wmctrl                  # To move Kid3 or Fishing window
     sudo apt install x11-apps                # xwd window dump (screen shot)
@@ -353,18 +355,11 @@ from ttkwidgets import CheckboxTreeview
 import pickle
 from random import shuffle
 
-#import getpass  # Get username for file storage - Comment out July 5, 2023
-try:
-    import notify2              # send inotify over python-dbus
-except ImportError:  # No module named 'notify2'
-    pass  # Not installed for python 3
+import notify2              # send inotify over python-dbus
 
 import locale               # To set thousands separator as , or .
 locale.setlocale(locale.LC_ALL, '')  # Use '' for auto locale selecting
-try:
-    import numpy as np          # For image processing speed boost
-except ImportError:  # No module named 'numpy'
-    pass  # Not installed for python 3
+import numpy as np          # For image processing speed boost
 
 # mserve modules
 import global_variables as g
@@ -860,6 +855,8 @@ class PlayCommonSelf:
         self.sync_paused_music = None       # Did sync force play to pause?
 
         # Pause/Play Button changes dynamically when pp_toggle() called
+        self.pp_toggle_fading_out = None    # Used to reverse fade
+        self.pp_toggle_fading_in = None     # Used to reverse fade
         self.pp_state = "Playing"
         self.pp_play_text = "▶  Play"       # Can make global var because
         self.pp_pause_text = "❚❚ Pause"     # same text used other classes
@@ -7036,8 +7033,39 @@ $ wmctrl -l -p
         self.art_label.configure(image=self.play_current_song_art)
 
     # noinspection PyUnusedLocal
-    def pp_toggle(self, *args):
+    def pp_toggle(self, fade_then_stop=False, *args):
         """ Pause/Play button pressed. Signal ffplay and set button text
+            When called from button click play/pause fade_the_stop,
+            chron_apply_filter(), chron_reverse_filter and play_close()
+            When called from self.song_set_ndx, fade_then_kill = True
+
+
+        # When paused music at 50%, even though ffplay closes need to
+        # set volume to 100% because next load of ffplay inherits setting.
+        if self.play_ctl.sink is not "":
+            if self.play_ctl.state == "start":
+                if fade_then_kill:
+                    ''' a little debugging. each song start vol 25, 20, 8, 2, 1, 0... '''
+                    hold_sink = (self.play_ctl.sink + '.')[:-1]
+                    print("\nfade_then_kill - hold_sink:",
+                          hold_sink, id(hold_sink), id(self.play_ctl.sink))
+                    hold_pid = self.play_ctl.pid + 1 - 1
+                    print("hold_pid:", hold_pid, id(hold_pid), id(self.play_ctl.pid))
+                    curr_vol = pav.get_volume(hold_sink)
+                    if curr_vol is not None:
+                        hold_vol = curr_vol + 1 - 1  # Break reference to sinks_now
+                        print("hold_vol:", hold_vol)
+                        self.play_ctl.pid = 0  # Stop play_ctl from killing
+                        pav.fade(hold_sink, hold_vol, 0.0, 1,
+                                 ext.kill_pid_running, hold_pid)
+                    else:
+                        self.info.cast("wrapup_song(): Got None for volume on sink#: " +
+                                       str(hold_sink))
+                else:
+                    self.play_ctl.stop()  # Note poll_fades is in outer loop.
+            ''' July 9, 2023 - Doesn't matter anymore if volume down. '''
+            #pav.set_volume(self.play_ctl.sink, 100)
+
         """
         # print('pp_toggle() has been called:', ext.h(time.time()))
         if not self.play_top_is_active:
@@ -7054,39 +7082,67 @@ $ wmctrl -l -p
         #    return
 
         if self.pp_state is "Playing":
-            # Volume down in 10 steps of 7.5% with .05 sec in-between, end @ 25%
             # maximum volume is usually 100% but 60% or so during hockey commercials
-            #step_volume(self.play_ctl.sink, self.get_max_volume(),
-            #            25, 10, .05, thread=self.play_vu_meter)
-            pav.fade(self.play_ctl.sink, self.get_max_volume(), 25, 1)
-            # TODO: losing and gaining second or two at times
+            ''' Use the new fade_then_stop() function 
+            FAST CLICK PLAY THEN PAUSE:
+            Illogically, last state is:	stop
+            
+            self.pp_toggle_fading_out = None    # Used to reverse fade
+            self.pp_toggle_fading_in = None     # Used to reverse fade
+            '''
+            self.pp_toggle_fading_out = True
+            if self.pp_toggle_fading_in:
+                self.pp_toggle_fading_in = False
+            pav.fade(self.play_ctl.sink, self.get_max_volume(), 25, .5,
+                     finish_cb=self.pp_finish_fade_out)
             self.secs_before_pause = self.play_ctl.elapsed()  # Must call before .stop()
-            #self.play_update_progress(start_secs=elapsed)
-            self.play_ctl.stop()
             self.pp_state = "Paused"  # Was Playing now is Paused
             self.set_pp_button_text()
-            if self.play_hockey_active:
-                # Restore TV sound to 100%
-                set_tv_sound_levels(25, 100)
+            if self.play_hockey_active:  # Is TV hockey broadcast on air?
+                set_tv_sound_levels(25, 100)  # Restore TV sound to 100%
         else:
             ''' Important: self.song_set_ndx() repeats some of below.
                            Check there when changing below.
             '''
             # Was paused so resume playing
             if self.play_hockey_active:
-                # Soften volume on tv to 25%
-                set_tv_sound_levels(100, 25)
-            # Volume at 25% turned up in 10 steps of .05 sec to maximum volume
+                set_tv_sound_levels(100, 25)  # Soften volume on tv to 25%
             self.current_song_t_start = time.time()
-            self.play_ctl.cont()
             elapsed = self.play_ctl.elapsed()  # Must call after .cont()
-            #self.play_update_progress(start_secs=elapsed)
-            # maximum volume is usually 100% but 60% or so during hockey commercials
-            #step_volume(self.play_ctl.sink, 25, self.get_max_volume(),
-            #            10, .05, thread=self.play_vu_meter)
-            pav.fade(self.play_ctl.sink, 25, self.get_max_volume(), 1)
+            ''' Can be reversing fade out from Pause the click to play
+                A 1 second fade in when song already has 1 second fade in
+                seems like volume starts right away after a second. 
+            '''
+            self.pp_toggle_fading_in = True
+            if self.pp_toggle_fading_out:
+                pav.fade(self.play_ctl.sink, 25, self.get_max_volume(), .5,
+                         finish_cb=self.pp_finish_fade_in())
+                self.pp_toggle_fading_out = False
+            else:
+                self.play_ctl.cont()
+                pav.fade(self.play_ctl.sink, 25, self.get_max_volume(), .5)
+
+            #pav.fade(self.play_ctl.sink, 25, self.get_max_volume(), 1)
             self.pp_state = "Playing"  # Was Paused now is Playing
             self.set_pp_button_text()
+
+    def pp_finish_fade_out(self):
+        """ Need def pp_finish_fade_in(self): to round out """
+        if not self.pp_toggle_fading_out:
+            print("pp_finish_fade_out(): pp_toggle_fading_out is FALSE")
+            return  # Got cancelled and callback wasn't reversed
+
+        self.pp_toggle_fading_out = False
+        self.play_ctl.stop()
+
+    def pp_finish_fade_in(self):
+        """ Need def pp_finish_fade_in(self): to round out """
+        if not self.pp_toggle_fading_in:
+            print("pp_finish_fade_in(): pp_toggle_fading_in is FALSE")
+            return  # Got cancelled and callback wasn't reversed
+
+        self.pp_toggle_fading_in = False
+        self.play_ctl.cont()
 
     def get_max_volume(self):
         if self.play_hockey_active:
@@ -7319,18 +7375,18 @@ $ wmctrl -l -p
             chron_apply_filter(), chron_reverse_filter and play_close()
             When called from self.song_set_ndx, fade_then_kill = True
         """
-        # When paused music at 50%, even though ffplay closes need to
-        # set volume to 100% because next load of ffplay inherits setting.
         if self.play_ctl.sink is not "":
             if self.play_ctl.state == "start":
                 if fade_then_kill:
+                    ''' a little debugging. each song start vol 25, 20, 8, 2, 1, 0... '''
                     hold_sink = (self.play_ctl.sink + '.')[:-1]
                     print("\nfade_then_kill - hold_sink:",
                           hold_sink, id(hold_sink), id(self.play_ctl.sink))
                     hold_pid = self.play_ctl.pid + 1 - 1
                     print("hold_pid:", hold_pid, id(hold_pid), id(self.play_ctl.pid))
-                    hold_vol = pav.get_volume(hold_sink)
-                    if hold_vol is not None:
+                    curr_vol = pav.get_volume(hold_sink)
+                    if curr_vol is not None:
+                        hold_vol = curr_vol + 1 - 1  # Break reference to sinks_now
                         print("hold_vol:", hold_vol)
                         self.play_ctl.pid = 0  # Stop play_ctl from killing
                         pav.fade(hold_sink, hold_vol, 0.0, 1,
@@ -7340,6 +7396,7 @@ $ wmctrl -l -p
                                        str(hold_sink))
                 else:
                     self.play_ctl.stop()  # Note poll_fades is in outer loop.
+
             ''' July 9, 2023 - Doesn't matter anymore if volume down. '''
             #pav.set_volume(self.play_ctl.sink, 100)
 
@@ -7686,10 +7743,17 @@ $ wmctrl -l -p
                 pav.set_volume(self.play_ctl.sink, 25)
                 self.pp_state = "Paused"  # Set Play/Pause status to paused
                 self.set_pp_button_text()
+                ''' a little debugging. each song start vol 25, 20, 8, 2, 1, 0... '''
+                vol = pav.get_volume(self.play_ctl.sink)
+                print("\nplay_on_song() - Resume Paused:", vol,
+                      " | self.play_ctl.sink:", self.play_ctl.sink,
+                      " | self.play_ctl.pid:", self.play_ctl.pid)
             else:
                 ''' a little debugging. each song start vol 25, 20, 8, 2, 1, 0... '''
                 vol = pav.get_volume(self.play_ctl.sink)
-                print("resume vol:", vol, "self.play_ctl.sink:", self.play_ctl.sink)
+                print("\nplay_on_song() - Resume volume:", vol,
+                      " | self.play_ctl.sink:", self.play_ctl.sink,
+                      " | self.play_ctl.pid:", self.play_ctl.pid)
                 #if vol and float(vol) != 100.0:
                 if self.play_ctl.sink is not None:
                     pav.set_volume(self.play_ctl.sink, 100.0)
@@ -7703,9 +7767,9 @@ $ wmctrl -l -p
         else:
             ''' a little debugging. each song start vol 25, 20, 8, 2, 1, 0... '''
             vol = pav.get_volume(self.play_ctl.sink)
-            print("\nplay_one_song() Check for vol:", vol,
-                  "self.play_ctl.sink:", self.play_ctl.sink,
-                  "self.play_ctl.pid:", self.play_ctl.pid)
+            print("\nplay_one_song() Check Volume:", vol,
+                  " | self.play_ctl.sink:", self.play_ctl.sink,
+                  " | self.play_ctl.pid:", self.play_ctl.pid)
             #if vol and float(vol) != 100.0:  # hold_sink:
             if self.play_ctl.sink is not None:
                 pav.set_volume(self.play_ctl.sink, 100.0)
@@ -10359,9 +10423,9 @@ mark set markName index"
 
         ''' a little debugging. each song start vol 25, 20, 8, 2, 1, 0... '''
         vol = pav.get_volume(self.sam_ctl.sink)
-        print("\nlib_tree_play() Check for vol:", vol,
-              "self.sam_ctl.sink:", self.sam_ctl.sink,
-              "self.sam_ctl.pid:", self.sam_ctl.pid)
+        print("\nlib_tree_play() Check Volume:", vol,
+              " | self.sam_ctl.sink:", self.sam_ctl.sink,
+              " | self.sam_ctl.pid:", self.sam_ctl.pid)
         # if vol and float(vol) != 100.0:  # hold_sink:
         if self.sam_ctl.sink is not None:
             pav.set_volume(self.sam_ctl.sink, 100.0)
@@ -13203,7 +13267,7 @@ class FileControl(FileControlCommonSelf):
         text += "New state passed is:\t" + self.state
         text += "\nIllogically, last state is:\t" + str(last_state)
         text += "\n\nCheck console log for traceback"
-        toolkit.print_trace()
+        # toolkit.print_trace()  # Getting sick of seein this !
         print(text)
         self.info.cast(text, 'error', 'add')
         return False
@@ -13617,6 +13681,11 @@ class FileControl(FileControlCommonSelf):
         then reset last access time as if song was not played.
 
         NOTE: The file's "Change Time" is updated whenever touch is run
+
+        REVIEW:
+            import os
+            os.utime(path_to_file, (access_time, modification_time))
+            https://www.tutorialspoint.com/python/os_utime.htm
 
         :param new_stat: Optional stat.st_time to force, otherwise current time.
         :return old_time, new_time:
