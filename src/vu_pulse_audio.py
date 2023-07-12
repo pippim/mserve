@@ -1,5 +1,14 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+"""
+Author: Pippim
+License: GNU GPLv3
+Source: This repository
+Description: mserve - Music Server - Pulse Audio controls
+"""
+
+from __future__ import print_function  # Must be first import
+from __future__ import with_statement  # Error handling for file opens
 
 # ==============================================================================
 #
@@ -16,8 +25,14 @@ NOTE: Use pavucontrol to create loopback from sound output to microphone:
 
 """
 
-from __future__ import print_function  # Must be first import
-from __future__ import with_statement  # Error handling for file opens
+
+import mserve_config as cfg
+caller = "vu_pulse_audio.py"
+if not cfg.main(caller):
+    print("mserve not fully installed. Aborting...")
+    exit()
+else:
+    print(caller, "finished call to mserve_config.py with SUCCESS!")
 
 import global_variables as g
 
@@ -25,32 +40,13 @@ if g.USER is None:
     print('vu_pulse_audio.py was forced to run g.init()')
     g.init()
 
-try:  # Python 3
-    import tkinter as tk
-    import tkinter.ttk as ttk
-    import tkinter.font as font
-    import tkinter.filedialog as filedialog
-    import tkinter.messagebox as messagebox
-    import tkinter.simpledialog as simpledialog
-    import tkinter.scrolledtext as scrolledtext
-    PYTHON_VER = "3"
-
-except ImportError:  # Python 2
-    import Tkinter as tk
-    import ttk
-    import tkFont as font
-    import tkFileDialog as filedialog
-    import tkMessageBox as messagebox
-    import tkSimpleDialog as simpledialog
-    import ScrolledText as scrolledtext
-    PYTHON_VER = "2"
-
 import os
 import time
 from collections import OrderedDict, namedtuple
 
 # Subdirectory /pulsectl under directory where mserve.py located
 from pulsectl import pulsectl
+#print(pulsectl.__file__)  # Using - mserve/src/pulsectl?
 
 # Pippim modules
 import external as ext
@@ -61,13 +57,8 @@ who_am_i = "vu_pulse_audio.py PulseAudio."
 
 
 class PulseAudio:
-    """ Manage list of dictionaries created from Pulse Audio information.
-        self.pav = PulseAudio()
-        self.pav.find(pid) - blocking function that finds new sink 1 second limit
-        self.pav.get_all_sinks() - Returns list of tuples [ (), ()... ]
-
-        self.pav.add(sink)
-        self.pav.remove(sink)
+    """ Manage list of sinks created from Pulse Audio information.
+        Fade in/out sound volumes when polled every 33ms.
     """
 
     def __init__(self, Info=None):
@@ -85,24 +76,21 @@ class PulseAudio:
                                       'connect to pulse {} {}'.format(type(err),
                                                                       err))
 
-        self.last_pid_sink = None
-        self.curr_pid_sink = None
+        self.last_pid_sink = None  # Used for stability to ensure same sink
+        self.curr_pid_sink = None  # number isn't classified as a new sink.
         self.aliens = None  # To turn down all apps except 'ffplay'
 
-        self.sinks_now = None  # mserve formatted list of tuple sinks
         self.last_sink_input_list = None  # = self.pulse.sink_input_list()
-
-        self.get_all_sinks()  # saves to self.sinks_now
+        self.sinks_now = None  # mserve formatted list of tuple sinks
+        self.get_all_sinks()  # auto saves to self.sinks_now
         self.sinks_at_init = self.sinks_now
         self.spam_count = 0  # Prevent error message flooding
         self.poll_count = 0  # To print first 10 job times to fade 
         self.fade_list = []
-        self.dict = {"sink": "", "begin": 0.0, "end": 0.0, "start_time": 0.0,
-                     "duration": 0.0}
-
+        self.dict = {}
 
     def fade(self, sink_no_str, begin, end, duration, finish_cb=None, arg_cb=None):
-        """ Add new fade_dict to fade_list
+        """ Add new self.dict to fade_list
             'finish_cb': is an optional callback when fade cycle is completed
             'arg_cb': is an optional parameter to the optional callback
         """
@@ -121,46 +109,33 @@ class PulseAudio:
         self.dict['history'] = []  # Used for debugging
         self.dict['last_time'] = now  # Just for debugging
         # If sink_no_str is already being faded, reverse it
-        if not self.reverse_fade(self.dict, now):  # When True, an existing fade
+        if not self.reverse_fade(now):  # When True, an existing fade
             # Add new fade job into queue where it will be processed every .033 secs
             self.fade_list.append(self.dict)
 
-    def reverse_fade(self, new_dict, now):
+    def reverse_fade(self, now):
         """ Fade was already started now needs to reverse.
-            For example, pause was clicked and fade out started. Then
-            1/4 second later play was clicked but only 75% way through the
-            1 second fade out. Now need to fade in for 1/4 second from 75%
-            volume to 100% volume.
 
-            Previously play_top.update() was delayed until fade finished
-            and then next play/pause click was read. Now it will interrupt
-            and there can be two fades for the same sink in the list.
+            Currently reversing fade needs same duration as original fade.
 
-            The first think poll() can do is check for duplicate sink_no_str.
-
-            Also the sink objects aren't being saved to the self.sinks_now
+            poll_fades() calls reverse_fade() before adding new fade to list.
         """
         who = who_am_i + "reverse_fade(): "
-        now = time.time()
-        self.dict = new_dict
         for i, scan_dict in enumerate(self.fade_list):
             if scan_dict['sink_no_str'] == self.dict['sink_no_str']:
-                search_dict = dict(scan_dict)  # Make shallow copy, will lose 'history'
-
-                # Replace original fade with opposite fading
-                elapsed = now - search_dict['start_time']
-                new_duration = search_dict['duration'] - elapsed
-                # What new duration is different than last duration?
-                if self.dict['duration'] != search_dict['duration']:
+                old_dict = dict(scan_dict)  # Shallow copy of old fade
+                # Replace original fade with new fade in opposite direction
+                elapsed = now - old_dict['start_time']
+                new_duration = old_dict['duration'] - elapsed
+                if self.dict['duration'] != old_dict['duration']:
+                    # What to do when new duration is different?
                     print(who, "self.dict['duration']:", self.dict['duration'],
-                          "search_dict['duration']:", search_dict['duration'])
+                          "old_dict['duration']:", old_dict['duration'])
                 self.dict['duration'] = new_duration
                 # New beginning volume percent is where fade left off last cycle
-                self.dict['begin_perc'] = search_dict['curr_perc']
+                self.dict['begin_perc'] = old_dict['curr_perc']
                 # Debugging fields not normally accessed
-                self.dict['curr_perc'] = search_dict['curr_perc'] 
-                # Replace fade(sink_no_str, begin, end, duration,
-                #              finish_cb=None, arg_cb=None)
+                self.dict['curr_perc'] = old_dict['curr_perc'] 
                 print(who + "started for sink:", self.dict['sink_no_str'],
                       "from:", self.dict['begin_perc'],
                       "to:", self.dict['end_perc'])
@@ -169,13 +144,14 @@ class PulseAudio:
         return False  # Did not reverse previous fade
     
     def poll_fades(self):
-        """ Every 33ms (in theory) process next step of fade job
-            When finished, set volume to final amount (end_perc)
+        """ Every 33ms (in theory) process next step of every fade job in queue
+            When finished, set volume to final amount in self.dict['end_perc']
         """
 
-        ''' Process every fade_dict in the fade_list '''
+        ''' Process every self.dict in the fade_list '''
         now = time.time()
         for i, self.dict in enumerate(self.fade_list):
+
             ''' If all done set final volume and grab next fade in queue '''
             if now >= self.dict['start_time'] + self.dict['duration']:
                 self.set_volume(self.dict['sink_no_str'], self.dict['end_perc'])
@@ -186,6 +162,7 @@ class PulseAudio:
             current_duration = now - self.dict['start_time']
             distance = self.dict['end_perc'] - self.dict['begin_perc']
             adjust = distance * current_duration / self.dict['duration']
+            self.dict['curr_perc'] = self.dict['begin_perc'] + adjust
             self.set_volume(
                 self.dict['sink_no_str'], self.dict['begin_perc'] + adjust)
 
@@ -196,6 +173,7 @@ class PulseAudio:
     def poll_fades_debug(self):
         """ Every 33ms (in theory) process next step of fade job
             When finished, set volume to final amount (end_perc)
+            Same as poll_fades() except loaded with debug information.
         """
         who = who_am_i + "poll_fades_debug(): "
         ext.t_init('self.pav.poll()')
@@ -284,8 +262,9 @@ class PulseAudio:
                 self.dict['finish_cb']()  # Call function name without arg.
 
     def get_volume(self, sink_no_str, refresh=True):
-        """ Uses self.sinks_now which was set the last time that
-            self.get_all_sinks() was run.
+        """ Get current volume of sink.
+        :param sink_no_str: Pulse Audio sink number converted to string
+        :param refresh: When False, reuse self.sinks_now from last time
         """
         who = who_am_i + "get_volume(): "
         if refresh:
@@ -299,19 +278,15 @@ class PulseAudio:
 
     def set_volume(self, target_sink, percent):
         """ Set volume and return time required to do it
-            Note use: pulse.volume_set_all_chans()
-            DO NOT use: volume_change_all_chans() which changes volume by
-                        adjustment percentage.
+            Note it uses: volume_set_all_chans()
+            DOES NOT use: volume_change_all_chans() which changes volume by
+                          adjustment percentage.
         """
         who = who_am_i + "set_volume(): "
-        # print("\n set_volume() -- looking for sink:", target_sink,
-        #      "setting volume to:", percent, "%",
-        #      "float(percent) / 100.0:", float(percent) / 100.0)
-        # If Python pulseaudio is working, use the fast method
         if self.pulse_is_working:
             ''' Fast method using pulse audio direct interface '''
             ext.t_init(who + '-- pulse.volume_change')
-            err = None  # No known pulsectl errors have appeared yet
+            err = None  # Default to no error
             try:
                 self.last_sink_input_list = self.pulse.sink_input_list()
             except pulsectl.pulsectl.PulseOperationFailed as err:  # 56
@@ -321,7 +296,6 @@ SECOND Exception HAPPENED AFTER `pulseaudio -k` to fix FIRST EXCEPTION
   File "/home/rick/python/pulsectl/pulsectl.py", line 523, in _pulse_op_cb
     if not self._actions[act_id]: raise PulseOperationFailed(act_id)
 pulsectl.pulsectl.PulseOperationFailed: 56
-                
                 '''
                 print(who + "pulsectl.pulsectl.PulseOperationFailed:", err)
                 return None, str(err)
@@ -355,6 +329,7 @@ pulsectl.pulsectl.PulseOperationFailed: 144
                             Replace = namedtuple('Sink',
                                                  'sink_no_str volume name pid user')
                             # tuples immutable so recreate a new one based on old
+                            # noinspection PyArgumentList
                             replace = Replace(str(S.sink_no_str), int(percent),
                                               S.name, S.pid, S.user)
                             self.sinks_now[i] = replace
@@ -406,28 +381,20 @@ pulsectl.pulsectl.PulseOperationFailed: 144
         # if pipe.return_code == 0:                  # Future use
         return job_time, err
 
-    def find(self, pid, thread=None):
+    def find(self, pid):
         """
         Checks every 5 ms for Pulse Audio sink to appear after "ffplay" was
         launched as background task and the PID was discovered.
 
         :param pid: Linux process ID of "ffplay" instance just started
-        :param thread: Used to be toplevel, then tried play_refresh() & failed
         :return sink: Pulse Audio sink number or None if pid not found
         """
         who = who_am_i + "find(): "
-        #print("\nPulse working\n", self.get_all_sinks())
-        #self.pulse_is_working = False
-        #print("\nPulse NOT working\n", self.get_all_sinks())
-        #self.pulse_is_working = True
         ''' Originally sleeping for 5 ms, but it's blocking function
             and last song fading out for 1 second doesn't progress
         '''
-        if thread and thread != "this is crazy":
-            self.last_pid_sink = self.curr_pid_sink
         self.last_pid_sink = self.curr_pid_sink
-
-
+        print_once = True
         for i in range(1000):  # Take 5 seconds maximum
             ext.t_init('PulseAudio.find()')
             self.sinks_now = self.get_all_sinks()
@@ -445,13 +412,15 @@ pulsectl.pulsectl.PulseOperationFailed: 144
                         the Volume is no longer 'None'.
                     '''
                     if Sink.volume is not None:
+                        # Zero volume is ok so don't test "if Sink.Volume"
                         return str(Sink.sink_no_str)
                     else:
                         ''' Volume is 'None' so wait 5 ms. '''
-                        print(who + "sink:", Sink.sink_no_str,
-                              "has volume of:", Sink.volume)
-                        break  # Infinite loop when break used.
-                        #return str(Sink.sink_no_str)
+                        if print_once:
+                            print(who + "sink:", Sink.sink_no_str,
+                                  "has volume of:", Sink.volume)
+                        print_once = False
+                        break  # Wait another 5ms and to get good volume
 
             ext.t_init('pav.find')
             self.poll_fades()
@@ -461,25 +430,27 @@ pulsectl.pulsectl.PulseOperationFailed: 144
             time.sleep(sleep)
 
     def registerInfoCentre(self, Info):
+        """ Module imported in main() before InfoCentre() class defined. """
         self.info = Info
 
     def fade_out_aliens(self, fade_time):
-        """ Turn down all applications except 'ffplay' """
+        """ Turn down volume for all applications except 'ffplay'.
+            E.G. Firefox would be an alien """
         self.get_all_sinks()
-        self.aliens = list(self.sinks_now)
+        self.aliens = list(self.sinks_now)  # Shallow copy for fade_in() later
         for Sink in self.aliens:
             if not Sink.name.startswith("ffplay"):
                 self.fade(Sink.sink_no_str, Sink.volume, 1.0, fade_time)
 
     def fade_in_aliens(self, fade_time):
-        """ Turn down all applications except 'ffplay' """
-        # FileControl.elapsed() requested when song ended
+        """ Turn up volume for all applications except 'ffplay'.
+            E.G. Firefox would be an alien """
         self.get_all_sinks()
         for Now in self.sinks_now:
             if not Now.name.startswith("ffplay"):
-                if Now.volume != 1.0:
+                if Now.volume != 1.0:  # fade_out went down to 1%
                     continue  # User manually reset volume
-                for Sink in self.aliens:
+                for Sink in self.aliens:  # Use shallow copy from fade_out()
                     if Sink.sink_no_str == Now.sink_no_str:
                         self.fade(Sink.sink_no_str, Now.volume, Sink.volume,
                                   fade_time)
@@ -493,8 +464,8 @@ pulsectl.pulsectl.PulseOperationFailed: 144
                 application name
                 pid
                 user name
-                
-            April 29, 2023 - app_vol has glitch "0]" for speech-dispatcher
+
+                TODO: Add temp_filename to tuple
         """
 
         self.sinks_now = []  # List of tuples returned and saved locally
@@ -504,22 +475,10 @@ pulsectl.pulsectl.PulseOperationFailed: 144
             # .sink_input_list() only takes 0.0001280308 to 0.0008969307
             for sink in self.pulse.sink_input_list():
                 this_volume = str(sink.volume)
-                ''' TODO: Test when L-R balance isn't even '''
-                # sink.volume = channels = 2, volumes = [100 % 100 %]
+                # <PulseVolumeInfo... - channels=1, volumes=[0%]>
+                # <PulseVolumeInfo... - channels=2, volumes=[25% 25%]>
                 this_volume = this_volume.split('[')[1]
-                this_volume = this_volume.split(' ')[0]
-                this_volume = this_volume.replace('%', '')
-                if this_volume.endswith(']'):
-                    # Bug end up with "0]" fixed Bug April 29, 2023
-                    this_volume = this_volume[:-1]
-                # noinspection SpellCheckingInspection
-                '''
-                >>> pulse.sink_input_list()[2].proplist
-                u'application.name': u'ffplay', 
-                u'application.process.id': u'13166', 
-                u'application.process.user': u'rick'
-                '''
-
+                this_volume = this_volume.split('%')[0]
                 # create 'Sink' named tuple class
                 Sink = namedtuple('Sink', 'sink_no_str volume name pid user')
                 # noinspection PyArgumentList
@@ -531,7 +490,6 @@ pulsectl.pulsectl.PulseOperationFailed: 144
             return self.sinks_now
 
         ''' If Python pulsectl.py audio isn't working, then use the slow method '''
-
         all_lines = os.popen('pactl list sink-inputs').read().splitlines()
 
         this_sink = ""
@@ -544,12 +502,12 @@ pulsectl.pulsectl.PulseOperationFailed: 144
         '''
         Sink Input #575
             ... (SNIP) ...
-        Volume: front-left: 65536 / 100% / 0.00 dB,   front-right: 65536 / 100% ...
-            ... (SNIP) ...
-        Properties:
-            application.name = "ffplay"
-            application.process.id = "14765"
-            application.process.user = "rick"
+            Volume: front-left: 65536 / 100% / 0.00 dB,   front-right: ...
+                ... (SNIP) ...
+            Properties:
+                application.name = "ffplay"
+                application.process.id = "14765"
+                application.process.user = "rick"
         '''
         for line in all_lines:
             if in_sink is False and "Sink Input #" in line:
@@ -561,21 +519,12 @@ pulsectl.pulsectl.PulseOperationFailed: 144
                 # Volume: front-left: 32768 /  50% / -18.06 dB,   front-right ...
                 this_volume = line.split('/')[1]  # Grab 50% or 100%, etc
                 this_volume = this_volume.replace(' ', '')
-                if this_volume.endswith(']'):
-                    # July 8, 2023 - Bug fix from above copied here just in case 
-                    this_volume = this_volume[:-1]
                 this_volume = int(this_volume.replace('%', ''))
                 in_volume = True
                 continue
-            # noinspection SpellCheckingInspection
+
             if in_sink is True and in_volume is True:
-                # inspection SpellCheckingInspection
-                '''
-                    application.name = "ffplay"
-                    application.process.id = "14765"
-                    application.process.user = "rick"
-                '''
-                # application.name = "ffplay"
+
                 this_app = parse_line_for_assigned_value(
                     line, "application.name", this_app)
                 this_pid = parse_line_for_assigned_value(
@@ -618,7 +567,7 @@ pulsectl.pulsectl.PulseOperationFailed: 144
                                       'connect to pulse {} {}'.format(type(err), err))
         ext.t_end('no_print')  # from: 0.0017430782 to 0.0037407875
         # noinspection SpellCheckingInspection
-        ''' Random tinkering
+        ''' Random tinkering - Preliminary research to set sound output to recording
 
             1. Output to SONY BRAVIA TV - nvidia card:
                 >>> pulse.sink_list()

@@ -1,5 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+"""
+Author: Pippim
+License: GNU GPLv3
+Source: This repository
+Description: Global variables shared by all Pippim mserve modules
+"""
 
 # ==============================================================================
 #
@@ -14,7 +20,9 @@ from __future__ import print_function       # Must be first import
 
 import mserve_config as cfg
 
-from appdirs import *   # Get application & storage directory names
+# Get application & storage directory names
+from appdirs import user_data_dir, user_config_dir
+
 import tempfile         # Gets TMP_DIR /tmp, C:\Temp, etc.
 import os               # USER_ID = str(os.get uid())
 import pwd              # USER = pwd.get pw uid(os.get uid()).pw_name
@@ -53,7 +61,7 @@ MAX_DEPTH = 3           # Sanity check if starting at c:\ or /
 HELP_URL = "https://www.pippim.com/programs/mserve.html#"
 
 
-def init():
+def init(caller=None):
     """ This should only be called once by the main module
         Child modules will inherit values. For example if they contain
         
@@ -70,6 +78,13 @@ def init():
         5   pw_dir      User home directory
         6   pw_shell    User command interpreter
     """
+    if caller and caller is not "mserve_config.py":
+        if not cfg.main(caller):
+            print("mserve not fully installed. Aborting...")
+            exit()
+        else:
+            print("mserve_config.py is calling global_variables.py !")
+
     global USER, USER_ID, HOME, USER_DATA_DIR, USER_CONFIG_DIR, MSERVE_DIR
     global PROGRAM_DIR, TEMP_DIR
 
@@ -84,8 +99,30 @@ def init():
     appname = "mserve"
     app_author = "pippim"
     USER_DATA_DIR = MSERVE_DIR = user_data_dir(appname, app_author)
-    # print("USER_DATA_DIR:", USER_DATA_DIR)
     USER_CONFIG_DIR = user_config_dir(appname, app_author)
+    # noinspection Pep8CodingStyleViolationW605
+    '''
+        What directory should your app use for storing user data? If running on Mac OS X, you
+        should use::
+        
+            ~/Library/Application Support/<AppName>
+        
+        If on Windows (at least English Win XP) that should be::
+        
+            C:\\Documents and Settings\\<User>\\Application Data\\Local Settings\\<AppAuthor>\\<AppName>
+        
+        or possibly::
+        
+            C:\\Documents and Settings\\<User>\\Application Data\\<AppAuthor>\\<AppName>
+        
+        for `roaming profiles <http://bit.ly/9yl3b6>`_ but that is another story.
+        
+        On Linux (and other Unices) the dir, according to the `XDG
+        spec <http://standards.freedesktop.org/basedir-spec/basedir-spec-latest.html>`_, is::
+        
+            ~/.local/share/<AppName>
+        
+    '''
 
     if not MSERVE_DIR.endswith(os.sep):
         MSERVE_DIR += os.sep
@@ -105,6 +142,14 @@ def init():
     if os.path.isdir(systemd):
         TEMP_DIR = systemd + os.sep
 
-    cfg.init()
+
+def main(caller=None):
+    """ July 10, 2023 - was always calling .init() directly. Test with main. """
+    init(caller)
+    return True
+
+
+if __name__ == "__main__":
+    main()
 
 # End of global_variables.py

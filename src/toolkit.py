@@ -1,4 +1,14 @@
 # -*- coding: utf-8 -*-
+"""
+Author: Pippim
+License: GNU GPLv3
+Source: This repository
+Description: Pippim mserve server - toolkit
+"""
+
+from __future__ import print_function       # Must be first import
+from __future__ import with_statement       # Error handling for file opens
+
 #==============================================================================
 #
 #       toolkit.py - tkinter (took kit interface) functions
@@ -10,6 +20,7 @@
 #       Jul. 30 2022 - Expand find_column() with:  elif self.find_op == '>=':
 #       Apr. 15 2023 - Move in normalize_tcl() from bserve.py for mserve.py.
 #       Jun. 15 2023 - New Tooltip anchor "sc" South Centered for banner_btn
+#       July 11 2023 - Delete unused methods to simplify mserve_config.py
 #
 #       TODO: As tip window is fading in, button click is not registered so
 #             tip window stays up for normal duration
@@ -17,8 +28,6 @@
 #==============================================================================
 
 # identical imports in mserve
-from __future__ import print_function       # Must be first import
-from __future__ import with_statement       # Error handling for file opens
 
 # Must be before tkinter and released from interactive. Required to insert
 # from clipboard.
@@ -46,10 +55,10 @@ except ImportError:  # Python 2
 # For MoveTreeviewColumn
 from PIL import Image, ImageTk
 from collections import namedtuple
-from os import popen
+import os
 
 import time
-from datetime import datetime
+import datetime
 from ttkwidgets import CheckboxTreeview
 from collections import OrderedDict, namedtuple
 
@@ -61,11 +70,13 @@ import traceback            # To display call stack (functions that got us here)
 
 
 def print_trace():
+    """ Mimic trace """
     for line in traceback.format_stack():
         print(line.strip())
 
 
 def get_trace():
+    """ Mimic trace """
     return traceback.format_stack()
 
 
@@ -387,8 +398,46 @@ print("test  :", test)      # test  : 0123456789`~!@#$%^&*()_+-=[]{};:',.<>/?
 print("result:", result)    # result: 0123456789`~!@#$%^&*()_+-=[]{};:',.<>/?
 '''
 
+''' Time saving scheme not used yet.
+
+    ext.t_init("grab all parents")
+    all_artists = self.lib_tree.get_children()
+    last_albums = self.lib_tree.get_children(all_artists[-1])
+    ext.t_end('print')
+
+    hex_str_start = '0x' + all_artists[0][1:]
+    hex_str_end = '0x' + last_albums[-1][1:]
+    int_start = int(hex_str_start, 16)
+    int_end = int(hex_str_end, 16)
+    hex_start = hex(int_start)
+    hex_end = hex(int_end)
+    print("\nfrom:", hex_start, "to:", hex_end)
+
+    ext.t_init("loop through generated parents")
+    awkward_fnd_cnt = 0
+    for int_base in range(int_start, int_end + 1):
+        hex_base = hex(int_base)
+        str_base = str(hex_base)[2:].zfill(3)  # Drop '0x' prefix, prepend zeros
+        parent = "I" + str_base.upper()
+        try:
+            stuff = self.lib_tree.item(parent)
+            awkward_fnd_cnt += 1
+            if awkward_fnd_cnt == 1:
+                print("\nFirst Artist:", parent)
+                print(stuff)
+        except tk.TclError:
+            print("parent not found:", parent)
+
+    print("\n# parents:", awkward_fnd_cnt, "Last Album:", parent)
+    print(stuff, "\n")
+    ext.t_end('print')
+    # Returns all the artists but can read sequentially from first to last
+    # with hex increment to get all Artists and Albums
+'''
+
 
 def unique_key(key, dictionary):
+    """ Create unique key(1) (2), etc. up to (99) """
     new_key = key
     i = 0  # To make PyCharm happy :)
     for i in range(1, 100):
@@ -1450,7 +1499,7 @@ class MoveTreeviewColumn:
         move_mouse_to( current_mouse_xy,  window_mouse_xy)
         # xdotool takes .006 to .012 seconds and no flickering window
         '''
-        popen("xdotool mousemove_relative -- " + str(int(source_x_jump)) + " 0")
+        os.popen("xdotool mousemove_relative -- " + str(int(source_x_jump)) + " 0")
         self.treeview.bind("<B1-Motion>", self.motion)
 
         # Recalibrate mouse starting position within toplevel
@@ -1536,6 +1585,7 @@ class MoveTreeviewColumn:
         #                           top_geom.w, top_geom.h)
 
         # gnome screenshot entire desktop takes .25 seconds
+        # noinspection PyArgumentList
         top_image = gnome_screenshot(top_geom)
 
         # Did button get released while we were capturing screen?
@@ -1573,6 +1623,7 @@ class MoveTreeviewColumn:
             col_width = self.treeview.column(column)['width']
             # Create cropped image for column out of screenshot using 1 px
             # border width.  Extra crop from bottom to exclude buttons.
+            # noinspection PyArgumentList
             image = top_image.crop([total_width + 1, 1,
                                     total_width + col_width - 2,
                                     top_geom.h - 63])
@@ -1625,7 +1676,9 @@ def move_mouse_to(x, y):
 
 
 def gnome_screenshot(geom):
-    """ Screenshot using old gnome 3.18 standards """
+    """ Screenshot using old gnome 3.18 standards
+        Required to move column in tk.Treeview
+    """
 
     import gi
     gi.require_version('Gdk', '3.0')
@@ -1966,7 +2019,7 @@ class ToolTips(CommonTip):
             #      self.text.split("\n")[0])   # debug self.info
             # debug self.info
             #print("pb_leave, alpha, ready:", self.pb_leave, self.pb_alpha, self.pb_ready)
-            prt_time = datetime.utcnow().strftime("%M:%S.%f")[:-2]
+            prt_time = datetime.datetime.utcnow().strftime("%M:%S.%f")[:-2]
             d_print(prt_time, 'leaving widget: ', str(self.widget)[-4:])
             #if self.pb_close is not None:  # debug self.info
             #    print("self.log_nt.action:", self.log_nt.action)
@@ -1990,7 +2043,7 @@ class ToolTips(CommonTip):
 
         elif self.log_nt.action == 'enter':
             # Entering widget
-            prt_time = datetime.utcnow().strftime("%M:%S.%f")[:-2]
+            prt_time = datetime.datetime.utcnow().strftime("%M:%S.%f")[:-2]
             d_print(prt_time, 'entering widget:', str(self.widget)[-4:])
 
             #print("self.log_nt.action:", self.log_nt.action, str(self.widget)[-4:],
@@ -2603,122 +2656,8 @@ class ToolTips(CommonTip):
 def d_print(*args):
     """ Only print debugging lines when tt_DEBUG is true """
     if tt_DEBUG is True:
-        prt_time = datetime.utcnow().strftime("%M:%S.%f")[:-3]
+        prt_time = datetime.datetime.utcnow().strftime("%M:%S.%f")[:-3]
         print(prt_time, *args)
 
-
-class TrayIcon:
-    """ July 25 2022
-        https://stackoverflow.com/a/37983084/6929343
-    """
-
-    def __init__(self, app_id, icon, menu):
-        self.menu = menu
-
-        APP_IND_SUPPORT = 1
-        try:
-            from gi.repository import AppIndicator3
-        except ImportError:
-            APP_IND_SUPPORT = 0
-
-        if APP_IND_SUPPORT == 1:
-            self.ind = AppIndicator3.Indicator.new(
-                app_id, icon, AppIndicator3.IndicatorCategory.APPLICATION_STATUS)
-            self.ind.set_status(AppIndicator3.IndicatorStatus.ACTIVE)
-            self.ind.set_menu(self.menu)
-        else:
-            self.ind = Gtk.StatusIcon()
-            self.ind.set_from_file(icon)
-            self.ind.connect('popup-menu', self.onPopupMenu)
-
-
-    def onPopupMenu(self, icon, button, ptime):
-        self.menu.popup(None, None, Gtk.StatusIcon.position_menu, icon, button, ptime)
-
-
-class TrayIcon2:
-    """ July 25 2022
-        https://stackoverflow.com/a/31820169/6929343
-
-        TODO: upgrade to Python3 / Gtk3: https://askubuntu.com/a/1289725/307523
-            gir1.2-app indicator
-            gir1.2-app indicator3
-            gir1.2-ay at an a app indicator
-            gir1.2-ay at ana a pp indicator3
-
-        April 9, 2023 - NOT USED.
-    """
-    @staticmethod
-    def init():
-        # noinspection SpellCheckingInspection
-        iconPath = {"Windows": os.path.expandvars("%PROGRAMFILES%/MyProgram/icon.png"),
-                    "Linux": "/usr/share/icons/myprogramicon.png"}
-        if platform.system() == "Linux":
-            import gtk
-            import appindicator  # Ubuntu apt-get install python-app indicator
-        else:
-            print("Unsupported platform:", platform.system())
-            return
-
-        # Create an application indicator
-        # noinspection PyBroadException
-        try:
-            gtk.gdk.threads_init()
-            gtk.threads_enter()
-            icon = iconPath[platform.system()]
-            indicator = appindicator.Indicator("example-simple-client", "indicator-messages",
-                                               appindicator.CATEGORY_APPLICATION_STATUS)
-            indicator.set_icon(icon)
-            indicator.set_status(appindicator.STATUS_ACTIVE)
-            indicator.set_attention_icon("indicator-messages-new")
-            menu = gtk.Menu()
-
-            menuTitle = "Quit"
-            menu_items = gtk.MenuItem(menuTitle)
-            menu.append(menu_items)
-            menu_items.connect("activate", TrayIcon.QuitApp, menuTitle)
-            menu_items.show()
-
-            menuTitle = "About My Program"
-            menu_items = gtk.MenuItem(menuTitle)
-            menu.append(menu_items)
-            menu_items.connect("activate", TrayIcon.AboutApp, menuTitle)
-            menu_items.show()
-
-            indicator.set_menu(menu)
-        except:
-            pass
-
-        # Run the app indicator on the main thread.
-        # noinspection PyBroadException
-        try:
-
-            t = threading.Thread(target=gtk.main)
-            t.daemon = True  # this means it'll die when the program dies.
-            t.start()
-            # gtk.main()
-
-        except:
-            pass
-        finally:
-            gtk.threads_leave()
-
-
-    @staticmethod
-    def AboutApp(_a1, _a2):
-        gtk.threads_enter()
-        dialog = gtk.Dialog("About",
-                            None,
-                            gtk.DIALOG_MODAL | gtk.DIALOG_DESTROY_WITH_PARENT,
-                            (gtk.STOCK_OK, gtk.RESPONSE_ACCEPT))
-        label = gtk.Label("My Program v0.0.1, Copyright ME 2015. All rights reserved.")
-        dialog.vbox.pack_start(label)
-        label.show()
-        label2 = gtk.Label("example.com\n\nFor more support contact me@gmail.com")
-        label2.show()
-        dialog.action_area.pack_end(label2)
-        dialog.run()
-        dialog.destroy()
-        gtk.threads_leave()
 
 # End of: toolkit.py
