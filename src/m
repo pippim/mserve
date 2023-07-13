@@ -1,5 +1,14 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+"""
+Author: Pippim
+License: GNU GPLv3
+Source: This repository
+Description: mserve - Music Server - Pulse Audio controls
+"""
+
+from __future__ import print_function  # Must be first import
+from __future__ import with_statement  # Error handling for file opens
 
 # ==============================================================================
 #
@@ -8,10 +17,18 @@
 #       mserve.py (Music Server) - Manage Music in multiple locations
 #
 #       June 21 2023 - 'M' splash screen appears ASAP. Code cleanup.
+#       July 12 2023 - Interface to/from mserve_config.py
 #
 # ==============================================================================
 
-from __future__ import print_function
+
+import mserve_config as cfg
+caller = "m"
+if not cfg.main(caller):
+    print("mserve not fully installed. Aborting...")
+    exit()
+else:
+    print(caller, "finished call to mserve_config.py with SUCCESS!")
 
 try:
     import tkinter as tk
@@ -22,6 +39,12 @@ except ImportError:
 
 import sys              # To get passed parameters
 import os               # To get current directory
+
+import global_variables as g
+if g.USER is None:
+    print('"m" was forced to run g.init()')
+    g.init()
+
 import image as img     # Pippim functions for image management
 import monitor          # Pippim function to center window on monitor
 import mserve           # Pippim Music Server

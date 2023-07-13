@@ -1,26 +1,43 @@
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
+"""
+Author: Pippim
+License: GNU GPLv3
+Source: This repository
+Description: mserve - Music Server - Get musicbrainzngs artwork
+"""
 
+from __future__ import print_function  # Must be first import
+from __future__ import with_statement  # Error handling for file opens
+
+# ==============================================================================
+#
 #       mbz_get2.py - Standalone python program to run in background.
 #                     Get Musicbrainz disc information - Pass 2 of 2.
 
 #       Called with: 'python mbz_get2.py <release-list>'
 #       Parameters:  Pickle file contains object disc of libdiscid type
 #       Returns:     Dictionary of images
+#
+#       July 12 2023 - Interface to/from mserve_config.py
+#
+# ==============================================================================
 
-from __future__ import with_statement       # Error handling for file opens
-
+# Python Standard Library
+import sys
+import os
 import re
 import time
 import datetime
+import json
+import pickle
+
+# Dist-packages
 from PIL import Image, ImageTk, ImageDraw, ImageFont
 import musicbrainzngs as mbz
 import requests
-import json
-import pickle
-import sys
-import os
 
-# Homegrown
+# Pippim modules
 import location as lc
 
 # IPC pickle filename shouldn't end with .pkl because it's used for playlists.

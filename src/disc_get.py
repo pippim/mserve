@@ -1,14 +1,28 @@
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
+"""
+Author: Pippim
+License: GNU GPLv3
+Source: This repository
+Description: mserve - Music Server - Get discid of CD
+"""
 
+from __future__ import print_function  # Must be first import
+from __future__ import with_statement  # Error handling for file opens
+
+# ==============================================================================
+#
 #       disc_get.py - Poor man's multiprocessing for python.
 #                     Use shell to run program in background
 #       Documentation https://pythonhosted.org/python-libdiscid/api.html
+#
+#       July 12 2023 - Interface to/from mserve_config.py
+#
+# ==============================================================================
 
-from __future__ import with_statement       # Error handling for file opens
-
-import libdiscid as discid                  # C program to read CD's TOC
-import pickle                               # Save discid dictionary to file
 import sys                                  # System argument for save filename
+import pickle                               # Save discid dictionary to file
+import libdiscid as discid                  # C program to read CD's TOC
 
 DICT_FNAME = sys.argv[1]                    # Pickle filename to save to
 """
@@ -56,6 +70,7 @@ def get_discid():
         return {'error': '1'}
 
     return disc
+
 
 if __name__ == "__main__":
 

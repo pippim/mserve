@@ -1,7 +1,20 @@
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
+"""
+Author: Pippim
+License: GNU GPLv3
+Source: This repository
+Description: mserve - Music Server - Locations of Music Dirs & Devices
+"""
+
+from __future__ import print_function  # Must be first import
+from __future__ import with_statement  # Error handling for file opens
+
 #==============================================================================
 #
 #       location.py - Locations file, dictionary and global fields
+#
+#       July 12 2023 - Interface to/from mserve_config.py
 #
 #       After copying playlists between locations use:
 #
@@ -73,7 +86,6 @@ FNAME_MOD_TIME         = MSERVE_DIR + "modification_time"
 
 """
 
-from __future__ import print_function       # Must be first import
 import os
 import sys
 import shutil
@@ -87,7 +99,6 @@ import message                              # manage dialog messages
 import global_variables as g
 if g.USER is None:
     print('location.py was forced to run g.init()')
-    # This is normal after 'm' runs mserve.py. If sql.py used, it will show first.
     g.init()
 
 # Define /home/$USER/.config/mserve/ directory
@@ -190,6 +201,7 @@ def rnm_one_filename(old_fname, iid, old):
 
 
 def read():
+    """ Read list of locations in pickle format. """
     global LIST
     LIST = []
     try:

@@ -1,11 +1,21 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+"""
+Author: Pippim
+License: GNU GPLv3
+Source: This repository
+Description: mserve - Music Server - X11 window client
+"""
+
+from __future__ import print_function  # Must be first import
+from __future__ import with_statement  # Error handling for file opens
 
 # ==============================================================================
 #
 #       x11 - Module for Python X lib (X11) functions
 #
-#       July 05 2023 - Make display optional when piggy back imported.
+#       July 05 2023 - Make display optional when bserve indirectly imports.
+#       July 12 2023 - Interface to/from mserve_config.py
 #
 # ==============================================================================
 
@@ -24,9 +34,7 @@ error: unpack requires a string argument of length 4
 """
 # inspection SpellCheckingInspection
 
-from __future__ import print_function       # Must be first import
-from __future__ import with_statement       # Error handling for file opens
-
+''' July 12, 2023 - Doesn't look like these belong. 
 try:
     import tkinter as tk
     import tkinter.ttk as ttk
@@ -46,20 +54,24 @@ except ImportError:  # Python 2
 # print ("Python version: ", PYTHON_VER)
 
 from PIL import Image, ImageTk
+'''
 
 # Print the name and bounding box (x1, y1, x2, y2) for the active window in
 # a loop.
 
 # Credit: active_window_xlib_demo.py
 # link:   https://gist.github.com/mgalgs/8c1dd50fe3c19a1719fb2ecd012c4edd
-import Xlib.X
-import Xlib
-import Xlib.display
-from Xlib.ext import randr
-#print('Xlib version:', Xlib.__version__)
 import time
 from collections import namedtuple
 
+# /usr/lib/python2.7/dist-packages/Xlib/X.py
+import Xlib.X
+# /usr/lib/python2.7/dist-packages/Xlib/__init__.py
+import Xlib
+# /usr/lib/python2.7/dist-packages/Xlib/display.py
+import Xlib.display
+# /usr/lib/python2.7/dist-packages/Xlib/ext/randr.py
+from Xlib.ext import randr
 
 #d = Xlib.display.Display(':0')              # d is for X11 Display object
 # noinspection SpellCheckingInspection

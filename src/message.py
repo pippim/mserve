@@ -1,9 +1,21 @@
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
+"""
+Author: Pippim
+License: GNU GPLv3
+Source: This repository
+Description: mserve - Music Server - Message Dialog Boxes
+"""
+
+from __future__ import print_function  # Must be first import
+from __future__ import with_statement  # Error handling for file opens
+
 #==============================================================================
 #
 #       message.py - status messages, dialogs, tooltips
 #
 #       July 05 2023 - Optional help button on ShowInfo, AskQuestion, AskString
+#       July 12 2023 - Support to/from mserve_config.py
 #
 #==============================================================================
 
@@ -20,10 +32,6 @@
             caller can do it's own return. If lifting window it is
             shaken around to give attention to user.
 """
-
-# identical imports in mserve
-from __future__ import print_function       # Must be first import
-from __future__ import with_statement       # Error handling for file opens
 
 import pprint
 
@@ -53,7 +61,7 @@ except ImportError:  # No module named subprocess32
     SUBPROCESS_VER = 'native'
 import re
 import time
-from datetime import datetime
+import datetime
 import webbrowser
 
 # mserve modules
@@ -927,7 +935,7 @@ class InputWindow(CommonIW):
         if self.log_nt.action == 'leave':
             # Leaving widget
             self.leave_time = self.log_nt.time
-            prt_time = datetime.utcnow().strftime("%M:%S.%f")[:-2]
+            prt_time = datetime.datetime.utcnow().strftime("%M:%S.%f")[:-2]
             d_print(prt_time, 'leaving widget: ', str(self.widget)[-4:])
 
             if self.window_fading_out:
@@ -952,7 +960,7 @@ class InputWindow(CommonIW):
 
         elif self.log_nt.action == 'enter':
             # Entering widget
-            prt_time = datetime.utcnow().strftime("%M:%S.%f")[:-2]
+            prt_time = datetime.datetime.utcnow().strftime("%M:%S.%f")[:-2]
             d_print(prt_time, 'entering widget:', str(self.widget)[-4:])
             self.enter_time = self.log_nt.time
             if self.window_visible is True:
@@ -1549,9 +1557,8 @@ class CreateToolTip(object):
 
 
     def enter(self, _event):
-        """
-        """
-        prt_time = datetime.utcnow().strftime("%M:%S.%f")[:-3]
+        """ Mouse has entered parent widget. """
+        prt_time = datetime.datetime.utcnow().strftime("%M:%S.%f")[:-3]
         print('ENTER:', prt_time, str(_event.widget)[-4:], _event.x, _event.y)
         if self.tool_type is 'canvas_button' and self.widget.state is 'normal':
             # For canvas buttons do heavy lifting of reflecting button active state
@@ -1585,7 +1592,7 @@ class CreateToolTip(object):
 
         TEST: When leaving early button remains "active" so force to "normal".
         """
-        prt_time = datetime.utcnow().strftime("%M:%S.%f")[:-3]
+        prt_time = datetime.datetime.utcnow().strftime("%M:%S.%f")[:-3]
         print('LEAVE:', prt_time, str(_event.widget)[-4:], _event.x, _event.y)
         #print('\n', h(time.time()), ' CreateToolTip LEAVE button:', self.name)
         if self.tool_type is 'button':
@@ -1607,7 +1614,7 @@ class CreateToolTip(object):
 
     def on_press(self, _event):
         """ Widget type is button and it was just pressed """
-        prt_time = datetime.utcnow().strftime("%M:%S.%f")[:-3]
+        prt_time = datetime.datetime.utcnow().strftime("%M:%S.%f")[:-3]
         print('PRESS:', prt_time, str(_event.widget)[-4:], _event.x, _event.y)
         self.button_press_time = time.time()
         # print('Button pressed: ', h(self.button_press_time))
@@ -1616,7 +1623,7 @@ class CreateToolTip(object):
 
     def on_release(self, _event):
         """ Widget type is button and it was just pressed """
-        prt_time = datetime.utcnow().strftime("%M:%S.%f")[:-3]
+        prt_time = datetime.datetime.utcnow().strftime("%M:%S.%f")[:-3]
         print('REL_S:', prt_time, str(_event.widget)[-4:], _event.x, _event.y)
         self.button_release_time = time.time()
         # print('Button released:', h(self.button_release_time))

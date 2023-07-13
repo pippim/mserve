@@ -12,12 +12,13 @@ from __future__ import with_statement  # Error handling for file opens
 
 # ==============================================================================
 #
-#       mserve_config.py - Check dependencies
+#       mserve_config.py - Check modules to be imported are available.
 #
-#       July 10 2023 - Initial version. Check for mandatory and optional.
+#       July 10 2023 - Initial version.
 #
 # ==============================================================================
 # from __future__ import unicode_literals  # Not needed.
+
 try:
     import warnings  # 'warnings' advises which commands aren't supported
     warnings.simplefilter('default')  # in future Python versions.
@@ -42,6 +43,8 @@ if sys.version_info[0] >= 2 and sys.version_info[1] < 7:  # test change 7 to 8
     raise Exception("002: " + current_version)
 if sys.version_info[0] >= 2 and sys.version_info[1] >= 7 and sys.version_info[2] < 12:
     raise Exception("003: " + current_version)
+
+import os
 
 import inspect
 import importlib
@@ -98,199 +101,518 @@ DEFAULT_CFG = []
 
 
 def make_default_cfg():
+    """ When no configuration exists, create this default version. """
     global DEFAULT_CFG
-    DEFAULT_CFG += make_g_cfg()
-    DEFAULT_CFG += make_vup_cfg()
+    DEFAULT_CFG += make_g_cfg()  # Configuration for global_variables.py
+    DEFAULT_CFG += make_m_cfg()  # Splash screen 'm' un-fudged in stats from "m.py"
+    DEFAULT_CFG += make_mserve_cfg()  # for mserve.py
+    DEFAULT_CFG += make_vup_cfg()  # for vu_pulse_audio.py
+    DEFAULT_CFG += make_vum_cfg()  # for vu_meter.py
+    DEFAULT_CFG += make_toolkit_cfg()  # toolkit.py
+    DEFAULT_CFG += make_tmf_cfg()  # for timefmt.py
+    DEFAULT_CFG += make_ext_cfg()  # for external.py
+    DEFAULT_CFG += make_msg_cfg()  # for message.py
+    DEFAULT_CFG += make_sql_cfg()  # for sql.py
+    DEFAULT_CFG += make_lc_cfg()  # for location.py
+    DEFAULT_CFG += make_mon_cfg()  # for monitor.py
+    DEFAULT_CFG += make_img_cfg()  # for image.py
+    DEFAULT_CFG += make_x11_cfg()  # for x11.py
+    ''' All the modules used by encoding.py '''
+    DEFAULT_CFG += make_encoding_cfg()  # for encoding.py
+    DEFAULT_CFG += make_disc_cfg()  # for disc_get.py
+    DEFAULT_CFG += make_mbz1_cfg()  # for mbz_get1.py
+    DEFAULT_CFG += make_mbz2_cfg()  # for mbz_get2.py
+
 
 
 def make_g_cfg():
     """ Configuration for: 'import global_variables as g' """
-    g_list = list()  # Return list of dictionaries
-
+    cfg = list()  # Return list of dictionaries
+    m = "global_variables"  # Module name to python interpreter
+    cfg.append(make_dict(m, "user_data_dir", "appdirs"))
+    cfg.append(make_dict(m, "user_config_dir", "appdirs"))
     # noinspection SpellCheckingInspection
-    '''
-    Contents of global_variables.py:
+    cfg.append(make_dict(m, None, "tempfile"))
+    cfg.append(make_dict(m, None, "os"))
+    cfg.append(make_dict(m, None, "pwd"))
+    return cfg
 
-        import mserve_config as cfg
-        
-        # Get application & storage directory names
-        from appdirs import user_data_dir, user_config_dir
-        
-        import tempfile         # Gets TMP_DIR = /tmp, C:\temp, etc.
-        import os               # USER_ID = str(os.get uid())
-        import pwd              # USER = pwd.get pw uid(os.get uid()).pw_name
-    '''
-    caller = "global_variables"
-    g_list.append(make_a_dict(caller, "caller_data_dir", "appdirs"))
-    g_list.append(make_a_dict(caller, "caller_config_dir", "appdirs"))
-    # noinspection SpellCheckingInspection
-    g_list.append(make_a_dict(caller, None, "tempfile"))
-    g_list.append(make_a_dict(caller, None, "os"))
-    g_list.append(make_a_dict(caller, None, "pwd"))
-    return g_list
+
+def make_m_cfg():
+    """ Configuration for: 'm' which is never imported """
+    cfg = list()  # Return list of dictionaries
+    m = "m"  # Module name to python interpreter
+    cfg.extend(make_tk_cfg(m))  # All the tkinter stuff, only need first though
+    cfg.append(make_dict(m, None, "sys"))
+    cfg.append(make_dict(m, None, "os"))
+    cfg.append(make_dict(m, "g", "global_variables", "pippim.com"))
+    cfg.append(make_dict(m, "img", "image", "pippim.com"))
+    cfg.append(make_dict(m, "mon", "monitor", "pippim.com"))
+    cfg.append(make_dict(m, None, "mserve", "pippim.com"))
+    # Modules not imported. Add here for statistics.
+    cfg.append(make_dict(m, None, "m", "pippim.com"))  # 'm' for stats
+    cfg.append(make_dict(m, None, "vu_meter", "pippim.com"))  # also for stats
+    return cfg
+
+
+def make_mserve_cfg():
+    """ Configuration for: 'import mserve' called by 'm' """
+    cfg = list()  # Return list of dictionaries
+    m = "mserve"  # Module name to python interpreter
+    d1 = "https://github.com/TkinterEP/ttkwidgets"
+
+    cfg.extend(make_tk_cfg(m))  # All the tkinter stuff (7 modules)
+    cfg.extend(make_PIL_cfg(m))  # More than needed 
+    cfg.append(make_dict(m, "CheckboxTreeview", "ttkwidgets", d1, None, 
+                         "python-ttkwidgets"))
+
+    #cfg.append(make_dict(m, None, "signal"))  # only in python 3.5, 3.6, 3.7
+    #TypeError: <module 'signal' (built-in)> is a built-in module - version 2.7
+    cfg.append(make_dict(m, None, "signal", required=False))
+
+    cfg.append(make_dict(m, None, "subprocess32", required=False))
+    cfg.append(make_dict(m, None, "threading"))  # Confirm it's used?
+    cfg.append(make_dict(m, None, "sys"))
+    cfg.append(make_dict(m, None, "os"))
+    cfg.append(make_dict(m, None, "shutil"))
+    cfg.append(make_dict(m, None, "json"))
+    cfg.append(make_dict(m, None, "time"))
+    cfg.append(make_dict(m, None, "datetime"))
+    cfg.append(make_dict(m, None, "re"))
+    cfg.append(make_dict(m, None, "traceback"))
+    cfg.append(make_dict(m, None, "webbrowser"))
+    cfg.append(make_dict(m, "OrderedDict", "collections"))
+    cfg.append(make_dict(m, None, "pickle"))
+    cfg.append(make_dict(m, "shuffle", "random"))
+    cfg.append(make_dict(m, None, "locale"))
+
+    cfg.append(make_dict(m, None, "notify2", "https://pypi.org/project/notify2/"))
+    cfg.append(make_dict(m, "np", "numpy", "https://github.com/numpy/numpy"))
+
+    cfg.append(make_dict(m, "g", "global_variables", "pippim.com"))
+    cfg.append(make_dict(m, "lc", "location", "pippim.com"))
+    cfg.append(make_dict(m, None, "message", "pippim.com"))
+    cfg.append(make_dict(m, None, "encoding", "pippim.com"))
+    cfg.append(make_dict(m, "ext", "external", "pippim.com"))
+    cfg.append(make_dict(m, "img", "image", "pippim.com"))
+    cfg.append(make_dict(m, None, "sql", "pippim.com"))
+    cfg.append(make_dict(m, None, "monitor", "pippim.com"))  # No "as mon"
+    cfg.append(make_dict(m, None, "toolkit", "pippim.com"))
+    cfg.append(make_dict(m, "tmf", "timefmt", "pippim.com"))
+    cfg.append(make_dict(m, None, "webscrape", "pippim.com"))
+    cfg.append(make_dict(m, "vup", "vu_pulse_audio", "pippim.com"))
+    return cfg
 
 
 def make_vup_cfg():
     """ Configuration for: 'import vu_pulse_audio as vup' """
-    vup_list = list()  # Return list of dictionaries
+    cfg = list()  # Return list of dictionaries
+    m = "vu_pulse_audio"  # Module name to python interpreter
+    d = "github.com/mk-fg/python-pulse-control"
+    cfg.append(make_dict(m, None, "os"))
+    cfg.append(make_dict(m, None, "time"))
+    cfg.append(make_dict(m, "OrderedDict", "Collections"))
+    cfg.append(make_dict(m, "namedtuple", "Collections"))
+    cfg.append(make_dict(m, "pulsectl", "pulsectl", d))
+    cfg.append(make_dict(m, "g", "global_variables", "pippim.com"))
+    cfg.append(make_dict(m, "ext", "external", "pippim.com"))
+    cfg.append(make_dict(m, "tmf", "timefmt", "pippim.com"))
+    cfg.append(make_dict(m, None, "toolkit", "pippim.com"))
+    return cfg
 
-    # noinspection SpellCheckingInspection
-    '''
-    Contents of vu_pulse_audio.py:
 
-        import global_variables as g
-        import os
-        import time
-        from collections import OrderedDict, namedtuple
-        from pulsectl import pulsectl
-        import external as ext
-        import timefmt as tmf
-        import toolkit
-    '''
-    caller = "vu_pulse_audio"
-    vup_list.append(make_a_dict(caller, "g", "global_variables"))
-    vup_list.append(make_a_dict(caller, None, "os"))
-    vup_list.append(make_a_dict(caller, None, "time"))
-    vup_list.append(make_a_dict(caller, "OrderedDict", "Collections"))
-    vup_list.append(make_a_dict(caller, "namedtuple", "Collections"))
-    vup_list.append(make_a_dict(caller, "pulsectl", "pulsectl",
-                                "github.com/mk-fg/python-pulse-control"))
-    vup_list.append(make_a_dict(caller, "ext", "external", "pippim.com"))
-    vup_list.append(make_a_dict(caller, "tmf", "timefmt", "pippim.com"))
-    vup_list.append(make_a_dict(caller, None, "toolkit", "pippim.com"))
-    return vup_list
+def make_vum_cfg():
+    """ Configuration for: 'os.popen("vu_meter.py... &")' """
+    cfg = list()  # Return list of dictionaries
+    m = "vu_meter"  # Module name to python interpreter
+    d = "https://github.com/kmein/vu-meter"  # No place to put credit yet
+    cfg.append(make_dict(m, None, "sys"))
+    cfg.append(make_dict(m, None, "math"))
+    cfg.append(make_dict(m, None, "struct"))
+    cfg.append(make_dict(
+        m, None, "pyaudio", "https://github.com/jleb/pyaudio/tree/master"))
+    cfg.append(make_dict(m, "np", "numpy", "https://github.com/numpy/numpy"))
+    cfg.append(make_dict(m, "g", "global_variables", "pippim.com"))
+    return cfg
 
 
 def make_toolkit_cfg():
     """ Configuration for: 'import vu_pulse_audio as toolkit' """
-    toolkit_list = list()  # Return list of dictionaries
-
-    # noinspection SpellCheckingInspection
     '''
-    Contents of toolkit.py:
-        
-        try:
-            import tkinter as tk
-            import tkinter.ttk as ttk
-            import tkinter.font as font
-            import tkinter.filedialog as filedialog
-            import tkinter.messagebox as messagebox
-            import tkinter.scrolledtext as scrolledtext
-            PYTHON_VER = "3"
-        except ImportError:  # Python 2
-            import Tkinter as tk
-            import ttk
-            import tkFont as font
-            import tkFileDialog as filedialog
-            import tkMessageBox as messagebox
-            import ScrolledText as scrolledtext
-            PYTHON_VER = "2"
-        # print ("Python version: ", PYTHON_VER)
-        
-        # For MoveTreeviewColumn
-        from PIL import Image, ImageTk
-        from collections import namedtuple
-        from os import popen
-        
-        import time
-        import datetime
-        from ttkwidgets import CheckboxTreeview
-        from collections import OrderedDict, namedtuple
-        
-        import global_variables as g
-        import external as ext      # Time formatting routines
-        import image as img         # Pippim image.py module
-        import re                   # w, h, old_x, old_y = re.split(...
-        import traceback            # To display call stack
-
-    Optional gnome_screenshot() for MoveTreeviewColumn function imports:
-        import gi
-        gi.require_version('Gdk', '3.0')
-        gi.require_version('Gtk', '3.0')
-        gi.require_version('Wnck', '3.0')
-        # gi.require_versions({"Gtk": "3.0", "Gdk": "3.0", "Wnck": "3.0"})
-    
-        from gi.repository import Gdk, GdkPixbuf, Gtk, Wnck
-    
+        Optional gnome_screenshot() for MoveTreeviewColumn function imports:
+            import gi
+            gi.require_version('Gdk', '3.0')
+            gi.require_version('Gtk', '3.0')
+            gi.require_version('Wnck', '3.0')
+            # gi.require_versions({"Gtk": "3.0", "Gdk": "3.0", "Wnck": "3.0"})
+            from gi.repository import Gdk, Gdk Pix buf, Gtk, Wnck
     '''
-    caller = "toolkit"
-    toolkit_list.append(make_a_dict(caller, "g", "global_variables"))
-    toolkit_list.append(make_a_dict(caller, "tk", "tkinter",
-                                    "https://github.com/tcltk/tk", "3",
-                                    "python3-tk"))
-    toolkit_list.append(make_a_dict(caller, "tk", "Tkinter",
-                                    "https://github.com/tcltk/tk", "2",
-                                    "python-tk"))
-    toolkit_list.append(make_a_dict(caller, "ttk", "tkinter.ttk",
-                                    "https://github.com/tcltk/tk", "3",
-                                    "python3-tk"))
-    toolkit_list.append(make_a_dict(caller, None, "ttk",
-                                    "https://github.com/tcltk/tk", "2",
-                                    "python-tk"))
-    toolkit_list.append(make_a_dict(caller, "font", "tkinter.font",
-                                    "https://github.com/tcltk/tk", "3",
-                                    "python3-tk"))
-    toolkit_list.append(make_a_dict(caller, "font", "tkFont",
-                                    "https://github.com/tcltk/tk", "2",
-                                    "python-tk"))
-    toolkit_list.append(make_a_dict(caller, "filedialog", "tkinter.filedialog",
-                                    "https://github.com/tcltk/tk", "3",
-                                    "python3-tk"))
-    toolkit_list.append(make_a_dict(caller, "filedialog", "tkFileDialog",
-                                    "https://github.com/tcltk/tk", "2",
-                                    "python-tk"))
-    toolkit_list.append(make_a_dict(caller, "messagebox", "tkinter.messagebox",
-                                    "https://github.com/tcltk/tk", "3",
-                                    "python3-tk"))
-    toolkit_list.append(make_a_dict(caller, "messagebox", "tkMessageBox",
-                                    "https://github.com/tcltk/tk", "2",
-                                    "python-tk"))
-    toolkit_list.append(make_a_dict(caller, "scrolledtext", "tkinter.scrolledtext",
-                                    "https://github.com/tcltk/tk", "3",
-                                    "python3-tk"))
-    toolkit_list.append(make_a_dict(caller, "scrolledtext", "ScrolledText",
-                                    "https://github.com/tcltk/tk", "2",
-                                    "python-tk"))
-    toolkit_list.append(make_a_dict(caller, "Image", "PIL",
-                                    "https://github.com/tcltk/tk", "2",
-                                    "python-tk"))
-    '''
-from PIL import Image, ImageTk
-from collections import namedtuple
-import os    
-    '''
-    toolkit_list.append(make_a_dict(caller, None, "time"))
-    toolkit_list.append(make_a_dict(caller, "OrderedDict", "Collections"))
-    toolkit_list.append(make_a_dict(caller, "namedtuple", "Collections"))
-    toolkit_list.append(make_a_dict(caller, "pulsectl", "pulsectl",
-                                    "github.com/mk-fg/python-pulse-control"))
-    toolkit_list.append(make_a_dict(caller, "ext", "external", "pippim.com"))
-    toolkit_list.append(make_a_dict(caller, "tmf", "timefmt", "pippim.com"))
-    toolkit_list.append(make_a_dict(caller, None, "toolkit", "pippim.com"))
-    return toolkit_list
+    cfg = list()  # Return list of dictionaries
+    m = "toolkit"  # Module name to python interpreter
+    d = "https://github.com/TkinterEP/ttkwidgets"
+    cfg.extend(make_tk_cfg(m))
+    cfg.extend(make_PIL_cfg(m))
+    cfg.append(make_dict(m, "CheckboxTreeview", "ttkwidgets", d, None, 
+                         "python-ttkwidgets"))
+    cfg.append(make_dict(m, None, "os"))
+    cfg.append(make_dict(m, None, "time"))
+    cfg.append(make_dict(m, None, "datetime"))
+    cfg.append(make_dict(m, "namedtuple", "collections"))
+    cfg.append(make_dict(m, "OrderedDict", "collections"))
+    cfg.append(make_dict(m, None, "re"))
+    cfg.append(make_dict(m, None, "traceback"))
+    cfg.append(make_dict(m, "g", "global_variables", "pippim.com"))
+    cfg.append(make_dict(m, "ext", "external", "pippim.com"))
+    cfg.append(make_dict(m, "img", "image", "pippim.com"))
+    return cfg
 
 
-def make_a_dict(caller, imp_as, imp_from, developer="python", versions=[],
-                repository=None):
+def make_tmf_cfg():
+    """ Configuration for: 'import timefmt as tmf' """
+    cfg = list()  # Return list of dictionaries
+    m = "monitor"  # Module name to python interpreter
+    cfg.append(make_dict(m, None, "time"))
+    cfg.append(make_dict(m, None, "datetime"))
+    cfg.append(make_dict(m, "namedtuple", "collections"))
+    return cfg
+
+
+def make_ext_cfg():
+    """ Configuration for: 'import external as ext' """
+    cfg = list()  # Return list of dictionaries
+    m = "external"  # Module name to python interpreter
+    #cfg.append(make_dict(m, None, "signal"))  # only in python 3.5, 3.6, 3.7
+    #TypeError: <module 'signal' (built-in)> is a built-in module - version 2.7
+    cfg.append(make_dict(m, None, "signal", required=False))
+    cfg.append(make_dict(m, None, "os"))
+    cfg.append(make_dict(m, None, "errno"))
+    cfg.append(make_dict(m, None, "datetime"))
+    cfg.append(make_dict(m, None, "toolkit", "pippim.com"))
+    return cfg
+
+
+def make_msg_cfg():
+    """ Configuration for: 'import message' """
+    cfg = list()  # Return list of dictionaries
+    m = "message"  # Module name to python interpreter
+    cfg.append(make_dict(m, None, "pprint"))  # Not sure why first...
+    cfg.extend(make_tk_cfg(m))
+    #cfg.append(make_dict(m, None, "signal"))  # only in python 3.5, 3.6, 3.7
+    #TypeError: <module 'signal' (built-in)> is a built-in module - version 2.7
+    cfg.append(make_dict(m, None, "signal", required=False))
+    cfg.append(make_dict(m, None, "os"))
+    cfg.append(make_dict(m, None, "errno"))
+    cfg.append(make_dict(m, None, "subprocess32", required=False))
+    cfg.append(make_dict(m, None, "re"))
+    cfg.append(make_dict(m, None, "time"))
+    cfg.append(make_dict(m, None, "datetime"))
+    cfg.append(make_dict(m, None, "webbrowser"))
+    cfg.append(make_dict(m, "img", "image", "pippim.com"))
+    cfg.append(make_dict(m, "ext", "external", "pippim.com"))
+    cfg.append(make_dict(m, "tmf", "timefmt", "pippim.com"))
+    cfg.append(make_dict(m, None, "toolkit", "pippim.com"))
+    return cfg
+
+
+def make_sql_cfg():
+    """ Configuration for: 'import sql' """
+    cfg = list()  # Return list of dictionaries
+    m = "sql"  # Module name to python interpreter
+    cfg.append(make_dict(m, None, "os"))
+    cfg.append(make_dict(m, None, "re"))
+    cfg.append(make_dict(m, None, "json"))
+    cfg.append(make_dict(m, None, "time"))
+    cfg.append(make_dict(m, None, "datetime"))
+    cfg.append(make_dict(m, "namedtuple", "collections"))
+    cfg.append(make_dict(m, "OrderedDict", "collections"))
+    cfg.append(make_dict(m, None, "sqlite3/__init__",
+                         "https://docs.python.org/3/library/sqlite3.html"))
+    # Module - /usr/lib/python2.7/sqlite3/__init__.py
+    cfg.append(make_dict(m, "g", "global_variables", "pippim.com"))
+    cfg.append(make_dict(m, "tmf", "timefmt", "pippim.com"))
+    cfg.append(make_dict(m, "ext", "external", "pippim.com"))
+    cfg.append(make_dict(m, "FNAME_LIBRARY", "location", "pippim.com"))
+    return cfg
+
+
+def make_lc_cfg():
+    """ Configuration for: 'import location as lc' """
+    cfg = list()  # Return list of dictionaries
+    m = "location"  # Module name to python interpreter
+    cfg.append(make_dict(m, None, "os"))
+    cfg.append(make_dict(m, None, "sys"))
+    cfg.append(make_dict(m, None, "shutil"))
+    cfg.append(make_dict(m, None, "time"))
+    cfg.append(make_dict(m, None, "pickle"))
+    cfg.append(make_dict(m, None, "time"))
+    cfg.append(make_dict(m, None, "datetime"))
+    cfg.append(make_dict(m, None, "message", "pippim.com"))
+    cfg.append(make_dict(m, "g", "global_variables", "pippim.com"))
+    return cfg
+
+
+def make_mon_cfg():
+    """ Configuration for: 'import monitor as mon' 
+        Most times it is simply 'import monitor' """
+    cfg = list()  # Return list of dictionaries
+    m = "monitor"  # Module name to python interpreter
+    cfg.extend(make_tk_cfg(m))
+    cfg.append(make_dict(m, None, "os"))
+    cfg.append(make_dict(m, None, "sys"))
+    cfg.append(make_dict(m, None, "time"))
+    cfg.append(make_dict(m, "namedtuple", "collections"))
+    cfg.append(make_dict(m, "OrderedDict", "collections"))
+    cfg.append(make_dict(m, "g", "global_variables", "pippim.com"))
+    cfg.append(make_dict(m, "img", "image", "pippim.com"))
+    cfg.append(make_dict(m, None, "sql", "pippim.com"))
+    return cfg
+
+
+def make_img_cfg():
+    """ Configuration for: 'import image as img' """
+    cfg = list()  # Return list of dictionaries
+    m = "image"  # Module name to python interpreter
+    cfg.extend(make_tk_cfg(m))
+    cfg.extend(make_PIL_cfg(m))
+    cfg.append(make_dict(m, None, "os"))
+    cfg.append(make_dict(m, None, "re"))
+    cfg.append(make_dict(m, None, "time"))
+    cfg.append(make_dict(m, None, "datetime"))
+    cfg.append(make_dict(m, None, "io"))
+    cfg.append(make_dict(m, "namedtuple", "collections"))
+    cfg.append(make_dict(m, None, "x11", "pippim.com"))  # Under review
+    cfg.append(make_dict(m, "ext", "external", "pippim.com"))
+    cfg.append(make_dict(m, None, "monitor", "pippim.com"))
+    return cfg
+
+
+def make_x11_cfg():
+    """ Configuration for: 'import x11' """
+    cfg = list()  # Return list of dictionaries
+    m = "x11"  # Module name to python interpreter
+    cfg.append(make_dict(m, None, "time"))
+    cfg.append(make_dict(m, "namedtuple", "collections"))
+    '''
+        Needs revamping:
+            # /usr/lib/python2.7/dist-packages/Xlib/X.py
+            import Xlib.X
+            # /usr/lib/python2.7/dist-packages/Xlib/__init__.py
+            import Xlib
+            # /usr/lib/python2.7/dist-packages/Xlib/display.py
+            import Xlib.display
+            # /usr/lib/python2.7/dist-packages/Xlib/ext/randr.py
+            from Xlib.ext import randr
+
+    '''
+    # /usr/lib/python2.7/dist-packages/Xlib/X.py
+    cfg.append(make_dict(m, None, "Xlib/X",
+                         "https://github.com/python-xlib/python-xlib"))
+    cfg.append(make_dict(m, None, "Xlib/__init__",
+                         "https://github.com/python-xlib/python-xlib"))
+    cfg.append(make_dict(m, None, "Xlib/display",
+                         "https://github.com/python-xlib/python-xlib"))
+    cfg.append(make_dict(m, "randr", "Xlib.ext",
+                         "https://github.com/python-xlib/python-xlib"))
+    # /usr/lib/python2.7/dist-packages/Xlib/ext/randr.py
+    return cfg
+
+
+def make_encoding_cfg():
+    """ Configuration for: 'import encoding' """
+    cfg = list()  # Return list of dictionaries
+    m = "encoding"  # Module name to python interpreter
+    # subprocess
+    d = "https://github.com/TkinterEP/ttkwidgets"
+    cfg.extend(make_tk_cfg(m))
+    cfg.extend(make_PIL_cfg(m))
+    cfg.append(make_dict(m, "CheckboxTreeview", "ttkwidgets", d, None,
+                         "python-ttkwidgets"))
+    cfg.append(make_dict(m, None, "subprocess32", required=False))
+
+    # Python Standard Library
+    cfg.append(make_dict(m, None, "sys"))
+    cfg.append(make_dict(m, None, "os"))
+    cfg.append(make_dict(m, None, "io"))
+    cfg.append(make_dict(m, None, "re"))
+    cfg.append(make_dict(m, None, "time"))
+    cfg.append(make_dict(m, None, "datetime"))
+    cfg.append(make_dict(m, None, "pickle"))
+    cfg.append(make_dict(m, None, "pprint"))
+    # Dist-packages
+    cfg.append(make_dict(m, None, "magic",
+                         "https://github.com/ahupp/python-magic"))
+    cfg.append(make_dict(m, "mbz", "musicbrainzngs",
+                         "https://pypi.org/project/musicbrainzngs/"))
+    cfg.append(make_dict(m, "discid", "libdiscid",
+                         "https://github.com/sebastinas/python-libdiscid"))
+    ''' TODO:
+            Buried in functions:
+                from mutagen.flac import FLAC as audio_file
+                from mutagen.oggvorbis import OggVorbis as audio_file
+                
+                from mutagen.oggvorbis import OggVorbis
+                from mutagen.flac import Picture
+    '''
+    # Pippim modules
+    cfg.append(make_dict(m, "g", "global_variables", "pippim.com"))
+    cfg.append(make_dict(m, "lc", "location", "pippim.com"))
+    cfg.append(make_dict(m, "ext", "external", "pippim.com"))
+    cfg.append(make_dict(m, None, "monitor", "pippim.com"))
+    cfg.append(make_dict(m, None, "message", "pippim.com"))
+    cfg.append(make_dict(m, "img", "image", "pippim.com"))
+    cfg.append(make_dict(m, "tmf", "timefmt", "pippim.com"))
+    cfg.append(make_dict(m, None, "sql", "pippim.com"))
+    ''' TODO:
+            are activated. The following background programs are launched:
+
+                disc_get.py - Read CD for Musicbrainz Id and track TOC
+                mbz_get1.py - Get Musicbrainz release-list
+                mbz_get2.py - Get Musicbrainz recordings
+                caa_get1.py - Get Cover Art
+    '''
+    cfg.append(make_dict(m, None, "disc_get", "pippim.com"))
+    cfg.append(make_dict(m, None, "mbz_get1", "pippim.com"))
+    cfg.append(make_dict(m, None, "mbz_get2", "pippim.com"))
+    # gst-launch-1.0 external command needed
+    return cfg
+
+
+def make_disc_cfg():
+    """ Configuration for: background job 'disc_get.py """
+    cfg = list()  # Return list of dictionaries
+    m = "disc_get"  # Module name to python interpreter
+    cfg.append(make_dict(m, None, "sys"))
+    cfg.append(make_dict(m, None, "pickle"))
+    cfg.append(make_dict(m, "discid", "libdiscid",    # C-Program
+                         "https://pythonhosted.org/python-libdiscid/"))
+    return cfg
+
+
+def make_mbz1_cfg():
+    """ Configuration for: background job 'mbz_get1.py """
+    cfg = list()  # Return list of dictionaries
+    m = "mbz_get1"  # Module name to python interpreter
+
+    # Python Standard Library
+    cfg.append(make_dict(m, None, "subprocess32", required=False))
+    cfg.append(make_dict(m, None, "sys"))
+    cfg.append(make_dict(m, None, "os"))
+    cfg.append(make_dict(m, None, "re"))
+    cfg.append(make_dict(m, None, "time"))
+    cfg.append(make_dict(m, None, "datetime"))
+    cfg.append(make_dict(m, None, "pickle"))
+    cfg.append(make_dict(m, None, "pprint"))
+    # Dist-packages
+    cfg.extend(make_PIL_cfg(m))
+    cfg.append(make_dict(m, "mbz", "musicbrainzngs",
+                         "https://pypi.org/project/musicbrainzngs/"))
+    cfg.append(make_dict(m, "discid", "libdiscid",    # C-Program
+                         "https://pythonhosted.org/python-libdiscid/"))
+    # Pippim modules
+    cfg.append(make_dict(m, "lc", "location", "pippim.com"))
+    cfg.append(make_dict(m, None, "message", "pippim.com"))
+    cfg.append(make_dict(m, "img", "image", "pippim.com"))
+    return cfg
+
+
+def make_mbz2_cfg():
+    """ Configuration for: background job 'mbz_get2.py """
+    cfg = list()  # Return list of dictionaries
+    m = "mbz_get2"  # Module name to python interpreter
+    # Python Standard Library
+    cfg.append(make_dict(m, None, "sys"))
+    cfg.append(make_dict(m, None, "os"))
+    cfg.append(make_dict(m, None, "re"))
+    cfg.append(make_dict(m, None, "time"))
+    cfg.append(make_dict(m, None, "datetime"))
+    cfg.append(make_dict(m, None, "json"))
+    cfg.append(make_dict(m, None, "pickle"))
+    # Dist-packages
+    cfg.extend(make_PIL_cfg(m))
+    cfg.append(make_dict(m, "mbz", "musicbrainzngs",
+                         "https://pypi.org/project/musicbrainzngs/"))
+    cfg.append(make_dict(m, None, "requests",
+                         "https://github.com/psf/requests"))
+    # Pippim modules
+    cfg.append(make_dict(m, "lc", "location", "pippim.com"))
+    return cfg
+
+
+def make_tk_cfg(m):
+    """ Common tkinter configuration extended on caller's list. """
+    tk = list()  # Return list of dictionaries
+    d = "https://github.com/tcltk/tk"
+    tk.append(make_dict(m, "tk", "tkinter", d, "3", "python3-tk"))
+    tk.append(make_dict(m, "tk", "Tkinter", d, "2", "python-tk"))
+    tk.append(make_dict(m, "ttk", "tkinter.ttk", d, "3", "python3-tk"))
+    tk.append(make_dict(m, None, "ttk", d, "2", "python-tk"))
+    tk.append(make_dict(m, "font", "tkinter.font", d, "3", "python3-tk"))
+    tk.append(make_dict(m, "font", "tkFont", d, "2", "python-tk"))
+    tk.append(make_dict(m, "filedialog", "tkinter.filedialog", d, "3", "python3-tk"))
+    tk.append(make_dict(m, "filedialog", "tkFileDialog", d, "2", "python-tk"))
+    tk.append(make_dict(m, "messagebox", "tkinter.messagebox", d, "3", "python3-tk"))
+    tk.append(make_dict(m, "messagebox", "tkMessageBox", d, "2", "python-tk"))
+    tk.append(make_dict(m, "simpledialog", "tkinter.simpledialog", d, "3", "python3-tk"))
+    tk.append(make_dict(m, "simpledialog", "tkSimpleDialog", d, "2", "python-tk"))
+    tk.append(make_dict(m, "scrolledtext", "tkinter.scrolledtext", d, "3", "python3-tk"))
+    tk.append(make_dict(m, "scrolledtext", "ScrolledText", d, "2", "python-tk"))
+    return tk
+
+
+def make_PIL_cfg(m):
+    """ Common PIL (aka Pillow) configuration extended on caller's list.
+        # Optional: python-pil-dbg and python-pil.imagetk-dbg
+        #       The debug packages are installed in development but not sure why.
+    """
+    pil = list()  # Return list of dictionaries
+    d = "https://pypi.org/project/Pillow/"
+    pil.append(make_dict(m, "Image", "PIL", d, "3", "python3-pil"))
+    pil.append(make_dict(m, "Image", "PIL", d, "2", "python-pil"))
+    pil.append(make_dict(m, "ImageTk", "PIL", d, "3", "python3-pil.imagetk"))
+    pil.append(make_dict(m, "ImageTk", "PIL", d, "2", "python-pil.imagetk"))
+    pil.append(make_dict(m, "ImageDraw", "PIL", d, "3", "python3-pil"))
+    pil.append(make_dict(m, "ImageDraw", "PIL", d, "2", "python-pil"))
+    pil.append(make_dict(m, "ImageFont", "PIL", d, "3", "python3-pil"))
+    pil.append(make_dict(m, "ImageFont", "PIL", d, "2", "python-pil"))
+    pil.append(make_dict(m, "ImageFilter", "PIL", d, "3", "python3-pil"))
+    pil.append(make_dict(m, "ImageFilter", "PIL", d, "2", "python-pil"))
+    pil.append(make_dict(m, "ImageOps", "PIL", d, "3", "python3-pil"))
+    pil.append(make_dict(m, "ImageOps", "PIL", d, "2", "python-pil"))
+    return pil
+
+
+def make_dict(module, imp_as, imp_from, developer="python", version=None,
+              ubuntu=None, required=True):
+    """ Make configuration dictionary to be appended to configuration list """
     cfg_dict = \
-        {"caller": caller,
+        {"module": module,
          "imp_as": imp_as,
          "imp_from": imp_from,
          "developer": developer,
-         "versions": versions,
-         "repository": repository}
+         "version": version,
+         "ubuntu": ubuntu,
+         "required": required}
     return cfg_dict
 
 
 def whats_installed():
     """
-
+    Walk through sys.path to find all .py and .pyc modules record size & dates.
     :return inst_list:
     """
     pass
 
     # noinspection SpellCheckingInspection
     '''
+    
+    Python Standard Library modules are found in:
+        /usr/lib/python2.7
+        /usr/lib/python3.5 
+ 
+    Pippim modules can be in any directory be it system, program path or user dir.
+
+    3rd party modules are found in:
+
 ll /usr/lib/python2.7/dist-packages
 total 3732
 drwxr-xr-x 127 root root  12288 May 19 09:01 ./
@@ -305,8 +627,8 @@ drwxr-xr-x   3 root root   4096 Jun 15  2021 apt/
 -rw-r--r--   1 root root 342696 Apr 29  2021 apt_pkg.x86_64-linux-gnu.so
 drwxr-xr-x   2 root root   4096 Jun 15  2021 aptsources/
 drwxr-xr-x   4 root root   4096 Nov 22  2020 babel/
-drwxr-xr-x   2 root root   4096 Nov 22  2020 Babel-1.3.egg-info/
-lrwxrwxrwx   1 root root     52 Jun 17  2012 BeautifulSoup-3.2.1.egg-info -> ../../../share/pyshared/BeautifulSoup-3.2.1.egg-info
+drwxr-xr-x   2 root root   4096 Nov 22  2020 Babel-1.3.egg-info/  # next line middle-truncated to make pycharm happy
+lrwxrwxrwx   1 root root     52 Jun 17  2012 BeautifulSoup-3.2.1.egg-info -> ../../../share/pyshared/Beau-3.2.1.egg-info
 drwxr-xr-x   2 root root   4096 Jun 30  2019 beautifulsoup4-4.4.1.egg-info/
 lrwxrwxrwx   1 root root     40 Jun 17  2012 BeautifulSoup.py -> ../../../share/pyshared/BeautifulSoup.py
 -rw-r--r--   1 root root  69174 Feb  7  2021 BeautifulSoup.pyc
@@ -533,7 +855,7 @@ drwxr-xr-x   2 root root   4096 Mar 10  2019 zope.interface-4.1.3.egg-info/
     return
 
 
-def main(caller=None):
+def main(module=None):
     """
     Load saved configuration if it exists. Otherwise create new configuration.
     Loop through every configuration dictionary and tests if it exists.
@@ -545,14 +867,57 @@ def main(caller=None):
     Save configuration so tests can be skipped next time.
 
     """
-    print("mserve_config.py startup called from:", caller)
+    print("mserve_config.py startup called from:", module)
     make_default_cfg()  # Create default configuration
-    for cfg_dict in DEFAULT_CFG:
-        print("Default Configuration Dictionary for:", cfg_dict['caller'])
+
+    ''' 
+    cfg_dict = \
+        {"module": module,
+         "imp_as": imp_as,
+         "imp_from": imp_from,
+         "developer": developer,
+         "version": version,
+         "ubuntu": ubuntu,
+         "required": required}
+    '''
+    pippim_modules = []
+    for cfg_dict in DEFAULT_CFG:  # "ubuntu"
+        #print("Default Configuration Dictionary for:", cfg_dict['module'])
         for key in cfg_dict:
-            if key is not "caller":
-                print("\t", key.ljust(10), ":", cfg_dict[key])
+            if key is not "module":
+                if key is "developer" and cfg_dict[key] and cfg_dict[key] == "pippim.com":
+                    if not cfg_dict['imp_from'] + ".py" in pippim_modules:
+                        pippim_modules.append(cfg_dict['imp_from'] + ".py")
+
+    pippim_modules.sort()
+    for module in pippim_modules:
+        if module == "m.py":
+            module = "m"
+        res = os.popen("wc " + module).read().strip()
+        if module == "timefmt.py":
+            res = res.replace(" ", "\t\t", 1)  # Fudge it
+        res = res.replace(" ", "\t")
+        print(res)
+
+    #print(pippim_modules)
+    ''' os.walk() path and merge results with default configuration dictionary to 
+        make machine configuration dictionary
+
+        sys.path = ['/home/rick/python',  # Also walk subdirs /pulsectl, etc.
+        '/usr/lib/python2.7', 
+        '/usr/lib/python2.7/plat-x86_64-linux-gnu',
+        '/usr/lib/python2.7/lib-tk', 
+        '/usr/lib/python2.7/lib-old', 
+        '/usr/lib/python2.7/lib-dynload', 
+        '/home/rick/.local/lib/python2.7/site-packages', 
+        '/usr/local/lib/python2.7/dist-packages', 
+        '/usr/lib/python2.7/dist-packages', 
+        '/usr/lib/python2.7/dist-packages/PILcompat', 
+        '/usr/lib/python2.7/dist-packages/gtk-2.0']        
     
+    '''
+
+
     ''' from: https://www.tutorialspoint.com/
     How-to-find-which-Python-modules-are-being-imported-from-a-package '''
     #modules = inspect.getmembers(os)
@@ -596,18 +961,19 @@ TypeError: unsupported operand type(s) for +: 'NoneType' and 'str'
                 #print('import %s as %s' % (val.__name__, name))
                 pass
     except ImportError:  # No module named types
-        print("types cannot be imported")
+        #print("types cannot be imported")
+        pass
 
     ''' from: https://stackoverflow.com/a/40381601/6929343 '''
     #print("\n From: https://stackoverflow.com/a/40381601/6929343 :")
     #after = [str(m) for m in sys.modules]
     #print([m for m in after if m not in before])
 
-    print("\nsys.path:", sys.path)
+    #print("\nsys.path:", sys.path)
     return True  # All tests succeeded :)
 
 
 if __name__ == "__main__":
-    main(caller=None)
+    main(module=None)
 
 # End of mserve_configy.py

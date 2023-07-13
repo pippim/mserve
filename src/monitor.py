@@ -1,14 +1,24 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+"""
+Author: Pippim
+License: GNU GPLv3
+Source: This repository
+Description: mserve - Music Server - Multiple Monitor Management
+"""
+
+from __future__ import print_function  # Must be first import
+from __future__ import with_statement  # Error handling for file opens
 
 # ==============================================================================
 #
-#       monitor.py - Functions for divining screen, monitor and window
+#       monitor.py - Functions for screen(desktop), monitors and windows
 #
 #       Check out: https://www.pythoncheatsheet.org/
 #             and: https://python-future.org/compatible_idioms.html
 #
-#       Jun. 14, 2023 - Build list of all windows. To find those off-screen
+#       Jun. 14 2023 - Build list of all windows. To find those off-screen
+#       July 12 2023 - Interface to/from mserve_config.py
 #
 # ==============================================================================
 
@@ -19,8 +29,6 @@
             python-xlib
 """
 
-from __future__ import print_function
-
 try:                        # Python 3
     import tkinter as tk
     PYTHON_VER = "3"
@@ -30,6 +38,7 @@ except ImportError:         # Python 2
     PYTHON_VER = "2"
 
 import os                   # For get_xrandr_monitors()
+import sys
 import time                 # To use time.time()
 
 from collections import OrderedDict, namedtuple
@@ -40,13 +49,22 @@ import global_variables as g
 import image as img         # Routines for tk & photo images
 import sql                  # SQLite3 functions
 
+''' Imported below in functions 
+    import wnck
+    import gi
+        gi.require_version('Gdk', '3.0')
+        gi.require_version('Gtk', '3.0')
+        gi.require_version('Wnck', '3.0')
+        from gi.repository import Gdk, Gtk, Wnck
+    import win32gui
+    from AppKit import NSWorkspace
+'''
 ''' Logging is duplicated in monitor.py module. Not sure how to apply yet? '''
 # https://stackoverflow.com/a/36419702/6929343
 # import logging
 
 # https://stackoverflow.com/a/67352300/6929343
 # logging.getLogger('PIL').setLevel(logging.WARNING)
-import sys
 # noinspection SpellCheckingInspection
 #logging.basicConfig(format='%(asctime)s %(levelname)s %(message)s',
 #                    level=logging.DEBUG,
@@ -67,7 +85,6 @@ def get_active_window2():
     string :
         Name of the currently active window.
     """
-    import sys
     active_window_name = None
     logging.info('sys.platform: ' + sys.platform)
     print('sys.platform:', sys.platform)
@@ -146,23 +163,7 @@ def get_gtk_window():
     # This is an example output
     print("Height: %s, Width: %s, X: %s, Y: %s" %
           (monitor.height, monitor.width, monitor.x, monitor.y))
-
-
-def e_print(test):
-    pass
-
-
-def ipr(test):
-    pass
-
-
-def apr(test):
-    pass
-
-
-def ipr(test):
-    pass
-
+    
 
 """  REAL REAL REAL REAL REAL REAL REAL REAL REAL REAL REAL REAL REAL REAL """
 
@@ -170,11 +171,12 @@ def ipr(test):
 
 DISPLAY = None
 SCREEN = None
-NUMBER_OF_MONITORS = None
+NUMBER_OF_MONITORS = 0  # pycharm doesn't like to see 'None'
 GNOME = None
 
 
 class Monitors:
+    """ Build list of all monitors connected to computer """
     def __init__(self):
         """ Build list of monitors forming desktop (aka X11 screen) """
         self.desk_width = 0
@@ -282,6 +284,7 @@ class Monitors:
         pass
 
     def get_n_monitors(self):
+        """ For external call to get number of monitors connected to computer """
         return self.monitor_count
 
     # noinspection PyUnusedLocal
@@ -553,7 +556,7 @@ def get_tk_window_monitor_dict(window):
         y = 0
 
     first_monitor = None
-
+    ''' Assumes another function has already set NUMBER_OF_MONITORS '''
     for index in range(NUMBER_OF_MONITORS):
         # Save first monitor if needed later
         monitor = monitors[index]

@@ -1,11 +1,21 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+"""
+Author: Pippim
+License: GNU GPLv3
+Source: This repository
+Description: mserve - Music Server - VU Meter processor spawned by mserve.py
+"""
+
+from __future__ import print_function  # Must be first import
+from __future__ import with_statement  # Error handling for file opens
 
 #==============================================================================
 #
 #       vu_meter.py - Listen to microphone left/right and generate vu levels
 #
 #       July 02 2023 - Temporary filenames suitable for Windows and Mac.
+#       July 12 2023 - Modify import order for mserve_config.py
 #
 #==============================================================================
 """
@@ -38,19 +48,18 @@ ENHANCEMENTS:
 
 """
 
-from __future__ import print_function       # Must be first import
-from __future__ import with_statement       # Error handling for file opens
-
-import global_variables as g
-if g.USER is None:
-    print('vu_meter.py was forced to run g.init()')
-    g.init()
-
-import pyaudio
-import numpy as np              # January 24, 2021 support Left & Right channels
+# Standard Python Library
 import sys
 import math
 import struct
+
+# dist-packages
+import pyaudio
+import numpy as np  # January 24, 2021 support Left & Right channels
+
+# Pippim modules
+import global_variables as g  # Needed for IPC filenames
+g.init()  # Always have to run because this is a spawned job
 
 #from amplitude import Amplitude  # No longer imported. Coded included below.
 RATE = 44100
@@ -58,7 +67,7 @@ INPUT_BLOCK_TIME = 0.05
 INPUT_FRAMES_PER_BLOCK = int(RATE*INPUT_BLOCK_TIME)
 SHORT_NORMALIZE = 1.0 / 32768.0
 
-''' Volume Meter IPC filenames. Change in mserve.py too '''
+''' Volume Meter IPC filenames. Duplicate any changes in mserve.py too '''
 # Mono output
 VU_METER_FNAME = g.TEMP_DIR + "mserve_vu-meter-mono.txt"
 # Stereo output (Left and Right)

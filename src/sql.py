@@ -1,5 +1,14 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+"""
+Author: Pippim
+License: GNU GPLv3
+Source: This repository
+Description: mserve - Music Server - SQLite3 Interface
+"""
+
+from __future__ import print_function  # Must be first import
+from __future__ import with_statement  # Error handling for file opens
 
 #==============================================================================
 #
@@ -13,33 +22,33 @@
 #
 #       May. 07 2023 - Convert gmtime to localtime. Before today needs update.
 #       Jun. 04 2023 - Use OsFileNameBlacklist() class for reading by song
+#       July 12 2023 - Interface to/from mserve_config.py
 #
 #   TODO:
 
 #    Need to fix file modification time which will make it greater than
 #    creation time (not birth time which is unused) which is the time it
 #    was copied to the directory and permissions were established. Use
-#    ID3 tag: CREATION_TIME : 2012-08-20 17:06:42
+#    ID3 tag: CREATION_TIME : 2012-08-20 17:06:42. Also while file's access
+#    time is reset, the creation time is automatically reset to now. The
+#    st.utime() command will be used to replace 'touch' external command.
 #
 #==============================================================================
-
-from __future__ import print_function       # Must be first import
-from __future__ import unicode_literals     # Unicode errors fix
 
 import os
 import re
 import json
 import time
 import datetime
-import sqlite3
 from collections import namedtuple, OrderedDict
 
+# dist-package?
+import sqlite3
 
-# local modules
+# pippim modules
 import global_variables as g        # should be self-explanatory
 if g.USER is None:
-    #print('sql.py was forced to run g.init()')
-    # sql.py runs init when mserve.py starts. Otherwise, location.py runs init.
+    print('sql.py was forced to run g.init()')
     g.init()
 import timefmt as tmf               # Our custom time formatting functions
 import external as ext
@@ -799,6 +808,7 @@ def hist_add_time_index(key, time_list):
 
 
 def hist_add_shuffle(Action, SourceMaster, SourceDetail):
+    """ Record action of shuffling playlist. """
     Type = "playlist"
     # Action = 'shuffle'
     if Type == Action == SourceMaster == SourceDetail:
@@ -1116,8 +1126,7 @@ def hist_last_time(check_type, check_action):
 
 def hist_add(Time, MusicId, User, Type, Action, SourceMaster, SourceDetail, 
              Target, Size, Count, Seconds, Comments):
-    """ Add History Row for Synchronizing Lyrics Time Indices.
-    """
+    """ Add History Row for Synchronizing Lyrics Time Indices. """
     # DEBUG:
     # InterfaceError: Error binding parameter 1 - probably unsupported type.
     # print("Time, MusicId, User, Type, Action, SourceMaster, SourceDetail,")

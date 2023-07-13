@@ -1,18 +1,30 @@
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
+"""
+Author: Pippim
+License: GNU GPLv3
+Source: This repository
+Description: mserve - Music Server - Encode (rip) CD's
+"""
+
+from __future__ import print_function  # Must be first import
+from __future__ import with_statement  # Error handling for file opens
+
 # ==============================================================================
 #
-#   encoding.py - Encode CD to '.oga', '.wav' or '.flac'
+#       encoding.py - Encode CD to '.oga', '.wav' or '.flac'
 #
-#       TODO: Whilst encoding obtain lyrics and allow play song encoded with
-#             full lyrics edit and time index synchronization.
+#       TODO:   Whilst encoding obtain lyrics and allow play song encoded with
+#               full lyrics edit and time index synchronization.
 #
 #               Ditch the IPC pickles and use SQL history records to pass
 #               variables back and forth. Also gives audit trail of encoding
 #               process should something go wrong.
 #
-#   Aug. 22 2021 - toolkit.ToolTips() for fading tooltips on hover
-#   May. 07 2023 - Convert gmtime to localtime. Before today needs update.
-#   June 22 2023 - Use CustomScrolledText ported from encoding.py to toolkit.py
+#       Aug. 22 2021 - toolkit.ToolTips() for fading tooltips on hover
+#       May. 07 2023 - Convert gmtime to localtime. Before today needs update
+#       June 22 2023 - Use CustomScrolledText ported to toolkit.py
+#       July 12 2023 - Interface to/from mserve_config.py
 #
 # ==============================================================================
 """
@@ -20,9 +32,6 @@ Solves problems like:
     https://askubuntu.com/questions/541977/
     a-music-player-with-cd-ripping-and-cddb-lookup/542030#542030
 """
-# identical imports in mserve
-from __future__ import print_function  # Must be first import
-from __future__ import with_statement  # Error handling for file opens
 
 # Must be before tkinter and released from interactive. Required to insert
 # from clipboard.
@@ -60,6 +69,8 @@ except ImportError:  # Python 2
 
     PYTHON_VER = "2"
 # print ("Python version: ", PYTHON_VER)
+from PIL import Image, ImageTk, ImageDraw, ImageFont
+from ttkwidgets import CheckboxTreeview
 
 try:
     import subprocess32 as sp
@@ -67,21 +78,19 @@ try:
 except ImportError:  # No module named subprocess32
     import subprocess as sp
     SUBPROCESS_VER = 'native'
-# import threading
-import re
-import time
-import datetime
-from PIL import Image, ImageTk, ImageDraw, ImageFont
-from ttkwidgets import CheckboxTreeview
-import musicbrainzngs as mbz
-import libdiscid as discid
-import pickle
 import sys
 import os
 import io
-import magic
-
+import re
+import time
+import datetime
+import pickle
 from pprint import pprint
+
+# Dist-packages
+import magic
+import musicbrainzngs as mbz
+import libdiscid as discid
 
 # Homegrown
 import global_variables as g
@@ -526,7 +535,6 @@ class RipCD:
 
                 Build Treeview which can call:
                     disc_get.py above followed by cohorts
-                    disc_enc.py
 
                     TODO: loc_copy.py copy encoded files to location (or many)
                           Part of larger project that keeps track of deleted

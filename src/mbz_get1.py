@@ -1,38 +1,50 @@
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
+"""
+Author: Pippim
+License: GNU GPLv3
+Source: This repository
+Description: mserve - Music Server - Get musicbrainzngs 'release-list'
+"""
 
+from __future__ import print_function  # Must be first import
+from __future__ import with_statement  # Error handling for file opens
+
+# ==============================================================================
+#
 #       mbz_get1.py - Standalone python program to run in background.
 #                     Get Musicbrainz disc information - Pass 1 of 2.
-
+#
 #       Called with: 'python mbz_get1.py <Musicbrainz id>'
 #       Parameters:  Pickle file contains object disc of libdiscid type
 #       Returns:     Dictionary of Musicbrainz 'release-list' entries
+#
+#       July 12 2023 - Interface to/from mserve_config.py
+#
+# ==============================================================================
 
-# identical imports in mserve
-from __future__ import print_function   # Must be first import
-from __future__ import with_statement   # Error handling for file opens
 
-
-# Vendor modules
+# Python Standard Library
 try:
     import subprocess32 as sp
     SUBPROCESS_VER = '32'
 except ImportError:  # No module named subprocess32
     import subprocess as sp
     SUBPROCESS_VER = 'native'
-#import threading
+import sys
+import os
 import re
 import time
 import datetime
+import pickle
+from pprint import pprint
+
+# Dist-packages
 from PIL import Image, ImageTk, ImageDraw, ImageFont
 import musicbrainzngs as mbz
 import libdiscid as discid
-import pickle
-import sys
-import os
 
-from pprint import pprint
-
-# Homegrown modules
+# Pippim modules
 import location as lc
 import message
 import image as img

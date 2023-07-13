@@ -1,14 +1,23 @@
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
+"""
+Author: Pippim
+License: GNU GPLv3
+Source: This repository
+Description: mserve - Music Server - Date & Time formatting
+"""
+
+from __future__ import print_function  # Must be first import
+from __future__ import with_statement  # Error handling for file opens
+
 #==============================================================================
 #
 #       timefmt.py - Custom time formatting functions
 #
-#       2021-08-13 - Switch over to 'import timefmt as tmf'
+#       Aug. 13 2021 - Switch over to 'import timefmt as tmf'
+#       July 12 2023 - Interface to/from mserve_config.py
 #
 #==============================================================================
-
-from __future__ import print_function       # Must be first import
-from __future__ import unicode_literals     # Unicode errors fix
 
 import time
 import datetime

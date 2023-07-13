@@ -15,6 +15,7 @@ from __future__ import with_statement  # Error handling for file opens
 #       vu_pulse_audio.py - Manage audio sinks and set volume
 #
 #       July 07 2023 - Enhanced code converted from mserve.py
+#       July 12 2023 - Interface to/from mserve_config.py
 #
 # ==============================================================================
 """
@@ -33,9 +34,9 @@ if not cfg.main(caller):
     exit()
 else:
     print(caller, "finished call to mserve_config.py with SUCCESS!")
+    pass
 
 import global_variables as g
-
 if g.USER is None:
     print('vu_pulse_audio.py was forced to run g.init()')
     g.init()
@@ -54,6 +55,7 @@ import timefmt as tmf
 import toolkit
 
 who_am_i = "vu_pulse_audio.py PulseAudio."
+FADE_NO = 0  # Aids in debugging
 
 
 class PulseAudio:
@@ -92,54 +94,65 @@ class PulseAudio:
     def fade(self, sink_no_str, begin, end, duration, finish_cb=None, arg_cb=None):
         """ Add new self.dict to fade_list
             'finish_cb': is an optional callback when fade cycle is completed
-            'arg_cb': is an optional parameter to the optional callback
+            'arg_cb': is an optional parameter to the optional callback function
         """
         if sink_no_str is None:
+            toolkit.print_trace()
+            print('pav.fade() passed empty sink_no_str')
             return  # Could use error message and trace...
 
+        global FADE_NO
+        FADE_NO += 1
         now = time.time()
-        self.dict['sink_no_str'] = str(sink_no_str)  # Sink#, E.G. "849L"
-        self.dict['begin_perc'] = float(begin)  # Starting volume percent
-        self.dict['end_perc'] = float(end)  # Ending volume percent
-        self.dict['start_time'] = now  # Time entered queue + duration = leave
-        self.dict['duration'] = float(duration)  # Seconds fade will last.
-        self.dict['finish_cb'] = finish_cb  # callback when fade is ALL done
-        self.dict['arg_cb'] = arg_cb  # optional argument to callback
-        self.dict['curr_perc'] = begin  # Required for reverse_fade()
-        self.dict['history'] = []  # Used for debugging
-        self.dict['last_time'] = now  # Just for debugging
+        new_dict = dict()
+        new_dict['FADE_NO'] = FADE_NO  # Aids in debugging
+        new_dict['sink_no_str'] = str(sink_no_str)  # Sink#, E.G. "849L"
+        new_dict['begin_perc'] = float(begin)  # Starting volume percent
+        new_dict['end_perc'] = float(end)  # Ending volume percent
+        new_dict['start_time'] = now  # Time entered queue + duration = leave
+        new_dict['duration'] = float(duration)  # Seconds fade will last.
+        new_dict['finish_cb'] = finish_cb  # callback when fade is ALL done
+        new_dict['arg_cb'] = arg_cb  # optional argument to callback
+        new_dict['curr_perc'] = float(begin)  # Required for reverse_fade()
+        new_dict['history'] = []  # Used for debugging
+        new_dict['last_time'] = now  # Just for debugging
         # If sink_no_str is already being faded, reverse it
-        if not self.reverse_fade(now):  # When True, an existing fade
+        if not self.reverse_fade(new_dict, now):  # When True, an existing fade
             # Add new fade job into queue where it will be processed every .033 secs
-            self.fade_list.append(self.dict)
+            self.fade_list.append(new_dict)
 
-    def reverse_fade(self, now):
+    def reverse_fade(self, new_dict, now):
         """ Fade was already started now needs to reverse.
 
             Currently reversing fade needs same duration as original fade.
 
             poll_fades() calls reverse_fade() before adding new fade to list.
+
+            self.dict contains current new fade fields.
+
         """
         who = who_am_i + "reverse_fade(): "
         for i, scan_dict in enumerate(self.fade_list):
-            if scan_dict['sink_no_str'] == self.dict['sink_no_str']:
+            if scan_dict['sink_no_str'] == new_dict['sink_no_str']:
                 old_dict = dict(scan_dict)  # Shallow copy of old fade
-                # Replace original fade with new fade in opposite direction
-                elapsed = now - old_dict['start_time']
-                new_duration = old_dict['duration'] - elapsed
-                if self.dict['duration'] != old_dict['duration']:
-                    # What to do when new duration is different?
-                    print(who, "self.dict['duration']:", self.dict['duration'],
+                elapsed = now - old_dict['start_time']  # Calculate new
+                new_duration = old_dict['duration'] - elapsed  # duration
+                if new_dict['duration'] != old_dict['duration']:
+                    print(who, "new_dict['duration']:", new_dict['duration'],
                           "old_dict['duration']:", old_dict['duration'])
-                self.dict['duration'] = new_duration
-                # New beginning volume percent is where fade left off last cycle
-                self.dict['begin_perc'] = old_dict['curr_perc']
-                # Debugging fields not normally accessed
-                self.dict['curr_perc'] = old_dict['curr_perc'] 
-                print(who + "started for sink:", self.dict['sink_no_str'],
-                      "from:", self.dict['begin_perc'],
-                      "to:", self.dict['end_perc'])
-                self.fade_list[i] = self.dict
+                new_dict['duration'] = new_duration
+                new_dict['begin_perc'] = old_dict['curr_perc']  # Reverse volume
+                new_dict['end_perc'] = old_dict['begin_perc']  # to old beginning
+                new_dict['curr_perc'] = old_dict['curr_perc']
+                new_dict['history'].extend(old_dict['history'])
+                self.fade_list[i] = new_dict
+                #print("\n" + who + "started for sink:", new_dict['sink_no_str'],
+                #      "from:", new_dict['begin_perc'],
+                #      "to:", new_dict['end_perc'],
+                #      "elapsed:", elapsed,
+                #      "new_duration:", new_duration)
+                #print("\nold_dict:", old_dict)
+                #print("\nnew_dict:", new_dict)
                 return True  # Did reverse previous fade
         return False  # Did not reverse previous fade
     
@@ -150,21 +163,27 @@ class PulseAudio:
 
         ''' Process every self.dict in the fade_list '''
         now = time.time()
-        for i, self.dict in enumerate(self.fade_list):
+        for i, fade_dict in enumerate(self.fade_list):
 
             ''' If all done set final volume and grab next fade in queue '''
-            if now >= self.dict['start_time'] + self.dict['duration']:
-                self.set_volume(self.dict['sink_no_str'], self.dict['end_perc'])
-                self.poll_callback()
+            if now >= fade_dict['start_time'] + fade_dict['duration']:
+                self.set_volume(fade_dict['sink_no_str'], fade_dict['end_perc'])
+                fade_dict['curr_perc'] = fade_dict['end_perc']
+                self.fade_list[i] = fade_dict  # Update 'curr_perc' for reverse_fade()
+                self.poll_callback(fade_dict)  # Uses current fade_dict
                 continue
 
             ''' Still fading. Calculate volume and set '''
-            current_duration = now - self.dict['start_time']
-            distance = self.dict['end_perc'] - self.dict['begin_perc']
-            adjust = distance * current_duration / self.dict['duration']
-            self.dict['curr_perc'] = self.dict['begin_perc'] + adjust
+            current_duration = now - fade_dict['start_time']
+            distance = fade_dict['end_perc'] - fade_dict['begin_perc']
+            adjust = distance * current_duration / fade_dict['duration']
+            fade_dict['curr_perc'] = fade_dict['begin_perc'] + adjust
+            fade_dict['last_time'] = now
+            fade_dict['history'].append((str(fade_dict['curr_perc']),
+                                         str(current_duration)))
+            self.fade_list[i] = fade_dict  # Update 'curr_perc' for reverse_fade()
             self.set_volume(
-                self.dict['sink_no_str'], self.dict['begin_perc'] + adjust)
+                fade_dict['sink_no_str'], fade_dict['begin_perc'] + adjust)
 
         ''' Build new self.fade_list without the fades that just finished '''
         self.fade_list = \
@@ -251,15 +270,15 @@ class PulseAudio:
                 self.spam_count += 1  # Don't flood with broadcasts
                 self.info.cast(text, 'error')
 
-    def poll_callback(self):
+    def poll_callback(self, scan_dict):
         """ fade has finished. Now call 'stop' or 'kill' or whatever. """
 
-        if self.dict['finish_cb'] is not None:  # Was callback passed?
-            if self.dict['arg_cb'] is not None:  # Does callback have arg?
+        if scan_dict['finish_cb'] is not None:  # Was callback passed?
+            if scan_dict['arg_cb'] is not None:  # Does callback have arg?
                 # Call function name with argument (probably pid)
-                self.dict['finish_cb'](self.dict['arg_cb'])
+                scan_dict['finish_cb'](scan_dict['arg_cb'])
             else:
-                self.dict['finish_cb']()  # Call function name without arg.
+                scan_dict['finish_cb']()  # Call function name without arg.
 
     def get_volume(self, sink_no_str, refresh=True):
         """ Get current volume of sink.

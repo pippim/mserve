@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
 Author: Pippim
@@ -21,9 +22,6 @@ from __future__ import with_statement       # Error handling for file opens
 #       Apr. 15 2023 - Move in normalize_tcl() from bserve.py for mserve.py.
 #       Jun. 15 2023 - New Tooltip anchor "sc" South Centered for banner_btn
 #       July 11 2023 - Delete unused methods to simplify mserve_config.py
-#
-#       TODO: As tip window is fading in, button click is not registered so
-#             tip window stays up for normal duration
 #
 #==============================================================================
 
@@ -52,22 +50,35 @@ except ImportError:  # Python 2
     PYTHON_VER = "2"
 # print ("Python version: ", PYTHON_VER)
 
-# For MoveTreeviewColumn
-from PIL import Image, ImageTk
-from collections import namedtuple
-import os
+from PIL import Image, ImageTk  # For MoveTreeviewColumn
+from ttkwidgets import CheckboxTreeview
 
+# python standard library modules
+import os
 import time
 import datetime
-from ttkwidgets import CheckboxTreeview
 from collections import OrderedDict, namedtuple
-
-import global_variables as g
-import external as ext      # Time formatting routines
-import image as img         # Pippim image.py module
 import re                   # w, h, old_x, old_y = re.split(r'\D+', geom)
 import traceback            # To display call stack (functions that got us here)
 
+# mserve modules
+import global_variables as g
+if g.USER is None:
+    print('toolkit.py was forced to run g.init()')
+    g.init()
+import external as ext      # Time formatting routines
+import image as img         # Pippim image.py module
+
+# noinspection SpellCheckingInspection
+'''
+    Optional gnome_screenshot() for MoveTreeviewColumn function imports:
+        import gi
+        gi.require_version('Gdk', '3.0')
+        gi.require_version('Gtk', '3.0')
+        gi.require_version('Wnck', '3.0')
+        # gi.require_versions({"Gtk": "3.0", "Gdk": "3.0", "Wnck": "3.0"})
+        from gi.repository import Gdk, GdkPixbuf, Gtk, Wnck
+'''
 
 def print_trace():
     """ Mimic trace """

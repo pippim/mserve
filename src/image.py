@@ -1,18 +1,26 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+"""
+Author: Pippim
+License: GNU GPLv3
+Source: This repository
+Description: mserve - Music Server - Image Processing
+"""
+
+from __future__ import print_function  # Must be first import
+from __future__ import with_statement  # Error handling for file opens
+
 #==============================================================================
 #
 #       image.py - Image processing
 #
 #           import image as img
 #
-#   June 19 2023 - Reduce triangle (chevrons) clicking errors with white space.
-#   July 02 2023 - make_image() - Support multi-line text.
+#       June 19 2023 - Add white space around triangle (chevrons)
+#       July 02 2023 - make_image() - Support multi-line text
+#       July 12 2023 - Interface to/from mserve_config.py
 #
 #==============================================================================
-
-from __future__ import print_function       # Must be first import
-from __future__ import with_statement       # Error handling for file opens
 
 try:
     import tkinter as tk
@@ -31,47 +39,16 @@ except ImportError:  # Python 2
     import ScrolledText as scrolledtext
     PYTHON_VER = "2"
 # print ("Python version: ", PYTHON_VER)
+from PIL import Image, ImageTk, ImageDraw, ImageFont, ImageFilter, ImageOps
 
-# import subprocess32 as sp  # Not used and causing error in ~/bserve/b
 import os
-#import threading
 import re
 import time
 import datetime
 import io
-from PIL import Image, ImageTk, ImageDraw, ImageFont, ImageFilter, ImageOps
 from collections import namedtuple
 
 import x11                  # x11 wrapper functions for GoneFishing() class
-
-# noinspection SpellCheckingInspection
-"""
-System crash in ~/bserve June 19, 2023, noticed July 5, 2023. Cause was change:
-Jun 17 23 - toolkit.normalize_tcl() changed to support "vwxyz" which were "?"
-
-Xlib.xauth: warning, no xauthority details available
-Traceback (most recent call last):
-  File "/home/rick/bserve/gmail-send-msg.py", line 28, in <module>
-    import gmail_api
-  File "/home/rick/bserve/gmail_api.py", line 74, in <module>
-    import external as ext          # Timing
-  File "/home/rick/bserve/external.py", line 24, in <module>
-    import toolkit
-  File "/home/rick/bserve/toolkit.py", line 58, in <module>
-    import image as img         # Pippim image.py module
-  File "/home/rick/bserve/image.py", line 45, in <module>
-    import x11                  # Home-brewed x11 wrapper functions
-  File "/home/rick/bserve/x11.py", line 62, in <module>
-    d = Xlib.display.Display(':0')              # d is for X11 Display object
-  File "/usr/lib/python2.7/dist-packages/Xlib/display.py", line 80, in __init__
-    self.display = _BaseDisplay(display)
-  File "/usr/lib/python2.7/dist-packages/Xlib/display.py", line 62, in __init__
-    display.Display.__init__(*(self, ) + args, **keys)
-  File "/usr/lib/python2.7/dist-packages/Xlib/protocol/display.py", line 129, in __init__
-    raise error.DisplayConnectionError(self.display_name, r.reason)
-Xlib.error.DisplayConnectionError: Can't connect to display ":0": No protocol specified
-"""
-
 import external as ext
 import monitor              # Screen, Monitor and Window functions
 

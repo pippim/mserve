@@ -1,11 +1,22 @@
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
+"""
+Author: Pippim
+License: GNU GPLv3
+Source: This repository
+Description: mserve - Music Server - Calls to External Programs
+"""
+
+from __future__ import print_function  # Must be first import
+from __future__ import with_statement  # Error handling for file opens
+
 #==============================================================================
 #
 #       external.py - Used by mserve, encoding.py and dell_start
 #
+#       July 12 2023 - Hooks to mserve_config.py
+#
 #==============================================================================
-
-from __future__ import print_function   # Must be first import
 
 import signal                           # Trap shutdown to close files
 import os
@@ -108,6 +119,44 @@ def launch_command(ext_name, toplevel=None):
         proc = sp.Popen("/usr/bin/du folder", stdout=file("1.txt", "ab"))
         print "PID:", proc.pid
         print "Return code:", proc.wait()
+
+        Use subprocess: https://stackoverflow.com/a/20218672/6929343
+            import subprocess
+            import time
+            argument = '...'
+            proc = subprocess.Popen(['python', 'bar.py', argument], shell=True)
+            time.sleep(3) # <-- There's no time.wait, but time.sleep.
+            pid = proc.pid # <--- access `pid` attribute to get the pid of the child process.
+
+        Can then use:
+            proc.terminate()
+
+        Also: https://stackoverflow.com/a/27007047/6929343
+        import psutil, time, subprocess
+
+        cmd = "python target.py"
+        P = subprocess.Popen(cmd,shell=True)
+        psProcess = psutil.Process(pid=P.pid)
+
+        while True:
+            time.sleep(5)
+            psProcess.suspend()
+            print 'I am proactively leveraging my synergies!'
+            psProcess.resume()
+
+        Also: https://stackoverflow.com/a/27007047/6929343
+        Since you are on Linux, you can use the following reader.py:
+        import subprocess, signal, time, os
+
+        cmd = "python target.py"
+        P = subprocess.Popen(cmd,shell=True)
+
+        while True:
+           time.sleep(5)
+           os.kill(P.pid, signal.SIGSTOP)
+           print "doing something"
+           os.kill(P.pid, signal.SIGCONT)
+
     """
 
     all_pid = pid_list(ext_name)
