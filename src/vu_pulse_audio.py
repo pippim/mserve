@@ -26,16 +26,6 @@ NOTE: Use pavucontrol to create loopback from sound output to microphone:
 
 """
 
-
-import mserve_config as cfg
-caller = "vu_pulse_audio.py"
-if not cfg.main(caller):
-    print("mserve not fully installed. Aborting...")
-    exit()
-else:
-    print(caller, "finished call to mserve_config.py with SUCCESS!")
-    pass
-
 import global_variables as g
 if g.USER is None:
     print('vu_pulse_audio.py was forced to run g.init()')

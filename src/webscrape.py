@@ -1,11 +1,20 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+"""
+Author: Pippim
+License: GNU GPLv3
+Source: This repository
+Description: Global variables shared by all Pippim mserve modules
+"""
+from __future__ import print_function  # Must be first import
+from __future__ import with_statement  # Error handling for file opens
 
 # ==============================================================================
 #
-#   webscrape.py - Search and scrape internet for song lyrics
+#       webscrape.py - Search and scrape internet for song lyrics
 #
-#   June 25 2023 - Use toolkit.uni_str(line)
+#       June 25 2023 - Use toolkit.uni_str(line)
+#       July 13 2023 - Interface to/from mserve_config.py
 #
 # ==============================================================================
 
@@ -28,21 +37,13 @@ Store results in:           /run/user/1000/mserve.scrape_lyrics.txt
 
 """
 
-from __future__ import print_function  # Must be first import
-from __future__ import with_statement  # Error handling for file opens
-
-# from __future__ import unicode_literals     # Unicode errors fix
-# Above causes error on save icon utf-8
-# _tkinter.TclError: character U+1f4be is above the range (U+0000-U+FFFF) allowed by Tcl
-
-try:
+try:  # Python 3
     import tkinter as tk
     import tkinter.ttk as ttk
     import tkinter.font as font
     import tkinter.filedialog as filedialog
     import tkinter.messagebox as messagebox
     import tkinter.scrolledtext as scrolledtext
-
     PYTHON_VER = "3"
 except ImportError:  # Python 2
     import Tkinter as tk
@@ -51,26 +52,33 @@ except ImportError:  # Python 2
     import tkFileDialog as filedialog
     import tkMessageBox as messagebox
     import ScrolledText as scrolledtext
-
     PYTHON_VER = "2"
-# print ("Python version: ", PYTHON_VER)
 
+# Python Standard Library
 import sys
+try:
+    reload(sys)  # June 25, 2023 - Without these commands, os.popen() fails on OS
+    sys.setdefaultencoding('utf8')  # filenames that contain unicode characters
+except NameError:  # name 'reload' is not defined
+    pass  # Python 3 already in unicode by default
+#print("Python version:", sys.version)
 import os
-import os.path
+#import os.path  # July 13, 2023... Huh?
 import json
 import time
-
-reload(sys)  # June 25, 2023 - Without these commands, os.popen() fails on OS
-sys.setdefaultencoding('utf8')  # filenames that contain unicode characters
-
-import requests
-from six.moves import urllib            # Python 2/3 compatibility library
-from bs4 import BeautifulSoup
 import re
 from collections import namedtuple
 
+# Dist-packages
+import requests
+from six.moves import urllib            # Python 2/3 compatibility library
+from bs4 import BeautifulSoup
+
+# Pippim modules
 import global_variables as g
+if g.USER is None:
+    g.init()  # Always have to run when background job
+
 import external as ext  # Time formatting routines
 import image as img
 import monitor
@@ -79,9 +87,9 @@ import toolkit
 import message
 
 # Web scraping song lyrics IPC file names
-SCRAPE_CTL_FNAME = '/run/user/1000/mserve.scrape_ctl.json'
-SCRAPE_LIST_FNAME = '/run/user/1000/mserve.scrape_list.txt'
-SCRAPE_LYRICS_FNAME = '/run/user/1000/mserve.scrape_lyrics.txt'
+SCRAPE_CTL_FNAME = g.TEMP_DIR + 'mserve.scrape_ctl.json'
+SCRAPE_LIST_FNAME = g.TEMP_DIR + 'mserve.scrape_list.txt'
+SCRAPE_LYRICS_FNAME = g.TEMP_DIR + 'mserve.scrape_lyrics.txt'
 
 # Names list is used in our code for human readable formatting
 NAMES_LIST = ['Metro Lyrics', 'AZ Lyrics', 'Lyrics',

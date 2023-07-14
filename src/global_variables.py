@@ -6,6 +6,8 @@ License: GNU GPLv3
 Source: This repository
 Description: Global variables shared by all Pippim mserve modules
 """
+from __future__ import print_function  # Must be first import
+from __future__ import with_statement  # Error handling for file opens
 
 # ==============================================================================
 #
@@ -16,16 +18,19 @@ Description: Global variables shared by all Pippim mserve modules
 #
 # ==============================================================================
 
-from __future__ import print_function       # Must be first import
-
-import mserve_config as cfg
-
 # Get application & storage directory names
 from appdirs import user_data_dir, user_config_dir
 
 import tempfile         # Gets TMP_DIR /tmp, C:\Temp, etc.
 import os               # USER_ID = str(os.get uid())
 import pwd              # USER = pwd.get pw uid(os.get uid()).pw_name
+
+''' Code duplicated in mserve_config.py '''
+import platform as plat  # Gets OS Name, Version, Release
+OS_PLATFORM = plat.platform()  # 'Linux-4.14.216-0414216-generic-x86_64-with-Ubuntu-16.04-xenial'
+OS_NAME = plat.system()  # 'Linux'
+OS_VERSION = plat.release()  # '4.14.216-0414216-generic'
+OS_RELEASE = plat.version()  # '#202101171339 SMP Sun Jan 17 13:56:04 UTC 2021'
 
 USER = None             # User ID, Name, GUID varies by platform
 USER_ID = None          # Numeric User ID in Linux

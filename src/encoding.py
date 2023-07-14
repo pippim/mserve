@@ -4,7 +4,7 @@
 Author: Pippim
 License: GNU GPLv3
 Source: This repository
-Description: mserve - Music Server - Encode (rip) CD's
+Description: mserve - Music Server - Encode (Rip) CD's
 """
 
 from __future__ import print_function  # Must be first import
@@ -25,6 +25,7 @@ from __future__ import with_statement  # Error handling for file opens
 #       May. 07 2023 - Convert gmtime to localtime. Before today needs update
 #       June 22 2023 - Use CustomScrolledText ported to toolkit.py
 #       July 12 2023 - Interface to/from mserve_config.py
+#       July 13 2023 - Upgrade to new SQL database. TODO: DiskNumber, Composer
 #
 # ==============================================================================
 """
@@ -92,7 +93,7 @@ import magic
 import musicbrainzngs as mbz
 import libdiscid as discid
 
-# Homegrown
+# Pippim modules
 import global_variables as g
 import location as lc
 import external as ext
@@ -1154,6 +1155,7 @@ class RipCD:
 
 
     def add_sql_music(self):
+        """ Populate SQL Music Table Row with new CD track """
         # os.stat gives us all of file's attributes
         stat = os.stat(self.os_full_name)
         self.song_size = stat.st_size
@@ -1162,12 +1164,23 @@ class RipCD:
 
         ''' Add the song without metadata '''
         # Does 'sql' conflict with import? Try 'sql_cmd' instead
+
+
+        ''' convert July 13, 2023
+        sql_cmd = "INSERT OR IGNORE INTO Music (OsFileName, OsAccessTime, \
+        OsModifyTime, OsChangeTime, OsFileSize, CreationTime) \
+            VALUES (?, ?, ?, ?, ?, ?)"
+        sql.cursor.execute(sql_cmd, (self.os_part_name, stat.st_atime,
+                           stat.st_mtime, stat.st_ctime, self.song_size,
+                           time.time()))
+        '''
         sql_cmd = "INSERT OR IGNORE INTO Music (OsFileName, \
             OsAccessTime, OsModificationTime, OsCreationTime, OsFileSize) \
             VALUES (?, ?, ?, ?, ?)"
-
         sql.cursor.execute(sql_cmd, (self.os_part_name, stat.st_atime,
                            stat.st_mtime, stat.st_ctime, self.song_size))
+
+
 
         sql.con.commit()
         # TODO: What is last rowid if updating record?
@@ -1205,8 +1218,7 @@ class RipCD:
 
 
     def add_sql_metadata(self):
-        """
-        """
+        """ July 13, 2023 - Need to add DiskNumber, Composer """
         genre = None                # TODO: Get with tk.Entry like release date
         #genre = ""                  # None type breaks genre.decode("utf8")
         sql.update_metadata(
@@ -1217,7 +1229,7 @@ class RipCD:
 
     # noinspection PyPep8Naming
     def add_metadata_to_song(self):
-
+        """ July 13, 2023 - Need to add DiskNumber, Composer """
         if self.fmt == 'flac':
             from mutagen.flac import FLAC as audio_file
         elif self.fmt == 'oga':

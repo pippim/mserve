@@ -26,7 +26,7 @@ except ImportError:
     pass
 
 """
-    Called by global_variables.py to ensure all necessary imports are available.
+    Called by 'm' or called by 'mserve.py' if 'm' was skipped.
 """
 
 
@@ -48,6 +48,14 @@ import os
 
 import inspect
 import importlib
+
+''' Code duplicated in global_variables.py '''
+import platform as plat  # Gets OS Name, Version, Release
+OS_PLATFORM = plat.platform()  # 'Linux-4.14.216-0414216-generic-x86_64-with-Ubuntu-16.04-xenial'
+OS_NAME = plat.system()  # 'Linux'
+OS_VERSION = plat.release()  # '4.14.216-0414216-generic'
+OS_RELEASE = plat.version()  # '#202101171339 SMP Sun Jan 17 13:56:04 UTC 2021'
+
 
 ''' Load global variables first before Pippim modules
 try:
@@ -117,12 +125,12 @@ def make_default_cfg():
     DEFAULT_CFG += make_mon_cfg()  # for monitor.py
     DEFAULT_CFG += make_img_cfg()  # for image.py
     DEFAULT_CFG += make_x11_cfg()  # for x11.py
+    DEFAULT_CFG += make_web_cfg()  # for webscrape.py
     ''' All the modules used by encoding.py '''
     DEFAULT_CFG += make_encoding_cfg()  # for encoding.py
     DEFAULT_CFG += make_disc_cfg()  # for disc_get.py
     DEFAULT_CFG += make_mbz1_cfg()  # for mbz_get1.py
     DEFAULT_CFG += make_mbz2_cfg()  # for mbz_get2.py
-
 
 
 def make_g_cfg():
@@ -152,6 +160,8 @@ def make_m_cfg():
     # Modules not imported. Add here for statistics.
     cfg.append(make_dict(m, None, "m", "pippim.com"))  # 'm' for stats
     cfg.append(make_dict(m, None, "vu_meter", "pippim.com"))  # also for stats
+    cfg.append(make_dict(m, None, "webscrape", "pippim.com"))  # also for stats
+    cfg.append(make_dict(m, "cfg", "mserve_config", "pippim.com"))  # also for stats
     return cfg
 
 
@@ -186,8 +196,13 @@ def make_mserve_cfg():
     cfg.append(make_dict(m, "shuffle", "random"))
     cfg.append(make_dict(m, None, "locale"))
 
-    cfg.append(make_dict(m, None, "notify2", "https://pypi.org/project/notify2/"))
-    cfg.append(make_dict(m, "np", "numpy", "https://github.com/numpy/numpy"))
+    d2 = "https://github.com/numpy/numpy"
+    d3 = "https://pypi.org/project/notify2/"
+    cfg.append(make_dict(m, "np", "numpy", d2, "3", "python3-numpy"))
+    cfg.append(make_dict(m, "np", "numpy", d2, "2", "python-numpy"))
+    cfg.append(make_dict(m, None, "notify2", d3, "3", "python3-notify2"))
+    cfg.append(make_dict(m, None, "notify2", d3, "2", "python-notify2"))
+
 
     cfg.append(make_dict(m, "g", "global_variables", "pippim.com"))
     cfg.append(make_dict(m, "lc", "location", "pippim.com"))
@@ -225,13 +240,15 @@ def make_vum_cfg():
     """ Configuration for: 'os.popen("vu_meter.py... &")' """
     cfg = list()  # Return list of dictionaries
     m = "vu_meter"  # Module name to python interpreter
-    d = "https://github.com/kmein/vu-meter"  # No place to put credit yet
+    d1 = "https://github.com/jleb/pyaudio/tree/master"
+    d2 = "https://github.com/numpy/numpy"
     cfg.append(make_dict(m, None, "sys"))
     cfg.append(make_dict(m, None, "math"))
     cfg.append(make_dict(m, None, "struct"))
-    cfg.append(make_dict(
-        m, None, "pyaudio", "https://github.com/jleb/pyaudio/tree/master"))
-    cfg.append(make_dict(m, "np", "numpy", "https://github.com/numpy/numpy"))
+    cfg.append(make_dict(m, None, "pyaudio", d1, "3", "python3-pyaudio"))
+    cfg.append(make_dict(m, None, "pyaudio", d1, "2", "python-pyaudio"))
+    cfg.append(make_dict(m, "np", "numpy", d2, "3", "python3-numpy"))
+    cfg.append(make_dict(m, "np", "numpy", d2, "2", "python-numpy"))
     cfg.append(make_dict(m, "g", "global_variables", "pippim.com"))
     return cfg
 
@@ -417,6 +434,41 @@ def make_x11_cfg():
     return cfg
 
 
+def make_web_cfg():
+    """ Configuration for: 'popen(webscrape.py...)' """
+    cfg = list()  # Return list of dictionaries
+    m = "webscrape"  # Module name to python interpreter
+    d1 = "https://requests.readthedocs.io/en/latest/"
+    d2 = "https://pypi.org/project/musicbrainzngs/"
+    d3 = "https://github.com/sebastinas/python-libdiscid"
+    cfg.extend(make_tk_cfg(m))
+    cfg.append(make_dict(m, None, "sys"))
+    cfg.append(make_dict(m, None, "os"))
+    cfg.append(make_dict(m, None, "json"))
+    cfg.append(make_dict(m, None, "time"))
+    cfg.append(make_dict(m, None, "re"))
+    cfg.append(make_dict(m, None, "time"))
+    cfg.append(make_dict(m, "namedtuple", "collections"))
+    # Dist-packages
+    d1 = "https://requests.readthedocs.io/en/latest/"
+    d2 = "https://six.readthedocs.io/"
+    d3 = "https://www.crummy.com/software/BeautifulSoup/bs4/doc/"
+    cfg.append(make_dict(m, None, "requests", d1, "3", "python3-requests"))
+    cfg.append(make_dict(m, None, "requests", d1, "2", "python-requests"))
+    cfg.append(make_dict(m, None, "six.moves.urllib", d2, "3", "python3-six"))
+    cfg.append(make_dict(m, None, "six.moves.urllib", d2, "2", "python-six"))
+    cfg.append(make_dict(m, None, "bs4.BeautifulSoup", d3, "3", "python3-bs4"))
+    cfg.append(make_dict(m, None, "bs4.BeautifulSoup", d3, "3", "python-bs4"))
+    # Pippim modules
+    cfg.append(make_dict(m, "g", "global_variables", "pippim.com"))
+    cfg.append(make_dict(m, "ext", "external", "pippim.com"))
+    cfg.append(make_dict(m, None, "monitor", "pippim.com"))
+    cfg.append(make_dict(m, None, "sql", "pippim.com"))
+    cfg.append(make_dict(m, None, "toolkit", "pippim.com"))
+    cfg.append(make_dict(m, None, "message", "pippim.com"))
+    return cfg
+
+
 def make_encoding_cfg():
     """ Configuration for: 'import encoding' """
     cfg = list()  # Return list of dictionaries
@@ -439,12 +491,15 @@ def make_encoding_cfg():
     cfg.append(make_dict(m, None, "pickle"))
     cfg.append(make_dict(m, None, "pprint"))
     # Dist-packages
-    cfg.append(make_dict(m, None, "magic",
-                         "https://github.com/ahupp/python-magic"))
-    cfg.append(make_dict(m, "mbz", "musicbrainzngs",
-                         "https://pypi.org/project/musicbrainzngs/"))
-    cfg.append(make_dict(m, "discid", "libdiscid",
-                         "https://github.com/sebastinas/python-libdiscid"))
+    d1 = "https://pypi.org/project/python-magic/"
+    d2 = "https://pypi.org/project/musicbrainzngs/"
+    d3 = "https://github.com/sebastinas/python-libdiscid"
+    cfg.append(make_dict(m, None, "magic", d1, "3", "python3-magic"))
+    cfg.append(make_dict(m, None, "magic", d1, "2", "python-magic"))
+    cfg.append(make_dict(m, "mbz", "musicbrainzngs", d2, "3", "python3-musicbrainzngs"))
+    cfg.append(make_dict(m, "mbz", "musicbrainzngs", d2, "2", "python-musicbrainzngs"))
+    cfg.append(make_dict(m, "discid", "libdiscid", d3, "3", "python3-libdiscid"))
+    cfg.append(make_dict(m, "discid", "libdiscid", d3, "2", "python-libdiscid"))
     ''' TODO:
             Buried in functions:
                 from mutagen.flac import FLAC as audio_file
@@ -462,14 +517,6 @@ def make_encoding_cfg():
     cfg.append(make_dict(m, "img", "image", "pippim.com"))
     cfg.append(make_dict(m, "tmf", "timefmt", "pippim.com"))
     cfg.append(make_dict(m, None, "sql", "pippim.com"))
-    ''' TODO:
-            are activated. The following background programs are launched:
-
-                disc_get.py - Read CD for Musicbrainz Id and track TOC
-                mbz_get1.py - Get Musicbrainz release-list
-                mbz_get2.py - Get Musicbrainz recordings
-                caa_get1.py - Get Cover Art
-    '''
     cfg.append(make_dict(m, None, "disc_get", "pippim.com"))
     cfg.append(make_dict(m, None, "mbz_get1", "pippim.com"))
     cfg.append(make_dict(m, None, "mbz_get2", "pippim.com"))
@@ -483,8 +530,9 @@ def make_disc_cfg():
     m = "disc_get"  # Module name to python interpreter
     cfg.append(make_dict(m, None, "sys"))
     cfg.append(make_dict(m, None, "pickle"))
-    cfg.append(make_dict(m, "discid", "libdiscid",    # C-Program
-                         "https://pythonhosted.org/python-libdiscid/"))
+    d3 = "https://github.com/sebastinas/python-libdiscid"
+    cfg.append(make_dict(m, "discid", "libdiscid", d3, "3", "python3-libdiscid"))
+    cfg.append(make_dict(m, "discid", "libdiscid", d3, "2", "python-libdiscid"))
     return cfg
 
 
@@ -504,10 +552,12 @@ def make_mbz1_cfg():
     cfg.append(make_dict(m, None, "pprint"))
     # Dist-packages
     cfg.extend(make_PIL_cfg(m))
-    cfg.append(make_dict(m, "mbz", "musicbrainzngs",
-                         "https://pypi.org/project/musicbrainzngs/"))
-    cfg.append(make_dict(m, "discid", "libdiscid",    # C-Program
-                         "https://pythonhosted.org/python-libdiscid/"))
+    d2 = "https://pypi.org/project/musicbrainzngs/"
+    d3 = "https://github.com/sebastinas/python-libdiscid"
+    cfg.append(make_dict(m, "mbz", "musicbrainzngs", d2, "3", "python3-musicbrainzngs"))
+    cfg.append(make_dict(m, "mbz", "musicbrainzngs", d2, "2", "python-musicbrainzngs"))
+    cfg.append(make_dict(m, "discid", "libdiscid", d3, "3", "python3-libdiscid"))
+    cfg.append(make_dict(m, "discid", "libdiscid", d3, "2", "python-libdiscid"))
     # Pippim modules
     cfg.append(make_dict(m, "lc", "location", "pippim.com"))
     cfg.append(make_dict(m, None, "message", "pippim.com"))
@@ -529,10 +579,12 @@ def make_mbz2_cfg():
     cfg.append(make_dict(m, None, "pickle"))
     # Dist-packages
     cfg.extend(make_PIL_cfg(m))
-    cfg.append(make_dict(m, "mbz", "musicbrainzngs",
-                         "https://pypi.org/project/musicbrainzngs/"))
-    cfg.append(make_dict(m, None, "requests",
-                         "https://github.com/psf/requests"))
+    d1 = "https://requests.readthedocs.io/en/latest/"
+    d2 = "https://pypi.org/project/musicbrainzngs/"
+    cfg.append(make_dict(m, None, "requests", d1, "3", "python3-requests"))
+    cfg.append(make_dict(m, None, "requests", d1, "2", "python-requests"))
+    cfg.append(make_dict(m, "mbz", "musicbrainzngs", d2, "3", "python3-musicbrainzngs"))
+    cfg.append(make_dict(m, "mbz", "musicbrainzngs", d2, "2", "python-musicbrainzngs"))
     # Pippim modules
     cfg.append(make_dict(m, "lc", "location", "pippim.com"))
     return cfg
@@ -893,11 +945,36 @@ def main(module=None):
     for module in pippim_modules:
         if module == "m.py":
             module = "m"
-        res = os.popen("wc " + module).read().strip()
-        if module == "timefmt.py":
-            res = res.replace(" ", "\t\t", 1)  # Fudge it
-        res = res.replace(" ", "\t")
-        print(res)
+        #res = os.popen("wc -l " + module).read().strip()
+        #res = res.replace(" ", "\t")
+        #print(res)
+        print("module:", module)
+
+    """
+        REVIEW:
+        
+            Note that the exact times you set here may not be returned by a 
+            subsequent stat() call, depending on the resolution with which 
+            your operating system records access and modification times; see stat().
+            
+            import os
+            os.utime(path_to_file, (access_time, modification_time))
+            https://www.tutorialspoint.com/python/os_utime.htm
+        ''' How is atime and mtime formatted? 
+            The exact meaning and resolution of the st_atime, st_mtime, and 
+            st_ctime attributes depend on the operating system and the file 
+            system. For example, on Windows systems using the FAT or FAT32 
+            file systems, st_mtime has 2-second resolution, and st_atime has 
+            only 1-day resolution. See your operating system documentation 
+            for details. '''
+        time_fmt = os.stat_float_times()
+        print("time_fmt:", time_fmt)
+    """
+
+    time_fmt = os.stat_float_times()
+    if not time_fmt:
+        print("os.utime cannot be used to reset access time")
+
 
     #print(pippim_modules)
     ''' os.walk() path and merge results with default configuration dictionary to 

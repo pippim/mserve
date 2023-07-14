@@ -102,18 +102,16 @@ if g.USER is None:
     g.init()
 
 # Define /home/$USER/.config/mserve/ directory
-# May 19, 2023 MSERVE_DIR now created in g.init()
-#MSERVE_DIR            = os.sep + "home" + os.sep + g.USER + os.sep + \
-#                        ".config" + os.sep + "mserve" + os.sep
 MSERVE_DIR = g.MSERVE_DIR
 # print("MSERVE_DIR:", MSERVE_DIR)
 
-# only files in  /home/$USER/.config/mserve/ directory
+# only files in USER_DATA_DIR/mserve/
 FNAME_LOCATIONS        = MSERVE_DIR + "locations"
 FNAME_LAST_LOCATION    = MSERVE_DIR + "last_location"
-FNAME_LIBRARY          = MSERVE_DIR + "library.db"
+FNAME_LIBRARY          = MSERVE_DIR + "library.db"  # Opened every session
+FNAME_LIBRARY_NEW      = MSERVE_DIR + "library_new.db"  # Rarely used
 
-# These files are located to /home/$USER/.config/mserve/L999/ directory
+# Path modified when opened to be: USER_DATA_DIR/mserve/L999/
 FNAME_LAST_OPEN_STATES = MSERVE_DIR + "last_open_states"     # Expanded/Collapsed song list
 FNAME_LAST_SONG_NDX    = MSERVE_DIR + "last_song_ndx"        # Last song played in list
 # May 25 2021 -  last_selections corrupted by refresh_lib_tree()

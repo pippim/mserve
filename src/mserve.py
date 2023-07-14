@@ -69,6 +69,8 @@ warnings.simplefilter('default')  # in future Python versions.
 #       July 05 2023 - Create Help buttons that open pippim website pages.
 #       July 07 2023 - Begin vu_pulse_audio.py for pulsectl.Pulse interface.
 #       July 09 2023 - New PA fading - faster, easier, smaller & more robust.
+#       July 12 2023 - New 'mserve_config.py' checks required modules/commands.
+#       July 13 2023 - sqlite3 overhaul with new field 'MostlyPlayedTime'
 
 # noinspection SpellCheckingInspection
 """
@@ -292,21 +294,32 @@ NOTES:
 
 TODO'S:
     verify external commands are in path:
-        command -v cp, diff, ffplay, ffprobe, ffmpeg, gsettings, kid3, kill,
-           pactl, pgrep, pqiv, ps, stat, touch, wmctrl, xclip, xdotool, xprop
+        command -v cp, diff, ffplay, ffprobe, ffmpeg, gsettings, gst-launch-1.0,
+            kid3, kill, pactl, pgrep, pqiv, ps, stat, touch,  # USE os.utime() 
+            wmctrl, xclip, xdotool, xprop
 
     Compare Location - Make background process so music player keeps spinning
 """
 
-import mserve_config as cfg
-caller = "mserve.py"
-if not cfg.main(caller):
-    print("mserve not fully installed. Aborting...")
-    exit()
-else:
-    print(caller, "finished call to mserve_config.py with SUCCESS!")
+''' If called by 'm' configuration is OK. Otherwise, check configuration. '''
+import inspect
+import os
+try:
+    filename = inspect.stack()[1][1]  # If there is a parent it is 'm'
+    #(<frame object>, './m', 50, '<module>', ['import mserve\n'], 0)
+    parent = os.path.basename(filename)
+    if parent != "m":
+        print("mserve.py must be called by 'm'. Called by:", parent)
+        exit()
+except IndexError:  # list index out of range
+    import mserve_config as cfg
+    caller = "mserve.py"  # don't call if 'm' called 'mserve.py' splash
+    if not cfg.main(caller):
+        print("mserve not fully installed. Aborting...")
+        exit()
+    else:
+        print(caller, "finished call to mserve_config.py with SUCCESS!")
 
-# Similar imports in message.py, vu_pulse_audio.py, encoding.py, etc.
 try:  # Python 3
     import tkinter as tk
     import tkinter.ttk as ttk
@@ -326,11 +339,10 @@ except ImportError:  # Python 2
     import ScrolledText as scrolledtext
     PYTHON_VER = "2"
 #print("Python version: ", PYTHON_VER)
-#print('TK Version:', tk.TkVersion)   # https://tkdocs.com/ Nov 2019 ver 8.6
+#print('TK Version:', tk.TkVersion)  # https://tkdocs.com/ Nov 2019 ver 8.6
 #
 from PIL import Image, ImageTk, ImageDraw, ImageFont
 from ttkwidgets import CheckboxTreeview
-#import inspect
 #print("Using ttkwidgets.py CheckboxTreeview from path:",
 #      inspect.getfile(CheckboxTreeview))
 
@@ -362,7 +374,6 @@ except NameError:  # name 'reload' is not defined
     pass  # Python 3 already in unicode by default
 #print("Python version:", sys.version)
 
-import os
 import shutil
 import json  # For List conversions to SQL
 import time
@@ -4377,10 +4388,12 @@ $ wmctrl -l -p
     # ==============================================================================
 
     def exit_without_save(self):
+        """ save=True is default. False prevents saving data. """
         self.close(save=False)
 
     # noinspection PyUnusedLocal
     def close(self, save=True, *args):
+        """ save=True is default. False prevents saving data. """
         if save:
             if self.playlists.name is not None:
                 # Saving requires reading stats from lib_tree
@@ -4394,12 +4407,16 @@ $ wmctrl -l -p
 
     # noinspection PyUnusedLocal
     def restart(self, *args):
+        """ July 13 2023 - A couple weeks ago this option was removed from
+            dropdown menu because after 100 times it causes lag in TCL/Tk """
         self.close()
         # TODO: Test with `m` passing sys.argv via "parameters" keyword.
         os.execl(sys.executable, sys.executable, *sys.argv)
 
     # noinspection PyUnusedLocal
     def restart_new_parameters(self, *args):
+        """ July 13 2023 - A couple weeks ago this option was removed from
+            dropdown menu because after 100 times it causes lag in TCL/Tk """
         # NOTE: We've already saved selections and don't want to overwrite
         #       with new location iid
         self.close_sleepers()  # Shut down running functions
@@ -4414,9 +4431,8 @@ $ wmctrl -l -p
         os.execl(sys.executable, sys.executable, *sys.argv)
 
     def close_sleepers(self):
-        # Close loc_keep_awake() first as it has .25-second sleep cycle
-        # TODO: Check other sleepers, one might have .5-second sleep cycle
-        # COMMON CODE for restart and quit
+        """ COMMON CODE for restart and quit
+            Close loc_keep_awake() first as it has .25-second sleep cycle """
         self.loc_keep_awake_is_active = False
         self.lib_top_is_active = False      # Tell refresh_acc_times() to bail out
 
@@ -4458,6 +4474,8 @@ $ wmctrl -l -p
             if os.path.isfile(f):
                 os.remove(f)
 
+        ''' Close SQL databases '''
+        sql.close_db()  # Added July 13, 2023
         time.sleep(RESTART_SLEEP)           # Extra insurance sleepers close
 
     def clear_buttons(self):
@@ -4657,8 +4675,16 @@ $ wmctrl -l -p
     def show_debug(self):
         """ Debugging - show monitors, tooltips and full metadata
         """
-        print("\nmserve.py - mon = monitor.py.Monitors()")
-        print("=======================================\n")
+
+        print("\nglobal_variables.py (g) - Machine Information")
+        print("=============================================\n")
+        print("g.OS_PLATFORM :", g.OS_PLATFORM)
+        print("g.OS_NAME     :", g.OS_NAME)
+        print("g.OS_VERSION  :", g.OS_VERSION)
+        print("g.OS_RELEASE  :", g.OS_RELEASE)
+
+        print("\nMonitors (mon) uses monitor.py.Monitors()")
+        print("=========================================\n")
         mon = monitor.Monitors()            # Monitors class list of dicts
 
         print("\nmon.screen_width x mon.screen_height:",
@@ -4777,8 +4803,8 @@ $ wmctrl -l -p
         print(*lines, sep='\n')
         print()
 
-        print("\nself.Xxx_ctl = FileControl() classes currently open")
-        print("===================================================\n")
+        print("\nself.Xxx_ctl = FileControl() instances opened")
+        print("=============================================\n")
 
         if self.play_ctl.metadata is not None:  # FileControl() always here
             print("\nLast file accessed - 'ffprobe' (self.play_ctl.metadata):")
@@ -4925,32 +4951,8 @@ $ wmctrl -l -p
             return
 
         music_dict = sql.music_treeview()
-        """ Define Data Dictionary treeview columns for Music table
-            ("column", "row_id"), ("heading", "Row ID"), ("sql_table", "Music"),
-            ("column", "os_filename"), ("heading", "OS Filename"), ("sql_table", "Music"),
-            ("column", "os_atime"), ("heading", "Access Time"), ("sql_table", "Music"),
-            ("column", "os_mtime"), ("heading", "Mod Time"), ("sql_table", "Music"),
-            ("column", "os_ctime"), ("heading", "Create Time"), ("sql_table", "Music"),
-            ("column", "os_file_size"), ("heading", "File Size"), ("sql_table", "Music"),
-            ("column", "artist"), ("heading", "Artist"), ("sql_table", "Music"),
-            ("column", "album"), ("heading", "Album"), ("sql_table", "Music"),
-            ("column", "song_name"), ("heading", "Song Name"), ("sql_table", "Music"),
-            ("column", "release_date"), ("heading", "Release Date"), ("sql_table", "Music"),
-            ("column", "original_date"), ("heading", "Original Date"), ("sql_table", "Music"),
-            ("column", "genre"), ("heading", "Genre"), ("sql_table", "Music"),
-            ("column", "seconds"), ("heading", "Seconds"), ("sql_table", "Music"),
-            ("column", "duration"), ("heading", "Duration"), ("sql_table", "Music"),
-            ("column", "play_count"), ("heading", "Play Count"), ("sql_table", "Music"),
-            ("column", "track_number"), ("heading", "Track Number"), ("sql_table", "Music"),
-            ("column", "rating"), ("heading", "Rating"), ("sql_table", "Music"),
-            ("column", "lyrics"), ("heading", "Lyrics"), ("sql_table", "Music"),
-            ("column", "time_index"), ("heading", "Time Index"), ("sql_table", "Music"),
-
-        """
-
-        # Note: Metadata may be none for artist, album, song_name, genre, etc.
         columns = ["os_filename", "track_number", "row_id", "os_atime",
-                   "os_file_size", "artist", "album", "song_name", "lyrics", "genre"]
+                   "os_file_size", "artist", "album", "title", "lyrics", "genre"]
         toolkit.select_dict_columns(columns, music_dict)
         # toolkit.print_dict_columns(music_dict)
 
@@ -5076,13 +5078,13 @@ $ wmctrl -l -p
         self.mus_search.find()
 
     def missing_metadata(self):
-        """ Uses string search function for song_name is None """
+        """ Uses string search function for title is None """
         if self.mus_search:
             self.mus_search.close()
 
         self.mus_search = toolkit.SearchText(
-            self.mus_view, column='song_name', find_str='', find_op='==')
-        self.mus_search.find_column()  # Find song_name == None
+            self.mus_view, column='title', find_str='', find_op='==')
+        self.mus_search.find_column()  # Find title == None
 
         # Popup row count and total file sizes
         self.tree_summary(self.mus_view, title="Songs not played yet")
@@ -5106,8 +5108,8 @@ $ wmctrl -l -p
             If Treeview value is u'None' for song name so no lyrics anyway
             and return false.
         """
-        song_name = self.mus_view.column_value(values, 'song_name')
-        if song_name == u'None':
+        title = self.mus_view.column_value(values, 'title')
+        if title == u'None':
             return False  # Treeview value is u'None' for song name so no lyrics
 
         os_filename = self.mus_view.column_value(values, 'os_filename')
@@ -5115,7 +5117,7 @@ $ wmctrl -l -p
         if lyrics is not None:
             return False  # Lyrics are non-blank.
 
-        return True  # Song with metadata (song_name) has no lyrics.
+        return True  # Song with metadata (title) has no lyrics.
 
     def unsynchronized(self):
         """ Find songs that have no time index (lyric score not synchronized)
@@ -5136,8 +5138,8 @@ $ wmctrl -l -p
             If Treeview value is u'None' for song name so no lyrics just return false.
             If lyrics is None, then no need to test for time index just return false.
         """
-        song_name = self.mus_view.column_value(values, 'song_name')
-        if song_name == u'None':
+        title = self.mus_view.column_value(values, 'title')
+        if title == u'None':
             return False  # Treeview value is u'None' for song name so no lyrics
 
         os_filename = self.mus_view.column_value(values, 'os_filename')
@@ -5149,7 +5151,7 @@ $ wmctrl -l -p
         if time_index is not None:
             return False  # Time index is non-blank.
 
-        return True  # Song with metadata (song_name) and lyrics has no time_index.
+        return True  # Song with metadata (title) and lyrics has no time_index.
 
     def missing_artwork(self):
         """ Find Songs that have no artwork and update metadata
@@ -5272,7 +5274,7 @@ $ wmctrl -l -p
             ("column", "reason"), ("heading", "Reason"), ("sql_table", "calc"),
 
         """
-        # Note: Metadata may be none for artist, album, song_name, genre, etc.
+        # Note: Metadata may be none for artist, album, title, genre, etc.
         columns = ["time", "row_id", "music_id", "type", "action", "master",
                    "detail", "target", "size", "count", "seconds", "comments"]
         toolkit.select_dict_columns(columns, history_dict)
@@ -5401,7 +5403,7 @@ $ wmctrl -l -p
         self.his_search.find()
 
     def his_configuration_rows(self):
-        """ Uses string search function for song_name is None """
+        """ Uses string search function for title is None """
         if self.his_search is not None:
             self.his_search.close()
 
@@ -5425,8 +5427,8 @@ $ wmctrl -l -p
             If Treeview value is u'None' for song name so no lyrics anyway
             and return false.
         """
-        song_name = self.his_view.column_value(values, 'song_name')
-        if song_name == u'None':
+        title = self.his_view.column_value(values, 'title')
+        if title == u'None':
             return False  # Treeview value is u'None' for song name so no lyrics
 
         os_filename = self.his_view.column_value(values, 'os_filename')
@@ -5434,7 +5436,7 @@ $ wmctrl -l -p
         if lyrics is not None:
             return False  # Lyrics are non-blank.
 
-        return True  # Song with metadata (song_name) has no lyrics.
+        return True  # Song with metadata (title) has no lyrics.
 
     def his_unsynchronized(self):
         """ Find songs that have no time index (lyric score not synchronized)
@@ -5452,8 +5454,8 @@ $ wmctrl -l -p
             If Treeview value is u'None' for song name so no lyrics just return false.
             If lyrics is None, then no need to test for time index just return false.
         """
-        song_name = self.his_view.column_value(values, 'song_name')
-        if song_name == u'None':
+        title = self.his_view.column_value(values, 'title')
+        if title == u'None':
             return False  # Treeview value is u'None' for song name so no lyrics
 
         os_filename = self.his_view.column_value(values, 'os_filename')
@@ -5465,7 +5467,7 @@ $ wmctrl -l -p
         if time_index is not None:
             return False  # Time index is non-blank.
 
-        return True  # Song with metadata (song_name) and lyrics has no time_index.
+        return True  # Song with metadata (title) and lyrics has no time_index.
 
     # noinspection PyUnusedLocal
     def his_close(self, *args):
@@ -8675,15 +8677,15 @@ $ wmctrl -l -p
                 how-to-convert-a-string-to-utf-8-in-python
         '''
         artist = ext.shell_quote(self.play_ctl.Artist)  # backslash in front of '
-        song = ext.shell_quote(self.play_ctl.Title)     # and " in variables
+        title = ext.shell_quote(self.play_ctl.Title)     # and " in variables
         # 'Bob Seeger & The Silver Bullet Band' finds nothing, while just
-        # 'Bob Seeger' finds 'Shakedown' song.
+        # 'Bob Seeger' finds 'Shakedown' title.
         artist = artist.split('&', 1)[0]
         comment = time.asctime(time.localtime(time.time()))
 
         if self.lyrics_scrape_pid == 0:
             # Only start new search if last one is finished.
-            MusicId = sql.music_id_for_song(self.play_make_sql_key())
+            MusicId = sql.music_id_for_title(self.play_make_sql_key())
 
             ''' MusicId is 0 when no Artist or Album '''
             if MusicId is None or MusicId == 0:
@@ -8692,8 +8694,8 @@ $ wmctrl -l -p
 
             try:
                 sql.hist_add(time.time(), MusicId, g.USER, 'scrape', 'parm',
-                             artist, song, "", 0, 0, 0.0, comment)
-                self.info.fact("Begin scraping lyrics for song: " + song)
+                             artist, title, "", 0, 0, 0.0, comment)
+                self.info.fact("Begin scraping lyrics for title: " + title)
             except sql.sqlite3.Error as er:  # Changed July 12, 2023: TEST IT
                 print('SQLite error: %s' % (' '.join(er.args)))
                 print("Exception class is: ", er.__class__)
@@ -8709,12 +8711,14 @@ $ wmctrl -l -p
 
             sql.con.commit()
             # Aug 25 fudge parameter list to skip no_parameters()
-            parm = '"' + artist + ' ' + song + '" ' + str(MusicId)
+            parm = '"' + artist + ' ' + title + '" ' + str(MusicId)
             ext_name = 'python webscrape.py ' + parm
             self.lyrics_scrape_pid = ext.launch_command(
                 ext_name, toplevel=self.play_top)
         else:
-            print('Last instance of webscrape is still running.')
+            text = 'Last instance of webscrape is still running.' 
+            print(text)
+            self.info.cast(text)
             return
 
         self.lyrics_scrape_done = False  # Signal not done yet
@@ -8933,9 +8937,50 @@ $ wmctrl -l -p
         print('TRAIN LYRICS:', self.play_ctl.Artist, self.play_ctl.Album,
               self.play_ctl.Title)
 
+        ''' turn off auto scrolling and use synchronized time indices '''
+        self.lyrics_auto_scroll = False
+        # print('previous line:', self.lyrics_prev_line, 'clicked line:', line, \
+        #      'at lyrics time index:', self.current_song_secs)
+
+        self.play_lyrics_remove_highlights()
+
+        self.lyrics_train_is_active = True
+        self.lyrics_train_start_time = time.time()
+        self.play_create_lyrics_work_fields()  # sql key, score & time list
+        # Refresh title to reflect edit mode is in progress
+        self.play_lyrics_rebuild_title()
+
+    def play_train_lyrics_done(self, action):
+        """ Train Lyrics done. action='save' or 'cancel'.
+            The menu option 'Done' actually calls 'cancel'.
+            Only called from popup menu options:
+
+        menu.add_command(label="Save time index", command=lambda:
+                         self.play_train_lyrics_done('save'),
+                         state=edit_state, font=(None, MED_FONT))
+        menu.add_command(label="Cancel changes", command=lambda:
+                         self.play_train_lyrics_done('cancel'),
+                         state=edit_state, font=(None, MED_FONT))
+        # TODO: Create 'quit' option below
+        menu.add_command(label="Done", command=lambda:
+                         self.play_train_lyrics_done('cancel'),
+                         state=no_edit_state, font=(None, MED_FONT))
+
+        After play_to_end() comes queue_next_song() which calls:
+            play_save_time_index(self):
+                save = self.play_override_score()
+
+                if self.lyrics_time_list is not None:
+                    if len(self.lyrics_time_list) == 0:
+                        self.lyrics_time_list = None
+
+                sql.update_lyrics(self.play_make_sql_key(), save,
+                                  self.lyrics_time_list)
+        """
+        self.lyrics_train_is_active = False  # Allow normal read/save ops
+
         # noinspection SpellCheckingInspection
         ''' ERROR on manual save (Luckily auto-save works when song ends):
-
 TRAIN LYRICS: Bachman-Turner Overdrive The Definitive Collection Lookin' Out For #1
 left click lyrics line not handled. line_cnt: 18 prev_line: 10 curr_line: 19
 curr_line has been reset to prev_line
@@ -8952,33 +8997,7 @@ Traceback (most recent call last):
     self.tk.call(self._w, 'mark', 'set', markName, index)
 TclError: wrong # args: should be ".139661069361096.139661064270480.139661063811800.139661063819208.139661063817768 
 mark set markName index"
-        
-        
         '''
-
-        ''' turn off auto scrolling and use synchronized time indices '''
-        self.lyrics_auto_scroll = False
-        # print('previous line:', self.lyrics_prev_line, 'clicked line:', line, \
-        #      'at lyrics time index:', self.current_song_secs)
-
-        self.play_lyrics_remove_highlights()
-
-        self.lyrics_train_is_active = True
-        self.lyrics_train_start_time = time.time()
-        self.play_create_lyrics_work_fields()  # sql key, score & time list
-        # Refresh title to reflect edit mode is in progress
-        self.play_lyrics_rebuild_title()
-
-    def play_train_lyrics_done(self, action):
-        """ Train Lyrics done. action='save' or 'cancel' or 'quit'
-
-            Need option for "Lyrics horribly wrong. Get new ones"
-
-        NOTE: May 21, 2023 - This is where lyrics - init, lyrics - edit,
-        time - init and time - edit could be placed.
-
-        """
-        self.lyrics_train_is_active = False  # Allow normal read/save ops
 
         # If cancel bail out
         if action == 'cancel':
@@ -9608,7 +9627,6 @@ mark set markName index"
         while self.pp_state is 'Paused' and self.lyrics_scrape_done is False:
             ''' It takes a few seconds to get lyrics from internet '''
             self.play_paint_lyrics()
-            # root.after(50)  # May 23 2023 - This suppresses tooltips
             self.refresh_play_top()
 
 
@@ -10971,11 +10989,11 @@ mark set markName index"
         number_str = play_padded_number(playlist_no, number_digits)
 
         ''' Song title - remove track number and filename extension '''
-        song_name = self.lib_tree.item(lib_tree_iid)['text']
-        song_name = song_name.lstrip('0123456789.- ')  # Trim leading digit
-        song_name = os.path.splitext(song_name)[0]  # Trim trailing ext
+        title = self.lib_tree.item(lib_tree_iid)['text']
+        title = title.lstrip('0123456789.- ')  # Trim leading digit
+        title = os.path.splitext(title)[0]  # Trim trailing ext
         line = number_str
-        line = cat3(line, TITLE_PREFIX, song_name)
+        line = cat3(line, TITLE_PREFIX, title)
 
         ''' Extract Artist name from treeview parents '''
         album = self.lib_tree.parent(lib_tree_iid)
@@ -10994,18 +11012,26 @@ mark set markName index"
         if d is None:
             return line, None  # No SQL Music Table Row exists, use short line
 
+
+
+        ''' convert July 13, 2023 
+        try:
+            line = number_str + TITLE_PREFIX + d['Title'].encode("utf8")
+        except AttributeError:  # 'NoneType' object has no attribute 'encode'
+            # When playing a new location no SQL library information exists
+            return line, None  # No SQL Music Table Row exists, use short line
+        line = line + ARTIST_PREFIX + d['Artist'].encode("utf8")
+        line = line + ALBUM_PREFIX + d['Album'].encode("utf8")
+        if date is not None:
+            line = line + DATE_PREFIX + date
+        '''
         try:
             line = number_str + TITLE_PREFIX + d['MetaSongName'].encode("utf8")
         except AttributeError:  # 'NoneType' object has no attribute 'encode'
             # When playing a new location no SQL library information exists
-            #print("Bad song (sql_key):", sql_key)
-            #print("d['Id']:", d['Id'])
             return line, None  # No SQL Music Table Row exists, use short line
-
         line = line + ARTIST_PREFIX + d['MetaArtistName'].encode("utf8")
         line = line + ALBUM_PREFIX + d['MetaAlbumName'].encode("utf8")
-
-        # line = line + DATE_PREFIX + str(d['ReleaseDate'])  # bad idea having float
         date = None
         if type(d['ReleaseDate']) is str:
             if d['ReleaseDate'] != "None":  # Strange but true... See "She's No Angel" by April Wine.
@@ -11014,6 +11040,9 @@ mark set markName index"
             date = str(int(d['ReleaseDate']))
         if date is not None:
             line = line + DATE_PREFIX + date  # bad idea having float
+
+
+
 
         line = line + CLOCK_PREFIX + d['Duration'].encode("utf8")
         # Replace "00:09:99" duration with "9:99" duration
@@ -11635,16 +11664,6 @@ class FineTune:
             Set end time to start of line following last checked.
             Call self.build_btn_bar_frm('sync')
 
-            TODO: Messages when syncing Janine by Trooper:
-
-                count: 31 first: 18 last: 19
-                Failed to get sink input information: No such entity
-                Failed to get sink input information: No such entity
-                Failed to get sink input information: No such entity
-                Failed to get sink input information: No such entity
-
-            May have to append " 2>/dev/null" but that will also hide bad
-            programming using "pactl" external command
         """
         if self.ffplay_is_running:
             self.info.cast('self.ffplay_is_running:')
@@ -11674,12 +11693,13 @@ class FineTune:
         self.start_sec = self.new_time_list[self.first_checked - 1] - 2.5
         self.start_sec = 0.0 if self.start_sec < 0.0 else self.start_sec
 
-        if self.last_checked + 1 < self.lyrics_line_count:
+        # July 13, 2023 - was checking < self.lyrics_line_count
+        if self.last_checked + 1 < len(self.new_time_list):
             # Grab start time of line after last line to set duration+2 secs
-            self.limit_sec = self.new_time_list[self.last_checked] - \
-                                 self.start_sec + 2.0
+            self.limit_sec = \
+                self.new_time_list[self.last_checked] - self.start_sec + 2.0
         else:
-            # TOP: self.play_DurationSecs = self.play_DurationSecs
+            # TODO Append to self.new_time_list and share duration to lines
             self.limit_sec = self.play_DurationSecs - self.start_sec
 
         self.time_ctl.start(self.start_sec, self.limit_sec,
@@ -13557,11 +13577,6 @@ class FileControl(FileControlCommonSelf):
         then reset last access time as if song was not played.
 
         NOTE: The file's "Change Time" is updated whenever touch is run
-
-        REVIEW:
-            import os
-            os.utime(path_to_file, (access_time, modification_time))
-            https://www.tutorialspoint.com/python/os_utime.htm
 
         :param new_stat: Optional stat.st_time to force, otherwise current time.
         :return old_time, new_time:
