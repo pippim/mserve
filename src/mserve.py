@@ -187,7 +187,7 @@ warnings.simplefilter('default')  # in future Python versions.
 
 #   Location processing is 1500 lines and really is never used after setup. Move
 #       to separate file? Add generic processing for synchronizing programming
-#       files across different devices?
+#       files across different devices?  TODO: Clone from Playlists() class
 
 #   Verify parameter #1 is directory. E.G. "START_DIR = sys.argv[1]"
 #       If START_DIR is not a directory, use last location with warning message.
@@ -475,12 +475,13 @@ TMP_CURR_SONG = g.TEMP_DIR + "mserve_song_playing"
 TMP_CURR_SAMPLE = g.TEMP_DIR  + "mserve_song_sampling"
 TMP_CURR_SYNC = g.TEMP_DIR + "mserve_song_syncing"
 TMP_FFPROBE = g.TEMP_DIR + "mserve_ffprobe"
-TMP_FFMPEG = g.TEMP_DIR + "mserve_ffmpeg.jpg"
-# Must end in .jpg for ffmpeg to work
+TMP_FFMPEG = g.TEMP_DIR + "mserve_ffmpeg.jpg"  # Must end in .jpg for ffmpeg
+TMP_MBZ_GET1 = g.TEMP_DIR + "mserve_mbz_get1"
+TMP_MBZ_GET2 = g.TEMP_DIR + "mserve_mbz_get2"
 
 # Abandon process that takes .4 seconds to run. Use ffprobe instead
 # ffmpeg -v error -i "' + song + '" -f null - 2>' + TMP_ERROR
-#TMP_ERROR = "/run/user/" + g.USER_ID + "/mserve.error"
+#TMP_ERROR = g.TEMP_DIR + "mserve.error"
 
 
 ''' Volume Meter IPC filenames. Change in vu_meter.py too '''
@@ -5234,7 +5235,8 @@ $ wmctrl -l -p
     # noinspection PyUnusedLocal
 
     def mus_close(self, *args):
-        self.pretty_close()  # Drill down may be open from create_window()
+        """ Close SQL Music Table View """
+        self.pretty_close()  # Inadvertently closes if opened by his_top
         last_geometry = monitor.get_window_geom_string(
             self.mus_top, leave_visible=False)
         monitor.save_window_geom('sql_music', last_geometry)
@@ -5471,8 +5473,8 @@ $ wmctrl -l -p
 
     # noinspection PyUnusedLocal
     def his_close(self, *args):
-        """ Close SQL History Treeview """
-        self.pretty_close()  # Drill down may be open from create_window()
+        """ Close SQL History Table View """
+        self.pretty_close()  # Inadvertently closes if opened by mus_top
         last_geometry = monitor.get_window_geom_string(
             self.his_top, leave_visible=False)
         monitor.save_window_geom('sql_history', last_geometry)
@@ -7986,6 +7988,7 @@ $ wmctrl -l -p
     @staticmethod
     def update_sql_metadata(file_ctl):
         """ Legacy code crafted to new function June 28, 2023.
+        :param file_ctl: Either self.play_ctl or self.ltp_ctl
         """
         meta_update_succeeded = None
         if file_ctl.path.startswith(PRUNED_DIR):
@@ -7995,7 +7998,15 @@ $ wmctrl -l -p
                 sql.update_metadata(
                     sql_key, file_ctl.Artist, file_ctl.Album, file_ctl.Title,
                     file_ctl.Genre, file_ctl.Track, file_ctl.Date,
+                    file_ctl.DurationSecs, file_ctl.Duration, 
+                    file_ctl.DiscNumber, file_ctl.Composer)
+            '''
+            meta_update_succeeded = \
+                sql.update_metadata(
+                    sql_key, file_ctl.Artist, file_ctl.Album, file_ctl.Title,
+                    file_ctl.Genre, file_ctl.Track, file_ctl.Date,
                     file_ctl.DurationSecs, file_ctl.Duration)
+            '''  # convert July 13, 2023 
         else:
             # Not really an error but needs more testing and enhancing
             print('mserve.py update_sql_metadata() path:', file_ctl.path)
@@ -8685,7 +8696,7 @@ $ wmctrl -l -p
 
         if self.lyrics_scrape_pid == 0:
             # Only start new search if last one is finished.
-            MusicId = sql.music_id_for_title(self.play_make_sql_key())
+            MusicId = sql.music_id_for_song(self.play_make_sql_key())
 
             ''' MusicId is 0 when no Artist or Album '''
             if MusicId is None or MusicId == 0:
@@ -11014,7 +11025,6 @@ mark set markName index"
 
 
 
-        ''' convert July 13, 2023 
         try:
             line = number_str + TITLE_PREFIX + d['Title'].encode("utf8")
         except AttributeError:  # 'NoneType' object has no attribute 'encode'
@@ -11022,8 +11032,8 @@ mark set markName index"
             return line, None  # No SQL Music Table Row exists, use short line
         line = line + ARTIST_PREFIX + d['Artist'].encode("utf8")
         line = line + ALBUM_PREFIX + d['Album'].encode("utf8")
-        if date is not None:
-            line = line + DATE_PREFIX + date
+        if d['ReleaseDate'] is not None:
+            line = line + DATE_PREFIX + d['ReleaseDate'].encode("utf8")
         '''
         try:
             line = number_str + TITLE_PREFIX + d['MetaSongName'].encode("utf8")
@@ -11040,6 +11050,7 @@ mark set markName index"
             date = str(int(d['ReleaseDate']))
         if date is not None:
             line = line + DATE_PREFIX + date  # bad idea having float
+        '''  # convert July 13, 2023 
 
 
 
@@ -12914,6 +12925,7 @@ class FileControlCommonSelf:
         self.audio = []             # List of lines about audio streams found
 
         ''' Fields extracted from Metadata '''
+        ''' ID3 TAGS https://exiftool.org/TagNames/ID3.html'''
         self.metadata = None        # Dictionary containing metadata from music file
         self.artwork = []           # List of lines about artwork found
         self.audio = []             # List of lines about audio streams found
@@ -12923,10 +12935,21 @@ class FileControlCommonSelf:
         self.Album = None           # self.metadata.get('ALBUM', "None")
         self.Title = None           # self.metadata.get('TITLE', "None")
         self.Genre = None           # self.metadata.get('GENRE', "None")
-        self.Track = None           # self.metadata.get('TRACK', "None")
         self.Date = None            # self.metadata.get('DATE', "None")
+        self.CreationTime = None    # new July 13, 2023 'CREATION_TIME'
+        self.RecordingDate = None   # new July 13, 2023 YYYY-MM
+        self.Composer = None        # new July 13, 2023 'COMPOSER'
+        self.DiscNumber = None      # new July 13, 2023 'DISC'
+        self.Track = None           # self.metadata.get('TRACK', "None")
         self.Duration = None        # self.metadata.get('DURATION', "0.0,0")
         self.DurationSecs = None    # hh:mm:ss sting converted to int seconds
+
+        ''' Pippim Metadata Add-ons '''
+        self.PlayCount = None       # new July 13, 2023
+        self.LastTimePlayed = None  # new July 13, 2023
+        self.Hyperlink = None       # new July 13, 2023
+        self.Comment = None         # new July 13, 2023
+        self.Rating = None          # new July 13, 2023
 
         ''' Static variables for music control. '''
         self.action = None          # Action to perform ??? UNDEFINED
@@ -13093,6 +13116,12 @@ class FileControl(FileControlCommonSelf):
         self.Genre = toolkit.uni_str(self.metadata.get('GENRE', "None"))
         self.Track = toolkit.uni_str(self.metadata.get('TRACK', "None"))
         self.Date = toolkit.uni_str(self.metadata.get('DATE', "None"))
+        self.CreationTime = toolkit.uni_str(
+            self.metadata.get('CREATION_TIME', "None"))
+        self.RecordingDate = toolkit.uni_str(
+            self.metadata.get('RECORDING_DATE', "None")) # iTunes RecordingDates
+        self.Composer = toolkit.uni_str(self.metadata.get('COMPOSER', "None"))
+        self.DiscNumber = toolkit.uni_str(self.metadata.get('DISC', "None"))
 
         self.Duration = self.metadata.get('DURATION', "0.0,0").split(',')[0]
         self.Duration = toolkit.uni_str(self.Duration)
@@ -15491,8 +15520,8 @@ def start_ffplay(song, tmp_name, extra_opt, toplevel=None):
 
     :param song: unquoted song name, we'll add the quotes
     :param tmp_name: = /tmp/filename to send output of song name. E.G.:
-                TMP_CURR_SONG="/tmp/mserve.currently_playing"
-                TMP_CURR_SAMPLE="/tmp/mserve.current_sample"
+                TMP_CURR_SONG = g.TEMP_DIR + "mserve.currently_playing"
+                TMP_CURR_SAMPLE = g.TEMP_DIR + "mserve.current_sample"
     :param extra_opt: can be blank or, overrides to start, fade, etc.
                 -ss = start seconds offset within song, normal is 0
                 -t = how long to play song (duration in seconds)

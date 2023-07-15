@@ -20,6 +20,7 @@ from __future__ import with_statement  # Error handling for file opens
 #       Returns:     Dictionary of Musicbrainz 'release-list' entries
 #
 #       July 12 2023 - Interface to/from mserve_config.py
+#       July 14 2023 - Save original mbz dictionary in JSON format
 #
 # ==============================================================================
 
@@ -34,9 +35,10 @@ except ImportError:  # No module named subprocess32
 import sys
 import os
 import re
+import json
+import pickle
 import time
 import datetime
-import pickle
 from pprint import pprint
 
 # Dist-packages
@@ -48,6 +50,12 @@ import libdiscid as discid
 import location as lc
 import message
 import image as img
+
+import global_variables as g        # should be self-explanatory
+if g.USER is None:
+    g.init()  # Background job so always runs
+TMP_MBZ_GET1 = g.TEMP_DIR + "mserve_mbz_get1"
+TMP_MBZ_GET2 = g.TEMP_DIR + "mserve_mbz_get2"
 
 """
 
@@ -82,8 +90,8 @@ else:
 You can fetch much more data. See musicbrainzngs for detail
 """
 
-# IPC pickle filename shouldn't end with .pkl because it's used for playlists.
-IPC_PICKLE_FNAME = lc.MSERVE_DIR + "ipc.pickle"
+#TMP_MBZ_GET1 = g.TEMP_DIR + "mserve_mbz_get1"  Note above uses diff dir.
+IPC_PICKLE_FNAME = lc.MSERVE_DIR + "ipc.pickle"  # control parameters
 # Above and below are TWO IDENTICAL FILENAMES
 DICT_FNAME = sys.argv[1]            # Pickle filename to save to
 SEARCH_LIMIT = sys.argv[2]          # Number of search results to return when
@@ -100,7 +108,7 @@ EMAIL_ADDRESS = sys.argv[3]         # May 5, 2023 - Not tested yet
 
 
 def get_release_by_mbzid(mbz_id, toplevel=None):
-
+    """ Release """
     try:
         # This actually doesn't generate any errors...
         mbz.set_useragent("mserve", "0.1", EMAIL_ADDRESS)
@@ -218,12 +226,11 @@ def get_disc_info(toplevel=None):
     # TODO: Set flag to indicate of 'disc' or 'cdstub' found.
     if release.get('disc'):
     
-        # NOT TESTED YET !!!
         #pprint(release)
         return release['disc']['release-list']
 
-    """ TODO: Incorporate cd stub logic below, not sure what immediate code
-        below is supposed to do anymore.
+    """ TODO: Incorporate cd stub logic.
+        Commented out below is old search through all albums released.
 
         this_release = release['disc']['release-list'][0]
         title = this_release['title']
@@ -539,11 +546,13 @@ file.save(v2_version=3)
     # From Fedora Magazine
     #
 """
+import json
+from getpass import getpass
+
 import musicbrainzngs as mb
 import libdiscid
 import requests
-import json
-from getpass import getpass
+
 
 
 def get_contents():
@@ -636,7 +645,7 @@ def read_cd():
     release = mb.get_releases_by_discid(this_disc.id, includes=['artists',
                                                                 'recordings'])
     if release.get('disc'):
-        this_release=release['disc']['release-list'][0]
+        this_release = release['disc']['release-list'][0]
 
         album = this_release['title']
         artist = this_release['artist-credit'][0]['artist']['name']
@@ -1120,7 +1129,7 @@ def add_track_info(release_list):
             duration = int(length) / 1000
 
             hhmmss = format_duration(duration)
-            FORMAT_TRACK_NAME="    {:02} - {}"
+            FORMAT_TRACK_NAME = "    {:02} - {}"
             outfname = FORMAT_TRACK_NAME.format(i+1, song.encode("utf8")) \
                        .replace('/', '-')
 
@@ -1146,9 +1155,23 @@ if __name__ == "__main__":
     #pprint(pass_back)
     # If a list isn't passed back that means an error dictionary is passed back
     if type(pass_back) is list:
+        first_pass = list(pass_back)
+        ''' For debugging save original mbz list in json format '''
+        with open(TMP_MBZ_GET1, "wb") as f:
+            f.write(json.dumps(pass_back))  # Save list of dictionaries
+
+        ''' add_track_info() appends to list parameter, only returns errors '''
         return_d = add_track_info(pass_back)
         if return_d:
             pass_back = return_d    # Dictionary with {'error': '99'}
+        else:
+            ''' For debugging save original mbz list in json format '''
+            both_passes = list(first_pass)
+            both_passes.extend(pass_back)
+            with open(TMP_MBZ_GET1, "wb") as f:
+                f.write(json.dumps(pass_back))  # Save list of dictionaries
+                #f.write(json.dumps(both_passes))  # Save list of dictionaries
+
     else:
         #print('pass_back is dictionary')
         pass
@@ -1157,5 +1180,118 @@ if __name__ == "__main__":
         # store the data as binary data stream
         pickle.dump(pass_back, f)           # Save dictionary as pickle file
         #pickle.dump(pass_back, f, -1)           # Save dictionary as pickle file
+
+    ''' Debugging output
+        [{"status": "Official", "artist-credit": 
+          [{"artist": 
+            {"sort-name": "Various Artists", 
+             "disambiguation": "add compilations to this artist", 
+             "type": "Other", "id": "89ad4ac3-39f7-470e-963a-56509c546377", 
+             "name": "Various Artists"}}], 
+             "barcode": "074645137520", 
+             "title": "Greatest Hits of the Eighties, Volume 1", 
+             "release-event-count": 1, 
+             "medium-count": 3, 
+             "cover-art-archive": 
+              {"count": "0", "front": "false", "back": "false", 
+               "artwork": "false"}, 
+             "release-event-list": 
+              [
+               {"date": "2001", 
+                "area": 
+                 {"sort-name": "United States", 
+                  "iso-3166-1-code-list": ["US"], 
+                  "id": "489ce91b-6658-3307-9877-795b68554c98", 
+                  "name": "United States"}}], 
+                  "medium-list": 
+                   [
+                    {"position": "1", 
+                    "track-count": 14, 
+                    "format": "CD", 
+                    "disc-list": 
+                     [
+                      {"id": "T2nU4GVmBnL6VTLLWYTaa9CnWJY-", 
+                       "sectors": "301598"}], 
+                    "track-list": 
+                    [
+                     {"recording": 
+                      {"length": "290840", 
+                       "id": "8b7bf5b2-3566-4eaf-9c5e-54f75dbf9886", 
+                       "title": "You\u2019re a Friend of Mine"}, 
+                       "length": "290506", 
+                       "title": "You're a Friend of Mine", 
+                       "position": "1", 
+                       "track_or_recording_length": "290506", 
+                       "id": "4bdacbc6-f71d-3499-a12e-aaa9449a8145", 
+                       "number": "1"}, 
+                     {"recording": 
+                      {"length": "226773", 
+                       "id": "04888d33-8325-46b4-9702-4d443a8d3ba7", 
+                       "title": "867-5309 / Jenny"}, 
+                       "length": "225000", 
+                       "title": "867-5309-Jenny", 
+                       "position": "2", 
+                       "track_or_recording_length": "225000", 
+                       "id": "6230bdae-8d40-32ad-83ff-33fd798aabf8", 
+                       "number": "2"}, 
+                      {"number": "3", 
+                       "recording": 
+                       {"length": "213493", 
+                        "id": "5df542a8-95ea-4408-a3bf-60d06e36cce4", 
+                        "title": "Love My Way"}, 
+                       "length": "213493", 
+                       "position": "3", 
+                       "id": "b534d46c-86ad-398e-a3ae-68d120c3e9bc", 
+                       "track_or_recording_length": "213493"}, 
+                      {"number": "4", 
+                       "recording": 
+                        {"length": "326333", 
+                        "id": "3ec6d221-1306-4aec-a1f6-d1e026568586", 
+                        "title": "Rockit"}, 
+                       "length": "326333", 
+                       "position": "4", 
+                       "id": "0661e2df-1ff7-3135-83bc-c05f3c4a8399", 
+                       "track_or_recording_length": "326333"}, 
+                      {"number": "5", 
+                       "recording": 
+                       {"length": "418690", 
+                        "id": "d17185df-a693-4bdf-8b43-9ab55881d1fb", 
+                        "title": "Total Eclipse of the Heart"}, 
+                       "length": "418173", 
+                       "position": "5", 
+                       "id": "c0c837c2-5dfd-324f-9b2b-4f84daf6194f", 
+                       "track_or_recording_length": "418173"}, 
+                       {"recording": 
+                        {"length": "299506", 
+                         "id": "712a69fb-c0aa-458d-bd7f-8057d668f0c5", 
+                         "title": "Flirtin\u2019 With Disaster"}, 
+                        "length": "299493", 
+                        "title": "Flirtin' With Disaster", 
+                        "position": "6", 
+                        "track_or_recording_length": "299493", 
+                        "id": "01c74762-380d-373e-8868-db2f7393b64e", 
+                        "number": "6"}, 
+                      {"number": "7", 
+                       "recording": 
+                        {"length": "239173", 
+                         "id": "07052374-4616-4ad3-ace7-b7344ba7fb2f", 
+                         "title": "China"}, 
+                       "length": "239173", 
+                       "position": "7", 
+                       "id": "441fd050-a956-38ae-87f4-dcaed2e8baf0", 
+                       "track_or_recording_length": "239173"}, 
+                      {"number": "8", 
+                       "recording": 
+                        {"length": "241000", 
+                         "id": "c34d575b-328d-4eb9-87a2-68ad87085ec8", 
+                         "title": "Take It on the Run"}, 
+                       "length": "240826", 
+                       "position": "8", 
+                       "id": "c4cbe81c-98e1-363d-86ee-b41140d9e837", 
+                       "track_or_recording_length": "240826"}, 
+                      {"number": "9", "recording": {"length": "355666", "id": "d8e25c51-d928-4ed7-b7e1-2ff16026fc6f", "title": "All You Zombies"}, "length": "355666", "position": "9", "id": "8e59c5aa-d0c3-3614-bef4-8f8468bab81f",    
+    '''
+
+
 
 # End of mbz_get1.py

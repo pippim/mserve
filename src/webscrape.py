@@ -21,11 +21,11 @@ from __future__ import with_statement  # Error handling for file opens
 """
 Start with google search:   https://stackoverflow.com/a/43531098/6929343
 Filtering:                  Skip youtube
-Store results in:           /run/user/1000/mserve.scrape_list.txt
+Store results in:           g.TEMP_DIR + "mserve.scrape_list.txt"
 
 Next get lyrics:            https://stackoverflow.com/a/63436536/6929343
 Filtering:                  Include genius.com
-Store results in:           /run/user/1000/mserve.scrape_lyrics.txt
+Store results in:           g.TEMP_DIR + "mserve.scrape_lyrics.txt"
 
     TODO:
 

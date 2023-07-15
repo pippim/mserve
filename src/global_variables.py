@@ -45,10 +45,10 @@ TEMP_DIR = None         # Directory for temporary files /run/user/1000 preferred
 # Same values used by gnome-terminal to prevent window shrinking too small
 WIN_MIN_WIDTH = 142
 WIN_MIN_HEIGHT = 63
-
-# Many older Global variables first used in mmm (multiple monitors manager)
 RESTART_SLEEP = .3      # Delay for mserve close down
 KEEP_AWAKE_MS = 250     # Milliseconds between time checks
+
+# Older Global variables from mmm (multiple monitors manager), so need renaming.
 BIG_FONT = 18           # Font size not used
 LARGE_FONT = 14         # Font size not used
 MON_FONTSIZE = 12       # Font size for monitor name

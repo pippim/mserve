@@ -25,7 +25,8 @@ from __future__ import with_statement  # Error handling for file opens
 #       May. 07 2023 - Convert gmtime to localtime. Before today needs update
 #       June 22 2023 - Use CustomScrolledText ported to toolkit.py
 #       July 12 2023 - Interface to/from mserve_config.py
-#       July 13 2023 - Upgrade to new SQL database. TODO: DiskNumber, Composer
+#       July 13 2023 - Upgrade to new SQL database.
+#                      TODO: DiskNumber, Composer, MP3, M4A
 #
 # ==============================================================================
 """
@@ -47,9 +48,22 @@ from mutagen.oggvorbis import OggVorbis as audio_file
 
 from mutagen.oggvorbis import OggVorbis
 from mutagen.flac import Picture
+
+TODO: https://stackoverflow.com/a/44906491/6929343
+
+from mutagen.mp4 import MP4
+
+def get_description(filename):
+    return MP4(filename).tags.get("desc", [None])[-1]
+
+def set_description(filename, description):
+    tags = MP4(filename).tags
+    tags["desc"] = description
+    tags.save(filename)
+
 '''
 
-try:
+try:  # Python 3
     import tkinter as tk
     import tkinter.ttk as ttk
     import tkinter.font as font
@@ -57,7 +71,6 @@ try:
     import tkinter.messagebox as messagebox
     import tkinter.scrolledtext as scrolledtext
     import tkinter.simpledialog as simpledialog
-
     PYTHON_VER = "3"
 except ImportError:  # Python 2
     import Tkinter as tk
@@ -67,7 +80,6 @@ except ImportError:  # Python 2
     import tkMessageBox as messagebox
     import ScrolledText as scrolledtext
     import tkSimpleDialog as simpledialog
-
     PYTHON_VER = "2"
 # print ("Python version: ", PYTHON_VER)
 from PIL import Image, ImageTk, ImageDraw, ImageFont
@@ -97,6 +109,7 @@ import libdiscid as discid
 import global_variables as g
 import location as lc
 import external as ext
+import toolkit
 import monitor                  # To get/save window geometry
 import message
 import image as img
@@ -168,6 +181,8 @@ class RipCD:
         self.song_duration = None           # Song duration string "hh:mm:ss"
         self.song_seconds = None            # Above in seconds
         self.song_size = None               # Song file size
+        self.DiscNumber = None              # July 13, 2023
+        self.CreationTime = None            # Initially same as stat.st_ctime
         self.rip_current_track = None       # Current track number start at 1
         self.song_rip_sec = 0               # How many seconds and blocks
         self.song_rip_blk = 0               # have been ripped for song?
@@ -263,7 +278,7 @@ class RipCD:
 
         ''' Scrollable textbox to show selections / ripping status '''
         Quote = ("It will take a minute to access Audio CD and the internet.\n" +
-                 "If audio disc is not found in MusicBrainz search that site.\n" +
+                 "If audio disc is not found in MusicBrainz, search that site.\n" +
                  "Then you can select songs and images from listings below.\n" +
                  "What you select from listings will appear in this window.\n\n" +
                  "MusicBrainz Account is using: " + EMAIL_ADDRESS + "\n\n" +
@@ -336,7 +351,7 @@ class RipCD:
         self.selected_mbz_id = None  # Musicbrainz ID
         self.selected_medium = None  # Only one medium_id must be selected
         self.selected_date = None  # Can be blank or "????" so test it.
-        self.selected_country = None  # No longer used.
+        self.selected_composer = None  # No longer used.
         self.selected_tracks = 0  # Number tracks selected from CD total
         # Selected songs are accessed via "checked" tag in treeview
         self.our_parent = None  # Umm...
@@ -726,8 +741,8 @@ class RipCD:
                 self.release_list = pickle.load(f)
 
             # Did mbz_get1.py report an error?
-            #pprint('\nRELEASE LIST ==========================================')
-            #pprint(self.release_list)  # To see release-list if error
+            pprint('\nRELEASE LIST ==========================================')
+            pprint(self.release_list)  # To see release-list if error
             if type(self.release_list) is dict and self.release_list.get('error'):
                 if self.release_list.get('error'):
                     # If dictionary type returned we know there is an error
@@ -771,9 +786,11 @@ class RipCD:
 
             # Have musicbrainz release list. Log this step
             releases = len(self.release_list)
-            first_release = self.release_list[0]
+            first_release = self.release_list[0]  #pprint
+            #pprint(self.release_list[0], indent=2)
+
             self.selected_artist = first_release['artist-credit'][0]['artist']['name']
-            self.selected_album = first_release['title']
+            self.selected_album = first_release['title']  # Album Title
             sql.hist_add(
                 time.time(), 0, g.USER, 'encode', 'mbz_get1',
                 self.selected_artist, self.selected_album,
@@ -781,7 +798,7 @@ class RipCD:
                 0, releases, self.mbz_get1_time,
                 "Get releases list: " + time.asctime(time.localtime(time.time())))
 
-            # Download images with 500x500 pixel (gets all parm ignored now)
+            # Download images with 500x500 pixel (gets all parm. 500 ignored now)
             ext_name = "python mbz_get2.py " + IPC_PICKLE_FNAME + " 500"
             self.active_pid = ext.launch_command(ext_name,
                                                  toplevel=self.lib_top)
@@ -1159,6 +1176,7 @@ class RipCD:
         # os.stat gives us all of file's attributes
         stat = os.stat(self.os_full_name)
         self.song_size = stat.st_size
+        self.CreationTime = stat.st_ctime
         # converted = float(self.song_size) / float(CFG_DIVISOR_AMT)   # Not used
         # fsize = str(round(converted, CFG_DECIMAL_PLACES))  # Not used
 
@@ -1166,41 +1184,32 @@ class RipCD:
         # Does 'sql' conflict with import? Try 'sql_cmd' instead
 
 
-        ''' convert July 13, 2023
         sql_cmd = "INSERT OR IGNORE INTO Music (OsFileName, OsAccessTime, \
-        OsModifyTime, OsChangeTime, OsFileSize, CreationTime) \
+            OsModifyTime, OsChangeTime, OsFileSize, CreationTime) \
             VALUES (?, ?, ?, ?, ?, ?)"
         sql.cursor.execute(sql_cmd, (self.os_part_name, stat.st_atime,
                            stat.st_mtime, stat.st_ctime, self.song_size,
-                           time.time()))
+                           stat.st_ctime))
         '''
         sql_cmd = "INSERT OR IGNORE INTO Music (OsFileName, \
             OsAccessTime, OsModificationTime, OsCreationTime, OsFileSize) \
             VALUES (?, ?, ?, ?, ?)"
         sql.cursor.execute(sql_cmd, (self.os_part_name, stat.st_atime,
                            stat.st_mtime, stat.st_ctime, self.song_size))
+        '''  # convert July 13, 2023
 
 
 
         sql.con.commit()
-        # TODO: What is last rowid if updating record?
         music_id = sql.cursor.lastrowid
-
         sql.cursor.execute("SELECT Id FROM Music WHERE OsFileName = ?",
                            [self.os_part_name])
-        # self.music_id = sql.cursor.fetchone()  # BONEHEAD move !!!
-        # TODO: June 3, 2023 - Below is broken. Use ofb.Select()?
         d = dict(sql.cursor.fetchone())
         self.music_id = d["Id"]
-        # self.music_id = sql.cursor.fetchone()[0]  # This would work too.
         if self.music_id != music_id:
-            # Song was previously encoded!
-            print('self.music_id != music_id:', self.music_id, '!=', music_id)
+            print('Song file already encoded! self.music_id:',
+                  self.music_id, '!=', music_id)
 
-        #print('finished: ' + time.asctime(time.localtime(time.time())))
-        #print('time.time():', time.time())
-        #print('self.music_id:', self.music_id)
-        #print('g.USER:', g.USER)
         sql.hist_add(
             time.time(), self.music_id, g.USER, 'file', 'init',
             self.selected_artist, self.os_song_name, self.os_part_name,
@@ -1212,24 +1221,33 @@ class RipCD:
             self.song_size, self.song_seconds, self.encode_track_time,
             "finished: " + time.asctime(time.localtime(time.time())))
 
-        #hist_cursor.execute(sql, (Time, MusicId, User, Type, Action, SourceMaster,
-        #                    SourceDetail, Target, Size, Count, Seconds,
-        #                    Comments))
-
 
     def add_sql_metadata(self):
-        """ July 13, 2023 - Need to add DiskNumber, Composer """
+        """ July 13, 2023 - Need to add DiscNumber, Composer, CreationTime """
         genre = None                # TODO: Get with tk.Entry like release date
         #genre = ""                  # None type breaks genre.decode("utf8")
+
+
+        sql.update_metadata(
+            self.os_part_name, self.selected_artist, self.selected_album,
+            self.selected_title, genre, self.tracknumber, self.selected_date,
+            self.song_seconds, self.song_duration, self.DiscNumber, 
+            self.selected_composer)
+        '''
         sql.update_metadata(
             self.os_part_name, self.selected_artist, self.selected_album,
             self.selected_title, genre, self.tracknumber, self.selected_date,
             self.song_seconds, self.song_duration)
+        '''  # convert July 13, 2023 
+
+
+
         # Above automatically creates history records for 'meta' 'init'
+
 
     # noinspection PyPep8Naming
     def add_metadata_to_song(self):
-        """ July 13, 2023 - Need to add DiskNumber, Composer """
+        """ July 13, 2023 - Need to add DiscNumber, Composer, CreationTime """
         if self.fmt == 'flac':
             from mutagen.flac import FLAC as audio_file
         elif self.fmt == 'oga':
@@ -1258,14 +1276,17 @@ class RipCD:
 
         # noinspection SpellCheckingInspection
         self.tracknumber = str(self.rip_current_track) + "/" + str(self.disc.last_track)
+        audio['DISC'] = self.DiscNumber  # July 13, 2023
         audio['TRACKNUMBER'] = self.tracknumber
         # 'ARTIST' goes to 'ALBUMARTIST' in Kid3 and iTunes
+        # July 13, 2023 - Perhaps ALBUMARTIST is the original band/artist
         audio['ARTIST'] = self.selected_artist
         audio['ALBUMARTIST'] = self.selected_artist
         audio['ALBUM'] = self.selected_album
         audio['TITLE'] = self.selected_title  # '99 -' and .ext stripped
         if self.selected_date:
             audio['DATE'] = self.selected_date
+        audio['CREATION_TIME'] = self.CreationTime  # July 13, 2023 CreationTime
         # What about Musicbrainz ID? It is auto added along with discid
         # Add comment "Encoded 2020-10-16 12:15, format: x, quality: y
         # Already has comment in 'file' command header
@@ -1555,6 +1576,8 @@ class RipCD:
             # Parse medium to get exact disc from multi-disc set.
             disc_found, self.this_disc_number, self.disc_count = \
                 self.parse_medium(d)
+            self.DiscNumber = \
+                str(self.this_disc_number) + "/" + str(self.disc_count)
 
             # Filter and Meatloaf have no matching scores (only one hit)
             if d.get('ext:score'):
@@ -1648,6 +1671,9 @@ class RipCD:
             for i, track_d in enumerate(tracks_list):
                 # print('track_d:\n',track_d)
                 #position = track_d['position']
+                if i == 0:
+                    print("First Track:")
+                    pprint(track_d)
                 recording_d = track_d['recording']
                 song = track_d['recording']['title']
                 length = recording_d.get('length', '0')
@@ -2322,9 +2348,9 @@ class RipCD:
         if self.selected_date:                  # Release date
             self.scrollbox.insert("end", "Date:\t" +
                                   self.selected_date + "\n")
-        if self.selected_country:               # Country released in
-            self.scrollbox.insert("end", "Country:\t" +
-                                  self.selected_country + "\n")
+        if self.selected_composer:               # Country released in
+            self.scrollbox.insert("end", "Composer:\t" +
+                                  self.selected_composer + "\n")
         self.selected_tracks = 0                # Number tracks selected
         if self.selected_medium:                # Was this medium selected?
             # Remove " |  Disc ID: .." from end it's added later

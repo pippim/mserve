@@ -14,12 +14,13 @@ from __future__ import with_statement  # Error handling for file opens
 #
 #       mbz_get2.py - Standalone python program to run in background.
 #                     Get Musicbrainz disc information - Pass 2 of 2.
-
+#
 #       Called with: 'python mbz_get2.py <release-list>'
 #       Parameters:  Pickle file contains object disc of libdiscid type
 #       Returns:     Dictionary of images
 #
 #       July 12 2023 - Interface to/from mserve_config.py
+#       July 14 2023 - Save original mbz dictionary in JSON format
 #
 # ==============================================================================
 
@@ -39,6 +40,12 @@ import requests
 
 # Pippim modules
 import location as lc
+
+import global_variables as g        # should be self-explanatory
+if g.USER is None:
+    g.init()  # Background job so always runs
+TMP_MBZ_GET1 = g.TEMP_DIR + "mserve_mbz_get1"
+TMP_MBZ_GET2 = g.TEMP_DIR + "mserve_mbz_get2"
 
 # IPC pickle filename shouldn't end with .pkl because it's used for playlists.
 IPC_PICKLE_FNAME = lc.MSERVE_DIR + "ipc.pickle"

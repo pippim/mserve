@@ -494,14 +494,18 @@ def make_encoding_cfg():
     d1 = "https://pypi.org/project/python-magic/"
     d2 = "https://pypi.org/project/musicbrainzngs/"
     d3 = "https://github.com/sebastinas/python-libdiscid"
+    d4 = "https://mutagen.readthedocs.io/en/latest/"
     cfg.append(make_dict(m, None, "magic", d1, "3", "python3-magic"))
     cfg.append(make_dict(m, None, "magic", d1, "2", "python-magic"))
     cfg.append(make_dict(m, "mbz", "musicbrainzngs", d2, "3", "python3-musicbrainzngs"))
     cfg.append(make_dict(m, "mbz", "musicbrainzngs", d2, "2", "python-musicbrainzngs"))
     cfg.append(make_dict(m, "discid", "libdiscid", d3, "3", "python3-libdiscid"))
     cfg.append(make_dict(m, "discid", "libdiscid", d3, "2", "python-libdiscid"))
+    cfg.append(make_dict(m, None, "mutagen", d4, "3", "python3-mutagen"))
+    cfg.append(make_dict(m, None, "mutagen", d4, "2", "python-mutagen"))
     ''' TODO:
             Buried in functions:
+            https://mutagen-specs.readthedocs.io/en/latest/id3/id3v2.3.0.html
                 from mutagen.flac import FLAC as audio_file
                 from mutagen.oggvorbis import OggVorbis as audio_file
                 
@@ -512,6 +516,7 @@ def make_encoding_cfg():
     cfg.append(make_dict(m, "g", "global_variables", "pippim.com"))
     cfg.append(make_dict(m, "lc", "location", "pippim.com"))
     cfg.append(make_dict(m, "ext", "external", "pippim.com"))
+    cfg.append(make_dict(m, None, "toolkit", "pippim.com"))
     cfg.append(make_dict(m, None, "monitor", "pippim.com"))
     cfg.append(make_dict(m, None, "message", "pippim.com"))
     cfg.append(make_dict(m, "img", "image", "pippim.com"))
@@ -546,9 +551,10 @@ def make_mbz1_cfg():
     cfg.append(make_dict(m, None, "sys"))
     cfg.append(make_dict(m, None, "os"))
     cfg.append(make_dict(m, None, "re"))
+    cfg.append(make_dict(m, None, "json"))
+    cfg.append(make_dict(m, None, "pickle"))
     cfg.append(make_dict(m, None, "time"))
     cfg.append(make_dict(m, None, "datetime"))
-    cfg.append(make_dict(m, None, "pickle"))
     cfg.append(make_dict(m, None, "pprint"))
     # Dist-packages
     cfg.extend(make_PIL_cfg(m))
@@ -562,6 +568,26 @@ def make_mbz1_cfg():
     cfg.append(make_dict(m, "lc", "location", "pippim.com"))
     cfg.append(make_dict(m, None, "message", "pippim.com"))
     cfg.append(make_dict(m, "img", "image", "pippim.com"))
+    cfg.append(make_dict(m, "g", "global_variables", "pippim.com"))
+    ''' Buried import # 1  Isn't used !!!
+            import json
+            from getpass import getpass
+            
+            import musicbrainzngs as mb
+            import libdiscid
+            import requests
+    '''
+
+    ''' Buried import # 2  Isn't used !!!
+            import os, sys
+            import subprocess
+            from argparse import ArgumentParser
+            import libdiscid
+            import musicbrainzngs as mb
+            import requests
+            import json
+            from getpass import getpass
+    '''
     return cfg
 
 
@@ -587,6 +613,7 @@ def make_mbz2_cfg():
     cfg.append(make_dict(m, "mbz", "musicbrainzngs", d2, "2", "python-musicbrainzngs"))
     # Pippim modules
     cfg.append(make_dict(m, "lc", "location", "pippim.com"))
+    cfg.append(make_dict(m, "g", "global_variables", "pippim.com"))
     return cfg
 
 
