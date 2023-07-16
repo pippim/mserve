@@ -19,12 +19,13 @@ from __future__ import with_statement  # Error handling for file opens
 #       July 12 2023 - Interface to/from mserve_config.py
 #
 # ==============================================================================
-
+import libdiscid
 import sys                                  # System argument for save filename
 import pickle                               # Save discid dictionary to file
 import libdiscid as discid                  # C program to read CD's TOC
 
 DICT_FNAME = sys.argv[1]                    # Pickle filename to save to
+# noinspection SpellCheckingInspection
 """
 
 From: https://buildmedia.readthedocs.org/media/pdf/python-discid/v1.1.0/python-discid.pdf
@@ -63,10 +64,9 @@ def get_discid():
     """ Use discid to get CD information"""
     try:
         disc = discid.read()                # use default device
-    except:
-        # TODO: Expand error with no cd drive, no cd in drive, cd read error
-        #       NOT POSSIBLE: https://pythonhosted.org/python-libdiscid/api.html
-        #print('No CD found')
+    except libdiscid.DiscError:
+        # NOT POSSIBLE to expand error with no drive, no cd, cd read error
+        #       https://pythonhosted.org/python-libdiscid/api.html
         return {'error': '1'}
 
     return disc

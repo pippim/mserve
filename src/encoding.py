@@ -29,6 +29,7 @@ from __future__ import with_statement  # Error handling for file opens
 #                      TODO: DiskNumber, Composer, MP3, M4A
 #
 # ==============================================================================
+# noinspection SpellCheckingInspection
 """
 Solves problems like:
     https://askubuntu.com/questions/541977/
@@ -116,7 +117,8 @@ import image as img
 import timefmt as tmf           # Aug 13/2021 switch over to tmf abbreviation
 import sql
 
-EMAIL_ADDRESS = "pippim.com@gail.com"  # TODO - setup variable in SQL History
+EMAIL_ADDRESS = "pippim.com@gmail.com"  # TODO - setup variable in SQL History
+# The email address isn't that important as throttling is by IP address.
 
 # IPC pickle filename shouldn't end with .pkl because it's used for playlists.
 IPC_PICKLE_FNAME = lc.MSERVE_DIR + "ipc.pickle"
@@ -176,8 +178,11 @@ class RipCD:
         # Ripping '#' multiple disc #. '99 - ' or '99 ' track numbering
         self.song_name = None               # checked Song title from treeview '#-99 -'
         self.os_song_name = None            # '#-99 Song name.xxx'
-        self.os_full_name = None            # top_dir/artist/album/#-99 Song name.xxx
-        self.os_part_name = None            # artist/album/#-99 Song name.xxx
+        self.os_full_path = None            # top_dir/artist/album/#-99 Song name.xxx
+        self.sqlOsFileName = None            # artist/album/#-99 Song name.xxx
+        self.is_compilation = None          # True/False flag.
+        # When artist is "Various Artists" the directory is "Compilations" but
+        # The metadata will contain real Artist Name, not "Compilations"
         self.song_duration = None           # Song duration string "hh:mm:ss"
         self.song_seconds = None            # Above in seconds
         self.song_size = None               # Song file size
@@ -205,8 +210,8 @@ class RipCD:
         self.cd_top = tk.Toplevel()
         self.cd_top_is_active = True
         self.cd_top.minsize(width=g.WIN_MIN_WIDTH, height=g.WIN_MIN_HEIGHT)
-        x = self.lib_top.winfo_x() + g.PANEL_HGT
-        y = self.lib_top.winfo_y() + g.PANEL_HGT
+        #x = self.lib_top.winfo_x() + g.PANEL_HGT
+        #y = self.lib_top.winfo_y() + g.PANEL_HGT
         #geom = '%dx%d+%d+%d' % (1400, 975, x, y)
         geom = monitor.get_window_geom('encoding')
         self.cd_top.geometry(geom)
@@ -481,8 +486,9 @@ class RipCD:
             label="60 %", command=self.show_selections, font=ms_font, value=60,
             variable=self.quality_var)
         quality_bar.add_radiobutton(
-            label="70 % (Medium size, very good quality)", command=
-            self.show_selections, font=ms_font, value=70, variable=self.quality_var)
+            label="70 % (Medium size, very good quality)",
+            command=self.show_selections, font=ms_font, value=70,
+            variable=self.quality_var)
         quality_bar.add_radiobutton(
             label="80 %", command=self.show_selections, font=ms_font, value=80,
             variable=self.quality_var)
@@ -490,8 +496,9 @@ class RipCD:
             label="90 %", command=self.show_selections, font=ms_font, value=90,
             variable=self.quality_var)
         quality_bar.add_radiobutton(
-            label="100 % (Largest size, highest quality)", command=
-            self.show_selections, font=ms_font, value=100, variable=self.quality_var)
+            label="100 % (Largest size, highest quality)",
+            command=self.show_selections, font=ms_font, value=100,
+            variable=self.quality_var)
         mb.add_cascade(label=" Quality ▼ ", menu=quality_bar, font=ms_font)
         text = \
             "The Quality dropdown menu allows you to pick the encoding\n" +\
@@ -625,6 +632,7 @@ class RipCD:
     #
     # ==============================================================================
 
+    # noinspection PyTypeChecker
     def cd_run_to_close(self):
         """ This function is ALWAYS running at 30 fps and it loads external
             programs in background so they don't lag our animations.
@@ -741,8 +749,8 @@ class RipCD:
                 self.release_list = pickle.load(f)
 
             # Did mbz_get1.py report an error?
-            pprint('\nRELEASE LIST ==========================================')
-            pprint(self.release_list)  # To see release-list if error
+            #pprint('\nRELEASE LIST ==========================================')
+            #pprint(self.release_list)  # To see release-list if error
             if type(self.release_list) is dict and self.release_list.get('error'):
                 if self.release_list.get('error'):
                     # If dictionary type returned we know there is an error
@@ -779,15 +787,15 @@ class RipCD:
                     else:
                         msg = "Unknown error code: " + err_no
 
-                    message.showinfo(title="mbz_get1.py: Musicbrainz Error",
+                    message.ShowInfo(title="mbz_get1.py: Musicbrainz Error",
+                                     thread=self.update_display,
                                      text=msg, icon="error", parent=self.cd_top)
                     self.cd_close()
                     return  # Empty dictionary = CD error
 
             # Have musicbrainz release list. Log this step
             releases = len(self.release_list)
-            first_release = self.release_list[0]  #pprint
-            #pprint(self.release_list[0], indent=2)
+            first_release = self.release_list[0]
 
             self.selected_artist = first_release['artist-credit'][0]['artist']['name']
             self.selected_album = first_release['title']  # Album Title
@@ -857,7 +865,7 @@ class RipCD:
         self.lib_top.after(33, self.cd_run_to_close)
 
     def update_display(self):
-        # Called in cd_run_to_close() and by message.AskQuestion()
+        """ Called in cd_run_to_close() and by message.AskQuestion() """
         self.cd_spin_art()  # Rotate artwork 1°
         if self.disc_enc_active:  # Ripping the CD now?
             self.update_rip_status()  # Update ripping progress
@@ -877,10 +885,10 @@ class RipCD:
                "Would you like to manually input Disc ID?"
 
         answer = message.AskQuestion(
-            self.cd_top, thread=self.update_display, confirm='no', title=
             # self.lib_top, thread=self.update_display, confirm='no', title=
             # Makes no difference play_top isn't updating display
-            "Disc ID not found in Musicbrainz", text=text, icon="question")
+            self.cd_top, thread=self.update_display, confirm='no',
+            title="Disc ID not found in Musicbrainz", text=text, icon="question")
 
         if answer.result != "yes":
             return False  # Doesn't want to enter new Disc ID
@@ -894,11 +902,8 @@ class RipCD:
               "Disc ID below by holding Control key and tapping V key.\n\n"
 
         answer = message.AskString(
-            self.cd_top, thread=self.update_display, title=
-            # self.lib_top, thread=self.update_display, align='left', title=
-            # Makes no difference play_top isn't updating display
-            # April 24, 2023 - AskQuestion not working in mserve.py, so check code here.
-            "Enter Disc ID from Musicbrainz", text=msg, icon="information")
+            self.cd_top, thread=self.update_display,  # update_display()
+            title="Enter Disc ID from Musicbrainz", text=msg, icon="information")
 
         if answer.result != "yes":
             return False
@@ -1030,7 +1035,7 @@ class RipCD:
 
     # noinspection SpellCheckingInspection,PyPep8Naming
     def set_gst_encoding(self):
-
+        """ https://gstreamer.freedesktop.org/documentation/tools/gst-launch.html """
         if self.fmt == 'wav':
             self.gst_encoding = 'wavenc'
         elif self.fmt == 'flac':
@@ -1160,7 +1165,7 @@ class RipCD:
         ext_name = 'gst-launch-1.0 cdiocddasrc track={} ! ' \
             .format(self.rip_current_track) + \
             'audioconvert ! {} ! '.format(self.gst_encoding) + \
-            'filesink location="{}"'.format(self.os_full_name)
+            'filesink location="{}"'.format(self.os_full_path)
         # inspection SpellCheckingInspection
 
         # ext_name = "sleep 3"   # For speedy loop testing
@@ -1174,7 +1179,7 @@ class RipCD:
     def add_sql_music(self):
         """ Populate SQL Music Table Row with new CD track """
         # os.stat gives us all of file's attributes
-        stat = os.stat(self.os_full_name)
+        stat = os.stat(self.os_full_path)
         self.song_size = stat.st_size
         self.CreationTime = stat.st_ctime
         # converted = float(self.song_size) / float(CFG_DIVISOR_AMT)   # Not used
@@ -1187,14 +1192,14 @@ class RipCD:
         sql_cmd = "INSERT OR IGNORE INTO Music (OsFileName, OsAccessTime, \
             OsModifyTime, OsChangeTime, OsFileSize, CreationTime) \
             VALUES (?, ?, ?, ?, ?, ?)"
-        sql.cursor.execute(sql_cmd, (self.os_part_name, stat.st_atime,
+        sql.cursor.execute(sql_cmd, (self.sqlOsFileName, stat.st_atime,
                            stat.st_mtime, stat.st_ctime, self.song_size,
                            stat.st_ctime))
         '''
         sql_cmd = "INSERT OR IGNORE INTO Music (OsFileName, \
             OsAccessTime, OsModificationTime, OsCreationTime, OsFileSize) \
             VALUES (?, ?, ?, ?, ?)"
-        sql.cursor.execute(sql_cmd, (self.os_part_name, stat.st_atime,
+        sql.cursor.execute(sql_cmd, (self.sqlOsFileName, stat.st_atime,
                            stat.st_mtime, stat.st_ctime, self.song_size))
         '''  # convert July 13, 2023
 
@@ -1203,7 +1208,7 @@ class RipCD:
         sql.con.commit()
         music_id = sql.cursor.lastrowid
         sql.cursor.execute("SELECT Id FROM Music WHERE OsFileName = ?",
-                           [self.os_part_name])
+                           [self.sqlOsFileName])
         d = dict(sql.cursor.fetchone())
         self.music_id = d["Id"]
         if self.music_id != music_id:
@@ -1212,12 +1217,12 @@ class RipCD:
 
         sql.hist_add(
             time.time(), self.music_id, g.USER, 'file', 'init',
-            self.selected_artist, self.os_song_name, self.os_part_name,
+            self.selected_artist, self.os_song_name, self.sqlOsFileName,
             self.song_size, self.song_seconds, self.encode_track_time,
             "encoded: " + time.asctime(time.localtime(time.time())))
         sql.hist_add(
             time.time(), self.music_id, g.USER, 'encode', 'track',
-            self.selected_artist, self.os_song_name, self.os_part_name,
+            self.selected_artist, self.os_song_name, self.sqlOsFileName,
             self.song_size, self.song_seconds, self.encode_track_time,
             "finished: " + time.asctime(time.localtime(time.time())))
 
@@ -1229,13 +1234,13 @@ class RipCD:
 
 
         sql.update_metadata(
-            self.os_part_name, self.selected_artist, self.selected_album,
+            self.sqlOsFileName, self.selected_artist, self.selected_album,
             self.selected_title, genre, self.tracknumber, self.selected_date,
             self.song_seconds, self.song_duration, self.DiscNumber, 
             self.selected_composer)
         '''
         sql.update_metadata(
-            self.os_part_name, self.selected_artist, self.selected_album,
+            self.sqlOsFileName, self.selected_artist, self.selected_album,
             self.selected_title, genre, self.tracknumber, self.selected_date,
             self.song_seconds, self.song_duration)
         '''  # convert July 13, 2023 
@@ -1259,12 +1264,12 @@ class RipCD:
         # noinspection SpellCheckingInspection
         try:
             # Maybe Kid3 has batch tagging functionality?
-            audio = audio_file(self.os_full_name)
+            audio = audio_file(self.os_full_path)
         except UnicodeDecodeError as err:
             print(err)
             # noinspection SpellCheckingInspection
             print('add_metadata_to_song() ERROR mutagen.oggvorbis on file:')
-            print(self.os_full_name)
+            print(self.os_full_path)
             return False
 
         # Doesn't fix the error encoding with UTF-8
@@ -1355,11 +1360,12 @@ class RipCD:
         from mutagen.flac import Picture
 
         try:
-            file_ = OggVorbis(self.os_full_name)
+            file_ = OggVorbis(self.os_full_path)
         except UnicodeDecodeError as err:
             print(err)
+            # noinspection SpellCheckingInspection
             print('add_image_to_oga() ERROR mutagen.oggvorbis on file:')
-            print(self.os_full_name)
+            print(self.os_full_path)
             return False
 
         picture = Picture()
@@ -1411,10 +1417,11 @@ class RipCD:
 
             print(err)
             print('add_image_to_oga() ERROR mutagen.flac.Picture.write on file:')
-            print(self.os_full_name)
+            print(self.os_full_path)
             return False
 
         encoded_data = base64.b64encode(picture_data)
+        # noinspection SpellCheckingInspection
         vcomment_value = encoded_data.decode("ascii")
 
         file_["metadata_block_picture"] = [vcomment_value]
@@ -1426,7 +1433,7 @@ class RipCD:
         """
         self.os_song_name = None
         self.song_name = ""
-        # i = 0
+        i = 0  # To make pycharm charming :)
         for i, track_id in enumerate(self.cd_tree.get_children(
                 self.selected_medium)):
             if i < self.rip_current_track:
@@ -1446,8 +1453,14 @@ class RipCD:
             return False  # No more songs
 
         # Does target directory exist?
+        ''' July 15, 2023 Support compilations '''
+        self.is_compilation = self.selected_artist == "Various Artists" 
+        if self.is_compilation:
+            artist = "Compilations"
+        else:
+            artist = self.selected_artist
         ''' June 3, 2023 Create legal names - Replace '/', '?', ':' with '_' '''
-        part = ext.legalize_dir_name(self.selected_artist.encode("utf8")) + os.sep + \
+        part = ext.legalize_dir_name(artist.encode("utf8")) + os.sep + \
             ext.legalize_dir_name(self.selected_album.encode("utf8")) + os.sep
         prefix = self.topdir.encode("utf8") + os.sep + part
         if not os.path.isdir(prefix):
@@ -1461,8 +1474,8 @@ class RipCD:
                 return False
 
         # topdir/artist/album/99 song.ext - self.os_song_name already legal
-        self.os_full_name = prefix + self.os_song_name  
-        self.os_part_name = part + self.os_song_name  # SQL music key  
+        self.os_full_path = prefix + self.os_song_name  
+        self.sqlOsFileName = part + self.os_song_name  # SQL music key  
         self.rip_current_track = i + 1
         return True
 
@@ -1499,8 +1512,9 @@ class RipCD:
 # ============================================================================
 
     def parse_medium(self, d):
-        """
-            '''
+        """ Parse:   'medium-list': [{'disc-count': 1, """
+        # noinspection SpellCheckingInspection
+        '''
                  'medium-count': 1,
                  'medium-list': [{},
                                  {'disc-count': 2,
@@ -1531,10 +1545,9 @@ class RipCD:
                    'position': '2',
                    'track-count': 19,
 
-            '''
 
         :rtype: object
-        """
+        '''
 
         # Loop to find mdm_ndx matching self.disc.id
         # Move up to top and do before assigning album name to append [Disc #1 of 2]
@@ -1555,7 +1568,7 @@ class RipCD:
             disc_id = str(d['medium-list'][i]['disc-list'][0]['id'])
             if disc_id == self.mbz_release_id:
                 disc_found = True
-                this_disc_number = i + 1
+                this_disc_number = d['medium-list'][i]['disc-count']
 
         if disc_count > 1:
             d['title'] = d['title'] + " [Disc #" + str(this_disc_number) + \
@@ -1568,10 +1581,9 @@ class RipCD:
 
         sep = "  |  "  # Note length of separator = 5 below
 
-        for d in self.release_list:
-            # print('Processing release:\n',d)
-            ''' Our top parent line with score, artist and album
-                Set line color depending on matching score green is good.
+        for ndx, d in enumerate(self.release_list):
+            print('\nRelease ndx:', ndx, d['title'])
+            ''' Parent line with score, artist and album
             '''
             # Parse medium to get exact disc from multi-disc set.
             disc_found, self.this_disc_number, self.disc_count = \
@@ -1672,15 +1684,15 @@ class RipCD:
                 # print('track_d:\n',track_d)
                 #position = track_d['position']
                 if i == 0:
-                    print("First Track:")
+                    print("\n---------------------------------- First Track:")
                     pprint(track_d)
+                    pass
                 recording_d = track_d['recording']
                 song = track_d['recording']['title']
                 length = recording_d.get('length', '0')
                 # In database some tracks have no length key
                 if length is None:
-                    # This is probably more reliable than musicbrainz anyway
-                    duration = discid.sectors_to_seconds(int(length))
+                    duration = 0
                 else:
                     duration = int(length) / 1000
 
@@ -1691,8 +1703,8 @@ class RipCD:
                 if self.disc_count > 1:
                     # Prepend disc number to track (song) name
                     out_name = str(self.this_disc_number) + "-" + out_name
-                self.cd_tree.insert(medium_id, "end", text=out_name, values=
-                                    (hhmmss,), tags=("track_id", "unchecked"))
+                self.cd_tree.insert(medium_id, "end", text=out_name, 
+                                    values=(hhmmss,), tags=("track_id", "unchecked"))
 
             ''' Our third parent line has online cover art  '''
             if not d['id'] in self.image_dict:
@@ -1748,9 +1760,8 @@ class RipCD:
         if first_time:
             # First time we insert collapsable/expandable parent line
             self.our_parent = self.cd_tree.insert(
-                rel_id, "end", text=
-                "Artwork from: http://coverartarchive.org/release/" + mbz_id,
-                tags=("images_id", "unchecked"), open=opened)
+                rel_id, "end", tags=("images_id", "unchecked"), open=opened, 
+                text="Artwork from: http://coverartarchive.org/release/" + mbz_id)
 
         for d in image_list:
             # There are only dictionaries at list index 0
@@ -1775,6 +1786,7 @@ class RipCD:
                                     text=d['image'], tags=("image_id", "unchecked"))
 
     def cd_close(self):
+        """ Wrapup """
         global RIP_CD_IS_ACTIVE
         RIP_CD_IS_ACTIVE = False
         if self.active_pid > 0:
@@ -1994,7 +2006,7 @@ class RipCD:
         self.show_selections()
 
     def process_checked(self, item):
-        """ We just checked the item, set self.selected_X tag
+        """ An item was checked, set self.selected_X tag
         """
 
         tags = self.cd_tree.item(item)['tags']
@@ -2135,11 +2147,11 @@ class RipCD:
         clip_ndx = int(clip_no) - 1
         clipboard_data = self.clipboard_images[clip_ndx]
         self.image_data_to_frame(clipboard_data)
-        return (clip_ndx,)  # Return tuple with one key segment
+        return clip_ndx,  # Return tuple with one key segment
 
     def image_data_to_frame(self, image_data):
-        # Must wrap bytes in file io
-        # https://pillow.readthedocs.io/en/5.1.x/reference/Image.html
+        """ Must wrap bytes in file io:
+            https://pillow.readthedocs.io/en/5.1.x/reference/Image.html """
         t_file = io.BytesIO(image_data)
         self.original_art = Image.open(t_file)
         del t_file  # Delete object to save memory
@@ -2201,8 +2213,16 @@ class RipCD:
         self.selected_image_keys.remove(self.current_image_key)
 
     def select_date(self, Id):
-        """ Select release date. Problem the mbz_id is automatically selected
-            NOTE: This locks up program with simpledialog.AskQuestion()
+        """ Select release date.
+            1. The release date for mbz_id is automatically initialized
+               and can't be changed. It can only be excluded leaving no date.
+            2. Release date should be YYYY or YYYY-MM.
+            3. MBZ uses the recording date as release date.
+            4. Option required to override release date and enter a new
+               field for recording date.
+            5. Another option required for Compilation flag and Artist Name.
+            6. simpledialog.askstring() is blocking function.
+               message.AskString should be used instead.
         """
 
         if self.selected_date is not None:
@@ -2238,6 +2258,7 @@ class RipCD:
         """ Select medium
             Only one medium can be selected, prompt "Do you want to unselect?"
             Flag all songs as selected, even if manually unselected previously
+            When self.selected_artist is "Various Artists" it's a compilation
         """
         if self.selected_medium is not None:
             if not Id == self.selected_medium:
@@ -2249,12 +2270,13 @@ class RipCD:
 
         # We are selecting this medium and all songs under it by default
         self.selected_medium = Id
-        # Line 'score: 999   |  Artist: Joe Blow  |  Album: Getting Dough'
+        # Line 'score: 999   |  Artist: Joe Blow  |  Title: Getting Dough'
         rel_id = self.cd_tree.parent(Id)
         sep = "  |  "  # TODO: Make this global variable
         artist_str = self.cd_tree.item(rel_id, 'text').split(sep)[1]
         album_str = self.cd_tree.item(rel_id, 'text').split(sep)[2]
         self.selected_artist = artist_str.split(':', 1)[1].strip()
+        self.is_compilation = self.selected_artist == "Various Artists" 
         # Filter title was missing : 1995-2008 so add ',1' to split.
         self.selected_album = album_str.split(':', 1)[1].strip()
 
@@ -2348,9 +2370,6 @@ class RipCD:
         if self.selected_date:                  # Release date
             self.scrollbox.insert("end", "Date:\t" +
                                   self.selected_date + "\n")
-        if self.selected_composer:               # Country released in
-            self.scrollbox.insert("end", "Composer:\t" +
-                                  self.selected_composer + "\n")
         self.selected_tracks = 0                # Number tracks selected
         if self.selected_medium:                # Was this medium selected?
             # Remove " |  Disc ID: .." from end it's added later
@@ -2389,6 +2408,7 @@ class RipCD:
             if image_data is None:
                 continue
 
+            # noinspection PyTypeChecker
             t_file = io.BytesIO(image_data)
             original_art = Image.open(t_file)
             del t_file  # Delete object to save memory
@@ -2419,7 +2439,7 @@ class RipCD:
         self.cd_tree.update_idletasks()
 
     def get_image_by_key(self, image_key):
-
+        """ Return image matching search key """
         seg1 = image_key[0]
         if len(image_key) == 1:  # Clipboard image?
             # Amazon picture not encoding for Surf's Up. Try cover art archive
@@ -2466,8 +2486,8 @@ class RipCD:
         self.selected_title = os_name[offset_2 - 1:]  # For metadata song name
         os_name = os_name + '.' + self.fmt        # Add extension
         os_name = ext.legalize_song_name(os_name)  # Take out /, ?, :, . (not last .)
-        #self.os_part_name = os_name[offset_1:]  # Strip out 99 or 1-99
-        #self.os_part_name = self.os_part_name[:-4]  # .wav, .oga, .flac
+        #self.sqlOsFileName = os_name[offset_1:]  # Strip out 99 or 1-99
+        #self.sqlOsFileName = self.sqlOsFileName[:-4]  # .wav, .oga, .flac
         return os_name  # os_name inserted into selection 
 
 
@@ -2493,10 +2513,10 @@ class ObsoleteCustomScrolledText(scrolledtext.ScrolledText):
 
     def highlight_pattern(self, pattern, tag, start="1.0", end="end",
                           regexp=False):
-        """Apply the given tag to all text that matches the given pattern
+        """ Apply the given tag to all text that matches the given pattern
 
         If 'regexp' is set to True, pattern will be treated as a regular
-        expression according to Tcl's regular expression syntax.
+        expression according to TCL regular expression syntax.
         """
 
         start = self.index(start)
@@ -2555,7 +2575,7 @@ class MetaScan:
         Example DATA:
 
             STREAM #0:0(und): Audio: aac (LC) (mp4a / 0x6134706D), 44100 Hz, 
-                stereo, fltp, 270 kb/s (default)
+                stereo, f ltp, 270 kb/s (default)
 
             STREAM #0:1: Video: png, rgba(pc), 225x225, 90k tbr, 90k tbn, 90k tbc
 
@@ -2600,7 +2620,7 @@ class MetaScan:
             self.meta_data_unchanged += 1
 
 
-    """  2008 Nissan Altima Coupe Bose 6-CD Changer - Specification chart:
+    """  2008 Nissan Alt ima Coupe Bose 6-CD Changer - Specification chart:
 
     Supported media             CD, CD-R, CD-RW
     Supported file systems      ISO9660 LEVEL1, ISO9660 LEVEL2, Apple ISO, Romeo, Joliet 

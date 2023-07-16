@@ -320,13 +320,18 @@ def legalize_dir_name(name):
         directory names that are replaced with "_".
         See: https://stackoverflow.com/a/31976060/6929343
     """
-    name = legalize_most(name)
-    name = name.replace('.', '_')
+    name = legalize_filename(name)
+    # name = name.replace('.', '_')  # Actually it is legal
     return name
 
 
-def legalize_most(name):
-    """ Everything except '.' is fixed (legalized)
+def legalize_filename(name):
+    """ '/', ':', and '?' are some of the invalid characters for file and
+        directory names that are replaced with "_".
+
+        `/`, `?`, `:`, `<`, `>`, `_` `"`, `_` `\\`, `|` and `*`
+
+        Credit: https://stackoverflow.com/a/31976060/6929343
     """
     name = name.replace('/', '_')  # Only character that Linux forbids
     name = name.replace('?', '_')

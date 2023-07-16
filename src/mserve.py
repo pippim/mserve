@@ -71,6 +71,7 @@ warnings.simplefilter('default')  # in future Python versions.
 #       July 09 2023 - New PA fading - faster, easier, smaller & more robust.
 #       July 12 2023 - New 'mserve_config.py' checks required modules/commands.
 #       July 13 2023 - sqlite3 overhaul with new field 'MostlyPlayedTime'
+#       July 15 2023 - Rename Artist, Album and Title
 
 # noinspection SpellCheckingInspection
 """
@@ -4159,13 +4160,21 @@ class MusicTree(PlayCommonSelf):
 
     def parent_popup(self, event, Id):
         """ Popup parent menu
-            Need to filter out Artist
+            Rename Artist or Album
             Need to apply 'popup_sel' tag to get visual feedback
         """
 
         ''' Parent already done now apply 'popup_sel' tag to children '''
         for child in self.lib_tree.get_children(Id):
             toolkit.tv_tag_add(self.lib_tree, child, "popup_sel")
+
+        ''' Set object for menu below. '''
+        if self.lib_tree.tag_has("Artist", Id):
+            parent = "Artist"
+        elif self.lib_tree.tag_has("Album", Id):
+            parent = "Album"
+        else:
+            parent = None
 
         menu = tk.Menu(root, tearoff=0)
         menu.post(event.x_root, event.y_root)
@@ -4174,6 +4183,8 @@ class MusicTree(PlayCommonSelf):
         # menu is displayed, not when option is chosen.
         menu.add_command(label="Collapse list", font=(None, MED_FONT),
                          command=lambda: self.collapse_all(Id))
+        menu.add_command(label="Rename " + parent, font=(None, MED_FONT),
+                         command=lambda: self.rename_file(Id, parent))
         ''' TODO: Call Nautilus with directory name '''
         if FM_INSTALLED:
             menu.add_command(label=FM_PROGRAM, font=(None, MED_FONT),
@@ -4206,6 +4217,8 @@ class MusicTree(PlayCommonSelf):
         if KID3_INSTALLED:
             menu.add_command(label="kid3", font=(None, MED_FONT),
                              command=lambda: self.kid3_song(Id))
+        menu.add_command(label="View Metadata", font=(None, MED_FONT),
+                         command=lambda: self.view_metadata(Id, parent))
         menu.add_command(label="Ignore click", font=(None, MED_FONT),
                          command=lambda: self.remove_popup_sel())
 
@@ -4217,7 +4230,7 @@ class MusicTree(PlayCommonSelf):
         self.remove_popup_sel()  # Remove 'popup_sel' tags
         menu.unpost()  # Remove popup menu
 
-    def wrap_up_popup(self):
+    def wrapup_lib_popup(self):
         self.remove_popup_sel()  # Remove 'popup_sel' tags
 
     def remove_popup_sel(self):
@@ -4227,10 +4240,242 @@ class MusicTree(PlayCommonSelf):
             toolkit.tv_tag_remove(self.lib_tree, child, "popup_sel")
 
     def collapse_all(self, Id):
+        """ collapse songs under album or albums under artist """
         opened = self.lib_tree.item(Id, 'open')
         if opened is True or opened == 1:
             self.lib_tree.item(Id, open=False)
-        self.wrap_up_popup()  # Set color tags and counts
+        self.wrapup_lib_popup()  # Set color tags and counts
+
+    # noinspection PyUnusedLocal
+    def rename_file(self, Id, parent):
+        """ Rename Artist or Album on disc and in SQL Music Table
+        :param Id: Treeview Id for item. Always starts with I for parents
+        :param parent: string with 'Artist' or 'Album'
+        """
+
+        old_name = self.lib_tree.item(Id)['text']
+
+        if NO_ARTIST_STR in old_name or NO_ALBUM_STR in old_name:
+            title = "Rename not allowed"
+            text = "Cannot rename directories containing: '" + NO_ARTIST_STR + \
+                "' or '" + NO_ALBUM_STR + "'."
+            text += "\n\nThese types of directories do not exist."
+            text += "\nThe song files should be move to real directories."
+            message.ShowInfo(self.lib_top, title, text, icon='error',
+                             thread=self.get_refresh_thread())
+            self.info.cast(title + "\n\n" + text, 'error')
+            self.wrapup_lib_popup()  # Set color tags and counts
+            return
+
+        if self.get_pending_cnt_total():
+            title = "Pending playlist changes."
+            text = "Checkboxes in Music Location Tree have not been updated."
+            text += "\n\nIf the pending frame is open click 'Apply' button."
+            text += "\n\nThen, open the 'File' dropdown menu and choose from:"
+            text += "\n\n1) Select 'Save Playlist' if highlighted."
+            text += "\n\n2) Select 'Save Favorites' if highlighted."
+            text += "\n\n3) If you want to cancel changes, choose"
+            text += "\nthe option 'Exit and CANCEL Pending'.\n"
+            message.ShowInfo(self.lib_top, title, text, icon='error',
+                             thread=self.get_refresh_thread())
+            self.info.cast(title + "\n\n" + text, 'error')
+            self.wrapup_lib_popup()  # Set color tags and counts
+            return
+
+        if parent == 'Album':
+            artist_id = self.lib_tree.parent(Id)
+            artist_name = self.lib_tree.item(artist_id)['text']
+            search = artist_name + os.sep + old_name + os.sep
+        else:
+            search = old_name + os.sep  # Renaming artists
+        sql.cursor.execute("SELECT OsFileName, Id, Artist, Album FROM Music " +
+                           "WHERE OsFileName LIKE ? ", [search + "%"])
+        rows = sql.cursor.fetchall()
+
+        while True:
+            title = "Rename " + parent
+            text = "Enter a new name for " + parent + ":\n\n" + old_name
+            answer = message.AskString(
+                self.lib_top, thread=self.get_refresh_thread(),
+                title=title, text=text, icon="information")
+
+            if answer.result != "yes":
+                self.wrapup_lib_popup()  # Set color tags and counts
+                return False
+
+            uni_string = toolkit.uni_str(answer.string)
+            """ '/', ':', and '?' are some of the invalid characters for 
+                file and directory names that are replaced with "_".
+                See: https://stackoverflow.com/a/31976060/6929343
+            """
+            legal_string = ext.legalize_dir_name(uni_string)
+            if legal_string != uni_string:
+                title = "New name has been legalized"
+                text = "The new name contains invalid characters:\n"
+                text += uni_string
+                text += "\n\nInvalid characters replaced with '_':\n"
+                text += legal_string
+                text += "\n\nContinue with legal version?\n"
+                message.AskQuestion(self.lib_top, title, text, 'no', icon='warning',
+                                    thread=self.get_refresh_thread())
+                self.info.cast(title + "\n\n" + text, 'warning')
+                if answer.result != "yes":
+                    continue  # Enter a new name
+
+            if len(answer.string) == 0:
+                title = "Bad " + parent + " name"
+                text = "New name cannot be blank"
+                message.ShowInfo(self.lib_top, title, text, icon='error',
+                                 thread=self.get_refresh_thread())
+                self.info.cast(title + "\n\n" + text, 'error')
+                continue
+
+            ''' Ensure new name isn't used '''
+            if parent == 'Album':
+                artist_id = self.lib_tree.parent(Id)
+                artist_name = self.lib_tree.item(artist_id)['text']
+                search = artist_name + os.sep + legal_string + os.sep
+            else:
+                search = legal_string + os.sep  # Renaming artists
+            sql.cursor.execute("SELECT OsFileName, Id FROM Music " +
+                               "WHERE OsFileName LIKE ? ", [search + "%"])
+            test_rows = sql.cursor.fetchall()
+
+            if len(test_rows) != 0:
+                title = "Bad " + parent + " name"
+                text = "New name cannot be the same as the existing " + parent
+                text += ":\n\n" + legal_string
+                message.ShowInfo(self.lib_top, title, text, icon='error',
+                                 thread=self.get_refresh_thread())
+                self.info.cast(title + "\n\n" + text, 'error')
+                continue
+
+            ''' Ensure old name isn't playing - Do this last so music
+                player can't switch to new song during other dialog boxes. '''
+            old_playing = False
+            if self.ltp_ctl and old_name in self.ltp_ctl.path:
+                old_playing = True  # Library Tree Play sampling same Album
+            if self.play_ctl and old_name in self.play_ctl.path:
+                old_playing = True  # Music Player playing same Album
+            if self.fine_tune and old_name in self.fine_tune.time_ctl.path:
+                old_playing = True  # Library Tree Playing same Album
+
+            if old_playing:
+                title = parent + " is being played."
+                text = "The " + parent + ":" + old_name + "is in use.\n\n"
+                text += "Switch music player to a different " + parent
+                text += ".\n\nCannot rename an " + parent
+                text += " current being played.\n"
+                message.ShowInfo(self.lib_top, title, text, icon='error',
+                                 thread=self.get_refresh_thread())
+                self.info.cast(title + "\n\n" + text, 'error')
+                continue
+
+            break
+
+        ''' loop through old music ids
+            old_base = artist/album/01 title.mp3 '''
+        change_count = 0
+        for old_base, music_id, oldArtist, oldAlbum in rows:
+
+            new_artist = old_artist = old_base.split(os.sep)[0]
+            new_album = old_album = old_base.split(os.sep)[1]
+            new_title = old_title = old_base.split(os.sep)[2]
+            newArtist = oldArtist  # Will change next if needed.
+            newAlbum = oldAlbum  # Will change next if needed.
+            if parent == 'Album':
+                new_album = legal_string  # For OS Filename
+                newAlbum = new_album  # For SQL Metadata Tag
+            else:
+                new_artist = legal_string
+                newArtist = newArtist  # For SQL Metadata Tag
+
+            old_path = PRUNED_DIR + old_base
+            new_base = new_artist + os.sep + new_album + os.sep + new_title
+            new_path = PRUNED_DIR + new_base
+
+            ''' Update Music Table with new OsFileName = new_path '''
+            sql_cmd = "UPDATE Music SET OsFileName=?, Artist=?, Album=? WHERE Id=?"
+            try:
+                sql.cursor.execute(sql_cmd,
+                                   (new_base, newArtist, newAlbum, music_id))
+            except sql.sqlite3.IntegrityError:  # UNIQUE constraint failed: Music.OsFileName
+                print("UNIQUE constraint failed: Music.OsFileName")
+            # IntegrityError: UNIQUE constraint failed: Music.OsFileName
+            # search: Compilations/Greatest Hits of the 80's [Disc 2]/
+            # search: Compilations/Greatest Hits of the 80's [Disc 4]/
+
+
+            ''' os.renames(old, new) '''
+            os.renames(old_path, new_path)
+            change_count += 1
+            
+            ''' Update fake_paths, real_paths and playlist_paths '''
+            if parent == 'Album':
+                self.rename_path(-2, old_album, new_album, self.fake_paths)
+                self.rename_path(-2, old_album, new_album, self.real_paths)
+                self.rename_path(-2, old_album, new_album, self.playlist_paths)
+            else:
+                self.rename_path(-3, old_artist, new_artist, self.fake_paths)
+                self.rename_path(-3, old_artist, new_artist, self.real_paths)
+                self.rename_path(-3, old_artist, new_artist, self.playlist_paths)
+
+        sql.con.commit()  # Write changes to disk
+        #self.lib_tree.set(Id, text=legal_string)
+        # TypeError: set() got an unexpected keyword argument 'text'
+        #self.lib_tree.set(Id, ['text']=legal_string)
+        # SyntaxError: keyword can't be an expression
+        #self.lib_tree.set(Id)['text'] = legal_string
+        # Has no effect
+        #self.lib_tree.set(Id, "#0", legal_string)  # 'text'
+        # TclError: Display column #0 cannot be set
+        #self.lib_tree.set(Id, 0, legal_string)
+        # Changes Count/Last Access Column (first column, not 'text' or "#0")
+
+        """ TODO: Search for way of saving item, deleting it and inserting
+            in same spot. Method below takes .3 seconds instead of .003"""
+
+        ''' Save the Artists & Albums expanded/collapsed states'''
+        open_states = self.get_all_open_states()
+        self.lib_tree.delete(*self.lib_tree.get_children())
+        dtb = message.DelayedTextBox(title="Building music view",
+                                     toplevel=self.lib_top, width=1000)
+        self.populate_lib_tree(dtb)
+        self.clear_all_checks_and_opened()
+        self.set_all_checks_and_opened()  # Rebuild using playlist in memory
+        ''' Restore previous open states when we first opened grid '''
+        self.apply_all_open_states(open_states)
+
+        title = "Renaming completed"
+        text = str(change_count) + " files renamed.\n"
+        text += "\nOld " + parent + " name:\n" + old_name
+        text += "\n\nNew " + parent + " name:\n"  + legal_string
+        text += "\n\nStorage device and SQL database in mserve have been updated."
+        text += "\n\nUse your file manager to rename directories in other locations."
+        text += "\n\nOtherwise the mserve SQL database will no longer be valid"
+        text += "\nwhen mserve opens the other locations. Duplicate data will"
+        text += "\nappear in SQL database under the old " + parent +\
+                " and the new " + parent + ".\n"
+        message.ShowInfo(self.lib_top, title, text,
+                         thread=self.get_refresh_thread())
+        self.info.cast(title + "\n\n" + text)
+        self.wrapup_lib_popup()  # Set color tags and counts
+
+    def rename_path(self, from_end, old, new, paths):
+        """
+
+        :param from_end: -1 = song, -2 = album, -3 = artist
+        :param old: old name
+        :param new: new name
+        :param paths: list of paths
+        :return: None
+        """
+        for i, path in enumerate(paths):
+            parts = path.split(os.sep)
+            if parts[from_end] == old:
+                parts[from_end] = new
+                path = os.sep.join(parts)
+                paths[i] = path  # Update list element
 
     def reverse(self, Id):
         """ Toggle song tag on/off. Only used for song, not parent """
@@ -7330,11 +7575,12 @@ $ wmctrl -l -p
                     #print("hold_pid:", hold_pid, id(hold_pid), id(self.play_ctl.pid))
                     curr_vol = pav.get_volume(hold_sink)
                     if curr_vol is not None:
-                        hold_vol = curr_vol + 1 - 1  # Break reference to sinks_now
+                        hold_vol = curr_vol  # Break reference to sinks_now
                         #print("hold_vol:", hold_vol)
                         self.play_ctl.pid = 0  # Stop play_ctl from killing
-                        pav.fade(hold_sink, hold_vol, 0.0, 1,
-                                 ext.kill_pid_running, hold_pid)
+                        if hold_pid != 0:
+                            pav.fade(hold_sink, hold_vol, 0.0, 1,
+                                     ext.kill_pid_running, hold_pid)
                     else:
                         self.info.cast("wrapup_song(): Got None for volume on sink#: " +
                                        str(hold_sink))
@@ -7345,8 +7591,10 @@ $ wmctrl -l -p
             #pav.set_volume(self.play_ctl.sink, 100)
 
         '''   K I L L   L Y R I C S   S C A P E   '''
-        if self.lyrics_scrape_pid is not 0:
-            ext.kill_pid_running(self.lyrics_scrape_pid)
+        if self.lyrics_scrape_pid:
+            ''' When resuming paused, Webscrape in progress stays up '''
+            if ext.check_pid_running(self.lyrics_scrape_pid):
+                ext.kill_pid_running(self.lyrics_scrape_pid)
             self.lyrics_scrape_pid = 0
 
         # Kill song (if running) and update last access time
@@ -10547,7 +10795,7 @@ mark set markName index"
             os.remove(TMP_CURR_SAMPLE)  # Clean up /tmp directory
 
         self.ltp_top.destroy()  # Close the window
-        self.wrap_up_popup()  # Set color tags and counts
+        self.wrapup_lib_popup()  # Set color tags and counts
 
     def lib_tree_play_lift(self):
         self.ltp_top.focus_force()  # Get focus
@@ -13119,7 +13367,7 @@ class FileControl(FileControlCommonSelf):
         self.CreationTime = toolkit.uni_str(
             self.metadata.get('CREATION_TIME', "None"))
         self.RecordingDate = toolkit.uni_str(
-            self.metadata.get('RECORDING_DATE', "None")) # iTunes RecordingDates
+            self.metadata.get('RECORDING_DATE', "None"))  # iTunes RecordingDates
         self.Composer = toolkit.uni_str(self.metadata.get('COMPOSER', "None"))
         self.DiscNumber = toolkit.uni_str(self.metadata.get('DISC', "None"))
 

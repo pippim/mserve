@@ -118,7 +118,6 @@ def create_tables(SortedList, start_dir, pruned_dir, pruned_count, user, lodict)
         then PRUNED_SUBDIRS = 3
 
     """
-
     # global con, cursor, hist_cursor
     global START_DIR_SEP    # Count of / or \ separators in toplevel directory
     #global MUSIC_ID         # primary key into Music table used by History table
@@ -273,6 +272,8 @@ def open_db():
                 "History(Time)")
     con.execute("CREATE INDEX IF NOT EXISTS TypeActionIndex ON " +
                 "History(Type, Action)")
+
+    con.execute("PRAGMA case_sensitive_like = ON;")
 
     '''
         INDEX on OsSongName and confirm original when OsArtistName and
@@ -913,7 +914,7 @@ def update_metadata(key, artist, album, title, genre, tracknumber, date,
         seconds      != d['Seconds'] or \
             duration != d['Duration']:
         # To test, use kid3 to temporarily change track number
-        # float(date) != d['ReleaseDate'] or \ <- They both could be None
+        # float(date) != d['ReleaseDate'] or  <- They both could be None
         # Metadata hsa changed from last recorded version
         action = 'edit'
     else:

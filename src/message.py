@@ -16,6 +16,7 @@ from __future__ import with_statement  # Error handling for file opens
 #
 #       July 05 2023 - Optional help button on ShowInfo, AskQuestion, AskString
 #       July 12 2023 - Support to/from mserve_config.py
+#       July 15 2023 - AskString cursor invisible. Use insertbackground="white",
 #
 #==============================================================================
 
@@ -613,7 +614,7 @@ class AskString(simpledialog.Dialog, CommonSelf):
         # Append our label and entry field.
         tk.Label(self, text="Input or Paste below:",
                  font=self.font).pack(fill="none", padx=5)
-        self.entry = tk.Entry(self, font=self.font,
+        self.entry = tk.Entry(self, font=self.font, insertbackground="white",
                               bg="#282B2B", fg="white", width=28)
         self.entry.pack(fill="none", padx=5, expand=True)
         self.entry.focus_set()

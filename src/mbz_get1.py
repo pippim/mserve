@@ -54,7 +54,9 @@ import image as img
 import global_variables as g        # should be self-explanatory
 if g.USER is None:
     g.init()  # Background job so always runs
+
 TMP_MBZ_GET1 = g.TEMP_DIR + "mserve_mbz_get1"
+# $ cat /run/user/1000/mserve_mbz_get1 | python -m json.tool | less
 TMP_MBZ_GET2 = g.TEMP_DIR + "mserve_mbz_get2"
 
 """
@@ -108,9 +110,9 @@ EMAIL_ADDRESS = sys.argv[3]         # May 5, 2023 - Not tested yet
 
 
 def get_release_by_mbzid(mbz_id, toplevel=None):
-    """ Release """
+    """ Get Mbz information for single track (song file) """
     try:
-        # This actually doesn't generate any errors...
+        # Doesn't generate errors for fake EMAIL_ADDRESS
         mbz.set_useragent("mserve", "0.1", EMAIL_ADDRESS)
     except mbz.NetworkError:
         return {'error': '99'}
@@ -122,9 +124,22 @@ def get_release_by_mbzid(mbz_id, toplevel=None):
 #    mbz.auth(u=input('Musicbrainz username: '), p=getpass())
 
     try:
+        # noinspection SpellCheckingInspection
+        ''' 
+            musicbrainzngs.get_recording_by_id(
+                id, includes=[], release_status=[], release_type=[])
 
-        release = mbz.get_release_by_id(mbz_id,
-                includes=['recordings'])
+            Get the recording with the MusicBrainzid as a dict with a 
+            ‘recording’ key. Available includes: artists, releases,  
+            discids, media, artist-credits, isrcs, annotation,  
+            aliases, tags, user-tags, ratings, user-ratings, area-rels, 
+            artist-rels, label-rels, place-rels, recording-rels, 
+            release-rels, release-group-rels, series-rels, url-rels, work-rel            
+        '''
+        release = mbz.get_release_by_id(
+            mbz_id, includes=['artists', 'artist-credits', 'recordings', 'tags'])
+        #release = mbz.get_release_by_id(
+        #    mbz_id, includes=['recordings'])  # Works
     except:
         return {'error': '5'}
 
@@ -174,23 +189,19 @@ def get_release_by_mbzid(mbz_id, toplevel=None):
 
 
 def get_disc_info(toplevel=None):
+    """ Pass 1 of 2: Get """
     #with open(IPC_PICKLE_FNAME, 'r') as fin:
     #    print(fin.read())
     # Our last program has just finished. Get dictionary results
-    with open(IPC_PICKLE_FNAME, 'rb') as f:
+    with open(IPC_PICKLE_FNAME, 'rb') as disc_info:
         # read the data as binary data stream
-        disc = pickle.load(f)
+        disc = pickle.load(disc_info)
 
     # Valid Musicbrainz ID?
     if len(disc.id) != 28:
         return {'error': '1'}
 
     mbz_id = disc.id
-
-    track_lengths = disc.track_lengths
-
-    # If you plan to submit data, authenticate
-    #mbz.auth("user", "password")
 
     # Tell musicbrainz what your app is, and how to contact you
     # (this step is required, as per the webservice access rules
@@ -201,17 +212,29 @@ def get_disc_info(toplevel=None):
         #print('useragent failed for mserve')
         return {'error': '2'}
 
-#   PRODUCTION VERSION will use this instead:
-#    mbz.set_useragent("mserve", "0.1")
-#    mbz.auth(u=input('Musicbrainz username: '), p=getpass())
-
-    #release = mbz.get_recordings_by_isrc(isrc)
-    #print('isrc:\n',release)
-
     try:
-        release = mbz.get_releases_by_discid(mbz_id, includes=
-                                             ['artists', 'recordings'])
-        # There doesn't appear to be an error when no internet connection
+        # noinspection SpellCheckingInspection
+        '''
+            Available includes: artists, labels, recordings, release-groups, 
+            media, artist-credits, discids, isrcs, recording-level-rels, 
+            work-level-rels, annotation, aliases, area-rels, artist-rels, 
+            label-rels, place-rels, event-rels, recording-rels, release-rels, 
+            release-group-rels, series-rels, url-rels, work-rels, instrument-rels            
+
+            CRASHES on: 'tags', 'annotation', 'recording-level-rels'
+
+            'release-rels' doesn't show recording year
+            'recording-rels' doesn't show recording year
+            'artist-rels' doesn't show recording year
+            'labels' shows "Sony" for CD, not Year artist/song title
+            'work-rels' shows nothing. It would work for composer if:
+                https://community.metabrainz.org/t/
+                how-to-get-lyricist-and-composer-by-api/511673
+        '''
+        release = mbz.get_releases_by_discid(
+            mbz_id, includes=['artist-credits', 'recordings', 'work-rels'])
+        #release = mbz.get_releases_by_discid(
+        #    mbz_id, includes=['artists', 'recordings'])
     except mbz.NetworkError:
         #print('Network error')
         return {'error': '99'}
@@ -561,8 +584,8 @@ def get_contents():
 #    mb.auth(u=input('Musicbrainz username: '), p=getpass())
     mb.set_useragent("mserve", "0.1", EMAIL_ADDRESS)
 
-    release = mb.get_releases_by_discid(this_disc.id, toc=this_disc.toc,
-                                        includes=['artists', 'recordings'])
+    release = mb.get_releases_by_discid(
+        this_disc.id, toc=this_disc.toc, includes=['artists', 'recordings'])
 
     print('\nget_contents() release:\n',release)
 
@@ -1027,6 +1050,9 @@ def add_track_info(release_list):
 
     """ Populate empty medium-list with track list. Normally returns None.
         If error return dictionary of error(s).
+        Only effects release_list that has no track information yet.
+        Only adds tracks to last CD in multi-CD release.
+        DO NOT USE.
     """
 
     """
@@ -1136,7 +1162,67 @@ def add_track_info(release_list):
     return None
 
 
+def add_work_info(release_list):
+    """ Add composer to track list. """
+
+    for d in release_list:
+        ''' One release dictionary for each possible candidate.
+            E.G. d['title'] = "Greatest Hits of the Eighties, Volume 1"
+            E.G. d['title'] = "Greatest Hits of the 80's"
+
+            The second release has artwork and is the release wanted.
+
+            Each release dictionary includes track information on all three CD's
+            in set so if song names matches last release at same track index,
+            simply reuse it rather than calling MBZ again.
+        '''
+        try:
+            # noinspection SpellCheckingInspection
+            ''' 
+                musicbrainzngs.get_recording_by_id(
+                    id, includes=[], release_status=[], release_type=[])
+
+                Get the recording with the MusicBrainzid as a dict with a 
+                ‘recording’ key. Available includes: artists, releases,  
+                discids, media, artist-credits, isrcs, annotation,  
+                aliases, tags, user-tags, ratings, user-ratings, area-rels, 
+                artist-rels, label-rels, place-rels, recording-rels, 
+                release-rels, release-group-rels, series-rels, url-rels, work-rel            
+            '''
+            work = mbz.get_by_id(
+                d['id'], includes=['artist-rels', 'work-rels'])
+        except:
+            return {'error': '5'}
+
+        disc_number = d['medium-list']['disc_count']
+        mdm_ndx = int(disc_number) - 1
+
+        if len(d['medium-list'][mdm_ndx]['track-list']) == 0:
+            # No track information to amend
+            return None
+
+        tracks_list = r['release']['medium-list'][mdm_ndx]['track-list']
+        for i, track_d in enumerate(tracks_list):
+            # track_d used for shorthand
+            position = track_d['position']
+            recording_d = track_d['recording']
+            song = track_d['recording']['title']
+            length = recording_d.get('length', '0')
+            # In database some tracks have no length key
+            duration = discid.sectors_to_seconds(int(length))
+            if length is None:
+                length = '0'
+            duration = int(length) / 1000
+
+            hhmmss = format_duration(duration)
+            FORMAT_TRACK_NAME = "    {:02} - {}"
+            outfname = FORMAT_TRACK_NAME.format(i+1, song.encode("utf8")) \
+                       .replace('/', '-')
+
+    return None
+
 def format_duration(seconds):
+    """ Convert from seconds to HH:MM:SS with left stripping """
     duration = str(datetime.timedelta(seconds=seconds))
     duration = remove_prefix(duration, '0:')
     duration = remove_prefix(duration, '0')
@@ -1151,8 +1237,8 @@ def remove_prefix(text, prefix):
 
 if __name__ == "__main__":
 
-    pass_back = get_disc_info()     # Works even with no internet???
-    #pprint(pass_back)
+    pass_back = get_disc_info()
+
     # If a list isn't passed back that means an error dictionary is passed back
     if type(pass_back) is list:
         first_pass = list(pass_back)
@@ -1161,16 +1247,16 @@ if __name__ == "__main__":
             f.write(json.dumps(pass_back))  # Save list of dictionaries
 
         ''' add_track_info() appends to list parameter, only returns errors '''
-        return_d = add_track_info(pass_back)
-        if return_d:
-            pass_back = return_d    # Dictionary with {'error': '99'}
-        else:
-            ''' For debugging save original mbz list in json format '''
-            both_passes = list(first_pass)
-            both_passes.extend(pass_back)
-            with open(TMP_MBZ_GET1, "wb") as f:
-                f.write(json.dumps(pass_back))  # Save list of dictionaries
-                #f.write(json.dumps(both_passes))  # Save list of dictionaries
+        #error_d = add_track_info(pass_back)
+        #if error_d:
+        #    pass_back = error_d    # Dictionary with {'error': '99'}
+        #else:
+        #    ''' For debugging save original mbz list in json format '''
+        #    both_passes = list(first_pass)
+        #    both_passes.extend(pass_back)
+        #    with open(TMP_MBZ_GET1, "wb") as f:
+        #        f.write(json.dumps(pass_back))  # Save list of dictionaries
+        #        #f.write(json.dumps(both_passes))  # Save list of dictionaries
 
     else:
         #print('pass_back is dictionary')
