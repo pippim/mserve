@@ -71,10 +71,16 @@ warnings.simplefilter('default')  # in future Python versions.
 #       July 09 2023 - New PA fading - faster, easier, smaller & more robust.
 #       July 12 2023 - New 'mserve_config.py' checks required modules/commands.
 #       July 13 2023 - sqlite3 overhaul with new field 'MostlyPlayedTime'
-#       July 15 2023 - Rename Artist, Album and Title
+#       July 15 2023 - Rename Artist or Album. Rename files in OS & SQL.
+#       July 16 2023 - Click Artist, Album or Title to open kid3 or nautilus
 
 # noinspection SpellCheckingInspection
 """
+
+References:
+    https://anzeljg.github.io/rin2/book2/2405/docs/tkinter/ttk-Treeview.html
+
+
 # TODO:
 # -----------------------------------------------------------------------------
 
@@ -84,11 +90,6 @@ warnings.simplefilter('default')  # in future Python versions.
 #       Open playlist, if music was paused, volume is only 25%
 #       Close playlist and use favorites doesn't clear_all_checks
 #       Shuffling Favorites then opening playlist will undo shuffle. Backup!!
-
-#     TODO:
-#       Save Playlist As... - If playlist created with 'new' option then a
-#           rename option. Otherwise create a new playlist with new name.
-#
 
 #   Miscellaneous
 
@@ -296,7 +297,7 @@ NOTES:
 TODO'S:
     verify external commands are in path:
         command -v cp, diff, ffplay, ffprobe, ffmpeg, gsettings, gst-launch-1.0,
-            kid3, kill, pactl, pgrep, pqiv, ps, stat, touch,  # USE os.utime() 
+            kid3, kill, nautilus, pactl, pgrep, pqiv, ps, stat, touch, 
             wmctrl, xclip, xdotool, xprop
 
     Compare Location - Make background process so music player keeps spinning
@@ -496,12 +497,16 @@ TMP_ALL_NAMES = [TMP_CURR_SONG, TMP_CURR_SAMPLE, TMP_CURR_SYNC,
                  TMP_FFPROBE, TMP_FFMPEG, VU_METER_FNAME,
                  VU_METER_LEFT_FNAME, VU_METER_RIGHT_FNAME]
 
+ENCODE_DEV = True  # Should always be False for production versions
+
 KID3_INSTALLED = True
-KID3_PROGRAM = "xrandr --dpi 144 && kid3 "
-KID3_GEOMETRY = "1280x736"
+KID3_PROGRAM = "kid3"
+KID3_COMMAND = "xrandr --dpi 144 && kid3 "
+KID3_WIN_SIZE = "1280x736"
 # Command before running kid3: 'xrandr --dpi 144' Best resolution on HD or 4K
 FM_INSTALLED = True
-FM_PROGRAM = "nautilus"
+FM_PROGRAM = "nautilus"  # No HDPI required.
+FM_WIN_SIZE = "1280x736"  # Probably won't work...
 # Kill application.name: speech-dispatcher, application.process.id: 5529
 DELETE_SPEECH = True  # Kill speech dispatcher which has four threads each boot.
 
@@ -929,13 +934,14 @@ class PlayCommonSelf:
         self.F4 = None                      # tk.Frame(self.play_top, bg="Black
 
         self.play_ctl = None                # instance of FileControl() class
-        self.ltp_ctl = None
-        self.mus_ctl = None
+        self.ltp_ctl = None                 # Location Tree Play sample song
+        self.mus_ctl = None                 # SQL Music Table get metadata
 
         # Popup menu
-        self.mouse_x = None
-        self.mouse_y = None
-        self.kid3_window = None
+        self.mouse_x = None                 # Mouse position at time popup
+        self.mouse_y = None                 # window was opened. Screen(x,y)
+        self.kid3_window = None             # Window ID returned by xdotool
+        self.fm_window = None         # Window ID returned by xdotool
 
         self.parm = None                    # sys arg parameters called with
         
@@ -1002,6 +1008,7 @@ class PlayCommonSelf:
 
         ''' Rip CD class (separate module) '''
         self.rip_cd_class = None
+        self.rip_last_disc = None           # For development purposes
 
         ''' Sample middle of song '''
         self.ltp_top = None                 # tk.Toplevel()
@@ -1183,7 +1190,7 @@ class MusicTree(PlayCommonSelf):
             "#0", text="Click ▼ (collapse) ▶ (expand) an Artist or Album")
         self.lib_tree.column("Access", width=200, stretch=tk.YES)
         # TODO: When mserve gets metadata, but doesn't play song, keep old Access
-        self.lib_tree.heading("Access", text="Count / Last Access")
+        self.lib_tree.heading("Access", text="Count / Last Access or Played")
         self.lib_tree.column("Size", width=50, anchor=tk.E, stretch=tk.YES)
         self.lib_tree.heading("Size", text="Size " + CFG_DIVISOR_UOM, anchor=tk.E)
         self.lib_tree.column("Selected", width=50, anchor=tk.E, stretch=tk.YES)
@@ -1472,8 +1479,8 @@ class MusicTree(PlayCommonSelf):
                                    command=self.playlists.delete, state=tk.DISABLED)
         self.file_menu.add_command(label="Save Playlist", font=(None, MED_FONT),
                                    command=self.write_playlist_to_disk, state=tk.DISABLED)
-        self.file_menu.add_command(label="Save Playlist As…", font=(None, MED_FONT),
-                                   command=self.playlists.save_as, state=tk.DISABLED)
+        #self.file_menu.add_command(label="Save Playlist As…", font=(None, MED_FONT),
+        #                           command=self.playlists.save_as, state=tk.DISABLED)
         self.file_menu.add_command(label="Close Playlist (Use Favorites)", font=(None, MED_FONT),
                                    command=self.close_playlist, state=tk.DISABLED)
         self.file_menu.add_separator()  # NOTE: UTF-8 3 dots U+2026 …
@@ -1561,7 +1568,7 @@ class MusicTree(PlayCommonSelf):
 
         if self.playlists.name is not None:
             # Can close even if pending counts but there will be confirmation inside
-            self.file_menu.entryconfig("Save Playlist As…", state=tk.NORMAL)
+            #self.file_menu.entryconfig("Save Playlist As…", state=tk.NORMAL)
             self.file_menu.entryconfig("Close Playlist (Use Favorites)", state=tk.NORMAL)
 
         if self.get_pending_cnt_total() == 0:
@@ -1579,7 +1586,7 @@ class MusicTree(PlayCommonSelf):
 
         if self.playlists.name is not None and self.get_pending_cnt_total() > 0:
             self.file_menu.entryconfig("Save Playlist", state=tk.NORMAL)
-            self.file_menu.entryconfig("Save Playlist As…", state=tk.NORMAL)
+            #self.file_menu.entryconfig("Save Playlist As…", state=tk.NORMAL)
 
     def disable_playlist_menu(self):
         """ Called above and self.pending_apply() when changes made to Favorites
@@ -1591,7 +1598,7 @@ class MusicTree(PlayCommonSelf):
         self.file_menu.entryconfig("Rename Playlist", state=tk.DISABLED)
         self.file_menu.entryconfig("Delete Playlist", state=tk.DISABLED)
         self.file_menu.entryconfig("Save Playlist", state=tk.DISABLED)
-        self.file_menu.entryconfig("Save Playlist As…", state=tk.DISABLED)
+        #self.file_menu.entryconfig("Save Playlist As…", state=tk.DISABLED)
         self.file_menu.entryconfig("Close Playlist (Use Favorites)", state=tk.DISABLED)
 
     def apply_playlists(self):
@@ -2096,7 +2103,7 @@ class MusicTree(PlayCommonSelf):
             self.enable_lib_menu()
             self.file_menu.entryconfig("Save Playlist", state=tk.NORMAL)
             # Save Playlist As hasn't been written yet.
-            self.file_menu.entryconfig("Save Playlist As…", state=tk.DISABLED)
+            #self.file_menu.entryconfig("Save Playlist As…", state=tk.DISABLED)
             self.file_menu.entryconfig("Exit and CANCEL Pending", state=tk.NORMAL)
         else:
             self.file_menu.entryconfig("Save Favorites", state=tk.NORMAL)
@@ -4141,10 +4148,16 @@ class MusicTree(PlayCommonSelf):
         if Id is None or Id is "":
             return  # clicked on whitespace (no row)
 
+        # Still relative to screen. Not relative to treeview as expected?
+        test_xy = self.lib_tree.winfo_pointerxy()
         # print ('popup Id:', Id)
         self.mouse_x, self.mouse_y = event.x_root, event.y_root
         self.kid3_window = ""
+        self.fm_window = ""  # Not sure why but mimic kid3 - July 16, 2023
+        #print("test_xy:", test_xy,
+        #      "self.mouse_x:", self.mouse_x, "self.mouse_y:", self.mouse_y)
         # print ('self.mouse; x, y:', self.mouse_x, self.mouse_y)
+        # test_xy: (3362, 598) self.mouse_x: 3362 self.mouse_y: 598
         ''' Apply 'popup_sel' tag for visual feedback '''
         toolkit.tv_tag_add(self.lib_tree, Id, "popup_sel")
 
@@ -4170,12 +4183,13 @@ class MusicTree(PlayCommonSelf):
 
         ''' Set object for menu below. '''
         if self.lib_tree.tag_has("Artist", Id):
-            parent = "Artist"
+            level = "Artist"
         elif self.lib_tree.tag_has("Album", Id):
-            parent = "Album"
+            level = "Album"
         else:
-            parent = None
-
+            print("parent_popup() called with bad Id:", Id)
+            level = ""
+            
         menu = tk.Menu(root, tearoff=0)
         menu.post(event.x_root, event.y_root)
 
@@ -4183,12 +4197,18 @@ class MusicTree(PlayCommonSelf):
         # menu is displayed, not when option is chosen.
         menu.add_command(label="Collapse list", font=(None, MED_FONT),
                          command=lambda: self.collapse_all(Id))
-        menu.add_command(label="Rename " + parent, font=(None, MED_FONT),
-                         command=lambda: self.rename_file(Id, parent))
-        ''' TODO: Call Nautilus with directory name '''
+        menu.add_command(label="Rename " + level, font=(None, MED_FONT),
+                         command=lambda: self.rename_file(Id, level))
+        menu.add_separator()
+
+        if KID3_INSTALLED:
+            menu.add_command(label="Open kid3", font=(None, MED_FONT),
+                             command=lambda: self.kid3_open(Id, level))
         if FM_INSTALLED:
-            menu.add_command(label=FM_PROGRAM, font=(None, MED_FONT),
-                             command=lambda: self.file_manager_parent(Id))
+            menu.add_command(label="Open " + FM_PROGRAM, font=(None, MED_FONT),
+                             command=lambda: self.fm_open(Id, level))
+        menu.add_separator()
+
         menu.add_command(label="Ignore click", font=(None, MED_FONT),
                          command=lambda: self.remove_popup_sel())
 
@@ -4200,25 +4220,29 @@ class MusicTree(PlayCommonSelf):
         """ Popup menu for a song
             LONG TERM TODO: Display large 500x500 image and all metadata
         """
-
+        os_filename = self.real_paths[int(Id)]
         menu = tk.Menu(root, tearoff=0)
         menu.post(event.x_root, event.y_root)
-        # June 30, 2023 bug hunting
-        #self.info.cast("InfoCentre() works here but breaks in lib_tree_play()")
-        #print("self.info:", self.info)
-
-        # If lambda isn't used the command is executed as soon as popup
-        # menu is displayed, not when option is chosen.
-        # self.info.cast is broken in sample_song so use 's=self: s.'
         menu.add_command(label="Sample middle 10 seconds", font=(None, MED_FONT),
                          command=lambda s=self: s.lib_tree_play(Id))
         menu.add_command(label="Sample whole song", font=(None, MED_FONT),
                          command=lambda s=self: s.lib_tree_play(Id, sample="full"))
+        menu.add_separator()
+        
         if KID3_INSTALLED:
-            menu.add_command(label="kid3", font=(None, MED_FONT),
-                             command=lambda: self.kid3_song(Id))
+            menu.add_command(label="Open kid3", font=(None, MED_FONT),
+                             command=lambda: self.kid3_open(Id, level))
+        if FM_INSTALLED:
+            menu.add_command(label="Open " + FM_PROGRAM, font=(None, MED_FONT),
+                             command=lambda: self.fm_open(Id, level))
+
+        menu.add_separator()
         menu.add_command(label="View Metadata", font=(None, MED_FONT),
-                         command=lambda: self.view_metadata(Id, parent))
+                         command=lambda: self.view_metadata(
+                             Id, os_filename=os_filename, top=self.lib_top))
+        menu.add_command(label="View SQL Row", font=(None, MED_FONT),
+                         command=lambda: self.view_sql_music_id(Id))
+        menu.add_separator()
         menu.add_command(label="Ignore click", font=(None, MED_FONT),
                          command=lambda: self.remove_popup_sel())
 
@@ -4227,14 +4251,20 @@ class MusicTree(PlayCommonSelf):
         menu.bind("<FocusOut>", lambda _: self.close_lib_popup(menu))
 
     def close_lib_popup(self, menu):
+        """ Remove popup menu and tags """
         self.remove_popup_sel()  # Remove 'popup_sel' tags
         menu.unpost()  # Remove popup menu
 
     def wrapup_lib_popup(self):
-        self.remove_popup_sel()  # Remove 'popup_sel' tags
+        """ Remove 'popup_sel' tags """
+        self.remove_popup_sel()  
 
     def remove_popup_sel(self):
-        # Remove special view popup selection tags to restore normal view
+        """ Remove special view popup selection tags to restore normal view 
+            TODO: Move cursor back to original treeview row and highlight row.
+                  Possibly move cursor of 1/2 second and animate in rotating
+                  motion regular - cursor - drag (boat) - menu - regular, etc.
+        """
         tags_selections = self.lib_tree.tag_has("popup_sel")
         for child in tags_selections:
             toolkit.tv_tag_remove(self.lib_tree, child, "popup_sel")
@@ -4246,14 +4276,61 @@ class MusicTree(PlayCommonSelf):
             self.lib_tree.item(Id, open=False)
         self.wrapup_lib_popup()  # Set color tags and counts
 
+    def view_sql_music_id(self, Id):
+        """ View SQL Music Row.
+        Called from Music Location Tree popup menu and passes os_filename
+
+        :param Id: Music Location Tree Id selected.
+        """
+        music_id = self.get_music_id_for_lib_tree_id(Id)
+        pretty = sql.PrettyMusic(str(music_id))
+        """ Create new window top-left of parent window with PANEL_HGT padding
+
+            Before calling:
+                Create pretty data dictionary using tree column data dictionary
+            After calling / usage:
+                create_window(title, width, height, top=None)
+                pretty.scrollbox = self.scrollbox
+                # If we did text search, highlight word(s) in yellow
+                if self.mus_search is not None:
+                    # history doesn't have support. Music & history might both be open
+                    if self.mus_search.edit is not None:
+                        pretty.search = self.mus_search.edit.get()
+                sql.tkinter_display(pretty)
+
+            When Music Location Tree calls from view_metadata it passes
+            top=self.lib_top. In this case not called from SQL Music Table
+            viewer.
+
+            TODO: Instead of parent guessing width, height it would be nice
+                  to pass a maximum and reduce size when text box has extra
+                  white space.
+        """
+
+        # Requires override to def create_window
+        self.create_window("SQL Music Row - mserve", 1400, 975,
+                           top=self.lib_top)
+        pretty.scrollbox = self.scrollbox
+        sql.tkinter_display(pretty)
+
     # noinspection PyUnusedLocal
-    def rename_file(self, Id, parent):
+    def rename_file(self, Id, level):
         """ Rename Artist or Album on disc and in SQL Music Table
         :param Id: Treeview Id for item. Always starts with I for parents
-        :param parent: string with 'Artist' or 'Album'
+        :param level: string with 'Artist' or 'Album'
         """
 
         old_name = self.lib_tree.item(Id)['text']
+        default_string = old_name
+
+        if encoding.RIP_CD_IS_ACTIVE:
+            title = "CD Ripping is Active"
+            text = "Cannot rename when CD Ripping is Active."
+            self.info.cast(title + "\n\n" + text, 'error')
+            message.ShowInfo(self.lib_top, title, text, icon='error',
+                             thread=self.get_refresh_thread())
+            self.wrapup_lib_popup()  # Set color tags and counts
+            return
 
         if NO_ARTIST_STR in old_name or NO_ALBUM_STR in old_name:
             title = "Rename not allowed"
@@ -4261,9 +4338,9 @@ class MusicTree(PlayCommonSelf):
                 "' or '" + NO_ALBUM_STR + "'."
             text += "\n\nThese types of directories do not exist."
             text += "\nThe song files should be move to real directories."
+            self.info.cast(title + "\n\n" + text, 'error')
             message.ShowInfo(self.lib_top, title, text, icon='error',
                              thread=self.get_refresh_thread())
-            self.info.cast(title + "\n\n" + text, 'error')
             self.wrapup_lib_popup()  # Set color tags and counts
             return
 
@@ -4276,13 +4353,13 @@ class MusicTree(PlayCommonSelf):
             text += "\n\n2) Select 'Save Favorites' if highlighted."
             text += "\n\n3) If you want to cancel changes, choose"
             text += "\nthe option 'Exit and CANCEL Pending'.\n"
+            self.info.cast(title + "\n\n" + text, 'error')
             message.ShowInfo(self.lib_top, title, text, icon='error',
                              thread=self.get_refresh_thread())
-            self.info.cast(title + "\n\n" + text, 'error')
             self.wrapup_lib_popup()  # Set color tags and counts
             return
 
-        if parent == 'Album':
+        if level == 'Album':
             artist_id = self.lib_tree.parent(Id)
             artist_name = self.lib_tree.item(artist_id)['text']
             search = artist_name + os.sep + old_name + os.sep
@@ -4293,17 +4370,21 @@ class MusicTree(PlayCommonSelf):
         rows = sql.cursor.fetchall()
 
         while True:
-            title = "Rename " + parent
-            text = "Enter a new name for " + parent + ":\n\n" + old_name
+            title = "Rename " + level
+            text = "Enter a new name for " + level + ":\n\n" + old_name
+            string_width = int(len(default_string) * 1.5)
+            string_width = 28 if string_width < 28 else string_width
+            string_width = 100 if string_width > 100 else string_width
             answer = message.AskString(
-                self.lib_top, thread=self.get_refresh_thread(),
-                title=title, text=text, icon="information")
+                self.lib_top, title, text, thread=self.get_refresh_thread(),
+                string=default_string, string_width=string_width)
 
             if answer.result != "yes":
                 self.wrapup_lib_popup()  # Set color tags and counts
                 return False
 
             uni_string = toolkit.uni_str(answer.string)
+            default_string = uni_string  # If prompting again for string
             """ '/', ':', and '?' are some of the invalid characters for 
                 file and directory names that are replaced with "_".
                 See: https://stackoverflow.com/a/31976060/6929343
@@ -4318,20 +4399,21 @@ class MusicTree(PlayCommonSelf):
                 text += "\n\nContinue with legal version?\n"
                 message.AskQuestion(self.lib_top, title, text, 'no', icon='warning',
                                     thread=self.get_refresh_thread())
-                self.info.cast(title + "\n\n" + text, 'warning')
+                self.info.cast(title + "\n\n" + text + "\n\n\t\t" +
+                               "Answer was: " + answer.result, 'warning')
                 if answer.result != "yes":
                     continue  # Enter a new name
 
             if len(answer.string) == 0:
-                title = "Bad " + parent + " name"
+                title = "Bad " + level + " name"
                 text = "New name cannot be blank"
+                self.info.cast(title + "\n\n" + text, 'error')
                 message.ShowInfo(self.lib_top, title, text, icon='error',
                                  thread=self.get_refresh_thread())
-                self.info.cast(title + "\n\n" + text, 'error')
                 continue
 
             ''' Ensure new name isn't used '''
-            if parent == 'Album':
+            if level == 'Album':
                 artist_id = self.lib_tree.parent(Id)
                 artist_name = self.lib_tree.item(artist_id)['text']
                 search = artist_name + os.sep + legal_string + os.sep
@@ -4342,12 +4424,12 @@ class MusicTree(PlayCommonSelf):
             test_rows = sql.cursor.fetchall()
 
             if len(test_rows) != 0:
-                title = "Bad " + parent + " name"
-                text = "New name cannot be the same as the existing " + parent
+                title = "Bad " + level + " name"
+                text = "New name cannot be the same as the existing " + level
                 text += ":\n\n" + legal_string
+                self.info.cast(title + "\n\n" + text, 'error')
                 message.ShowInfo(self.lib_top, title, text, icon='error',
                                  thread=self.get_refresh_thread())
-                self.info.cast(title + "\n\n" + text, 'error')
                 continue
 
             ''' Ensure old name isn't playing - Do this last so music
@@ -4361,14 +4443,14 @@ class MusicTree(PlayCommonSelf):
                 old_playing = True  # Library Tree Playing same Album
 
             if old_playing:
-                title = parent + " is being played."
-                text = "The " + parent + ":" + old_name + "is in use.\n\n"
-                text += "Switch music player to a different " + parent
-                text += ".\n\nCannot rename an " + parent
+                title = level + " is being played."
+                text = "The " + level + ":" + old_name + "is in use.\n\n"
+                text += "Switch music player to a different " + level
+                text += ".\n\nCannot rename an " + level
                 text += " current being played.\n"
+                self.info.cast(title + "\n\n" + text, 'error')
                 message.ShowInfo(self.lib_top, title, text, icon='error',
                                  thread=self.get_refresh_thread())
-                self.info.cast(title + "\n\n" + text, 'error')
                 continue
 
             break
@@ -4383,7 +4465,7 @@ class MusicTree(PlayCommonSelf):
             new_title = old_title = old_base.split(os.sep)[2]
             newArtist = oldArtist  # Will change next if needed.
             newAlbum = oldAlbum  # Will change next if needed.
-            if parent == 'Album':
+            if level == 'Album':
                 new_album = legal_string  # For OS Filename
                 newAlbum = new_album  # For SQL Metadata Tag
             else:
@@ -4411,7 +4493,7 @@ class MusicTree(PlayCommonSelf):
             change_count += 1
             
             ''' Update fake_paths, real_paths and playlist_paths '''
-            if parent == 'Album':
+            if level == 'Album':
                 self.rename_path(-2, old_album, new_album, self.fake_paths)
                 self.rename_path(-2, old_album, new_album, self.real_paths)
                 self.rename_path(-2, old_album, new_album, self.playlist_paths)
@@ -4421,54 +4503,32 @@ class MusicTree(PlayCommonSelf):
                 self.rename_path(-3, old_artist, new_artist, self.playlist_paths)
 
         sql.con.commit()  # Write changes to disk
-        #self.lib_tree.set(Id, text=legal_string)
-        # TypeError: set() got an unexpected keyword argument 'text'
-        #self.lib_tree.set(Id, ['text']=legal_string)
-        # SyntaxError: keyword can't be an expression
-        #self.lib_tree.set(Id)['text'] = legal_string
-        # Has no effect
-        #self.lib_tree.set(Id, "#0", legal_string)  # 'text'
-        # TclError: Display column #0 cannot be set
-        #self.lib_tree.set(Id, 0, legal_string)
-        # Changes Count/Last Access Column (first column, not 'text' or "#0")
-
-        """ TODO: Search for way of saving item, deleting it and inserting
-            in same spot. Method below takes .3 seconds instead of .003"""
-
-        ''' Save the Artists & Albums expanded/collapsed states'''
-        open_states = self.get_all_open_states()
-        self.lib_tree.delete(*self.lib_tree.get_children())
-        dtb = message.DelayedTextBox(title="Building music view",
-                                     toplevel=self.lib_top, width=1000)
-        self.populate_lib_tree(dtb)
-        self.clear_all_checks_and_opened()
-        self.set_all_checks_and_opened()  # Rebuild using playlist in memory
-        ''' Restore previous open states when we first opened grid '''
-        self.apply_all_open_states(open_states)
+        self.lib_tree.item(Id, text=legal_string)  # Update Music Location Tree
 
         title = "Renaming completed"
         text = str(change_count) + " files renamed.\n"
-        text += "\nOld " + parent + " name:\n" + old_name
-        text += "\n\nNew " + parent + " name:\n"  + legal_string
+        text += "\nOld " + level + " name:\n" + old_name
+        text += "\n\nNew " + level + " name:\n"  + legal_string
         text += "\n\nStorage device and SQL database in mserve have been updated."
         text += "\n\nUse your file manager to rename directories in other locations."
         text += "\n\nOtherwise the mserve SQL database will no longer be valid"
         text += "\nwhen mserve opens the other locations. Duplicate data will"
-        text += "\nappear in SQL database under the old " + parent +\
-                " and the new " + parent + ".\n"
+        text += "\nappear in SQL database under the old " + level +\
+                " and the new " + level + ".\n"
+        self.info.cast(title + "\n\n" + text)
         message.ShowInfo(self.lib_top, title, text,
                          thread=self.get_refresh_thread())
-        self.info.cast(title + "\n\n" + text)
         self.wrapup_lib_popup()  # Set color tags and counts
 
-    def rename_path(self, from_end, old, new, paths):
-        """
+    @staticmethod
+    def rename_path(from_end, old, new, paths):
+        """ Called from rename_file() to process one filename in paths list
 
         :param from_end: -1 = song, -2 = album, -3 = artist
         :param old: old name
         :param new: new name
         :param paths: list of paths
-        :return: None
+        :return: True old string was found and changed. Otherwise, False.
         """
         for i, path in enumerate(paths):
             parts = path.split(os.sep)
@@ -4476,6 +4536,8 @@ class MusicTree(PlayCommonSelf):
                 parts[from_end] = new
                 path = os.sep.join(parts)
                 paths[i] = path  # Update list element
+                return True
+        return False
 
     def reverse(self, Id):
         """ Toggle song tag on/off. Only used for song, not parent """
@@ -4486,146 +4548,102 @@ class MusicTree(PlayCommonSelf):
         artist = self.lib_tree.parent(album)
         self.toggle_select(Id, album, artist)
 
-    def file_manager_parent(self, Id):
-        """ Open path with file manager. FUTURE FUNCTION
+    def kid3_open(self, Id, level=None):
+        """ Open Kidd3 for Artist, Album or Music File """
+        trg_path = self.make_variable_path(Id)
+        self.run_and_move_window(trg_path, KID3_COMMAND, KID3_WIN_SIZE)
+
+    def make_variable_path(self, Id):
         """
-        #        self.remove_popup_sel()              # Return normal highlighting
-        # TODO: Get first song to serve as Artist/Album subdirectory
-        #       Append subdirectory to topdir
-        if Id.startswith("I"):
-            return  # Parents are a no-go
-        full_path = self.real_path(int(Id))
-        print("full_path:", full_path)
-        os.popen(FM_PROGRAM + ' "' + full_path + '"')
+        Called by fm_open() and kid3_open()
+        :param Id: Treeview Id
+        :return: path matching Treeview Id: /Artist, /Album or Music full path
+        """
+        trg_path = self.get_first_path(Id)
+        if not trg_path:
+            print("mserve.py make_variable_path() Unknown Id:", Id,
+                  "treeview text:", self.lib_tree.item(Id)['text'])
+            return self.real_path(0)
 
-    def kid3_song(self, Id):
-        #        self.remove_popup_sel()              # Return normal highlighting
-        full_path = self.real_path(int(Id))
+        if self.lib_tree.tag_has("Artist", Id):
+            return trg_path.rsplit(os.sep, 2)[0]  # Right split on 2nd '/'
+        elif self.lib_tree.tag_has("Album", Id):
+            return trg_path.rsplit(os.sep, 1)[0]  # Right split on 1st '/'
+        elif self.lib_tree.tag_has("Song", Id):
+            return trg_path
+        else:
+            print("mserve.py make_variable_path() Unknown tags:",
+                  self.lib_tree.item(Id)['tags'],
+                  "treeview text:", self.lib_tree.item(Id)['text'])
+            return trg_path
+
+    def get_first_path(self, Id):
+        """ Get first path for Treeview Id. If already a music file, return
+        it back unchanged. """
+
+        ''' Treeview iid for Artist or Album start with letter "I" '''
+        if not Id.startswith("I"):
+            ''' It's a Song Title, return path for Id '''
+            return self.real_path(int(Id))
+
+        ''' If an Artist, change pointer to first Album '''
+        if self.lib_tree.tag_has("Artist", Id):
+            Id = self.lib_tree.get_children(Id)[0]
+
+        ''' Get path from first Title (song filename) in Album '''
+        for child in self.lib_tree.get_children(Id):
+            if self.lib_tree.tag_has("Song", child):
+                return self.real_path(int(child))
+
+    def run_and_move_window(self, trg_path, command, window_size):
+        """
+            Run command for Kid3 or File Manager.
+            Move window to coordinates at self.mouse_x & _y.
+            Resize window to specified geometry 
+
+        :param trg_path: Path to /Artist, /Album or Title (song filename)
+        :param command: External command to run
+        :param window_size: Resize window after it is active
+        :return new_window: The window ID (in hex) that became active
+        """
         our_window = os.popen("xdotool getactivewindow").read().strip()
-        # print('Our active window:',our_window)
-        os.popen(KID3_PROGRAM + ' "' + full_path + '" 2>/dev/null &')
-        self.kid3_window = os.popen("xdotool getactivewindow").read().strip()
-        sleep_count = 0
+        os.popen(command + ' "' + trg_path + '" 2>/dev/null &')
 
-        # Wait until Kid3 active then move it into popup menu mouse position
-        while self.kid3_window == our_window:
-            sleep_count += 1
-            root.after(100)  # Fine tune for sleep count of 3
-            self.kid3_window = os.popen("xdotool getactivewindow"). \
-                read().strip()
+        ''' Wait until a new window opens '''
+        ext.t_init("new_window = our_window")
+        new_window = our_window
+        for i in range(100):
+            thread = self.get_refresh_thread()
+            thread()
+            new_window = os.popen("xdotool getactivewindow").read().strip()
+            if new_window != our_window:
+                break
+        ext.t_end('print')
+        print(i, new_window)
 
-        # print('Kid3 window:',self.kid3_window,'sleep_count:',sleep_count)
+        ''' Looped 100 times at 33ms '''
+        if new_window == our_window:
+            print("''' run_and_move_window() Looped ", i, "times at 33ms '''")
+            print("No change to our_window:", our_window)
+            return
 
-        # Move window to mouse position within popup menu event
-        os.popen('xdotool windowmove ' + self.kid3_window + ' ' +
+        ''' Move window to mouse position within popup menu event '''
+        os.popen('xdotool windowmove ' + new_window + ' ' +
                  str(self.mouse_x) + ' ' + str(self.mouse_y))
 
-        # Set size of Kid3 window
-        if KID3_GEOMETRY is not None:
-            width = KID3_GEOMETRY.split('x')[0]
-            height = KID3_GEOMETRY.split('x')[1]
+        ''' Set size of new window '''
+        if window_size is not None:
+            width = window_size.split('x')[0]
+            height = window_size.split('x')[1]
             # noinspection SpellCheckingInspection
-            os.popen('xdotool windowsize ' + self.kid3_window + ' ' +
+            os.popen('xdotool windowsize ' + new_window + ' ' +
                      width + ' ' + height)
-            # inspection SpellCheckingInspection
+        return new_window
 
-        ''' Wait until Kid3 window is closed
-            WHO CARES?!? So what if user keeps Kid3 open
-            TODO: Force close (with dialog prompt!) if focus out of Kid3 '''
-        if our_window != "impossible value":    # Dummy test always true
-            return                              # Code below not finished
-
-        # active_window = self.kid3_window  # Decimal Window ID
-        # print('active_window:',active_window)
-        warning_issued = False  # Warning dialog displayed?
-
-        # Loop until Kid3 ends
-        while self.kid3_window is not "":
-
-            root.update()
-            root.after(100)
-            # Get list of all open X-Windows
-            # TODO: Check if active window is a child of kid3
-            all_windows = os.popen("wmctrl -l -p").read().strip().splitlines()
-            if "Kid3" not in all_windows:
-                self.kid3_window = ""
-                break
-
-            # noinspection SpellCheckingInspection
-            '''
-
-$ wmctrl -l -p
-0x07800007  0 12234  alien Software Updater
-0x0400000a  0 3128   alien Python 2
-0x02c00002  0 2670   alien XdndCollectionWindowImp
-0x02c00009  0 2670   alien unity-launcher
-0x02c0001e  0 2670   alien unity-panel
-0x02c00025  0 2670   alien unity-panel
-0x02c0002c  0 2670   alien unity-panel
-0x02c00033  0 2670   alien unity-dash
-0x02c00034  0 2670   alien Hud
-0x0340000a  0 2951   alien Desktop
-0x040000f8  0 3128   alien rick@alien: ~
-0x00a00010  0 7490   alien *mserve (~/python) - gedit
-0x04600002  0 0      alien conky (alien)
-0x04018cf0  0 3128   alien rick@alien: ~
-0x01e00003  0 13008  alien wmctrl(1) - Linux man page - Mozilla Firefox
-0x01e00038  0 13008  alien Watch Zombieland (2009) Full Movie - Putlocker - Mozilla Firefox
-0x01e00020  0 13008  alien SSHelper - Mozilla Firefox
-0x01e0002d  0 13008  alien Display Control Sample - Mozilla Firefox
-0x08600036  0 0        N/A mmm - Multiple Monitors Manager
-0x0480001d  0 0        N/A mserve - Music Server            729 songs total of:        6,326,239,452 bytes
-0x0480043a  0 0        N/A Playing Selected Songs
-0x05200004  0 6683     N/A A Momentary Lapse Of Reason [Remaster]  — Kid3
-0x05200037  0 6683     N/A Add Frame — Kid3
-0x04832219  0 0        N/A Kid3 is running
-            
-            '''
-            # inspection SpellCheckingInspection
-
-            active_window = os.popen("xdotool getactivewindow").read().strip()
-            #if self.kid3_active(active_window, self.kid3_window, all_windows):
-            # June 2, 2021 bug fix wrong parameter list
-            if self.kid3_active(active_window, all_windows):
-                warning_issued = False  # active window is kid3
-                continue
-            else:
-                if warning_issued is False:
-                    # print('active_window changed:',active_window)
-                    # set_font_style()
-                    messagebox.showinfo("Kid3 is running",
-                                        "mserve won't respond until Kid3 is closed.",
-                                        parent=self.lib_top)
-                    root.update()
-                    # noinspection SpellCheckingInspection
-                    os.popen("xdotool windowactivate "
-                             + self.kid3_window + " 2> /dev/null"). \
-                        read().strip()
-                    # inspection SpellCheckingInspection
-                    # Make Kid3 active after OK pressed
-                    warning_issued = True
-
-        self.kid3_window = ""  # Let others know kid3 is closed
-        root.update()
-
-    @staticmethod
-    def kid3_active(dec_window, all_windows):
-        # Kid3 or one of his children must be active to return True
-
-        # 0x0480043a  0 0        N/A Playing Selected Songs
-        # 0x05200004  0 6683     N/A Momentary Lapse Of Reason — Kid3
-        # 0x05200037  0 6683     N/A Add Frame — Kid3
-        for line in all_windows:
-            if "Kid3" in line:
-                # MAJOR BUG May 30, 2021, hex_window defined below instead of
-                # hex_windows. TODO: Bug fix not tested yet.
-                #hex_window = line.split(" ")[0]
-                hex_windows = line.split(" ")[0]
-                decimal = int(hex_windows, 16)
-                if decimal == dec_window:
-                    return True
-
-        return False
+    def fm_open(self, Id, level=None):
+        """ Open File Manager (Nautilus) for Artist, Album or Music File """
+        trg_path = self.make_variable_path(Id)
+        self.run_and_move_window(trg_path, FM_PROGRAM, FM_WIN_SIZE)
 
     # ==============================================================================
     #
@@ -5887,6 +5905,7 @@ $ wmctrl -l -p
         menu.add_separator()
 
         if self.view == self.mus_view:
+            """ SQL Music Table must be opened for view_metadata() """
             menu.add_command(label="View Metadata", font=(None, g.MED_FONT),
                              command=lambda: self.view_metadata(pretty))
             menu.add_separator()
@@ -5908,25 +5927,27 @@ $ wmctrl -l -p
         #    tags.remove("menu_sel")
         #    self.view.tree.item(self.view_iid, tags=tags)
 
-    def view_metadata(self, pretty):
-        """ View Metadata
+    def view_metadata(self, pretty, os_filename=None, top=None):
+        """ View Metadata - Called from SQL Music Table popup menu
+        Called from Music Location Tree popup menu and passes os_filename
 
-            pretty is discarded and new one is created
-
+        :param pretty: Dictionary for SQL Music Table. Used to get OsFileName
+            and then recycled for metadata dictionary.
+        :param os_filename: When called from Music Location Tree filename is passed.
+        :param top: When called from Music Location Tree = self.lib_top.
         """
-        #print("pretty:", pretty.dict)
-        filename = PRUNED_DIR + pretty.dict['OS Filename']
-        # TODO: Verify last access time is not touched
+        if not os_filename:
+            os_filename = PRUNED_DIR + pretty.dict['OS Filename']
         view_ctl = FileControl(self.lib_top, self.info)
-        view_ctl.new(filename)
-
+        view_ctl.new(os_filename)  # Declaring new file populates metadata
         pretty = sql.PrettyMeta(view_ctl.metadata)
         view_ctl.close()
 
-        self.create_window("Metadata (ID3 Tags) - mserve", 1400, 975)
+        # Requires override to def create_window
+        self.create_window("Metadata (ID3 Tags) - mserve", 1400, 975, top=top)
         pretty.scrollbox = self.scrollbox
         sql.tkinter_display(pretty)
-        # Note self.scrollbox defined in multiple places, reduce in future
+
 
     def view_sql_row(self, pretty):
         """ View SQL - Music Table Row or History Table Row """
@@ -5943,7 +5964,7 @@ $ wmctrl -l -p
         """ View Library Treeview and open current song into view.
             TODO: When returning, collapse treeview parents forced to open.
         """
-        # TODO: Check 'No Album' string
+
         music_id = pretty.dict['SQL Music Row Id']  # hist & music have same
         ''' SQL History has music_id with zero '''
         if music_id is 0:
@@ -6000,26 +6021,38 @@ $ wmctrl -l -p
             print("mserve.py view_library() No match in Music Location:", music_id)
 
     def create_window(self, title, width, height, top=None):
-        """ Place Window top-left of parent window with PANEL_HGT padding
-            Lifted from: ~/mserve/encoding.py
+        """ Create new window top-left of parent window with PANEL_HGT padding
+
+            Before calling:
+                Create pretty data dictionary using tree column data dictionary
+            After calling / usage:
+                create_window(title, width, height, top=None)
+                pretty.scrollbox = self.scrollbox
+                # If we did text search, highlight word(s) in yellow
+                if self.mus_search is not None:
+                    # history doesn't have support. Music & history might both be open
+                    if self.mus_search.edit is not None:
+                        pretty.search = self.mus_search.edit.get()
+                sql.tkinter_display(pretty)
+
+            When Music Location Tree calls from view_metadata it passes
+            top=self.lib_top. In this case not called from SQL Music Table
+            viewer.
 
             TODO: Instead of parent guessing width, height it would be nice
                   to pass a maximum and reduce size when text box has extra
                   white space.
-
-                  IDENTICAL to webscrape.py. Consider module.
-
         """
         if self.hdr_top is not None:
             self.hdr_top.lift()
             self.hdr_top.title(title)  # Maybe on different title
             return
 
-        self.hdr_top = tk.Toplevel()
+        self.hdr_top = tk.Toplevel()  # New window for data dictionary display.
         self.hdr_top_is_active = True
 
-        if top is None:
-            top = self.common_top  # Tkinter Top Level Window - either mus_top or his_top
+        if top is None:  # When not None it is lib_top (Music Location)
+            top = self.common_top  # Parent Window - mus_top, his_top
         xy = (top.winfo_x() + g.PANEL_HGT,
               top.winfo_y() + g.PANEL_HGT)
         self.hdr_top.minsize(width=g.BTN_WID * 10, height=g.PANEL_HGT * 4)
@@ -6112,24 +6145,20 @@ $ wmctrl -l -p
 
     # noinspection PyUnusedLocal
     def pretty_close(self, *args):
+        """ Close window painted by the create_window() function """
         if self.hdr_top is None:
             return
-        self.tt.close(self.hdr_top)  # Close tooltips under top level
+        self.tt.close(self.hdr_top)  # Close tooltips (There aren't any yet)
         self.scrollbox.unbind("<Button-1>")
         self.hdr_top_is_active = False
         self.hdr_top.destroy()
         self.hdr_top = None
-        if self.view_iid is None:
-            return  # We clicked on heading not treeview row
 
-        # Reset color to normal in treeview line
-        toolkit.tv_tag_remove(self.view.tree, self.view_iid, "menu_sel")
-        # May 14, 2023 - New tv_tag_remove() has error message if old tag doesn't exist
-        #tags = self.view.tree.item(self.view_iid)['tags']  # Remove 'menu_sel' tag
-        #if "menu_sel" in tags:
-        #    tags.remove("menu_sel")
-        #    self.view.tree.item(self.view_iid, tags=tags)
-
+        ''' Music Location Tree option view_metadata() doesn't use self.view '''
+        # self.view_iid will also be None when clicked on heading not treeview row
+        if self.view and self.view.tree and self.view_iid:
+            # Reset color to normal in treeview line
+            toolkit.tv_tag_remove(self.view.tree, self.view_iid, "menu_sel")
 
     def rip_cd(self):
         """ Rip CD using libdiscid, MusicBrainzNGS, CoverArtArchive.org,
@@ -6148,7 +6177,15 @@ $ wmctrl -l -p
         # TODO: Spinning music player works when self.refresh_play_top() isn't passed:
         # Loop forever giving 30 fps control to parent
         # self.lib_top.after(33, self.cd_run_to_close)
-        self.rip_cd_class = encoding.RipCD(self.lib_top, self.tt, LODICT)
+
+
+        last_disc = None
+        if ENCODE_DEV and self.rip_cd_class and self.rip_cd_class.disc:
+            last_disc = self.rip_cd_class.disc  # Reuse the last disc ID#
+                
+        self.rip_cd_class = encoding.RipCD(
+            self.lib_top, self.tt, self.info, LODICT, caller_disc=last_disc,
+            thread=self.get_refresh_thread, sbar_width=16)
         return
 
     def write_playlist_to_disk(self, ShowInfo=True):
@@ -11223,7 +11260,7 @@ mark set markName index"
             Id from song_selections[] vs. treeview Id
         """
         iid = self.saved_selections[int(item) - 1]  # Create treeview ID
-        self.kid3_song(iid)
+        self.kid3_open(iid)
 
     def build_chron_line(self, playlist_no, lib_tree_iid, short_line):
         """ № (U+2116)  🎵  (1f3b5)  🎨  (1f3a8)  🖌  (1f58c)  🖸 (1f5b8)
@@ -13183,8 +13220,10 @@ class FileControlCommonSelf:
         self.Album = None           # self.metadata.get('ALBUM', "None")
         self.Title = None           # self.metadata.get('TITLE', "None")
         self.Genre = None           # self.metadata.get('GENRE', "None")
+        # Don't like ReleaseDate it should be FirstDate?
         self.Date = None            # self.metadata.get('DATE', "None")
         self.CreationTime = None    # new July 13, 2023 'CREATION_TIME'
+        # Don't like RecordingDate it should be AlbumDate?
         self.RecordingDate = None   # new July 13, 2023 YYYY-MM
         self.Composer = None        # new July 13, 2023 'COMPOSER'
         self.DiscNumber = None      # new July 13, 2023 'DISC'
@@ -14522,6 +14561,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
     def save_as(self):
         """
             Called by lib_top File Menubar "Save Playlist As..."
+            NOT USED as of July 16, 2023
         """
         self.state = 'save_as'
         self.create_window("Save Playlist As…")
@@ -16132,16 +16172,20 @@ def open_files(old_cwd, prg_path, parameters, toplevel=None):
     global NEW_LOCATION  # True=Unknown music directory in parameter #1
     global LODICT  # Permanent copy of location dictionary never touched
 
-    print()  # A little separation
+    print()  # A little separation from the last session's output
     print(r'  ######################################################')
     print(r' //////////////                            \\\\\\\\\\\\\\')
     print(r'<<<<<<<<<<<<<<    mserve - Music Server     >>>>>>>>>>>>>>')
     print(r' \\\\\\\\\\\\\\                            //////////////')
     print(r'  ######################################################')
+    print(r'                    Started:',
+          datetime.datetime.now().strftime('%I:%M %p').strip('0'), "\n")
 
     #print("def open_files(old_cwd, prg_path, parameters):",
     #      old_cwd, prg_path, parameters)
     print("prg_path is not used. Review:", prg_path)
+    print("old_cwd:", old_cwd)
+    print("parameters:", parameters)
 
     ''' Has data directory been created? '''
     if os.path.exists(g.USER_DATA_DIR):

@@ -35,20 +35,17 @@ import pickle
 
 # Dist-packages
 from PIL import Image, ImageTk, ImageDraw, ImageFont
+# Reference: https://buildmedia.readthedocs.org/media/pdf/
+# python-musicbrainz-ngs-jonnyjd/latest/python-musicbrainz-ngs-jonnyjd.pdf
 import musicbrainzngs as mbz
 import requests
-
-# Pippim modules
-import location as lc
 
 import global_variables as g        # should be self-explanatory
 if g.USER is None:
     g.init()  # Background job so always runs
-TMP_MBZ_GET1 = g.TEMP_DIR + "mserve_mbz_get1"
-TMP_MBZ_GET2 = g.TEMP_DIR + "mserve_mbz_get2"
 
-# IPC pickle filename shouldn't end with .pkl because it's used for playlists.
-IPC_PICKLE_FNAME = lc.MSERVE_DIR + "ipc.pickle"
+''' File with dictionaries in pickle format passed between background jobs '''
+#IPC_PICKLE_FNAME = g.TEMP_DIR + "mserve_encoding_pickle"
 # THESE TWO ARE IDENTICAL FILENAMES
 DICT_FNAME = sys.argv[1]            # Pickle filename to save to
 RESOLUTION = sys.argv[2]            # Image resolution to select (IGNORED)
@@ -57,9 +54,10 @@ RESOLUTION = sys.argv[2]            # Image resolution to select (IGNORED)
 def get_image_info(toplevel=None):
 
     # Our last program has just finished. Get dictionary results
-    with open(IPC_PICKLE_FNAME, 'rb') as f:
+    #with open(IPC_PICKLE_FNAME, 'rb') as f:
+    with open(DICT_FNAME, 'rb') as rel_info:
         # read the data as binary data stream
-        release_list = pickle.load(f)
+        release_list = pickle.load(rel_info)
 
 #   PRODUCTION VERSION will use this instead:
 #    mbz.set_useragent("mserve", "0.1")

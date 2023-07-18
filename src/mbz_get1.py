@@ -21,6 +21,7 @@ from __future__ import with_statement  # Error handling for file opens
 #
 #       July 12 2023 - Interface to/from mserve_config.py
 #       July 14 2023 - Save original mbz dictionary in JSON format
+#       July 17 2023 - Get MBZ FirstDate from all releases. Composer/Genre WIP.
 #
 # ==============================================================================
 
@@ -39,7 +40,6 @@ import json
 import pickle
 import time
 import datetime
-from pprint import pprint
 
 # Dist-packages
 from PIL import Image, ImageTk, ImageDraw, ImageFont
@@ -47,7 +47,6 @@ import musicbrainzngs as mbz
 import libdiscid as discid
 
 # Pippim modules
-import location as lc
 import message
 import image as img
 
@@ -56,64 +55,22 @@ if g.USER is None:
     g.init()  # Background job so always runs
 
 TMP_MBZ_GET1 = g.TEMP_DIR + "mserve_mbz_get1"
+TMP_MBZ_DEBUG = g.TEMP_DIR + "mserve_mbz_debug"
 # $ cat /run/user/1000/mserve_mbz_get1 | python -m json.tool | less
-TMP_MBZ_GET2 = g.TEMP_DIR + "mserve_mbz_get2"
 
-"""
-
-From: https://buildmedia.readthedocs.org/media/pdf/python-discid/v1.1.0/python-discid.pdf
-
-1.2.4 Fetching Metadata
-=======================
-
-You can use python-musicbrainz-ngs to fetch metadata for your disc.
-The relevant function is musicbrainzngs.get_releases_by_discid():
-
-import discid
-import musicbrainzngs
-
-musicbrainzngs.set_useragent("python-discid-example", "0.1", "your@mail")
-
-disc = discid.read()
-try:
-    result = musicbrainzngs.get_releases_by_discid(disc.id,
-    includes=["artists"])
-except musicbrainzngs.ResponseError:
-    print("disc not found or bad response")
-else:
-    if result.get("disc"):
-        print("artist:\t%s" %
-            result["disc"]["release-list"][0]["artist-credit-phrase"])
-
-    elif result.get("cdstub"):
-        print("artist:\t" % result["cdstub"]["artist"])
-        print("title:\t" % result["cdstub"]["title"])
-
-You can fetch much more data. See musicbrainzngs for detail
-"""
-
-#TMP_MBZ_GET1 = g.TEMP_DIR + "mserve_mbz_get1"  Note above uses diff dir.
-IPC_PICKLE_FNAME = lc.MSERVE_DIR + "ipc.pickle"  # control parameters
-# Above and below are TWO IDENTICAL FILENAMES
-DICT_FNAME = sys.argv[1]            # Pickle filename to save to
+DICT_FNAME = sys.argv[1]            # IPC pickle filename read from/saved to
 SEARCH_LIMIT = sys.argv[2]          # Number of search results to return when
                                     # less than 3 only CD's searched. When more
                                     # then vinyl (which may have artwork!) are
                                     # included. EG Jim Steinem Bad for Good
 EMAIL_ADDRESS = sys.argv[3]         # May 5, 2023 - Not tested yet
 
-#print("sys.argv:", *sys.argv)
-# ERROR: close failed in file object destructor:
-# sys.excepthook is missing
-# lost sys.stderr
-# You cannot print anything because parent's terminal not passed to shelled job
 
-
+# noinspection PyBroadException
 def get_release_by_mbzid(mbz_id, toplevel=None):
-    """ Get Mbz information for single track (song file) """
+    """ Get Mbz dictionaries / lists for a release ID """
     try:
-        # Doesn't generate errors for fake EMAIL_ADDRESS
-        mbz.set_useragent("mserve", "0.1", EMAIL_ADDRESS)
+        mbz.set_useragent("mserve", "0.2", EMAIL_ADDRESS)
     except mbz.NetworkError:
         return {'error': '99'}
     except:
@@ -143,8 +100,6 @@ def get_release_by_mbzid(mbz_id, toplevel=None):
     except:
         return {'error': '5'}
 
-    #print('\n===================== release ====================')
-    #pprint(release)
     """
 ===================== release ====================
 {'release': {
@@ -188,136 +143,6 @@ def get_release_by_mbzid(mbz_id, toplevel=None):
     return release
 
 
-def get_disc_info(toplevel=None):
-    """ Pass 1 of 2: Get """
-    #with open(IPC_PICKLE_FNAME, 'r') as fin:
-    #    print(fin.read())
-    # Our last program has just finished. Get dictionary results
-    with open(IPC_PICKLE_FNAME, 'rb') as disc_info:
-        # read the data as binary data stream
-        disc = pickle.load(disc_info)
-
-    # Valid Musicbrainz ID?
-    if len(disc.id) != 28:
-        return {'error': '1'}
-
-    mbz_id = disc.id
-
-    # Tell musicbrainz what your app is, and how to contact you
-    # (this step is required, as per the webservice access rules
-    # at http://wiki.musicbrainz.org/XML_Web_Service/Rate_Limiting )
-    try:
-        mbz.set_useragent("dummy_organization", "0.1", EMAIL_ADDRESS)
-    except:
-        #print('useragent failed for mserve')
-        return {'error': '2'}
-
-    try:
-        # noinspection SpellCheckingInspection
-        '''
-            Available includes: artists, labels, recordings, release-groups, 
-            media, artist-credits, discids, isrcs, recording-level-rels, 
-            work-level-rels, annotation, aliases, area-rels, artist-rels, 
-            label-rels, place-rels, event-rels, recording-rels, release-rels, 
-            release-group-rels, series-rels, url-rels, work-rels, instrument-rels            
-
-            CRASHES on: 'tags', 'annotation', 'recording-level-rels'
-
-            'release-rels' doesn't show recording year
-            'recording-rels' doesn't show recording year
-            'artist-rels' doesn't show recording year
-            'labels' shows "Sony" for CD, not Year artist/song title
-            'work-rels' shows nothing. It would work for composer if:
-                https://community.metabrainz.org/t/
-                how-to-get-lyricist-and-composer-by-api/511673
-        '''
-        release = mbz.get_releases_by_discid(
-            mbz_id, includes=['artist-credits', 'recordings', 'work-rels'])
-        #release = mbz.get_releases_by_discid(
-        #    mbz_id, includes=['artists', 'recordings'])
-    except mbz.NetworkError:
-        #print('Network error')
-        return {'error': '99'}
-    except mbz.ResponseError:
-        return {'error': '3', 'message': 'disc not found or bad response'}
-    except Exception as err:
-        #print('mbz.get_releases_by_discid Error:', err)
-        return {'error': '3', 'message': '404 Response Error'}
-
-
-    # print('\nget_disc_info() result by mbz_id:', mbz_id)
-    # TODO: Set flag to indicate of 'disc' or 'cdstub' found.
-    if release.get('disc'):
-    
-        #pprint(release)
-        return release['disc']['release-list']
-
-    """ TODO: Incorporate cd stub logic.
-        Commented out below is old search through all albums released.
-
-        this_release = release['disc']['release-list'][0]
-        title = this_release['title']
-        artist = this_release['artist-credit'][0]['artist']['name']
-     
-        if this_release['cover-art-archive']['artwork'] == 'true':
-          url = 'http://coverartarchive.org/release/' + this_release['id']
-          art = json.loads(requests.get(url, allow_redirects=True).content)
-          for image in art['images']:
-             if image['front'] == True:
-                cover = requests.get(image['image'], 
-                                     allow_redirects=True)
-                fname = '{0} - {1}.jpg'.format(artist, title)
-                print('COVER="{}"'.format(fname))
-                f = open(fname, 'wb')
-                f.write(cover.content)
-                f.close()
-                break
-     
-        #print('TITLE="{}"'.format(title))
-        #print('ARTIST="{}"'.format(artist))
-        #print('YEAR="{}"'.format(this_release['date'].split('-')[0]))
-        for medium in this_release['medium-list']:
-          for disc in medium['disc-list']:
-             if disc['id'] == this_disc.id:
-                tracks=medium['track-list']
-                for track in tracks:
-                   print('TRACK[{}]="{}"'.format(track['number'], 
-                                                 track['recording']['title']))
-                break
-
-    #print(release)
-    #print('\n')
-    # TODO: Set flag to indicate of 'disc' or 'cdstub' found.
-    track_dict = {}                         # name: Xxxx and length: 999
-    if release.get('cdstub'):
-        # TODO: This information is disgarded, should be passed back to parent
-        count = release['cdstub']['track-count']
-        title = release['cdstub']['title']
-        artist = release['cdstub']['artist']
-        # print('track-count:',count,' title:',title,' artist:',artist)
-        track_list = release['cdstub']['track-list']
-        for i, track in enumerate(track_list):
-            # print(i+1, ": ", track['title'], ' length:',track['length'])
-
-            # Output file name based on MusicBrainz values
-            fmt = "m4a"
-            FORMAT_TRACK_NAME="{:02} {}.{}"
-            # What if two tracks have same name?
-            track_dict [track['title']] = track_lengths[i]
-            outfname = FORMAT_TRACK_NAME.format(i+1, track['title'], \
-                       fmt).replace('/', '-')
-
-        track_count = len(track_lengths)            # list of track lengths
-
-        # Override 'cdstub' with query for releases
-        # Track count will limit our results if we have no artwork on good match
-        #release_list = match_album(artist, title, tracks=track_count, \
-        #                           toplevel=toplevel)
-        release_list = match_album(artist, title, toplevel=toplevel)
-        return release_list
-    """
-
-
 def match_album(artist, album, tracks=None, limit=SEARCH_LIMIT, toplevel=None):
     """Searches for a single album ("release" in MusicBrainz parlance)
     and returns an iterator over AlbumInfo objects. May raise a
@@ -359,12 +184,6 @@ def match_album(artist, album, tracks=None, limit=SEARCH_LIMIT, toplevel=None):
     for release in res['release-list']:
         # The search result is missing some data (namely, the tracks),
         # so we just use the ID and fetch the rest of the information.
-        print('\n', '=' * 35, 'Release', '=' * 35)
-        pprint(release)
-    """
-    #print('\n======================= res: =========================')
-    #pprint(res)
-    """
 ======================= res: =========================
 {'release-count': 1386079,
  'release-list': [
@@ -439,18 +258,7 @@ def match_recording(artist, album, tracks=None, limit=10, toplevel=None):
     except mbz.MusicBrainzError as exc:
         raise MusicBrainzAPIError(exc, 'release search', criteria,
                                   traceback.format_exc())
-    """
-    for release in res['release-list']:
-        # The search result is missing some data (namely, the tracks),
-        # so we just use the ID and fetch the rest of the information.
-        print('\n', '=' * 35, 'Release', '=' * 35)
-        pprint(release)
-    """
     return res
-
-#        album_info = album_for_id(release['id'])
-#        if album_info is not None:
-#            yield album_info
 
 
 def album_for_id(mb_id):
@@ -587,8 +395,6 @@ def get_contents():
     release = mb.get_releases_by_discid(
         this_disc.id, toc=this_disc.toc, includes=['artists', 'recordings'])
 
-    print('\nget_contents() release:\n',release)
-
     if release.get('disc'):
        this_release = release['disc']['release-list'][0]
        title = this_release['title']
@@ -602,22 +408,17 @@ def get_contents():
                 cover = requests.get(image['image'], 
                                      allow_redirects=True)
                 fname = '{0} - {1}.jpg'.format(artist, title)
-                print('COVER="{}"'.format(fname))
                 f = open(fname, 'wb')
                 f.write(cover.content)
                 f.close()
                 break
      
-       print('TITLE="{}"'.format(title))
-       print('ARTIST="{}"'.format(artist))
-       print('YEAR="{}"'.format(this_release['date'].split('-')[0]))
        for medium in this_release['medium-list']:
           for disc in medium['disc-list']:
              if disc['id'] == this_disc.id:
                 tracks=medium['track-list']
                 for track in tracks:
-                   print('TRACK[{}]="{}"'.format(track['number'], 
-                                                 track['recording']['title']))
+                   pass
                 break
 
 """
@@ -694,7 +495,6 @@ def read_cd():
                 if image['front'] == True:
                     cover = requests.get(image['image'], allow_redirects=True)
                     fname = '{0} - {1}.jpg'.format(artist, album)
-                    print('Saved cover art as {}'.format(fname))
                     f = open(fname, 'wb')
                     f.write(cover.content)
                     f.close()
@@ -709,7 +509,6 @@ def read_cd():
         outfname = FORMAT_TRACK_NAME.format(i+1, track['title'], \
                    fmt).replace('/', '-')
 
-        print('Ripping track {}...'.format(outfname))
         cmd = 'gst-launch-1.0 cdiocddasrc track={} ! '.format(trackn+1) + \
                 'audioconvert ! {} ! '.format(encoding) + \
                 'filesink location="{}"'.format(outfname)
@@ -717,7 +516,6 @@ def read_cd():
 
         if not options.wav:
             audio = audiofile(outfname)
-            print('Tagging track {}...'.format(outfname))
             audio['TITLE'] = track
             audio['TRACKNUMBER'] = str(trackn+1)
             audio['ARTIST'] = artist
@@ -743,7 +541,6 @@ import urllib.request
 import urllib.error
 import urllib.parse
 """
-from pprint import pformat
 import simplejson
 #import logging         # Aug 13/2021 - lost sys.stderr
 """ Note done yet
@@ -782,7 +579,7 @@ def dl_cover(urlList, directory, fileName, overWrite=False):
     coverImg = os.path.join(directory, fileName)
     # move existing file if overWrite enabled
     if os.path.isfile(coverImg) and overWrite:
-        log.info("%s exists and overwrite enabled - moving to %s.bak", \
+        log.info("%s exists and overwrite enabled - moving to %s.bak",
                  coverImg, coverImg)
         os.rename(coverImg, (coverImg + '.bak'))
     # download cover image from urls in list
@@ -797,7 +594,7 @@ def dl_cover(urlList, directory, fileName, overWrite=False):
             urlOk = False
         # download file
         if urlOk:
-            log.info('downloading cover image\n from: "%s"\n to: "%s"', \
+            log.info('downloading cover image\n from: "%s"\n to: "%s"',
                      url, coverImg)
             coverImgLocal = open(os.path.join(directory, fileName), 'w')
             coverImgLocal.write(coverImgWeb.read())
@@ -810,7 +607,7 @@ def dl_cover(urlList, directory, fileName, overWrite=False):
     return False
 
 
-def get_img_urls(searchWords, fileType='jpg', fileSize='small', \
+def get_img_urls(searchWords, fileType='jpg', fileSize='small',
                  resultCount=8, referer=defaultReferer):
     """
     return list of cover urls obtained by searching
@@ -819,11 +616,11 @@ def get_img_urls(searchWords, fileType='jpg', fileSize='small', \
 
     imgUrls = []
 
-    # sanitise searchwords
+    # sanitise searchWords
     searchWords = [sanitise_for_url(searchWord) for searchWord in searchWords]
     # construct url
     url = googleImagesUrl + '?v=1.0&q='
-    # add searchwords
+    # add searchWords
     for searchWord in searchWords:
         url += searchWord + '+'
     url = url[:-1]
@@ -1000,7 +797,7 @@ def main_function():
     """
 
     dirs, image_type, image_name, image_size, search_count, overwrite, \
-            referer, debug = parse_args_opts()
+        referer, debug = parse_args_opts()
 
     #if debug:
     #    log.setLevel(logging.DEBUG)
@@ -1047,12 +844,12 @@ def main_function():
 
 
 def add_track_info(release_list):
-
     """ Populate empty medium-list with track list. Normally returns None.
         If error return dictionary of error(s).
         Only effects release_list that has no track information yet.
         Only adds tracks to last CD in multi-CD release.
-        DO NOT USE.
+
+        NO LONGER USED...
     """
 
     """
@@ -1106,9 +903,6 @@ def add_track_info(release_list):
         if not r.get('release'):
             return {'error': '6', 'message': d['id'], 'data': d, 'data2': r}
 
-        # Debugging uncomment line below to get screen dump of dictionaries
-        #return { 'error': '6', 'message': d['id'], 'data': d, 'data2': r }
-        # Replace empty track list with real tracks
         mdm_ndx = len(d['medium-list']) - 1
         # For Filter mdn_ndx = 0. For Jim Steinem mdm_ndx = 1
         # Track list may not be empty
@@ -1118,7 +912,7 @@ def add_track_info(release_list):
         """
 ===================== release ====================
 {'release': {
- 'medium-list': [
+    'medium-list': [
          {'format': 'CD',
           'position': '1',
           'track-count': 10,
@@ -1133,37 +927,17 @@ def add_track_info(release_list):
                                },
                   'track_or_recording_length': '524466'
                }]
-           }]
-       }}
-
+          }]
+}}    
         """
-        # TODO medium-list is 1 for second CD, etc.
-
-        # Below does nothing !!! - Kept here for educational purposes
-
-        tracks_list = r['release']['medium-list'][0]['track-list']
-        for i, track_d in enumerate(tracks_list):
-            #print('track_d:\n',track_d)
-            position = track_d['position']
-            recording_d = track_d['recording']
-            song = track_d['recording']['title']
-            length = recording_d.get('length', '0')
-            # In database some tracks have no length key
-            duration = discid.sectors_to_seconds(int(length))
-            if length is None:
-                length = '0'
-            duration = int(length) / 1000
-
-            hhmmss = format_duration(duration)
-            FORMAT_TRACK_NAME = "    {:02} - {}"
-            outfname = FORMAT_TRACK_NAME.format(i+1, song.encode("utf8")) \
-                       .replace('/', '-')
 
     return None
 
 
 def add_work_info(release_list):
-    """ Add composer to track list. """
+    """ Intent was to add composer to track list. But no success
+        NOT CALLED.
+    """
 
     for d in release_list:
         ''' One release dictionary for each possible candidate.
@@ -1235,149 +1009,501 @@ def remove_prefix(text, prefix):
     return text  # or whatever
 
 
+def get_disc_info():
+    """ All encompassing function to get release lists with one read.
+        Many more functions were written for situations where information
+        had to be spliced together from multiple reads.
+    """
+    with open(DICT_FNAME, 'rb') as disc_info:
+        # read the data as binary data stream
+        disc = pickle.load(disc_info)
+
+    # Valid Musicbrainz ID?
+    if len(disc.id) != 28:
+        return {'error': '1'}
+
+    mbz_id = disc.id
+
+    # Tell musicbrainz what your app is, and how to contact you
+    # (this step is required, as per the webservice access rules
+    # at http://wiki.musicbrainz.org/XML_Web_Service/Rate_Limiting )
+    try:
+        mbz.set_useragent("mserve", "0.2", EMAIL_ADDRESS)
+    except:
+        return {'error': '2'}
+
+    try:
+        # noinspection SpellCheckingInspection
+        '''
+            'work-rels' shows nothing. It would work for composer if:
+                https://community.metabrainz.org/t/
+                how-to-get-lyricist-and-composer-by-api/511673
+
+        WORKS:
+            mbz_id, includes=['artist-credits', 'recordings'])
+            mbz_id, includes=['artist-credits', 'recordings', 'work-rels'])
+            mbz_id, includes=['artist-credits', 'recordings', 'recording-rels'])
+            mbz_id, includes=['release-groups', 'artist-credits', 'recordings'])
+
+        CRASHES:
+            mbz_id, includes=['artist-credits', 'recordings', 'work-rels', 'work-level-rels'])
+            mbz_id, includes=['artist-credits', 'recordings',
+                              'recording-level-rels', 'work-level-rels'])
+            mbz_id, includes=['artist-credits', 'recording-rels',
+                              'recording-level-rels', 'work-level-rels'])
+            mbz_id, includes=['artist-credits', 'recordings', 'recording-rels',
+                              'recording-level-rels', 'work-level-rels'])
+            mbz_id, includes=['artist-credits', 'releases', 'recording-level-rels',
+                              'release-group-level-rels', 'work-level-rels'])
+            mbz_id, includes=['artist-credits', 'releases', 'recordings',
+                              'recording-level-rels',
+                              'release-group-level-rels', 'work-level-rels'])
+            mbz_id, includes=['artist-credits', 'recordings', 'recording-rels',
+                              'work-rels', 'work-level-rels'])
+            mbz_id, includes=['artist-credits', 'recordings', 'recording-rels',
+                              'recording-level-rels'])
+        '''
+        release = mbz.get_releases_by_discid(
+            mbz_id, includes=['release-groups', 'artist-credits', 'recordings'])
+
+        '''
+For compilations adding 'release-groups' to list yields:
+
+        "release-event-count": 1,
+        "release-event-list": [
+            {
+                "area": {
+                    "id": "489ce91b-6658-3307-9877-795b68554c98",
+                    "iso-3166-1-code-list": [
+                        "US"
+                    ],
+                    "name": "United States",
+                    "sort-name": "United States"
+                },
+                "date": "2001"
+            }
+        ],
+        "release-group": {
+            "artist-credit": [
+                {
+                    "artist": {
+                        "disambiguation": "add compilations to this artist",
+                        "id": "89ad4ac3-39f7-470e-963a-56509c546377",
+                        "name": "Various Artists",
+                        "sort-name": "Various Artists",
+                        "type": "Other"
+                    }
+                }
+            ],
+            "artist-credit-phrase": "Various Artists",
+            "first-release-date": "2001",
+            "id": "228b5789-024b-4a64-b497-cf4957930a0c",
+            "primary-type": "Album",
+            "secondary-type-list": [
+                "Compilation"
+            ],
+            "title": "Greatest Hits of the 80\u2019s",
+            "type": "Compilation"
+        },
+        "status": "Official",
+        "text-representation": {
+            "language": "eng",
+            "script": "Latn"
+        },
+        "title": "Greatest Hits of the 80\u2019s"
+    }
+]
+
+
+if .... ['release-group']['type'] == "Compilation":
+        '''
+
+    except mbz.NetworkError:
+        return {'error': '99'}
+    except mbz.ResponseError:
+        return {'error': '3', 'message': 'disc not found or bad response'}
+    except Exception as err:
+        return {'error': '3', 'message': '404 Response Error'}
+
+    if release.get('disc'):
+        return release['disc']['release-list']
+
+
+# noinspection PyBroadException
+def get_releases_by_recording_id(mbz_id):
+    """ Get work relationships for a release ID """
+
+    # Delete MBZ authorization as it was just received
+
+    ''' First test get last release, last medium, last track recording 
+    
+                        "artist-credit": [
+                            {
+                                "artist": {
+                                    "disambiguation": "British rock band",
+                                    "id": "2e700147-56a3-416b-a95d-381ea42f947f",
+                                    "name": "Slade",
+                                    "sort-name": "Slade",
+                                    "type": "Group"
+                                }
+                            }
+                        ],
+                        "artist-credit-phrase": "Slade",
+                        "id": "843def33-3509-4e30-ab10-630422b95c55",
+                        "length": "300573",
+                        "number": "14",
+                        "position": "14",
+                        "recording": {
+                            "artist-credit": [
+                                {
+                                    "artist": {
+                                        "disambiguation": "British rock band",
+                                        "id": "2e700147-56a3-416b-a95d-381ea42f947f",
+                                        "name": "Slade",
+                                        "type": "Group"
+                                    }
+                                }
+                            ],
+                            "artist-credit-phrase": "Slade",
+                            "id": "5b7be2d3-965e-4e43-8a1b-83be019a1c46",
+                            "length": "300573",
+                            "title": "Run Runaway"
+                        },
+                        "track_or_recording_length": "300573"
+                    }
+                ]
+            }
+        ],
+
+"artist-credit": [
+        "artist": {
+            "id": "2e700147-56a3-416b-a95d-381ea42f947f",
+            "name": "Slade",
+"artist-credit-phrase": "Slade",
+"id": "843def33-3509-4e30-ab10-630422b95c55",
+"recording": {
+    "artist-credit": [
+            "artist": {
+                "disambiguation": "British rock band",
+                "id": "2e700147-56a3-416b-a95d-381ea42f947f",
+    "artist-credit-phrase": "Slade",
+    "id": "5b7be2d3-965e-4e43-8a1b-83be019a1c46",
+    
+    '''
+    #   PRODUCTION VERSION will use this instead:
+    #    mbz.set_useragent("mserve", "0.1")
+    #    mbz.auth(u=input('Musicbrainz username: '), p=getpass())
+
+    try:
+        # noinspection SpellCheckingInspection
+        ''' 
+            musicbrainzngs.get_recording_by_id(
+                id, includes=[])
+
+            Get the recording with the MusicBrainzid as a dict with a 
+            ‘recording’ key. Available includes: artists, releases,  
+            discids, media, artist-credits, isrcs, annotation,  
+            aliases, tags, user-tags, ratings, user-ratings, area-rels, 
+            artist-rels, label-rels, place-rels, recording-rels, 
+            release-rels, release-group-rels, series-rels, url-rels, work-rel            
+
+            WORKS:
+                includes=['releases'])
+                includes=['releases', 'work-rels'])
+                includes=['releases', 'release-rels', 'work-rels']
+
+            CRASHES:
+                includes=['release'])
+                includes=['release', 'first-release-date'])
+                includes=['releases', 'first-release-date'])
+                includes=['releases', 'work-rels', 'work-level-rels'])
+                includes=['releases', 'work-rels', 'work-level-rels',
+                          'recording-level-rels',
+                          'release-group-level-rels', 'work-level-rels']
+        '''
+        try:
+            recording = mbz.get_recording_by_id(
+                mbz_id,
+                includes=['releases', 'release-rels', 'work-rels']
+            )
+        except:
+            return {'error': '5'}
+
+    except:
+        return {'error': '5'}
+
+    '''
+    'releases' RETURNS:
+    
+{
+    "recording": {
+        "id": "5b7be2d3-965e-4e43-8a1b-83be019a1c46",
+        "length": "300573",
+        "release-count": 18,
+        "release-list": [
+            {
+                "barcode": "0035627011610",
+                "country": "XE",
+                "date": "1983-12-03",
+                "id": "0420d931-4fc5-49ad-8079-7b023fa81621",
+                "packaging": "Cardboard/Paper Sleeve",
+                "quality": "normal",
+                "release-event-count": 1,
+                "release-event-list": [
+                    {
+                        "area": {
+                            "id": "89a675c2-3e37-3518-b83c-418bad59a85a",
+                            "iso-3166-1-code-list": [
+                                "XE"
+                            ],
+                            "name": "Europe",
+                            "sort-name": "Europe"
+                        },
+                        "date": "1983-12-03"
+                    }
+                ],
+                "status": "Official",
+                "text-representation": {
+                    "language": "eng",
+                    "script": "Latn"
+                },
+                "title": "The Amazing Kamikaze Syndrome"
+            },
+        ],
+        "title": "Run Runaway"
+    }
+}
+    '''
+
+    '''
+    Adding 'release-rels' yields NOTHING
+    Adding 'work-rels':
+    
+        "title": "Run Runaway",
+        "work-relation-list": [
+            {
+                "direction": "forward",
+                "target": "2416eae3-0b38-460e-8289-1d4939e376db",
+                "type": "performance",
+                "type-id": "a3005666-a872-32c3-ad06-98af558e99b0",
+                "work": {
+                    "id": "2416eae3-0b38-460e-8289-1d4939e376db",
+                    "iswc": "T-010.304.058-9",
+                    "iswc-list": [
+                        "T-010.304.058-9"
+                    ],
+                    "language": "eng",
+                    "title": "Run Runaway",
+                    "type": "Song"
+                }
+            }
+        ]
+    }
+}
+(END)
+    
+    '''
+    return recording
+
+
+# noinspection PyBroadException
+def get_date_info(pass_back):
+    """ Find first year date by parsing all releases for recording """
+    ''' For debugging save original mbz list in json format '''
+    prt_dates = []  # Printing to debug file
+    for d in pass_back:
+        for medium in d['medium-list']:
+            tracks_list = medium['track-list']  # Grab tracks
+            for track_d in tracks_list:
+                rec_id = track_d['recording']['id']
+                try:
+                    recordings = get_releases_by_recording_id(rec_id)
+                except:
+                    prt_dates.append("Invalid rec_id:" + str(rec_id))
+                    continue
+                for _ in recordings:
+                    ''' Only 1 recording record exists 
+                        ["recording", { 
+                            "release-list":[{
+                                "title": "The Amazing Kamikaze Syndrome", 
+                                "country": "XE", 
+                                "date": "1983-12-03", 
+                    '''
+                    rec_dict = recordings['recording']  # Needs loop to work?
+                    rel_list = rec_dict['release-list']
+                    first_date = None
+
+                    for rel_entry in rel_list:
+                        try:
+                            str_date = rel_entry["date"]
+                            prt_dates.append("str_date: " + str(str_date))
+                        except:
+                            continue
+                        try:
+                            year = int(str_date[:4])
+                            if first_date:
+                                if year < first_date:
+                                    first_date = year
+                            else:
+                                first_date = year
+                        except:
+                            prt_dates.append("invalid str_date[:4]: " + str(str_date[:4]))
+                            pass
+
+                    prt_dates.append("#: " + medium['position'] + "-" +
+                                     track_d['position'] +
+                                     " | Title: " + track_d['recording']['title'] +
+                                     " | Date: " + d['date'] +
+                                     " | Year: " + str(first_date))
+
+                    ''' Insert into existing track as 'first-date' '''
+                    track_d['recording']['first-date'] = str(first_date)
+
+                    try:
+                        work_list = rec_dict['work-relation-list']
+                        work_d = work_list[0]
+                        target_id = work_d['target']
+                        # Doesn't contain composer save 30 seconds and comment
+                        #work = get_work_info(target_id)
+                        prt_dates.append("  work-relation-list[0]['target']: " +
+                                         target_id)
+                        #prt_dates.append(work)  # Nothing useful (no composer)
+                        '''
+    "#: 3-14 | Title: Run Runaway | Date: 2001 | Year: 1983",
+    "  work-relation-list[0]['target']: 2416eae3-0b38-460e-8289-1d4939e376db",
+    {
+        "work": {
+            "alias-count": 2,
+            "alias-list": [
+                {
+                    "alias": "Run Run Away",
+                    "sort-name": "Run Run Away",
+                    "type": "Work name"
+                },
+                {
+                    "alias": "Run Run Run Away",
+                    "sort-name": "Run Run Run Away",
+                    "type": "Work name"
+                }
+            ],
+            "id": "2416eae3-0b38-460e-8289-1d4939e376db",
+            "iswc": "T-010.304.058-9",
+            "iswc-list": [
+                "T-010.304.058-9"
+            ],
+            "language": "eng",
+            "title": "Run Runaway",
+            "type": "Song"
+        }
+    }
+]
+                        '''
+                    except:
+                        prt_dates.append("    NO ENTRY ['work-relation-list']")
+
+    with open(TMP_MBZ_GET1, "wb") as rec_f:
+        rec_f.write(json.dumps(recordings))  # Dump recording
+
+    with open(TMP_MBZ_DEBUG, "wb") as rec_f:
+        rec_f.write(json.dumps(prt_dates))
+
+    '''
+        "work-relation-list": [
+            {
+                "direction": "forward",
+                "target": "2416eae3-0b38-460e-8289-1d4939e376db",
+                "type": "performance",
+                "type-id": "a3005666-a872-32c3-ad06-98af558e99b0",
+                "work": {
+                    "id": "2416eae3-0b38-460e-8289-1d4939e376db",
+                    "iswc": "T-010.304.058-9",
+                    "iswc-list": [
+                        "T-010.304.058-9"
+                    ],
+                    "language": "eng",
+                    "title": "Run Runaway",
+                    "type": "Song"
+                }
+            }
+        ]
+    }
+    
+    '''
+    return
+
+
+# noinspection PyBroadException
+def get_work_info(target_id):
+    """ Get work information for target ID passed by recordings """
+
+    try:
+        # noinspection SpellCheckingInspection
+        ''' 
+            musicbrainzngs.get_work_by_id(
+                id, includes=[])
+
+            Get the work with the MusicBrainzid as a dict with a 
+            ‘work’ key. 
+            
+            Available includes: artists, aliases, annotation, tags, 
+            user-tags, ratings, user-ratings, area-rels, artist-rels, 
+            label-rels, place-rels, recording-rels, release-rels, 
+            release-group-rels, series-rels, url-rels, work-rels
+
+            WORKS:
+                includes=['work-rels', 'aliases', 'ratings', 'tags']
+                includes=['work-rels', 'aliases', 'ratings', 'tags',
+                          'recording-rels']  # lots of backwards
+                includes=['work-rels', 'aliases', 'ratings', 'tags',
+                          'work-level-rels']  # Doesn't add anyting
+                includes=['work-rels', 'aliases', 'ratings', 'tags',
+                          'release-rels']  # Doesn't add anything
+                includes=['work-rels', 'aliases', 'ratings', 'tags',
+                          'release-group-rels']  # Doesn't add anything
+        '''
+        try:
+            work = mbz.get_work_by_id(
+                target_id,
+                includes=['work-rels', 'aliases', 'ratings', 'tags']
+            )
+        except:
+            return {'error': '5'}
+
+    except:
+        return {'error': '5'}
+
+    '''
+    '''
+    return work
+
+
+def filter_releases(pass_back):
+    """ When more than one release, try to reduce hits for getting recordings """
+    del_list = []
+    for ndx, d in enumerate(pass_back):
+        if d['title'] != d['release-group']['title']:
+            # The first release group for disc #3 is invalid.
+            # d['title'] = "Greatest Hits of the Eighties, Volume 1"
+            # d['release-group']['title'] = "Greatest Hits of the 80's"
+            del_list.append(ndx)
+    for i in reversed(del_list):
+        pass_back.pop(del_list[i])
+
+
 if __name__ == "__main__":
 
     pass_back = get_disc_info()
 
-    # If a list isn't passed back that means an error dictionary is passed back
+    ''' An error dictionary may have been passed back '''
     if type(pass_back) is list:
-        first_pass = list(pass_back)
-        ''' For debugging save original mbz list in json format '''
-        with open(TMP_MBZ_GET1, "wb") as f:
-            f.write(json.dumps(pass_back))  # Save list of dictionaries
-
-        ''' add_track_info() appends to list parameter, only returns errors '''
-        #error_d = add_track_info(pass_back)
-        #if error_d:
-        #    pass_back = error_d    # Dictionary with {'error': '99'}
-        #else:
-        #    ''' For debugging save original mbz list in json format '''
-        #    both_passes = list(first_pass)
-        #    both_passes.extend(pass_back)
-        #    with open(TMP_MBZ_GET1, "wb") as f:
-        #        f.write(json.dumps(pass_back))  # Save list of dictionaries
-        #        #f.write(json.dumps(both_passes))  # Save list of dictionaries
-
-    else:
-        #print('pass_back is dictionary')
-        pass
+        ''' If more than one release. Filter out obvious junk. '''
+        if len(pass_back) > 1:
+            filter_releases(pass_back)
+        ''' Find first release date '''
+        get_date_info(pass_back)
 
     with open(DICT_FNAME, "wb") as f:
-        # store the data as binary data stream
-        pickle.dump(pass_back, f)           # Save dictionary as pickle file
-        #pickle.dump(pass_back, f, -1)           # Save dictionary as pickle file
-
-    ''' Debugging output
-        [{"status": "Official", "artist-credit": 
-          [{"artist": 
-            {"sort-name": "Various Artists", 
-             "disambiguation": "add compilations to this artist", 
-             "type": "Other", "id": "89ad4ac3-39f7-470e-963a-56509c546377", 
-             "name": "Various Artists"}}], 
-             "barcode": "074645137520", 
-             "title": "Greatest Hits of the Eighties, Volume 1", 
-             "release-event-count": 1, 
-             "medium-count": 3, 
-             "cover-art-archive": 
-              {"count": "0", "front": "false", "back": "false", 
-               "artwork": "false"}, 
-             "release-event-list": 
-              [
-               {"date": "2001", 
-                "area": 
-                 {"sort-name": "United States", 
-                  "iso-3166-1-code-list": ["US"], 
-                  "id": "489ce91b-6658-3307-9877-795b68554c98", 
-                  "name": "United States"}}], 
-                  "medium-list": 
-                   [
-                    {"position": "1", 
-                    "track-count": 14, 
-                    "format": "CD", 
-                    "disc-list": 
-                     [
-                      {"id": "T2nU4GVmBnL6VTLLWYTaa9CnWJY-", 
-                       "sectors": "301598"}], 
-                    "track-list": 
-                    [
-                     {"recording": 
-                      {"length": "290840", 
-                       "id": "8b7bf5b2-3566-4eaf-9c5e-54f75dbf9886", 
-                       "title": "You\u2019re a Friend of Mine"}, 
-                       "length": "290506", 
-                       "title": "You're a Friend of Mine", 
-                       "position": "1", 
-                       "track_or_recording_length": "290506", 
-                       "id": "4bdacbc6-f71d-3499-a12e-aaa9449a8145", 
-                       "number": "1"}, 
-                     {"recording": 
-                      {"length": "226773", 
-                       "id": "04888d33-8325-46b4-9702-4d443a8d3ba7", 
-                       "title": "867-5309 / Jenny"}, 
-                       "length": "225000", 
-                       "title": "867-5309-Jenny", 
-                       "position": "2", 
-                       "track_or_recording_length": "225000", 
-                       "id": "6230bdae-8d40-32ad-83ff-33fd798aabf8", 
-                       "number": "2"}, 
-                      {"number": "3", 
-                       "recording": 
-                       {"length": "213493", 
-                        "id": "5df542a8-95ea-4408-a3bf-60d06e36cce4", 
-                        "title": "Love My Way"}, 
-                       "length": "213493", 
-                       "position": "3", 
-                       "id": "b534d46c-86ad-398e-a3ae-68d120c3e9bc", 
-                       "track_or_recording_length": "213493"}, 
-                      {"number": "4", 
-                       "recording": 
-                        {"length": "326333", 
-                        "id": "3ec6d221-1306-4aec-a1f6-d1e026568586", 
-                        "title": "Rockit"}, 
-                       "length": "326333", 
-                       "position": "4", 
-                       "id": "0661e2df-1ff7-3135-83bc-c05f3c4a8399", 
-                       "track_or_recording_length": "326333"}, 
-                      {"number": "5", 
-                       "recording": 
-                       {"length": "418690", 
-                        "id": "d17185df-a693-4bdf-8b43-9ab55881d1fb", 
-                        "title": "Total Eclipse of the Heart"}, 
-                       "length": "418173", 
-                       "position": "5", 
-                       "id": "c0c837c2-5dfd-324f-9b2b-4f84daf6194f", 
-                       "track_or_recording_length": "418173"}, 
-                       {"recording": 
-                        {"length": "299506", 
-                         "id": "712a69fb-c0aa-458d-bd7f-8057d668f0c5", 
-                         "title": "Flirtin\u2019 With Disaster"}, 
-                        "length": "299493", 
-                        "title": "Flirtin' With Disaster", 
-                        "position": "6", 
-                        "track_or_recording_length": "299493", 
-                        "id": "01c74762-380d-373e-8868-db2f7393b64e", 
-                        "number": "6"}, 
-                      {"number": "7", 
-                       "recording": 
-                        {"length": "239173", 
-                         "id": "07052374-4616-4ad3-ace7-b7344ba7fb2f", 
-                         "title": "China"}, 
-                       "length": "239173", 
-                       "position": "7", 
-                       "id": "441fd050-a956-38ae-87f4-dcaed2e8baf0", 
-                       "track_or_recording_length": "239173"}, 
-                      {"number": "8", 
-                       "recording": 
-                        {"length": "241000", 
-                         "id": "c34d575b-328d-4eb9-87a2-68ad87085ec8", 
-                         "title": "Take It on the Run"}, 
-                       "length": "240826", 
-                       "position": "8", 
-                       "id": "c4cbe81c-98e1-363d-86ee-b41140d9e837", 
-                       "track_or_recording_length": "240826"}, 
-                      {"number": "9", "recording": {"length": "355666", "id": "d8e25c51-d928-4ed7-b7e1-2ff16026fc6f", "title": "All You Zombies"}, "length": "355666", "position": "9", "id": "8e59c5aa-d0c3-3614-bef4-8f8468bab81f",    
-    '''
-
+        pickle.dump(pass_back, f)   # Write good list or error dictionary
 
 
 # End of mbz_get1.py

@@ -20,20 +20,6 @@ from __future__ import with_statement  # Error handling for file opens
 #
 #==============================================================================
 
-""" TODO:
-        Remove: WIN_MIN_WIDTH = 142
-                WIN_MIN_HEIGHT = 63
-                MED_FONT = 10                       # Medium Font size
-                MON_FONTSIZE = 11                   # Medium Font size
-
-        Use: g. equivalents from global_variables.py
-
-        Create self.message_waiting() called by every function to lift
-            message window to top of window stack and return true so
-            caller can do it's own return. If lifting window it is
-            shaken around to give attention to user.
-"""
-
 import pprint
 
 try:
@@ -66,17 +52,14 @@ import datetime
 import webbrowser
 
 # mserve modules
+import global_variables as g        # should be self-explanatory
+if g.USER is None:
+    print('message.py was forced to run g.init()')
+    g.init()  # Background job so always runs
 import image as img
 import external as ext              # For timings
 import timefmt as tmf               # Format hh:mm:ss.hh
 import toolkit
-
-# Values from gnome-terminal to prevent window shrinking too small
-WIN_MIN_WIDTH = 142
-WIN_MIN_HEIGHT = 63
-
-MED_FONT = 10                       # Medium Font size
-MON_FONTSIZE = 11                   # Medium Font size
 
 
 class Open:
@@ -88,7 +71,7 @@ class Open:
 
     def __init__(self, title, toplevel, width, height):
         """ Mount message textbox window centered in toplevel or at mouse
-        
+            Used by mserve.py and location.py
             USAGE:
             
                 tb = message.Open("title", toplevel, width, height)
@@ -103,6 +86,11 @@ class Open:
         self.line_cnt = 0                   # Message lines displayed so far
 
     def update(self, msg_line):
+        """
+        Add new line to message box
+        :param msg_line:
+        :return: Nothing but can print error messages.
+        """
         # TODO: Why is ndx always 'None'?
         ndx = self.textbox.insert(tk.END, msg_line + '\n')
         try:
@@ -116,6 +104,7 @@ class Open:
         # time.sleep(.1)
 
     def close(self):
+        """ Close message box """
         # self.textbox.insert(tk.END, "CLOSING DOWN NOW")
         # self.msg_top.update()
         # time.sleep(.5)
@@ -124,9 +113,11 @@ class Open:
 
 
 def common_code(title, toplevel, width, height):
-    """ Mount message textbox window centered in toplevel or at mouse """
+    """ Mount message textbox window centered in toplevel or at mouse
+        Called by .Open() and .DelayedTextBox()
+    """
     msg_top = tk.Toplevel()
-    msg_top.minsize(WIN_MIN_WIDTH, WIN_MIN_HEIGHT)
+    msg_top.minsize(g.WIN_MIN_WIDTH, g.WIN_MIN_HEIGHT)
     msg_top.title(title)
 
     ''' If toplevel passed use it's co-ordinates, else use mouse's '''
@@ -145,7 +136,7 @@ def common_code(title, toplevel, width, height):
         y = 0
     msg_top.geometry('%dx%d+%d+%d' % (width, height, x, y))
     text_box = tk.Text(msg_top, height=height, width=width,
-                       font=(None, MED_FONT))
+                       font=(None, g.MED_FONT))
     # Note pack is located in caller
     return msg_top, text_box
 
@@ -278,8 +269,9 @@ class CommonSelf:
         Must appear before first reference (ShowInfo)
     """
 #    def __init__(self, parent, title=None, text=None, confirm='yes',
-    def __init__(self, parent, text=None, confirm='yes',
-                 align='center', thread=None, icon='warning', help=None):
+    def __init__(self, parent, text=None, confirm='yes', align='center',
+                 thread=None, icon='warning', string=None, string_width=None,
+                 help=None):
 
         self.top_level = parent     # Allows .after() calls
         self.confirm = confirm      # Append "Are you sure?" line?
@@ -299,11 +291,18 @@ class CommonSelf:
         self.help = help            # Future help button linking to mserve.md
 
         self.entry = None           # Tkinter Entry widget
-        self.string = ""            # What the user has entered (AskString)
+        if string:
+            self.string = string    # Default value passed for AskString
+        else:
+            self.string = ""        # Entry field will initially be blank
+        if string_width:
+            self.string_width = string_width
+        else:
+            self.string_width = 28  # Size of string .Entry variable
         self.result = None          # Defined in simpledialog already
-        # MON_FONTSIZE may not be defined globally
+        # g.MON_FONTSIZE may not be defined globally
         try:
-            self.font = (None, MON_FONTSIZE)
+            self.font = (None, g.MON_FONTSIZE)
         except NameError:
             self.font = (None, 10)
 
@@ -316,7 +315,7 @@ class ShowInfo(simpledialog.Dialog, CommonSelf):
         Prepends and appends "\n" to text passed.
     """
     def __init__(self, parent=None, title=None, text=None, align='center',
-                 thread=None, confirm='no', icon='information'):
+                 thread=None, confirm='no', icon='info'):
 
         #        CommonSelf.__init__(self, parent, title=title, text=text, confirm=confirm,
         CommonSelf.__init__(self, parent, text=text, confirm=confirm,
@@ -324,6 +323,7 @@ class ShowInfo(simpledialog.Dialog, CommonSelf):
         simpledialog.Dialog.__init__(self, parent, title=title)
 
     def body(self, parent):
+        """ Wrapper to body_func in mainline """
         return body_func(self)
 
     def buttonbox(self):
@@ -369,7 +369,7 @@ def set_icon_image(icon):
         icon_image = "::tk::icons::warning"
     elif icon is "error":
         icon_image = "::tk::icons::error"
-    elif icon is "information":
+    elif icon is "info":
         icon_image = "::tk::icons::information"
     elif icon is "question":
         icon_image = "::tk::icons::question"
@@ -470,7 +470,7 @@ class AskQuestion(simpledialog.Dialog, CommonSelf):
         Appends "\n\nAre you sure?\n" to text passed.
         Allows text to be highlighted and copied to clipboard with CTRL+C.
         Blocks other windows from getting focus
-        MON_FONTSIZE is temporary font size until configuration file set up.
+        g.MON_FONTSIZE is temporary font size until configuration file set up.
 
         BUGS:
         April 24, 2023 - When 'no' click was returning: 139944643864048.139944641065544
@@ -568,15 +568,16 @@ class AskString(simpledialog.Dialog, CommonSelf):
         Appends Entry field after "Input:"
         Allows text to be highlighted and copied to clipboard with CTRL+C.
         Blocks other windows from stealing focus
-        MON_FONTSIZE is temporary font size until configuration file set up.
+        g.MON_FONTSIZE is temporary font size until configuration file set up.
     """
 
     def __init__(self, parent, title=None, text=None, confirm='no',
-                 align='center', thread=None, icon='question'):
+                 align='center', thread=None, icon='question', string=None,
+                 string_width=None):
 
-        #        CommonSelf.__init__(self, parent, title=title, text=text, confirm=confirm,
-        CommonSelf.__init__(self, parent, text=text, confirm=confirm,
-                            align=align, thread=thread, icon=icon)
+        CommonSelf.__init__(self, parent, text=text, confirm=confirm, 
+                            align=align, thread=thread, icon=icon,
+                            string=string, string_width=string_width)
 
         simpledialog.Dialog.__init__(self, parent, title=title)
 
@@ -587,8 +588,7 @@ class AskString(simpledialog.Dialog, CommonSelf):
         return self.textbox
 
     def body(self, parent):
-        """
-        """
+        """ Format passed text into body and setup .Entry input field. """
         self.text = "\n" + self.text + "\n"
         if self.confirm is 'yes':
             self.text = self.text + "\nAre you sure?\n"
@@ -615,7 +615,8 @@ class AskString(simpledialog.Dialog, CommonSelf):
         tk.Label(self, text="Input or Paste below:",
                  font=self.font).pack(fill="none", padx=5)
         self.entry = tk.Entry(self, font=self.font, insertbackground="white",
-                              bg="#282B2B", fg="white", width=28)
+                              bg="#282B2B", fg="white", width=self.string_width)
+        self.entry.insert(tk.END, self.string)
         self.entry.pack(fill="none", padx=5, expand=True)
         self.entry.focus_set()
 
@@ -1421,7 +1422,7 @@ class ToolTip(object):
 #        label = tk.Label(tw, text=self.text, justify=tk.LEFT,
         label = tk.Label(tw, text=new_text, justify=tk.LEFT,
                          background=self.bg, foreground=self.fg, relief=tk.SOLID,
-                         borderwidth=2, pady=10, padx=10, font=(None, MED_FONT))
+                         borderwidth=2, pady=10, padx=10, font=(None, g.MED_FONT))
         label.pack(ipadx=2)
 
         #root.update()

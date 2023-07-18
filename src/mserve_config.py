@@ -324,6 +324,7 @@ def make_msg_cfg():
     cfg.append(make_dict(m, None, "time"))
     cfg.append(make_dict(m, None, "datetime"))
     cfg.append(make_dict(m, None, "webbrowser"))
+    cfg.append(make_dict(m, "g", "global_variables", "pippim.com"))
     cfg.append(make_dict(m, "img", "image", "pippim.com"))
     cfg.append(make_dict(m, "ext", "external", "pippim.com"))
     cfg.append(make_dict(m, "tmf", "timefmt", "pippim.com"))
@@ -565,7 +566,6 @@ def make_mbz1_cfg():
     cfg.append(make_dict(m, "discid", "libdiscid", d3, "3", "python3-libdiscid"))
     cfg.append(make_dict(m, "discid", "libdiscid", d3, "2", "python-libdiscid"))
     # Pippim modules
-    cfg.append(make_dict(m, "lc", "location", "pippim.com"))
     cfg.append(make_dict(m, None, "message", "pippim.com"))
     cfg.append(make_dict(m, "img", "image", "pippim.com"))
     cfg.append(make_dict(m, "g", "global_variables", "pippim.com"))
@@ -612,7 +612,6 @@ def make_mbz2_cfg():
     cfg.append(make_dict(m, "mbz", "musicbrainzngs", d2, "3", "python3-musicbrainzngs"))
     cfg.append(make_dict(m, "mbz", "musicbrainzngs", d2, "2", "python-musicbrainzngs"))
     # Pippim modules
-    cfg.append(make_dict(m, "lc", "location", "pippim.com"))
     cfg.append(make_dict(m, "g", "global_variables", "pippim.com"))
     return cfg
 

@@ -56,17 +56,16 @@ def main():
     ''' Create splash window centered on active monitor '''
     splash = tk.Tk()  # Tkinter toplevel window
     splash.wm_attributes('-type', 'splash')  # No window decorations
-    splash.minsize(size, size)
     monitor.center(splash)
 
     ''' Create Big "M" Splash Image '''
     m_img = img.m_splash_image(size, 'white', 'lightskyblue', 'black')
-    canvas = tk.Canvas(width=size, bg='black', highlightthickness=0)
-    canvas.pack(expand=tk.YES, fill=tk.BOTH)
+    canvas = tk.Canvas(width=size, height=size, bg='black', highlightthickness=0)
+    canvas.pack()
     canvas.create_image(0, 0, image=m_img, anchor=tk.NW)
     splash.update_idletasks()  # This is required for visibility
 
-    ''' Change working directory for python modules '''
+    ''' Change to working path - same code in m and mserve.py '''
     cwd = os.getcwd()  # First save the current working directory
     dir_path = os.path.dirname(os.path.realpath(__file__))
     if cwd != dir_path:

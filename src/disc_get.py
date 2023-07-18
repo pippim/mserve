@@ -25,39 +25,6 @@ import pickle                               # Save discid dictionary to file
 import libdiscid as discid                  # C program to read CD's TOC
 
 DICT_FNAME = sys.argv[1]                    # Pickle filename to save to
-# noinspection SpellCheckingInspection
-"""
-
-From: https://buildmedia.readthedocs.org/media/pdf/python-discid/v1.1.0/python-discid.pdf
-
-1.2.4 Fetching Metadata
-=======================
-
-You can use python-musicbrainz-ngs to fetch metadata for your disc.
-The relevant function is musicbrainzngs.get_releases_by_discid():
-
-import discid
-import musicbrainzngs
-
-musicbrainzngs.set_useragent("python-discid-example", "0.1", "your@mail")
-
-disc = discid.read()
-try:
-    result = musicbrainzngs.get_releases_by_discid(disc.id,
-    includes=["artists"])
-except musicbrainzngs.ResponseError:
-    print("disc not found or bad response")
-else:
-    if result.get("disc"):
-        print("artist:\t%s" %
-            result["disc"]["release-list"][0]["artist-credit-phrase"])
-
-    elif result.get("cdstub"):
-        print("artist:\t" % result["cdstub"]["artist"])
-        print("title:\t" % result["cdstub"]["title"])
-        
-You can fetch much more data. See musicbrainzngs for detail
-"""
 
 
 def get_discid():

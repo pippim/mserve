@@ -23,14 +23,19 @@ from __future__ import with_statement  # Error handling for file opens
 #       May. 07 2023 - Convert gmtime to localtime. Before today needs update.
 #       Jun. 04 2023 - Use OsFileNameBlacklist() class for reading by song
 #       July 12 2023 - Interface to/from mserve_config.py
-#       July 13 2023 - New database with LastPlayTime field.
+#       July 13 2023 - Add Music columns: LastPlayTime, DiscNumber, AlbumDate,
+#                      FirstDate, (was ReleaseDate), CreationTime, Composer
+#       July 18 2023 - Add Music columns: AlbumArtist & Compilations
 
 #   TODO:
+
+#   Update encoding.py to grab FirstDate (DONE) and Composer (Doesn't Work!)
+#       Recognize compilations and set AlbumArtist to "Various Artists" and
+#       store in subdirectory under /Compilations
 
 #   Create new field LastPlayTime (over 80% of song was played)
 #   Change lib_tree "Count / Last Access" to " Count / Last Access or Play"
 #   Create Fix function to touch All Files with OsAccessTime
-#   Create new_library.py function that copies old library.db to new one
 #   Replace FileControl.touch_it() with FileControl.set_last_played_time()
 #   Create FileControl.get_last_played_time() for lib_tree display when N/A
 #       use st.atime() instead.
@@ -239,6 +244,8 @@ def open_db():
                 "OsFileName TEXT, OsAccessTime FLOAT, OsModifyTime FLOAT, " +
                 "OsChangeTime FLOAT, OsFileSize INT, " +
                 "Title TEXT, Artist TEXT, Album TEXT, " +
+                # Change ReleaseDate to FirstDate and RecordingDate to AlbumYear
+                # For old iTunes stuff initialize AlbumYear with FirstYear.
                 "ReleaseDate TEXT, RecordingDate TEXT, " +
                 "CreationTime TEXT, DiscNumber TEXT, TrackNumber TEXT, " +
                 "Rating TEXT, Genre TEXT, Composer TEXT, " +
@@ -273,6 +280,7 @@ def open_db():
     con.execute("CREATE INDEX IF NOT EXISTS TypeActionIndex ON " +
                 "History(Type, Action)")
 
+    ''' For mserve.py rename_file() function to rename "the" to "The" '''
     con.execute("PRAGMA case_sensitive_like = ON;")
 
     '''
@@ -283,7 +291,7 @@ def open_db():
                 groups = os_name.split(os.sep)
                 Artist = str(groups [START_DIR_SEP+1])
                 Album = str(groups [START_DIR_SEP+2])
-                Song = str(groups [START_DIR_SEP+3])
+                Title = str(groups [START_DIR_SEP+3])
 
             (last_playlist and last_selections uses the same record format)
 
@@ -739,6 +747,17 @@ def update_metadata(key, artist, album, title, genre, tracknumber, date,
         Update metadata in library and insert history record:
             'meta' 'init' for first time
             'meta' 'edit' for 2nd and subsequent changes
+
+         What is the correct iTunes song date?
+
+        If there is only one YEAR per iTunes song, should it be the:
+            1. original song creator's publishing YEAR?
+            2. YEAR as published by the Cover Artist?
+            3. Apple Reissued YEAR version date?
+
+        Id3v2 has the "TORY" (Original Release Year) frame
+        foobar calls it "ORIGINAL RELEASE DATE" 
+
     """
 
     # noinspection SpellCheckingInspection
@@ -759,7 +778,7 @@ def update_metadata(key, artist, album, title, genre, tracknumber, date,
 
     if date:
         if type(date) is str:
-            if date == "None":
+            if date == "None":  # sting value "None" !!!
                 # See "She's No Angel" by April Wine.
                 date = None
         elif type(date) is float:
@@ -1796,12 +1815,14 @@ def load_ctl():
 
 
 class PrettyMusic:
-    """ Popup menu for 'View Current Row'. """
+    """ SQL Music Table viewer Popup menu for 'View Current Row'. 
+        Also called from Music Location Tree popup menu for music file.
+    """
 
     def __init__(self, sql_row_id, calc=None):
         """ 
             Build a pretty dictionary with user friendly field names
-            Values are from current treeview row for SQL Row
+            Values are from current treeview row for SQL Row. See note above.
 
             The pretty dictionary is passed to mserve.py functions.
 

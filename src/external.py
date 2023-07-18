@@ -348,12 +348,14 @@ def legalize_filename(name):
 def legalize_song_name(name):
     """ Only one '.' can appear in pathname. Replace first ones with "_"
     """
-    name = legalize_most(name)
-    if name.endswith("."):  # In Windows files can end in `.`
+    name = legalize_filename(name)
+    if name.endswith("."):  # In Windows files cannot end in `.`
         name = name[:-1]
+    ''' Skip this because iTunes allowed "Vol. 1.m4a" in filename 
     ext = name.count('.')  # How many extension characters?
     if ext > 1:
         name = name.replace('.', '_', ext - 1)  # Keep last extension
+    '''
     return name
 
 
