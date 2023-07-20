@@ -32,9 +32,51 @@ from __future__ import with_statement  # Error handling for file opens
 # ==============================================================================
 # noinspection SpellCheckingInspection
 """
-Solves problems like:
-    https://askubuntu.com/questions/541977/
-    a-music-player-with-cd-ripping-and-cddb-lookup/542030#542030
+TODO:
+
+Grab FirstDate (DONE) and Composer (Doesn't Work!) so set to Artist.
+Set Genre same for all songs when one Genre is entered.
+Set Composer to Artist Name.
+Set AlbumArtist to "Various Artists" when Compilation = "1". Store in /Compilations
+Set Comment to entry variable at time of ripping.
+
+Double click on cd_tree row to edit:
+    Title Line - FirstYear & Genre
+    Release Line - AlbumArtist, Album & Compilation Flag (Use True/False)
+    Date Line - The AlbumDate
+Before ripping, all the line variables above are presented for final override.
+Also extra line with Comment about Album.
+
+M4A support:
+    https://mutagen.readthedocs.io/en/latest/api/mp4.html
+
+MP3 support:
+    https://mutagen.readthedocs.io/en/latest/api/mp3.html
+
+ID3 Tag reference:
+    https://mutagen.readthedocs.io/en/latest/api/id3.html
+
+How ffmpeg uses tags:
+    https://gist.github.com/eyecatchup/0757b3d8b989fe433979db2ea7d95a01
+    E.G.
+
+Windows      ID3v1.1 ID3v2.3 iTunes      Low-level ffmpeg key   ffmpeg example
+Album Artist   n/a 	  TPE2   Album Artist   aART   album_artist -metadata album_artist="Artist Name"
+
+Music Brainz NGS reference:
+https://buildmedia.readthedocs.org/media/pdf/python-musicbrainz-ngs-jonnyjd/latest/python-musicbrainz-ngs-jonnyjd.pdf
+
+
+    What is the correct iTunes song date?
+    -------------------------------------
+    If there is only one YEAR per iTunes song, should it be the:
+        1. original song creator's publishing YEAR?
+        2. YEAR as published by the Cover Artist?
+        3. Apple Reissued YEAR version date?
+    
+    Id3v2 has the "TORY" (Original Release Year) frame
+    foobar calls it "ORIGINAL RELEASE DATE"
+        
 """
 
 # Must be before tkinter and released from interactive. Required to insert
@@ -73,6 +115,7 @@ try:  # Python 3
     import tkinter.messagebox as messagebox
     import tkinter.scrolledtext as scrolledtext
     import tkinter.simpledialog as simpledialog
+
     PYTHON_VER = "3"
 except ImportError:  # Python 2
     import Tkinter as tk
@@ -82,6 +125,7 @@ except ImportError:  # Python 2
     import tkMessageBox as messagebox
     import ScrolledText as scrolledtext
     import tkSimpleDialog as simpledialog
+
     PYTHON_VER = "2"
 # print ("Python version: ", PYTHON_VER)
 from PIL import Image, ImageTk, ImageDraw, ImageFont
@@ -89,9 +133,11 @@ from ttkwidgets import CheckboxTreeview
 
 try:
     import subprocess32 as sp
+
     SUBPROCESS_VER = '32'
 except ImportError:  # No module named subprocess32
     import subprocess as sp
+
     SUBPROCESS_VER = 'native'
 import sys
 import os
@@ -112,10 +158,10 @@ import global_variables as g
 import location as lc
 import external as ext
 import toolkit
-import monitor                  # To get/save window geometry
+import monitor  # To get/save window geometry
 import message
 import image as img
-import timefmt as tmf           # Aug 13/2021 switch over to tmf abbreviation
+import timefmt as tmf  # Aug 13/2021 switch over to tmf abbreviation
 import sql
 
 EMAIL_ADDRESS = "pippim.com@gmail.com"  # TODO - setup variable in SQL History
@@ -123,7 +169,7 @@ EMAIL_ADDRESS = "pippim.com@gmail.com"  # TODO - setup variable in SQL History
 
 ''' File with dictionaries in pickle format passed between background jobs '''
 IPC_PICKLE_FNAME = g.TEMP_DIR + "mserve_encoding_pickle"
-RIP_CD_IS_ACTIVE = False        # Read by mserve.py
+RIP_CD_IS_ACTIVE = False  # Read by mserve.py
 
 
 # ==============================================================================
@@ -145,51 +191,51 @@ class RipCD:
         global RIP_CD_IS_ACTIVE
 
         self.lib_top = toplevel  # Use same variable name as mserve
-        self.tt = tooltips                  # Hovering fading tooltips
-        self.info = info                    # Information Centre               
-        RIP_CD_IS_ACTIVE = True             # Shared with mserve
-        self.topdir = LODICT['topdir']      # What if there is no location dict?
+        self.tt = tooltips  # Hovering fading tooltips
+        self.info = info  # Information Centre               
+        RIP_CD_IS_ACTIVE = True  # Shared with mserve
+        self.topdir = LODICT['topdir']  # What if there is no location dict?
         self.caller_disc = caller_disc  # Development reuse last disc ID
-        self.get_refresh_thread = thread    # returns refresh_Xxx_top()
-        self.disc = None                    # from python-libdiscid
-        self.disc_count = None              # How many discs in Album?
-        self.this_disc_number = None        # What is current disc number?
-        self.release_list = None            # Musicbrainz release list
-        self.rip_art = None                 # List of art images to encode
-        self.rotated_art = None             # Spinning album artwork
-        self.play_current_song_art = None   # Photo image of rotated art
-        self.image_data = None              # Image encoded into file
-        self.selected_medium = None         # Musicbrainz dictionary
-        self.image_count = None             # Album artwork selected
-        self.selected_date = None           # Date from MBZ or User
+        self.get_refresh_thread = thread  # returns refresh_Xxx_top()
+        self.disc = None  # from python-libdiscid
+        self.disc_count = None  # How many discs in Album?
+        self.this_disc_number = None  # What is current disc number?
+        self.release_list = None  # Musicbrainz release list
+        self.rip_art = None  # List of art images to encode
+        self.rotated_art = None  # Spinning album artwork
+        self.play_current_song_art = None  # Photo image of rotated art
+        self.image_data = None  # Image encoded into file
+        self.selected_medium = None  # Musicbrainz dictionary
+        self.image_count = None  # Album artwork selected
+        self.selected_date = None  # Date from MBZ or User
 
         # Ripping '#' multiple disc #. '99 - ' or '99 ' track numbering
-        self.song_name = None               # checked Song title from treeview '#-99 -'
-        self.os_song_name = None            # '#-99 Song name.xxx'
-        self.os_full_path = None            # top_dir/artist/album/#-99 Song name.xxx
-        self.sqlOsFileName = None            # artist/album/#-99 Song name.xxx
-        self.is_compilation = None          # True/False flag.
+        self.song_name = None  # checked Song title from treeview '#-99 -'
+        self.os_song_name = None  # '#-99 Song name.xxx'
+        self.os_full_path = None  # top_dir/artist/album/#-99 Song name.xxx
+        self.sqlOsFileName = None  # artist/album/#-99 Song name.xxx
+        self.is_compilation = None  # True/False flag.
         # When artist is "Various Artists" the directory is "Compilations" but
         # The metadata will contain real Artist Name, not "Compilations"
-        self.song_duration = None           # Song duration string "hh:mm:ss"
-        self.song_seconds = None            # Above in seconds
-        self.song_size = None               # Song file size
-        self.DiscNumber = None              # July 13, 2023
-        self.CreationTime = None            # Initially same as stat.st_ctime
-        self.rip_current_track = None       # Current track number start at 1
-        self.song_rip_sec = 0               # How many seconds and blocks
-        self.song_rip_blk = 0               # have been ripped for song?
-        self.total_rip_sec = 0              # How many seconds and blocks
-        self.total_rip_blk = 0              # ripped for selections?
+        self.song_duration = None  # Song duration string "hh:mm:ss"
+        self.song_seconds = None  # Above in seconds
+        self.song_size = None  # Song file size
+        self.DiscNumber = None  # July 13, 2023
+        self.CreationTime = None  # Initially same as stat.st_ctime
+        self.rip_current_track = None  # Current track number start at 1
+        self.song_rip_sec = 0  # How many seconds and blocks
+        self.song_rip_blk = 0  # have been ripped for song?
+        self.total_rip_sec = 0  # How many seconds and blocks
+        self.total_rip_blk = 0  # ripped for selections?
 
         # Pulsating shades of green indicating which song is being ripped
         self.last_highlighted = None
         self.last_shade = None
         self.curr_shade = None
-        self.skip_once = False              # First time through no last shade
+        self.skip_once = False  # First time through no last shade
         self.next_image_key_ndx = 0
         # Tree view
-        self.reverse_checkbox = None        # User picked illogically
+        self.reverse_checkbox = None  # User picked illogically
 
         ''' Set font style for all fonts including tkSimpleDialog.py '''
         img.set_font_style()
@@ -198,9 +244,9 @@ class RipCD:
         self.cd_top = tk.Toplevel()
         self.cd_top_is_active = True
         self.cd_top.minsize(width=g.WIN_MIN_WIDTH, height=g.WIN_MIN_HEIGHT)
-        #x = self.lib_top.winfo_x() + g.PANEL_HGT
-        #y = self.lib_top.winfo_y() + g.PANEL_HGT
-        #geom = '%dx%d+%d+%d' % (1400, 975, x, y)
+        # x = self.lib_top.winfo_x() + g.PANEL_HGT
+        # y = self.lib_top.winfo_y() + g.PANEL_HGT
+        # geom = '%dx%d+%d+%d' % (1400, 975, x, y)
         geom = monitor.get_window_geom('encoding')
         self.cd_top.geometry(geom)
         self.cd_top.title("Reading CD - mserve")
@@ -209,7 +255,7 @@ class RipCD:
         self.cd_top.rowconfigure(0, weight=1)
 
         ''' Set delayed message box coordinates relative to cd_top '''
-        #dtb = message.DelayedTextBox(title="Building music view",
+        # dtb = message.DelayedTextBox(title="Building music view",
         #                             toplevel=self.cd_top, width=1000)
 
         ''' Set program icon in taskbar '''
@@ -267,7 +313,7 @@ class RipCD:
                "\tthen a pop-up window will appear to enter date.\n\n")
 
         self.mbAuthorization = sql.Authorization(
-            self.cd_top, "MusicBrainz", http,  msg, tt=tooltips)
+            self.cd_top, "MusicBrainz", http, msg, tt=tooltips)
 
         ''' Scrollable textbox to show selections / ripping status '''
         Quote = ("It will take a minute to access Audio CD and the internet.\n" +
@@ -334,7 +380,6 @@ class RipCD:
             t.bind("<Double-Button-1>", on_double_click)
 
         '''
-
 
         ''' Treeview List Box, Columns and Headings '''
         self.cd_tree = CheckboxTreeview(
@@ -426,10 +471,10 @@ class RipCD:
             frame3, text="▶  Rip Disc", width=g.BTN_WID, command=self.rip_cd)
         self.cd_tree_btn2.grid(row=0, column=1, padx=2)
         text = \
-            "First select songs on CD to rip. Then select artwork from\n" +\
-            "available sources or insert new artwork from clipboard.\n" +\
-            "Finally ensure optional fields such as release date are\n" +\
-            "either selected or manually entered.\n\n" +\
+            "First select songs on CD to rip. Then select artwork from\n" + \
+            "available sources or insert new artwork from clipboard.\n" + \
+            "Finally ensure optional fields such as release date are\n" + \
+            "either selected or manually entered.\n\n" + \
             'After all that, click this "▶  Rip Disc" button'
 
         self.tt.add_tip(self.cd_tree_btn2, text=text)
@@ -443,9 +488,9 @@ class RipCD:
         self.image_from_clipboard_count = 0
         self.clipboard_images = []
         text = \
-            "In your browser navigate to sites containing album cover\n" +\
-            "artwork such as Amazon, Wikipedia, Musicbrainz, etc.\n" +\
-            "Right click on images and copy to clipboard. Then return\n" +\
+            "In your browser navigate to sites containing album cover\n" + \
+            "artwork such as Amazon, Wikipedia, Musicbrainz, etc.\n" + \
+            "Right click on images and copy to clipboard. Then return\n" + \
             'here and insert image using "📋  Clipboard image" button'
         self.tt.add_tip(self.cd_tree_btn3, text=text)
 
@@ -467,12 +512,12 @@ class RipCD:
         mb.add_cascade(label=" Format ▼ ", menu=fmt_bar, font=ms_font)
 
         text = \
-            "The Format dropdown menu allows you to pick the encoding\n" +\
-            "technology for creating music files.  WAV files are original\n" +\
-            "CD format with no images or ID tags such as album, artist or\n" +\
-            "song names.  FLAC files provide same quality as WAV files\n" +\
-            "and allow images and ID tags.  Both WAV and FLAC files take\n" +\
-            "the largest space, about 35 MB.  OGA files balance size, about\n" +\
+            "The Format dropdown menu allows you to pick the encoding\n" + \
+            "technology for creating music files.  WAV files are original\n" + \
+            "CD format with no images or ID tags such as album, artist or\n" + \
+            "song names.  FLAC files provide same quality as WAV files\n" + \
+            "and allow images and ID tags.  Both WAV and FLAC files take\n" + \
+            "the largest space, about 35 MB.  OGA files balance size, about\n" + \
             "6 MB, and quality with image and ID tag support."
         self.tt.add_tip(fmt_bar, text=text, tool_type='menu')
 
@@ -508,11 +553,11 @@ class RipCD:
             variable=self.quality_var)
         mb.add_cascade(label=" Quality ▼ ", menu=quality_bar, font=ms_font)
         text = \
-            "The Quality dropdown menu allows you to pick the encoding\n" +\
-            "sound quality for creating music files.  WAV files and FLAC\n" +\
-            "files are always 100% sound quality.  OGA files can have the\n" +\
-            "quality set from 30% to 100%.  The higher quality the larger\n" +\
-            "size for the music file.  For OGA 70% appears the best balance\n" +\
+            "The Quality dropdown menu allows you to pick the encoding\n" + \
+            "sound quality for creating music files.  WAV files and FLAC\n" + \
+            "files are always 100% sound quality.  OGA files can have the\n" + \
+            "quality set from 30% to 100%.  The higher quality the larger\n" + \
+            "size for the music file.  For OGA 70% appears the best balance\n" + \
             "between quality and file size.  Do some tests for yourself."
         self.tt.add_tip(quality_bar, text=text, tool_type='menu', anchor="sw")
 
@@ -528,11 +573,11 @@ class RipCD:
             value="99 - ", variable=self.nam_var)
         mb.add_cascade(label=" Naming ▼ ", menu=nam_bar, font=ms_font)
         text = \
-            "The Naming dropdown menu allows you to choose the filenames\n" +\
-            "assigned to music files.  The extension is automatic where\n" +\
-            'WAV files are assigned as ".wav", FLAC files are assigned as\n' +\
-            '".flac" and OGA files are assigned as ".oga". You can however\n' +\
-            'choose the prefix of "99 " or "99 - " to prepend to filenames.\n\n' +\
+            "The Naming dropdown menu allows you to choose the filenames\n" + \
+            "assigned to music files.  The extension is automatic where\n" + \
+            'WAV files are assigned as ".wav", FLAC files are assigned as\n' + \
+            '".flac" and OGA files are assigned as ".oga". You can however\n' + \
+            'choose the prefix of "99 " or "99 - " to prepend to filenames.\n\n' + \
             "Where '99' is the track number of the song."
         self.tt.add_tip(nam_bar, text=text, tool_type='menu', anchor="nw")
 
@@ -551,7 +596,6 @@ class RipCD:
         self.cd_top.config(menu=mb)
         self.cd_top.title("Reading CD - mserve")
         self.cd_top.update()
-
 
         ''' EVENT DRIVEN PROCESSING - Call programs in background with shell.
             This allows Treeview mainloop to keep running. When background
@@ -577,35 +621,34 @@ class RipCD:
                           found and it was manually entered previously.
         '''
 
-
-        self.get_discid_active = True       # First step
+        self.get_discid_active = True  # First step
         self.disc_get_active = True
         self.get_discid_time = 0.0
 
         self.mbz_get1_active = False
-        self.mbz_release_id = None          # = self.disc.id but can change
+        self.mbz_release_id = None  # = self.disc.id but can change
         self.mbz_get1_time = 0.0
 
         self.mbz_get2_active = False
         self.mbz_get2_time = 0.0
-        self.image_dict = None              # Images passed in pickle
+        self.image_dict = None  # Images passed in pickle
 
         self.treeview_active = False
         self.disc_enc_active = False
-        self.encode_track_time = 0.0        # Time to encode track
-        self.encode_album_time = 0.0        # Time to encode all tracks
-        self.encode_album_seconds = 0       # Playing seconds in all songs
-        self.encode_album_cnt = 0           # Number tracks encoded
-        self.encode_album_size = 0          # File size of all songs
-        self.music_id = None                # History's matching music ID
+        self.encode_track_time = 0.0  # Time to encode track
+        self.encode_album_time = 0.0  # Time to encode all tracks
+        self.encode_album_seconds = 0  # Playing seconds in all songs
+        self.encode_album_track_cnt = 0  # Number tracks encoded
+        self.encode_album_size = 0  # File size of all songs
+        self.music_id = None  # History's matching music ID
         self.tracknumber = None
         self.clip_parent = None
-        self.gst_encoding = None            # gnome encoding format
-        self.fmt = None                     # self.fmt_var.get()
-        self.naming = None                  # self.nam_var.get()
+        self.gst_encoding = None  # gnome encoding format
+        self.fmt = None  # self.fmt_var.get()
+        self.naming = None  # self.nam_var.get()
 
-        self.loc_copy_active = False        # Future copy to other locations
-        self.disc_id_manual_override = None    # Musicbrainz override of disc.id
+        self.loc_copy_active = False  # Future copy to other locations
+        self.disc_id_manual_override = None  # Musicbrainz override of disc.id
         self.active_pid = 0  # 0 = no process ID is running
         self.cd_rotated_value = 0  # For rotating audio cd image
         self.background = self.resized_art.getpixel((3, 3))
@@ -619,7 +662,7 @@ class RipCD:
     def on_resize(self, event):
         """ Resize image when frame size changes """
         # images use ratio of original width/height to new width/height
-        #w_scale = float(event.width) / self.start_w
+        # w_scale = float(event.width) / self.start_w
         h_scale = float(event.height) / self.start_h
 
         # Override maintain square by factoring width equally on height change
@@ -687,8 +730,8 @@ class RipCD:
             self.get_discid_time = time.time()
 
             if self.caller_disc:
-                #ext_name = "python disc_get.py " + IPC_PICKLE_FNAME
-                #self.active_pid = ext.launch_command(ext_name)
+                # ext_name = "python disc_get.py " + IPC_PICKLE_FNAME
+                # self.active_pid = ext.launch_command(ext_name)
                 self.active_pid = 0
                 self.disc = self.caller_disc
                 text = "ENCODE_DEV - Override with last Disc ID: " + self.disc.id
@@ -750,12 +793,11 @@ class RipCD:
                     time.time(), 0, g.USER, 'encode', 'discid',
                     "CD/DVD Drive", "Audio CD", "libdiscid: " + self.disc.id,
                     length, tracks, self.get_discid_time,
-                    "Get disc ID: " + time.asctime(time.localtime(time.time())))
-
+                                                "Get disc ID: " + time.asctime(time.localtime(time.time())))
 
             # Note this can change in error 3 override from mbz_get1.py
             self.mbz_release_id = self.disc.id
-            #self.disc
+            # self.disc
 
             # Search Musicbrainz with disc object and search limit (parm 2)
             # When limit is 3 or less artwork may be limited (or non-existent)
@@ -784,8 +826,8 @@ class RipCD:
             self.info.cast(text)
 
             # Did mbz_get1.py report an error?
-            #pprint('\nRELEASE LIST ==========================================')
-            #pprint(self.release_list)  # To see release-list if error
+            # pprint('\nRELEASE LIST ==========================================')
+            # pprint(self.release_list)  # To see release-list if error
             if type(self.release_list) is dict and self.release_list.get('error'):
                 if self.release_list.get('error'):
                     # If dictionary type returned we know there is an error
@@ -949,10 +991,10 @@ class RipCD:
         if answer.result != "yes":
             return False
 
-        #print('answer.string:', answer.string)
+        # print('answer.string:', answer.string)
         if len(answer.string) != 28:
             # We could do another ShowInfo that encoding is aborting now.
-            #print('answer.string length is not 28:', len(answer.string))
+            # print('answer.string length is not 28:', len(answer.string))
             return False
 
         self.disc_id_manual_override = answer.string
@@ -1061,17 +1103,17 @@ class RipCD:
             if not result == 'yes':
                 return
 
-        #rel_id = self.cd_tree.parent(self.selected_medium)
-        #rip_selection = self.cd_tree.item(rel_id, 'text')
-        self.rip_current_track = 0      # Nothing has been ripped yet
+        # rel_id = self.cd_tree.parent(self.selected_medium)
+        # rip_selection = self.cd_tree.item(rel_id, 'text')
+        self.rip_current_track = 0  # Nothing has been ripped yet
         if not self.set_gst_encoding():
-            exit()                      # Programmer error
+            exit()  # Programmer error
         self.cd_top.title("Ripping CD to " + self.topdir + " - mserve")
         # FUTURE: Show progress
-        self.song_rip_sec = 0           # How many seconds and blocks
-        self.song_rip_blk = 0           # have been ripped for song?
-        self.total_rip_sec = 0          # How many seconds and blocks
-        self.total_rip_blk = 0          # ripped for selections?
+        self.song_rip_sec = 0  # How many seconds and blocks
+        self.song_rip_blk = 0  # have been ripped for song?
+        self.total_rip_sec = 0  # How many seconds and blocks
+        self.total_rip_blk = 0  # ripped for selections?
 
         # Pulsating shades of green indicating which song is being ripped
         self.last_highlighted = None
@@ -1081,7 +1123,6 @@ class RipCD:
 
         ''' BIG EVENT TRIGGER '''
         self.disc_enc_active = True  # Start background processing
-
 
     def review_before_rip(self):
         """ Allow changes to Artist, Album, Years, Compilations """
@@ -1120,9 +1161,9 @@ class RipCD:
         if self.rip_current_track > 0:
             # TODO: Add song to music table
             #       Add to history table 'init' and 'meta' actions
-            #print('END:   self.encode_track_time:', time.time())
+            # print('END:   self.encode_track_time:', time.time())
             self.encode_track_time = time.time() - self.encode_track_time
-            #print('DIFF.: self.encode_track_time:', self.encode_track_time)
+            # print('DIFF.: self.encode_track_time:', self.encode_track_time)
             self.add_sql_music()
 
             # TODO: Apply webscrape lyrics from buffer
@@ -1130,7 +1171,7 @@ class RipCD:
             # Add to album totals
             self.encode_album_time += self.encode_track_time
             self.encode_album_seconds += self.song_seconds
-            self.encode_album_cnt += 1
+            self.encode_album_track_cnt += 1
             self.encode_album_size += self.song_size
 
             # Tag song as completed
@@ -1141,7 +1182,7 @@ class RipCD:
             if not self.fmt == "wav":
                 # Apply metadata to last song ripped
                 self.add_metadata_to_song()
-                self.add_sql_metadata()  # Also adds both history rows
+                self.add_sql_metadata()  # Also adds two history rows
 
                 # Apply Cover art
                 # print('self.image_count:',self.image_count)
@@ -1191,7 +1232,7 @@ class RipCD:
         if not self.get_next_rip_name():
 
             # Save SQL history for album
-            if self.encode_album_cnt > 0:
+            if self.encode_album_track_cnt > 0:
                 # If we ripped at least one track, add history 'encode' 'album'
                 duration = tmf.mm_ss(self.encode_album_seconds)
                 sql.hist_add(
@@ -1199,27 +1240,26 @@ class RipCD:
                     self.selected_artist, self.selected_album,
                     "Audio disc id: " + self.disc.id, self.encode_album_size,
                     self.encode_album_seconds, self.encode_album_time,
-                    "Tracks: " + str(self.encode_album_cnt) +
+                    "Tracks: " + str(self.encode_album_track_cnt) +
                     " Duration: " + duration +
                     " Finished: " + time.asctime(time.localtime(time.time())))
 
             self.encode_album_time = 0.0
             self.encode_album_seconds = 0
-            self.encode_album_cnt = 0
+            self.encode_album_track_cnt = 0
             self.encode_album_size = 0
             self.disc_enc_active = False  # Background processing done
             self.cd_close()
             return
 
-
         # Rip next track
         self.encode_track_time = time.time()
-        #print('START: self.encode_track_time:', self.encode_track_time)
+        # print('START: self.encode_track_time:', self.encode_track_time)
         # noinspection SpellCheckingInspection
         ext_name = 'gst-launch-1.0 cdiocddasrc track={} ! ' \
-            .format(self.rip_current_track) + \
-            'audioconvert ! {} ! '.format(self.gst_encoding) + \
-            'filesink location="{}"'.format(self.os_full_path)
+                       .format(self.rip_current_track) + \
+                   'audioconvert ! {} ! '.format(self.gst_encoding) + \
+                   'filesink location="{}"'.format(self.os_full_path)
         # inspection SpellCheckingInspection
 
         # ext_name = "sleep 3"   # For speedy loop testing
@@ -1228,7 +1268,6 @@ class RipCD:
 
         # TODO: Call webscrape and get lyrics into buffer
         return  # Loops for next song
-
 
     def add_sql_music(self):
         """ Populate SQL Music Table Row with new CD track """
@@ -1242,13 +1281,12 @@ class RipCD:
         ''' Add the song without metadata '''
         # Does 'sql' conflict with import? Try 'sql_cmd' instead
 
-
         sql_cmd = "INSERT OR IGNORE INTO Music (OsFileName, OsAccessTime, \
             OsModifyTime, OsChangeTime, OsFileSize, CreationTime) \
             VALUES (?, ?, ?, ?, ?, ?)"
         sql.cursor.execute(sql_cmd, (self.sqlOsFileName, stat.st_atime,
-                           stat.st_mtime, stat.st_ctime, self.song_size,
-                           stat.st_ctime))
+                                     stat.st_mtime, stat.st_ctime, self.song_size,
+                                     stat.st_ctime))
         '''
         sql_cmd = "INSERT OR IGNORE INTO Music (OsFileName, \
             OsAccessTime, OsModificationTime, OsCreationTime, OsFileSize) \
@@ -1256,8 +1294,6 @@ class RipCD:
         sql.cursor.execute(sql_cmd, (self.sqlOsFileName, stat.st_atime,
                            stat.st_mtime, stat.st_ctime, self.song_size))
         '''  # convert July 13, 2023
-
-
 
         sql.con.commit()
         music_id = sql.cursor.lastrowid
@@ -1280,17 +1316,16 @@ class RipCD:
             self.song_size, self.song_seconds, self.encode_track_time,
             "finished: " + time.asctime(time.localtime(time.time())))
 
-
     def add_sql_metadata(self):
-        """ July 13, 2023 - Need DiscNumber, FirstDate, CreationTime, Composer """
-        genre = None                # TODO: Get with tk.Entry like release date
-        #genre = ""                  # None type breaks genre.decode("utf8")
-
+        """ July 13, 2023 - Need DiscNumber, FirstDate, CreationTime, Composer,
+            GaplessPlayback, AlbumDate, Compilation, """
+        genre = None  # TODO: Get with tk.Entry like release date
+        # genre = ""                  # None type breaks genre.decode("utf8")
 
         sql.update_metadata(
             self.sqlOsFileName, self.selected_artist, self.selected_album,
             self.selected_title, genre, self.tracknumber, self.selected_date,
-            self.song_seconds, self.song_duration, self.DiscNumber, 
+            self.song_seconds, self.song_duration, self.DiscNumber,
             self.selected_composer)
         '''
         sql.update_metadata(
@@ -1299,10 +1334,7 @@ class RipCD:
             self.song_seconds, self.song_duration)
         '''  # convert July 13, 2023 
 
-
-
         # Above automatically creates history records for 'meta' 'init'
-
 
     # noinspection PyPep8Naming
     def add_metadata_to_song(self):
@@ -1411,6 +1443,31 @@ class RipCD:
     tags["TRCK"] = TRCK(encoding=3, text=u'track_number')
 
     tags.save(fname)
+    
+    
+    What Media Monkey says about dates:
+    
+    MediaMonkey 5,4 and 3, by default save Year and Date metadata in 
+    ID3 v2.3 tags to TYER / TDRC frames. Although this is generally a 
+    good approach for maximum compatibility, some users may wish to 
+    change this since TDRC is normally associated with ID3 v2.4 tags 
+    and Winamp will not read the TDRC field for an ID3v2.3 tag. This 
+    can be done by modifying MediaMonkey’s .ini file with the following 
+    section which allows you to enable/disable frames at will:
+
+    [MP3Tagging]
+    DisableFrames=TDAT;TDRC
+    EnableFrames=TYER
+    
+    To also solve the problem of Original Year being saved twice, the 
+    MP3Tagging section in MediaMonkey.ini should look like this:
+    
+    [MP3Tagging]
+    DisableFrames=TDRC;TDOR;
+    EnableFrames=TYER;TDAT;TORY;
+    
+    This disables the ID3v2.4 TDOR which MM is using for Original Year, 
+    and enables use of the ID3v2.3 TORY, intended for original release year.
         '''
         # inspection SpellCheckingInspection
 
@@ -1423,6 +1480,58 @@ class RipCD:
         # noinspection PyProtectedMember
         from mutagen.flac import Picture
 
+        # noinspection SpellCheckingInspection
+        '''
+        Why is FLAC being used above?
+
+    Metadata messed up when mserve encode:
+    Metadata
+        DURATION:	00:08:44.73, start: 0.000000, bitrate: 226 kb/s
+        STREAM #0:	0: Audio: vorbis, 44100 Hz, stereo, fltp, 224 kb/s
+        DISCID:	750e860a
+        MUSICBRAINZ_DISCID:	77Ha8wHmNtpe.i86ZIMul.eh9MM-
+        TRACKTOTAL:	10
+        TRACK:	1
+        ARTIST:	Jim Steinman
+        ALBUM_ARTIST:	Jim Steinman
+        ALBUM:	Bad for Good
+        TITLE:	Bad for Good
+        DATE:	1993-01-26
+        STREAM #0(1):	1: Video: png, rgba(pc), 640x635, 90k tbr, 90k tbn, 90k tbc
+        COMMENT:	Cover (front)
+        TITLE(1):	Bad for Good
+            
+
+    Normal Metadata:
+    Source
+        INPUT #0:	mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Matchbox Twenty/Exile On Mainstream [Disc 2]/2-01 Long Day.m4a':
+    Metadata
+        MAJOR_BRAND:	M4A
+        MINOR_VERSION:	0
+        COMPATIBLE_BRANDS:	M4A mp42isom
+        CREATION_TIME:	2011-03-13 18:21:37
+        TITLE:	Long Day
+        ARTIST:	Matchbox Twenty
+        COMPOSER:	Rob Thomas
+        ALBUM:	Exile On Mainstream [Disc 2]
+        TRACK:	1/11
+        DISC:	2/2
+        COMPILATION:	0
+        GAPLESS_PLAYBACK:	0
+        ENCODER:	iTunes 10.0.1.22, QuickTime 7.6.8
+        ITUNSMPB:	00000000 00000840 00000110 000000000097EAB0 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+        ENCODING PARAMS:	vers
+        ITUNNORM:	0000267D 00001D54 00009FCE 0000B05B 00021E50 0001E173 00007FDC 00007FDB 0001DA60 0001DA60
+        ITUNES_CDDB_1:	920AE90B+209627+11+150+17082+34912+51780+69100+94415+113720+134292+157320+173732+191527
+        ITUNES_CDDB_TRACKNUMBER:	1
+        GENRE:	Pop
+        DATE:	1996
+    Encoding
+        DURATION:	00:03:45.81, start: 0.000000, bitrate: 263 kb/s
+        STREAM #0:	0(und): Audio: aac (LC) (mp4a / 0x6134706D), 44100 Hz, stereo, fltp, 260 kb/s (default)
+        CREATION_TIME(1):	2011-03-13 18:21:37
+        STREAM #0(1):	1: Video: png, rgba(pc), 160x160, 90k tbr, 90k tbn, 90k tbc        
+        '''
         try:
             file_ = OggVorbis(self.os_full_path)
         except UnicodeDecodeError as err:
@@ -1432,7 +1541,7 @@ class RipCD:
             print(self.os_full_path)
             return False
 
-        picture = Picture()
+        picture = Picture()  # For FLAC files
 
         # Convert image to jpeg for saving
 
@@ -1463,7 +1572,9 @@ class RipCD:
         #       and-get-its-length-in-bytes
         try:
             # Ensure we are passing unicode to flac.py (which is patched)
-            self.selected_title.decode('utf-8')
+            self.selected_title.decode('utf-8')  # If able to decode means encoded
+            # July 20, 2023 below was missing everything should be encoded.
+            self.selected_title.encode('utf-8')  # If able to decode means encoded
         except UnicodeError:
             self.selected_title.encode('utf-8')
 
@@ -1518,14 +1629,14 @@ class RipCD:
 
         # Does target directory exist?
         ''' July 15, 2023 Support compilations '''
-        self.is_compilation = self.selected_artist == "Various Artists" 
+        self.is_compilation = self.selected_artist == "Various Artists"
         if self.is_compilation:
             artist = "Compilations"
         else:
             artist = self.selected_artist
         ''' June 3, 2023 Create legal names - Replace '/', '?', ':' with '_' '''
         part = ext.legalize_dir_name(artist.encode("utf8")) + os.sep + \
-            ext.legalize_dir_name(self.selected_album.encode("utf8")) + os.sep
+               ext.legalize_dir_name(self.selected_album.encode("utf8")) + os.sep
         prefix = self.topdir.encode("utf8") + os.sep + part
         if not os.path.isdir(prefix):
             try:
@@ -1538,7 +1649,7 @@ class RipCD:
                 return False
 
         # topdir/artist/album/99 song.ext - self.os_song_name already legal
-        self.os_full_path = prefix + self.os_song_name  
+        self.os_full_path = prefix + self.os_song_name
         self.sqlOsFileName = part + self.os_song_name  # SQL music key  
         self.rip_current_track = i + 1
         return True
@@ -1569,11 +1680,11 @@ class RipCD:
                                          str(self.curr_shade))
         self.last_shade = self.curr_shade
 
-# ============================================================================
-#
-#   Rip_CD class: populate_cd_tree
-#
-# ============================================================================
+    # ============================================================================
+    #
+    #   Rip_CD class: populate_cd_tree
+    #
+    # ============================================================================
 
     def parse_medium(self, d):
         """ Parse:   'medium-list': [{'disc-count': 1, """
@@ -1618,7 +1729,7 @@ class RipCD:
         disc_found = False
         disc_count = 0
         this_disc_number = 0
-        #print("self.mbz_release_id:", self.mbz_release_id)
+        # print("self.mbz_release_id:", self.mbz_release_id)
         # i = 0
         # print('searching for DiscID:', self.mbz_release_id)
         for i, disc in enumerate(d['medium-list']):
@@ -1673,15 +1784,15 @@ SECOND RELEASE wanted MATCHING TITLES !:
 
 if r['title'] != r['release-group']['title']            
             '''
-            #disc_list = disc['disc-list']
+            # disc_list = disc['disc-list']
             # print('index i:', i, 'disc_list:', disc_list)
             disc_id = str(d['medium-list'][i]['disc-list'][0]['id'])
-            #print("disc-list:", d['medium-list'][i]['disc-list'])
+            # print("disc-list:", d['medium-list'][i]['disc-list'])
             for disc_id in d['medium-list'][i]['disc-list']:
                 if disc_id['id'] == self.mbz_release_id:
                     disc_found = True
                     this_disc_number = int(d['medium-list'][i]['position'])
-                    #this_disc_number = d['medium-list'][i]['disc-count']
+                    # this_disc_number = d['medium-list'][i]['disc-count']
 
         if disc_count > 1:
             d['title'] = d['title'] + " [Disc #" + str(this_disc_number) + \
@@ -1695,7 +1806,7 @@ if r['title'] != r['release-group']['title']
         sep = "  |  "  # Note length of separator = 5 below
 
         for ndx, d in enumerate(self.release_list):
-            #print('\nRelease ndx:', ndx, d['title'])
+            # print('\nRelease ndx:', ndx, d['title'])
             ''' Parent line with score, artist and album
             '''
             ''' July 17, 2023 skip false positive - mbz_get1 now does this test '''
@@ -1759,7 +1870,7 @@ if r['title'] != r['release-group']['title']
             # Temporary override for testing
             # d['release-event-list'][0]['date'] = "????" # Denotes added here
 
-            formatted = "Release date: " + d['release-event-list'][0]['date']
+            formatted = "Album date: " + d['release-event-list'][0]['date']
             # +sep+ 'Country: ' + d['release-event-list'][0]['area']['name']
             self.cd_tree.insert(
                 mbz_id, "end", text=formatted, tags=("date_id", "unchecked"))
@@ -1794,7 +1905,7 @@ if r['title'] != r['release-group']['title']
             if 'medium-count' in d:
                 formatted = formatted + "Medium count: " + \
                             str(d['medium-count']) + sep
-            if 'format' in d['medium-list'][mdm_ndx]:   # EG CD or Vinyl
+            if 'format' in d['medium-list'][mdm_ndx]:  # EG CD or Vinyl
                 formatted = formatted + "Medium format: " + \
                             d['medium-list'][mdm_ndx]['format'] + sep
             if 'position' in d['medium-list'][mdm_ndx]:  # Really the CD disk #
@@ -1814,8 +1925,8 @@ if r['title'] != r['release-group']['title']
             # tracks_list = r['release']['medium-list'][mdm_ndx]['track-list']
             for i, track_d in enumerate(tracks_list):
                 # print('track_d:\n',track_d)
-                #position = track_d['position']
-                #if i == 0:
+                # position = track_d['position']
+                # if i == 0:
                 #    print("\n---------------------------------- First Track:")
                 #    pprint(track_d)
                 #    pass
@@ -1824,9 +1935,9 @@ if r['title'] != r['release-group']['title']
                 first_date = track_d['recording']['first-date']
 
                 # Not sure why below getting pycharm errors...
-                #try:
+                # try:
                 #    first_date = track_d['recording']['first-date']
-                #else:
+                # else:
                 #    first_date = None
                 length = recording_d.get('length', '0')
 
@@ -1844,8 +1955,8 @@ if r['title'] != r['release-group']['title']
                     # Prepend disc number to track (song) name
                     out_name = str(self.this_disc_number) + "-" + out_name
 
-                self.cd_tree.insert(medium_id, "end", text=out_name, 
-                                    values=(hhmmss, first_date), 
+                self.cd_tree.insert(medium_id, "end", text=out_name,
+                                    values=(hhmmss, first_date),
                                     tags=("track_id", "unchecked"))
 
             ''' Our third parent line has online cover art  '''
@@ -1860,7 +1971,7 @@ if r['title'] != r['release-group']['title']
                 image_list = entry['images']
                 self.cd_tree_insert_image(rel_id, d['id'], opened, image_list,
                                           first_time)
-                #first_time = False
+                # first_time = False
             except Exception as err:
                 print(err)
                 continue  # Remove this line to see following error:
@@ -1892,6 +2003,7 @@ if r['title'] != r['release-group']['title']
  u'types': [u'Other']}
 
     """
+
     # inspection SpellCheckingInspection
 
     def cd_tree_insert_image(self, rel_id, mbz_id, opened, image_list, first_time):
@@ -1902,7 +2014,7 @@ if r['title'] != r['release-group']['title']
         if first_time:
             # First time we insert collapsable/expandable parent line
             self.our_parent = self.cd_tree.insert(
-                rel_id, "end", tags=("images_id", "unchecked"), open=opened, 
+                rel_id, "end", tags=("images_id", "unchecked"), open=opened,
                 text="Artwork from: http://coverartarchive.org/release/" + mbz_id)
 
         for d in image_list:
@@ -1922,7 +2034,7 @@ if r['title'] != r['release-group']['title']
                                         text=d['thumbnails']['large'],
                                         tags=("image_id", "unchecked"))
             if 'image' in d:
-                #size = str(len(d['image-data']))
+                # size = str(len(d['image-data']))
                 size = "{:,}".format(len(d['image-data']))
                 self.cd_tree.insert(self.our_parent, "end", values=size,
                                     text=d['image'], tags=("image_id", "unchecked"))
@@ -2251,7 +2363,7 @@ if r['title'] != r['release-group']['title']
 
         image_data = None
         image_key = None
-        i = 0                   # For pycharm unassigned warning
+        i = 0  # For pycharm unassigned warning
         # looping over large images costs .01 second for each image dictionary
         for i, d in enumerate(self.image_dict[release_id]['images']):
             # There are only dictionaries at list index 0
@@ -2369,8 +2481,8 @@ if r['title'] != r['release-group']['title']
 
         if self.selected_date is not None:
             # TODO: Prompt for release date
-            messagebox.showinfo(title="Release date already selected",
-                                message="Unselect the other release date first.",
+            messagebox.showinfo(title="Album Date already selected",
+                                message="Unselect the other Album Date first.",
                                 icon='error', parent=self.cd_top)
             self.reverse_checkbox = True
             return False
@@ -2381,7 +2493,7 @@ if r['title'] != r['release-group']['title']
         if release_date == "" or "?" in release_date:
             # When no release date it is manually inserted earlier as "????"
             # TODO: Prompt for release date testing.
-            new_date = simpledialog.askstring("Release date error",
+            new_date = simpledialog.askstring("Album Date error",
                                               "Blank dates cannot be used. Enter a release date",
                                               parent=self.cd_top)
             if new_date is None:
@@ -2418,7 +2530,7 @@ if r['title'] != r['release-group']['title']
         artist_str = self.cd_tree.item(rel_id, 'text').split(sep)[1]
         album_str = self.cd_tree.item(rel_id, 'text').split(sep)[2]
         self.selected_artist = artist_str.split(':', 1)[1].strip()
-        self.is_compilation = self.selected_artist == "Various Artists" 
+        self.is_compilation = self.selected_artist == "Various Artists"
         # Filter title was missing : 1995-2008 so add ',1' to split.
         self.selected_album = album_str.split(':', 1)[1].strip()
 
@@ -2491,29 +2603,29 @@ if r['title'] != r['release-group']['title']
 
         # Allow program changes to displayed selections
         self.scrollbox.configure(state="normal")
-        self.scrollbox.delete('1.0', tk.END)    # Delete previous entries
-        x = self.fmt                            # Menu bar format radiobutton
+        self.scrollbox.delete('1.0', tk.END)  # Delete previous entries
+        x = self.fmt  # Menu bar format radiobutton
         self.scrollbox.insert("end", "Format:\t" + x)
         y = 100  # wav and flac are 100% quality
-        if x == "oga":                          # Was "oga" selected?
-            y = self.quality_var.get()          # Menu bar quality radiobutton
+        if x == "oga":  # Was "oga" selected?
+            y = self.quality_var.get()  # Menu bar quality radiobutton
         self.scrollbox.insert("end", "\tQuality: " + str(y) + " %")
-        z = self.naming                         # Menu bar naming radiobutton
+        z = self.naming  # Menu bar naming radiobutton
         self.scrollbox.insert("end", "\tNaming: " + '"' + z + '"' + "\n")
-        topdir = self.trg_var.get()             # Menu bar format target
+        topdir = self.trg_var.get()  # Menu bar format target
         self.scrollbox.insert("end", "Target:\t" + topdir + "\n")
 
-        if self.selected_artist:                # Artist name
+        if self.selected_artist:  # Artist name
             self.scrollbox.insert("end", "Artist:\t" +
                                   self.selected_artist + "\n")
-        if self.selected_album:                 # Album name
+        if self.selected_album:  # Album name
             self.scrollbox.insert("end", "Album:\t" +
                                   self.selected_album + "\n")
-        if self.selected_date:                  # Release date
+        if self.selected_date:  # Release date
             self.scrollbox.insert("end", "Date:\t" +
                                   self.selected_date + "\n")
-        self.selected_tracks = 0                # Number tracks selected
-        if self.selected_medium:                # Was this medium selected?
+        self.selected_tracks = 0  # Number tracks selected
+        if self.selected_medium:  # Was this medium selected?
             # Remove " |  Disc ID: .." from end it's added later
             # Note sep has two spaces
             sep = "  |  "
@@ -2609,8 +2721,8 @@ if r['title'] != r['release-group']['title']
         """ Format song name as it will appear in operating system directory
             Set self.selected_title to use as metadata song name
         """
-        offset_1 = 2    # Where the dash ("-") starts
-        offset_2 = 4    # Where the song name starts
+        offset_1 = 2  # Where the dash ("-") starts
+        offset_2 = 4  # Where the song name starts
 
         if self.disc_count > 1:
             # Multi-disc medium have '#-' prepended to song name
@@ -2626,10 +2738,10 @@ if r['title'] != r['release-group']['title']
 
         # HUGE PROBLEM: Why subtract 1 here and not use 1 less above?
         self.selected_title = os_name[offset_2 - 1:]  # For metadata song name
-        os_name = os_name + '.' + self.fmt        # Add extension
-        os_name = ext.legalize_song_name(os_name)  # Take out /, ?, :, . (not last .)
-        #self.sqlOsFileName = os_name[offset_1:]  # Strip out 99 or 1-99
-        #self.sqlOsFileName = self.sqlOsFileName[:-4]  # .wav, .oga, .flac
+        os_name = os_name + '.' + self.fmt  # Add extension
+        os_name = ext.legalize_song_name(os_name)  # Take out /, ?, :, etc.
+        # self.sqlOsFileName = os_name[offset_1:]  # Strip out 99 or 1-99
+        # self.sqlOsFileName = self.sqlOsFileName[:-4]  # .wav, .oga, .flac
         return os_name  # os_name inserted into selection 
 
 
@@ -2760,7 +2872,6 @@ class MetaScan:
             self.meta_data_updated += 1
         else:
             self.meta_data_unchanged += 1
-
 
     """  2008 Nissan Alt ima Coupe Bose 6-CD Changer - Specification chart:
 

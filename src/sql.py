@@ -25,16 +25,12 @@ from __future__ import with_statement  # Error handling for file opens
 #       July 12 2023 - Interface to/from mserve_config.py
 #       July 13 2023 - Add Music columns: LastPlayTime, DiscNumber, AlbumDate,
 #                      FirstDate, (was ReleaseDate), CreationTime, Composer
-#       July 18 2023 - Add Music columns: AlbumArtist & Compilations
+#       July 18 2023 - Add Music columns: AlbumArtist, Compilation, Comment,
+#                      GaplessPlayback
 
 #   TODO:
 
-#   Update encoding.py to grab FirstDate (DONE) and Composer (Doesn't Work!)
-#       Recognize compilations and set AlbumArtist to "Various Artists" and
-#       store in subdirectory under /Compilations
-
 #   Create new field LastPlayTime (over 80% of song was played)
-#   Change lib_tree "Count / Last Access" to " Count / Last Access or Play"
 #   Create Fix function to touch All Files with OsAccessTime
 #   Replace FileControl.touch_it() with FileControl.set_last_played_time()
 #   Create FileControl.get_last_played_time() for lib_tree display when N/A
@@ -354,34 +350,86 @@ def populate_new_database():
         new_music_id += 1
         #if new_music_id == 1:
         #    print(row, "\n")
+        ''' July 13, 2023 column layout
+        con.execute("create table IF NOT EXISTS Music(Id INTEGER PRIMARY KEY, " +
+                    "OsFileName TEXT, OsAccessTime FLOAT, OsModifyTime FLOAT, " +
+                    "OsChangeTime FLOAT, OsFileSize INT, " +
+                    "Title TEXT, Artist TEXT, Album TEXT, " +
+                    "ReleaseDate TEXT, RecordingDate TEXT, " +
+                    "CreationTime TEXT, DiscNumber TEXT, TrackNumber TEXT, " +
+                    "Rating TEXT, Genre TEXT, Composer TEXT, " +
+                    "Comment TEXT, Hyperlink TEXT, Duration TEXT, " +
+                    "Seconds INT, PlayCount INT, LastPlayTime FLOAT, " +
+                    "LyricsScore BLOB, LyricsTimeIndex TEXT)")
 
+        July 18, 2023 column layout
+        new_con.execute("create table IF NOT EXISTS Music(Id INTEGER PRIMARY KEY, " +
+                        "OsFileName TEXT, OsAccessTime FLOAT, OsModifyTime FLOAT, " +
+                        "OsChangeTime FLOAT, OsFileSize INT, " +
+                        "Title TEXT, Artist TEXT, Album TEXT, Compilation TEXT, " +
+                        "AlbumArtist TEXT, AlbumDate TEXT, FirstDate TEXT, " +
+                        "CreationTime TEXT, DiscNumber TEXT, TrackNumber TEXT, " +
+                        "Rating TEXT, Genre TEXT, Composer TEXT, Comment TEXT, " +
+                        "Hyperlink TEXT, Duration TEXT, Seconds INT, " +
+                        "GaplessPlayback TEXT, PlayCount INT, LastPlayTime FLOAT, " +
+                        "LyricsScore BLOB, LyricsTimeIndex TEXT)")    
+
+    JULY 18, 2023
+
+        Adding: Compilation ("0" or "1"), GaplessPlayback, AlbumArtist
+        
+        Change  ReleaseDate             -> AlbumDate
+                RecordingDate           -> FirstDate
+
+    Revise: update_metadata2() below
+            mserve.py update_metadadta
+            mserve.py rename_files (to set Compilation flag
+        '''
         OsFileName = row['OsFileName']
         OsAccessTime = row['OsAccessTime']
-        OsModifyTime = row['OsModificationTime']
-        OsChangeTime = row['OsCreationTime']
+        OsModifyTime = row['OsModifyTime']
+        OsChangeTime = row['OsChangeTime']
         OsFileSize = row['OsFileSize']
-        Title = row['MetaSongName']
-        Artist = row['MetaArtistName']
-        Album = row['MetaAlbumName']
-        date = None
-        if row['ReleaseDate']:
-            if type(row['ReleaseDate']) is str:
-                if row['ReleaseDate'] != "None":
-                    date = row['ReleaseDate']
-                else:
-                    date = None
-            elif type(row['ReleaseDate']) is float:
-                date = str(int(row['ReleaseDate']))
-            elif type(row['ReleaseDate']) is unicode:
-                date = str(row['ReleaseDate'])
-            else:
-                print("ReleaseDate:", row['ReleaseDate'], type(row['ReleaseDate']))
-        ReleaseDate = date
+        Title = row['Title']
+        Artist = row['Artist']
+        Album = row['Album']
+        artist_dir = OsFileName.rsplit(os.sep, 2)[0]
+        if artist_dir == "Compilations":
+            Compilation = "1"
+            ''' Exceptions Linkin Park, UB40 Greatest Hits '''
+            # AlbumArtist = "Various Artists"
+        else:
+            Compilation = "0"
+        AlbumArtist = row['Artist']  # We should be getting metadata?
+        AlbumDate = row['RecordingDate']
+        FirstDate = row['ReleaseDate']
+        if AlbumDate is None:
+            AlbumDate = FirstDate
+
+        CreationTime = row['CreationTime']
+        if CreationTime is None:
+            ''' What if creation time in metadata is earlier? '''
+            frmt_date = datetime.datetime.utcfromtimestamp(OsModifyTime).\
+                strftime("%Y-%m-%d %H:%M:SS")
+            # CreationTime = OsModifyTime FORMAT YYYY-MM-DD HH:MM:SS
+            pass
+
+        DiscNumber = row['DiscNumber']  # We should be getting metadata?
         TrackNumber = row['TrackNumber']
+        # Rating is still none
         Genre = row['Genre']
+
+        Composer = row['Composer']
+        if Composer is None:
+            Composer = Artist  # We should be getting metadata?
+        # Comment is None  # We could get from metadata though
+        # Hyperlink is None  # We could get from metadata though
         Duration = row['Duration']
         Seconds = row['Seconds']
-        LyricsScore = row['UnsynchronizedLyrics']
+        GaplessPlayback = "0"   # We should be getting metadata?
+        PlayCount = row['PlayCount']
+        LastPlayTime = row['LastPlayTime']
+        LyricsScore = row['LyricsScore']
         LyricsTimeIndex = row['LyricsTimeIndex']
 
         if live_update:
@@ -442,9 +490,10 @@ def open_new_db():
 
     new_con = sqlite3.connect(FNAME_LIBRARY_NEW)
 
-    ''' Adding  DiscNumber, CreationTime, Composer, Comment, Hyperlink (all TEXT)
+    ''' 
+    JULY 13, 2023
+        Adding  DiscNumber, CreationTime, Composer, Comment, Hyperlink (all TEXT)
                 LastPlayTime (FLOAT)
-                
 
         Change  OsModificationTime      -> OsModifyTime
                 OsCreationTime          -> OsChangeTime
@@ -455,6 +504,16 @@ def open_new_db():
                 ReleaseDate (FLOAT)     -> TEXT
                 OriginalDate (FLOAT)    -> RecordingDate (TEXT)
 
+    JULY 18, 2023
+
+        Adding: Compilation ("0" or "1"), GaplessPlayback, AlbumArtist,
+                ffMajorBrand, ffMinorVersion, ffCompatibleBrands
+        
+        Change  ReleaseDate             -> FirstDate
+                RecordingDate           -> AlbumDate
+
+        Change order of columns too more natural flow
+        
         KID3 only has one "DATE" metadata field that only allows YYYY-MM entry.
             Title, Artist, Album, Comment, Date, Track Number, Genre,
             Compilation, Composer(but blank, manually add), Disc Number, 
@@ -468,17 +527,24 @@ def open_new_db():
                update_metadata() where Music Table is added/updated here
                encoding.py
                musicbrainzngs
+
+      Metadata:
+        major_brand     : M4A 
+        minor_version   : 0
+        compatible_brands: M4A mp42isom
+
     '''
-    ''' ID3 TAGS https://exiftool.org/TagNames/ID3.html'''
+    ''' ID3 TAGS https://exiftool.org/TagNames/ID3.html '''
     new_con.execute("create table IF NOT EXISTS Music(Id INTEGER PRIMARY KEY, " +
                     "OsFileName TEXT, OsAccessTime FLOAT, OsModifyTime FLOAT, " +
-                    "OsChangeTime FLOAT, OsFileSize INT, " +
-                    "Title TEXT, Artist TEXT, Album TEXT, " +
-                    "ReleaseDate TEXT, RecordingDate TEXT, " +
+                    "OsChangeTime FLOAT, OsFileSize INT, ffMajorBrand TEXT, " +
+                    "ffMinorVersion TEXT, ffCompatibleBrands TEXT" +
+                    "Title TEXT, Artist TEXT, Album TEXT, Compilation TEXT, " +
+                    "AlbumArtist TEXT, AlbumDate TEXT, FirstDate TEXT, " +
                     "CreationTime TEXT, DiscNumber TEXT, TrackNumber TEXT, " +
-                    "Rating TEXT, Genre TEXT, Composer TEXT, " +
-                    "Comment TEXT, Hyperlink TEXT, Duration TEXT, " +
-                    "Seconds INT, PlayCount INT, LastPlayTime FLOAT, " +
+                    "Rating TEXT, Genre TEXT, Composer TEXT, Comment TEXT, " +
+                    "Hyperlink TEXT, Duration TEXT, Seconds INT, " +
+                    "GaplessPlayback TEXT, PlayCount INT, LastPlayTime FLOAT, " +
                     "LyricsScore BLOB, LyricsTimeIndex TEXT)")
 
     new_con.execute("CREATE UNIQUE INDEX IF NOT EXISTS OsFileNameIndex ON " +
@@ -696,6 +762,7 @@ def get_lyrics(key):
     """
     """ June 3, 2023 - May get whitelisted version """
     d = ofb.Select(key)
+    print("sql.get_lyrics() d:", d)
     if d is None:
         return None, None
 
@@ -756,7 +823,7 @@ def update_metadata(key, artist, album, title, genre, tracknumber, date,
             3. Apple Reissued YEAR version date?
 
         Id3v2 has the "TORY" (Original Release Year) frame
-        foobar calls it "ORIGINAL RELEASE DATE" 
+        foobar calls it "ORIGINAL RELEASE DATE"
 
     """
 
@@ -831,7 +898,7 @@ def update_metadata(key, artist, album, title, genre, tracknumber, date,
         fudged_artist = ext.legalize_dir_name(artist)
         fudged_album = ext.legalize_dir_name(album)
         fudged_title = key.split(os.sep)[-1]  # "title" S/B "99 title.ext"
-        fudged_title = ext.legalize_title_name(fudged_title)
+        fudged_title = ext.legalize_song_name(fudged_title)
         white_key = fudged_artist + os.sep + fudged_album + os.sep + fudged_title
 
         e = ofb.Select(white_key)  # If white key works, use it in Whitelist
@@ -839,13 +906,10 @@ def update_metadata(key, artist, album, title, genre, tracknumber, date,
             #print("Found substitute key:", e['OsFileName'])
             ofb.SetWhitelist(key, white_key)
             key = white_key  # Use white_key instead of passed key
-            d = e  # Replace d (None) with e (good dictionary of valid SQL) 
+            d = e  # Replace d (None) with e (good dictionary of valid SQL)
         else:
             #print('sql.py update_metadata() error no music ID for:', key)
             return False
-
-
-
 
     # Are we adding a new 'init' or 'edit' history record?
     if d['Artist'] is None:
@@ -1034,7 +1098,217 @@ def update_metadata(key, artist, album, title, genre, tracknumber, date,
              Comments, sep=" # ")
     '''
     hist_add(Time, d['Id'], _USER, 'meta', action, SourceMaster,
+             SourceDetail, key, Size, Count, FloatSeconds,
+             Comments)
+
+    con.commit()
+
+    return True  # Metadata was updated in SQL database
+
+
+def update_metadata2(fc, commit=True):
+    """
+        Update Music Table with metadata tags.
+        Called from mserve.py and encoding.py
+
+        Check if metadata has changed. If no changes return False.
+        Same song file name may exist in two locations where one
+        location has more metadata than the other. Also the metaddta
+        may be different for let's say "Artist" name. E.G.
+        "Tom Cochran & Red Rider" in one location and "Red Rider" 
+        in the other location.
+
+        Update metadata in library and insert history record:
+            'meta' 'init' for first time
+            'meta' 'edit' for 2nd and subsequent changes
+
+    :param fc: File control block: mus_ctl, ltp_ctl and play_ctl.
+    :param commit: Live run. Update SQL database if metadata changed. If
+        not a live run, return changed row dictionary instead of False. 
+    :returns: True if Metadata changed and SQL updated, else return False.
+    """
+
+    ''' June 28, 2023 - fc.Title.decode("utf-8") has been removed. Need to test '''
+    ''' July 18 - '''
+    if fc.FirstDate:
+        if type(fc.FirstDate) is str:
+            if fc.FirstDate == "None":  # sting value "None" !!!
+                # See "She's No Angel" by April Wine.
+                fc.FirstDate = None
+        elif type(fc.FirstDate) is float:
+            fc.FirstDate = str(int(fc.FirstDate))
+        elif type(fc.FirstDate) is int:
+            fc.FirstDate = str(fc.FirstDate)
+        elif type(fc.FirstDate) is unicode:
+            fc.FirstDate = str(fc.FirstDate)
+        else:
+            print("sql.update_metadata() invalid date:", fc.FirstDate, type(fc.FirstDate))
+
+    if fc.DiscNumber is not None:
+        fc.DiscNumber = fc.DiscNumber.decode("utf8")
+    else:
+        # fc.DiscNumber = d['DiscNumber']
+        pass  # Not needed. If metadata was None SQL would be too
+    if fc.Composer is not None:
+        fc.Composer = fc.Composer.decode("utf8")
+    if fc.Comment is not None:
+        fc.Comment = fc.Comment.decode("utf8")
+    if fc.Genre is not None:
+        fc.Genre = fc.Genre.decode("utf8")
+
+    # Don't allow GIGO which required FixData del_music_ids() function June 2023
+    if fc.Artist is None or fc.Album is None or fc.Title is None:
+        return False
+    if fc.Artist == NO_ARTIST_STR or fc.Album == NO_ARTIST_STR:
+        return False
+    if fc.Artist == NO_ALBUM_STR or fc.Album == NO_ALBUM_STR:
+        return False
+
+    key = fc.path[len(_PRUNED_DIR):]  # Create OsFileName (base path)
+    d = ofb.Select(key)
+    if d is None:
+        ''' July 18, 2023 - Run scan on database to confirm not too legal. '''
+        # File and Directory names with ":", "?", "/", etc. replaced with "_"
+        fudged_Artist = ext.legalize_dir_name(fc.Artist)
+        fudged_Album = ext.legalize_dir_name(fc.Album)
+        fudged_Title = key.split(os.sep)[-1]  # Expand "Title" to "99 Title.ext"
+        fudged_Title = ext.legalize_song_name(fudged_Title)
+        white_key = fudged_Artist + os.sep + fudged_Album + os.sep + fudged_Title
+
+        e = ofb.Select(white_key)  # If white key works, use it in Whitelist
+        if e is not None:
+            #print("Found substitute key:", e['OsFileName'])
+            ofb.SetWhitelist(key, white_key)
+            key = white_key  # Use white_key instead of passed key
+            d = e  # Replace d (None) with e (good dictionary of valid SQL)
+        else:
+            #print('sql.py update_metadata() error no music ID for:', key)
+            return False
+
+    # Are we adding a new 'init' or 'edit' history record?
+    if d['Artist'] is None:
+        # This happens when music file has never been played in mserve
+        action = 'init'
+        #print('\nSQL adding metadata for:', key)
+        # June 6, 2023 not legalized for white_key:
+        # SQL adding metadata for: Filter/The Very Best Things: 1995–2008/01 Hey Man Nice Shot.oga
+    elif \
+        fc.Artist          != d['Artist'] or \
+        fc.Album           != d['Album'] or \
+        fc.Title           != d['Title'] or \
+        fc.Compilation     != d['Compilation'] or \
+        fc.Genre           != d['Genre'] or \
+        fc.AlbumArtist     != d['AlbumArtist'] or \
+        fc.AlbumDate       != d['AlbumDate'] or \
+        fc.FirstDate       != d['FirstDate'] or \
+        fc.TrackNumber     != d['TrackNumber'] or \
+        fc.DiscNumber      != d['DiscNumber'] or \
+        fc.Composer        != d['Composer'] or \
+        fc.Comment         != d['Comment'] or \
+        fc.DurationSecs    != d['Seconds'] or \
+        fc.GaplessPlayback != d['Compilation'] or \
+            fc.Duration    != d['Duration']:
+        action = 'edit'
+    else:
+        return False  # Metadata same as library
+
+    # For debugging, set update_print_count to 0. Otherwise set initial value to 10
+    global update_print_count
+    if update_print_count < 10:
+        print('\nSQL updating metadata for:', key)
+        # July 18, 2023 - There are more fields to add but info.cast instead?    
+        print('fc.Artist type :', type(fc.Artist), 'fc.Album type :', type(fc.Album),
+              'fc.Title type :', type(fc.Title), 'fc.TrackNumber type :', type(fc.TrackNumber))
+        print('SQL type    :', type(d['Artist']), 'Album type :',
+              type(d['Album']), 'fc.Title type :', type(d['Title']),
+              'TrackNumber type :', type(d['TrackNumber']))
+        print(fc.Artist, d['Artist'])
+        print(fc.Album, d['Album'])
+        print(fc.Title, d['Title'])
+        print(fc.Genre, d['Genre'])
+        print(fc.TrackNumber, d['TrackNumber'])
+        print(fc.FirstDate, d['FirstDate'])
+        print(fc.DiscNumber, d['DiscNumber'])
+        print(fc.Composer, d['Composer'])
+        print(fc.DurationSecs, d['Seconds'])
+        print(fc.Duration, d['Duration'])
+
+        if fc.Artist != d['Artist']:
+            print('fc.Artist:', fc.Artist, d['Artist'])
+        elif fc.Album != d['Album']:
+            print('fc.Album:', fc.Album, d['Album'])
+        elif fc.Title != d['Title']:
+            print('fc.Title:', fc.Title, d['Title'])
+        elif fc.Genre != d['Genre']:
+            print('fc.Genre:', fc.Genre, d['Genre'])
+        elif str(fc.TrackNumber)  != str(d['TrackNumber']):
+            print('fc.TrackNumber:', fc.TrackNumber, d['TrackNumber'])
+        elif fc.FirstDate != d['FirstDate']:
+            print('fc.FirstDate:', fc.FirstDate, d['FirstDate'])
+        elif fc.DurationSecs != d['Seconds']:
+            print('fc.DurationSecs:', fc.DurationSecs, d['Seconds'])
+        elif fc.Duration != d['Duration']:
+            print('fc.Duration:', fc.Duration, d['Duration'])
+        else:
+            print('All things considered EQUAL')
+        update_print_count += 1
+
+    if not commit:
+        return True  # Not updating but report back Metadata is different
+
+    # Update metadata for music file into SQL Music Table
+    sql = "UPDATE Music SET Artist=?, Album=?, Title=?, Genre=?, TrackNumber=?, \
+           FirstDate=?, Seconds=?, Duration=?, DiscNumber=?, Composer=? \
+           WHERE OsFileName = ?"
+    cursor.execute(sql, (fc.Artist, fc.Album, fc.Title, fc.Genre, fc.TrackNumber, fc.FirstDate,
+                         fc.DurationSecs, fc.Duration, fc.DiscNumber, fc.Composer, key))
+    con.commit()
+
+    # Add history record
+    # Time will be file's last modification time
+    ''' Build full fc.Title path '''
+    full_path = _START_DIR.encode("utf8") + key
+    # Below not needed because "<No Album>" strings not in Music Table filenames
+    # June 2, 2023, no longer relevant because rejected above.
+    full_path = full_path.replace(os.sep + NO_ARTIST_STR, '')
+    full_path = full_path.replace(os.sep + NO_ALBUM_STR, '')
+
+    # os.stat gives us all of file's attributes
+    stat = ext.stat_existing(full_path)
+    if stat is None:
+        print("sql.update_metadata(): File below doesn't exist:\n")
+        for i in d:
+            # Pad name with spaces for VALUE alignment
+            print('COLUMN:', "{:<25}".format(i), 'VALUE:', d[i])
+        return False  # Misleading because SQL music table was updated
+
+    Size = stat.st_size                     # File size in bytes
+    Time = stat.st_mtime                    # File's current mod time
+    SourceMaster = _LODICT['name']
+    SourceDetail = time.asctime(time.localtime(Time))
+    Comments = "Found: " + time.asctime(time.localtime(time.time()))
+    if fc.DurationSecs is not None:
+        FloatSeconds = float(str(fc.DurationSecs))  # Convert from integer
+    else:
+        FloatSeconds = 0.0
+
+    Count = 0
+
+    # If adding, the file history record may be missing too.
+    if action == 'init' and \
+       not hist_check(d['Id'], 'file', action):
+        hist_add(Time, d['Id'], _USER, 'file', action, SourceMaster,
+                 SourceDetail, key, Size, Count, FloatSeconds,
+                 Comments)
+
+    # Add the meta Found or changed record
+    '''
+    print(time.time(), d['Id'], _USER, 'meta', action, SourceMaster, \
              SourceDetail, key, Size, Count, FloatSeconds, 
+             Comments, sep=" # ")
+    '''
+    hist_add(Time, d['Id'], _USER, 'meta', action, SourceMaster,
+             SourceDetail, key, Size, Count, FloatSeconds,
              Comments)
 
     con.commit()

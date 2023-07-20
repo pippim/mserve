@@ -321,7 +321,8 @@ def legalize_dir_name(name):
         See: https://stackoverflow.com/a/31976060/6929343
     """
     name = legalize_filename(name)
-    # name = name.replace('.', '_')  # Actually it is legal
+    if name.endswith("."):  # In Windows & Linux dirs cannot end in `.`
+        name = name[:-1]
     return name
 
 

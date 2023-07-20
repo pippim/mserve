@@ -94,13 +94,34 @@ References:
 #   Miscellaneous
 
 #     TODO:
-#       Setup watchmen. For example every 10 seconds check all sinks and warn
-#           when the same sink number has volume between 50% and 99% two cycles
-#           in a row.
+#       Revise Metadata display from: Playlist #, Artist, Album, Title, Progress
+#       To Title, Year, Comment, Artist, Album, Disc, Track, Year, Playlist #, Disc, Track,
+#       Genre, Progress
+
+#       Hard-coded # 5 rows changes to # 8 rows, so use META_DISPLAY_ROWS = 8
 
 #       Create help buttons for dropdown menu options.
 
-#       When opening Artist, if only one Album, then open it too.
+#       After popup menu unposts, return cursor to line called from and
+#       highlight it. After kid3 or nautilus ends, return cursor back to
+#       original row and highlight it. Helps when moving through list of songs.
+
+#       When expanding Artist, if only one Album, then expand it too.
+#       When collapsing Album, if only one Album, then collapse Artist too.
+
+#       Besides Kid3 and Nautilus right click add Google Search. Later
+#       Hyperlink Recipe Baker small sized window to set new Hyperlink column.
+
+#       Chronology treeview Colors 
+#           fieldbackground='black', then delete all 'normal' tags
+#           Do same for FineTune treeview E.G. Gold on Black
+
+#       Chronology filter "this artist" is pulling all compilations
+
+#       Major encoding.py overhaul. See encoding.py for notes.
+#       Major Locations() new class lifted from Playlists()
+#       FileControl.zoom() better animation for alpha_cb()
+#       FineTune.sync() divide last duration time to zero duration lines
 
 #   Language Conventions - Title should never be labled "song".
 #       Song = Title (can have variations E.G. "Live in Paris" at end)
@@ -291,7 +312,7 @@ ERROR OVERRIDE - https://github.com/quodlibet/mutagen/issues/499:
     $ sudo apt-mark hold python-mutagen
 
 NOTES:
-    File server needs to mount music directory if on idle partition:
+    File server needs to mount music directory if not mounted already:
         sudo mount -t auto -v /dev/sdb1 /mnt/music
 
 TODO'S:
@@ -391,10 +412,10 @@ from random import shuffle
 import locale               # To set thousands separator as , or .
 locale.setlocale(locale.LC_ALL, '')  # Use '' for auto locale selecting
 
+# Dist-packages
 import notify2              # send inotify over python-dbus
 import numpy as np          # For image processing speed boost
-#print("Using numpy as np from path:",
-#      inspect.getfile(np))
+import mutagen              # Get easy tags
 
 # mserve modules
 import global_variables as g
@@ -438,6 +459,7 @@ CFG_DIVISOR_UOM = "MB"      # Unit of Measure becomes Megabyte
 # Global variables
 RESTART_SLEEP = .3          # Delay for mserve close down
 KEEP_AWAKE_MS = 250         # Milliseconds between time checks
+META_DISPLAY_ROWS = 5       # Number of Metadata Rows displayed in frame
 SCROLL_WIDTH = 16           # Scroll bar width, July 3, 2023 used to be 12
 MON_FONTSIZE = 12           # Font size for monitor name
 WIN_FONTSIZE = 11           # Font size for Window name
@@ -450,7 +472,7 @@ BTN_BRD_WID = 3             # Width for button border
 FRM_BRD_WID = 2             # Width for frame border
 # TODO: Calculate PANEL_HGT (height)
 PANEL_HGT = 24              # Height of Unity panel
-MAX_DEPTH = 3               # Sanity check if starting at c:\ or /
+#MAX_DEPTH = 3               # Sanity check if starting at c:\ or /
 # If MAX_DEPTH changes from 3, change 'depth_count = [ 0, 0, 0 ]' below.
 
 '''
@@ -500,13 +522,14 @@ TMP_ALL_NAMES = [TMP_CURR_SONG, TMP_CURR_SAMPLE, TMP_CURR_SYNC,
 ENCODE_DEV = True  # Should always be False for production versions
 
 KID3_INSTALLED = True
-KID3_PROGRAM = "kid3"
-KID3_COMMAND = "xrandr --dpi 144 && kid3 "
-KID3_WIN_SIZE = "1280x736"
-# Command before running kid3: 'xrandr --dpi 144' Best resolution on HD or 4K
+KID3_NAME = "Kid3 Audio Tagger"
+KID3_COMMAND = "xrandr --dpi 144 && kid3 "  # Kid3 isn't HDPI yet
+KID3_WIN_SIZE = "1280x736"  # Window size changed after program starts
 FM_INSTALLED = True
-FM_PROGRAM = "nautilus"  # No HDPI required.
-FM_WIN_SIZE = "1280x736"  # Probably won't work...
+FM_NAME = "Nautilus File Manager"  # No HDPI required.  Change to FM_NAME
+FM_COMMAND = "nautilus"
+FM_WIN_SIZE = "1000x600"  # Window size changed after program starts
+
 # Kill application.name: speech-dispatcher, application.process.id: 5529
 DELETE_SPEECH = True  # Kill speech dispatcher which has four threads each boot.
 
@@ -648,10 +671,9 @@ def make_sorted_list(start_dir, toplevel=None, idle=None):
 
         ''' Limit search to files in 3 levels (/Artist/Album/Songs) '''
         curr_depth = subdir.count(os.sep) - start_dir.count(os.sep)
-        """
-        """
-        if curr_depth == MAX_DEPTH - 1:
-            # Sanity check - delete directories below maximum depth
+        #if curr_depth == MAX_DEPTH - 1:
+        if curr_depth == 2:
+            # Sanity check - delete directories found below /Artist/Album
             del dirs[:]
             continue
 
@@ -673,6 +695,21 @@ def make_sorted_list(start_dir, toplevel=None, idle=None):
 
             # Take sub-path /Artist/Album/Song.xxx and build full path for tests
             full_path = os.path.join(subdir, f)
+
+            ''' July 13, 2023 - Test code from new sql.update_metadata2() '''
+            # File and Directory names with ":", "?", "/" and "." replaced with "_"
+            parts = full_path.split(os.sep)
+            artist = parts[-3]
+            album = parts[-2]
+            title = parts[-1]
+            legal_artist = ext.legalize_dir_name(artist)
+            legal_album = ext.legalize_dir_name(album)
+            legal_title = ext.legalize_song_name(title)
+            if legal_artist != artist or \
+                    legal_album != album or \
+                    legal_title != title:
+                print("illegal names:", legal_artist, legal_album, legal_title)
+
             # There are depths with no files so must recalculate current depth
             curr_depth = full_path.count(os.sep) - start_dir.count(os.sep)
             dtb.update(full_path)
@@ -812,11 +849,14 @@ class PlayCommonSelf:
         self.xy_list = None                 # list(map(tuple, self.co_ords.
         self.breakpoint = None              # int(self.im.size * self.play/100
 
-        self.current_song_number = None     # Playing song number in playlist
-        self.song_artist_var = None         # Metadata Artist name (ellipses)
-        self.song_album_var = None          # Metadata Album name (ellipses)
-        self.current_song_path = None       # Not sure yet!!!!
         self.song_title_var = None          # Metadata song (Title) name
+        self.song_first_date_var = None     # Metadata First release date
+        self.song_artist_var = None         # Metadata Artist name (ellipses)
+        self.song_comment_var = None        # Metadata comment (ellipses)
+        self.song_album_var = None          # Metadata Album name (ellipses)
+        self.song_album_date = None         # Metadata Album date
+        self.current_song_path = None       # Not sure yet!!!!
+        self.current_song_number = None     # Playing song number in playlist
         self.current_progress = None        # Seconds (1 decimal) song played
 
         # Play frame VU meters - columns 2 & 3
@@ -1368,8 +1408,6 @@ class MusicTree(PlayCommonSelf):
 
         ''' Colors for tags '''
         self.ignore_item = None
-        #self.lib_tree.tag_configure('popup_sel', foreground='ForestGreen')
-        #self.lib_tree.tag_configure('play_sel', foreground='Red')
         self.lib_tree.tag_configure('play_sel', background='ForestGreen',
                                     foreground="White")
         self.lib_tree.tag_configure('popup_sel', background='yellow')
@@ -1492,14 +1530,14 @@ class MusicTree(PlayCommonSelf):
         # and: SLOWDOWN BUG: https://gitlab.gnome.org/GNOME/gnome-shell/-/issues/3125
         # The facts are apparent when you restart. To save time, just exit and type 'm'.
 
-        self.file_menu.add_command(label="Save Play and Exit", font=(None, MED_FONT),
-                                   command=self.close)
-        self.file_menu.add_separator()
-
         self.file_menu.add_command(label="Save Favorites", font=(None, MED_FONT),
                                    command=self.write_playlist_to_disk, state=tk.DISABLED)
         self.file_menu.add_command(label="Exit and CANCEL Pending", font=(None, MED_FONT),
                                    command=self.exit_without_save, state=tk.DISABLED)
+        self.file_menu.add_separator()
+
+        self.file_menu.add_command(label="Save Play and Exit", font=(None, MED_FONT),
+                                   command=self.close)
 
         mb.add_cascade(label="File", menu=self.file_menu, font=(None, MED_FONT))
         ext.t_end('no_print')  # 0.0009999275
@@ -1542,9 +1580,9 @@ class MusicTree(PlayCommonSelf):
                                    command=self.toggle_hockey)
         self.view_menu.add_separator()  # If countdown running, don't show options
 
-        self.view_menu.add_command(label="SQL Music", font=(None, MED_FONT),
+        self.view_menu.add_command(label="SQL Music Table", font=(None, MED_FONT),
                                    command=self.show_sql_music)
-        self.view_menu.add_command(label="SQL History", font=(None, MED_FONT),
+        self.view_menu.add_command(label="SQL History Table", font=(None, MED_FONT),
                                    command=self.show_sql_hist)
         self.view_menu.add_separator()
         self.view_menu.add_command(label="Debug Information", font=(None, MED_FONT),
@@ -4145,7 +4183,7 @@ class MusicTree(PlayCommonSelf):
         """
         # select row under mouse
         Id = self.lib_tree.identify_row(event.y)
-        if Id is None or Id is "":
+        if Id is None:
             return  # clicked on whitespace (no row)
 
         # Still relative to screen. Not relative to treeview as expected?
@@ -4176,20 +4214,19 @@ class MusicTree(PlayCommonSelf):
             Rename Artist or Album
             Need to apply 'popup_sel' tag to get visual feedback
         """
-
-        ''' Parent already done now apply 'popup_sel' tag to children '''
-        for child in self.lib_tree.get_children(Id):
-            toolkit.tv_tag_add(self.lib_tree, child, "popup_sel")
-
-        ''' Set object for menu below. '''
+        ''' Set level for rename. '''
         if self.lib_tree.tag_has("Artist", Id):
             level = "Artist"
         elif self.lib_tree.tag_has("Album", Id):
             level = "Album"
         else:
             print("parent_popup() called with bad Id:", Id)
-            level = ""
-            
+            return
+
+        ''' Parent already done now apply 'popup_sel' tag to children '''
+        for child in self.lib_tree.get_children(Id):
+            toolkit.tv_tag_add(self.lib_tree, child, "popup_sel")
+
         menu = tk.Menu(root, tearoff=0)
         menu.post(event.x_root, event.y_root)
 
@@ -4198,15 +4235,15 @@ class MusicTree(PlayCommonSelf):
         menu.add_command(label="Collapse list", font=(None, MED_FONT),
                          command=lambda: self.collapse_all(Id))
         menu.add_command(label="Rename " + level, font=(None, MED_FONT),
-                         command=lambda: self.rename_file(Id, level))
+                         command=lambda: self.rename_files(Id, level))
         menu.add_separator()
 
         if KID3_INSTALLED:
-            menu.add_command(label="Open kid3", font=(None, MED_FONT),
-                             command=lambda: self.kid3_open(Id, level))
+            menu.add_command(label="Open " + KID3_NAME, font=(None, MED_FONT),
+                             command=lambda: self.kid3_open(Id))
         if FM_INSTALLED:
-            menu.add_command(label="Open " + FM_PROGRAM, font=(None, MED_FONT),
-                             command=lambda: self.fm_open(Id, level))
+            menu.add_command(label="Open " + FM_NAME, font=(None, MED_FONT),
+                             command=lambda: self.fm_open(Id))
         menu.add_separator()
 
         menu.add_command(label="Ignore click", font=(None, MED_FONT),
@@ -4229,18 +4266,20 @@ class MusicTree(PlayCommonSelf):
                          command=lambda s=self: s.lib_tree_play(Id, sample="full"))
         menu.add_separator()
         
+        menu.add_command(label="Rename Song Title", font=(None, MED_FONT),
+                         command=lambda: self.rename_files(Id, "Song Title"))
         if KID3_INSTALLED:
-            menu.add_command(label="Open kid3", font=(None, MED_FONT),
-                             command=lambda: self.kid3_open(Id, level))
+            menu.add_command(label="Open " + KID3_NAME, font=(None, MED_FONT),
+                             command=lambda: self.kid3_open(Id))
         if FM_INSTALLED:
-            menu.add_command(label="Open " + FM_PROGRAM, font=(None, MED_FONT),
-                             command=lambda: self.fm_open(Id, level))
+            menu.add_command(label="Open " + FM_NAME, font=(None, MED_FONT),
+                             command=lambda: self.fm_open(Id))
 
         menu.add_separator()
         menu.add_command(label="View Metadata", font=(None, MED_FONT),
                          command=lambda: self.view_metadata(
                              Id, os_filename=os_filename, top=self.lib_top))
-        menu.add_command(label="View SQL Row", font=(None, MED_FONT),
+        menu.add_command(label="View SQL Music Row", font=(None, MED_FONT),
                          command=lambda: self.view_sql_music_id(Id))
         menu.add_separator()
         menu.add_command(label="Ignore click", font=(None, MED_FONT),
@@ -4314,10 +4353,10 @@ class MusicTree(PlayCommonSelf):
         sql.tkinter_display(pretty)
 
     # noinspection PyUnusedLocal
-    def rename_file(self, Id, level):
+    def rename_files(self, Id, level):
         """ Rename Artist or Album on disc and in SQL Music Table
         :param Id: Treeview Id for item. Always starts with I for parents
-        :param level: string with 'Artist' or 'Album'
+        :param level: string with 'Artist', 'Album', or "Song Title"
         """
 
         old_name = self.lib_tree.item(Id)['text']
@@ -4349,8 +4388,8 @@ class MusicTree(PlayCommonSelf):
             text = "Checkboxes in Music Location Tree have not been updated."
             text += "\n\nIf the pending frame is open click 'Apply' button."
             text += "\n\nThen, open the 'File' dropdown menu and choose from:"
-            text += "\n\n1) Select 'Save Playlist' if highlighted."
-            text += "\n\n2) Select 'Save Favorites' if highlighted."
+            text += "\n\n1) Select 'Save Playlist' if enabled."
+            text += "\n\n2) Select 'Save Favorites' if enabled."
             text += "\n\n3) If you want to cancel changes, choose"
             text += "\nthe option 'Exit and CANCEL Pending'.\n"
             self.info.cast(title + "\n\n" + text, 'error')
@@ -4359,15 +4398,21 @@ class MusicTree(PlayCommonSelf):
             self.wrapup_lib_popup()  # Set color tags and counts
             return
 
-        if level == 'Album':
+        if level == 'Song Title':
+            album_id = self.lib_tree.parent(Id)
+            album_name = self.lib_tree.item(album_id)['text']
+            artist_id = self.lib_tree.parent(album_id)
+            artist_name = self.lib_tree.item(artist_id)['text']
+            search = artist_name + os.sep + album_name + os.sep + old_name
+        elif level == 'Album':
             artist_id = self.lib_tree.parent(Id)
             artist_name = self.lib_tree.item(artist_id)['text']
             search = artist_name + os.sep + old_name + os.sep
         else:
             search = old_name + os.sep  # Renaming artists
-        sql.cursor.execute("SELECT OsFileName, Id, Artist, Album FROM Music " +
+        sql.cursor.execute("SELECT OsFileName, Id, Artist, Album, Title FROM Music " +
                            "WHERE OsFileName LIKE ? ", [search + "%"])
-        rows = sql.cursor.fetchall()
+        old_rows = sql.cursor.fetchall()
 
         while True:
             title = "Rename " + level
@@ -4404,7 +4449,8 @@ class MusicTree(PlayCommonSelf):
                 if answer.result != "yes":
                     continue  # Enter a new name
 
-            if len(answer.string) == 0:
+            ''' Blank names are not allowed. '''
+            if len(legal_string) == 0:
                 title = "Bad " + level + " name"
                 text = "New name cannot be blank"
                 self.info.cast(title + "\n\n" + text, 'error')
@@ -4412,10 +4458,20 @@ class MusicTree(PlayCommonSelf):
                                  thread=self.get_refresh_thread())
                 continue
 
-            ''' Ensure new name isn't used '''
-            if level == 'Album':
-                artist_id = self.lib_tree.parent(Id)
-                artist_name = self.lib_tree.item(artist_id)['text']
+            ''' old_name same as new name?'''
+            if old_name == legal_string:
+                title = "New " + level + " name invalid."
+                text = "New name cannot be the same as the existing " + level
+                text += ":\n\n" + legal_string
+                self.info.cast(title + "\n\n" + text, 'error')
+                message.ShowInfo(self.lib_top, title, text, icon='error',
+                                 thread=self.get_refresh_thread())
+                continue
+
+            ''' If new name exists then files will be merged '''
+            if level == 'Song Title':
+                search = artist_name + os.sep + album_name + os.sep + legal_string
+            elif level == 'Album':
                 search = artist_name + os.sep + legal_string + os.sep
             else:
                 search = legal_string + os.sep  # Renaming artists
@@ -4423,14 +4479,28 @@ class MusicTree(PlayCommonSelf):
                                "WHERE OsFileName LIKE ? ", [search + "%"])
             test_rows = sql.cursor.fetchall()
 
-            if len(test_rows) != 0:
-                title = "Bad " + level + " name"
-                text = "New name cannot be the same as the existing " + level
-                text += ":\n\n" + legal_string
+            ''' Trying to rename to another song that exists under /Album '''
+            if level == 'Song Title' and len(test_rows) != 0:
+                title = "New " + level + " name invalid."
+                text = "New " + level
+                text += " name:\n\n" + legal_string + "\n\nAlready exists."
                 self.info.cast(title + "\n\n" + text, 'error')
                 message.ShowInfo(self.lib_top, title, text, icon='error',
                                  thread=self.get_refresh_thread())
                 continue
+
+            ''' New Artist or Album already exists so merge files 
+            '''
+            if len(test_rows) != 0:
+                title = "New " + level + " name already exists."
+                text = "The Music files from under the old " + level + ": "
+                text += old_name + "\nwill be moved under the new " + level
+                text += ": " + legal_string
+                self.info.cast(title + "\n\n" + text)
+                message.AskQuestion(self.lib_top, title, text, icon='warning',
+                                    thread=self.get_refresh_thread())
+                if answer.result != "yes":
+                    continue  # Enter a new name
 
             ''' Ensure old name isn't playing - Do this last so music
                 player can't switch to new song during other dialog boxes. '''
@@ -4445,48 +4515,76 @@ class MusicTree(PlayCommonSelf):
             if old_playing:
                 title = level + " is being played."
                 text = "The " + level + ":" + old_name + "is in use.\n\n"
-                text += "Switch music player to a different " + level
-                text += ".\n\nCannot rename an " + level
+                text += "Cannot rename the " + level
                 text += " current being played.\n"
+                text += "\n\nSwitch music player to a different " + level + "."
                 self.info.cast(title + "\n\n" + text, 'error')
                 message.ShowInfo(self.lib_top, title, text, icon='error',
                                  thread=self.get_refresh_thread())
                 continue
-
             break
 
-        ''' loop through old music ids
+        ''' loop through old music by OsFileName
             old_base = artist/album/01 title.mp3 '''
         change_count = 0
-        for old_base, music_id, oldArtist, oldAlbum in rows:
+        duplicate_count = 0
+        for old_base, music_id, oldArtist, oldAlbum, OldTitle in old_rows:
 
             new_artist = old_artist = old_base.split(os.sep)[0]
             new_album = old_album = old_base.split(os.sep)[1]
             new_title = old_title = old_base.split(os.sep)[2]
-            newArtist = oldArtist  # Will change next if needed.
-            newAlbum = oldAlbum  # Will change next if needed.
-            if level == 'Album':
-                new_album = legal_string  # For OS Filename
-                newAlbum = new_album  # For SQL Metadata Tag
+            newArtist = oldArtist  # New metadata. Will change next if needed.
+            newAlbum = oldAlbum  # New metadata. Will change next if needed.
+            # newTitle = oldTitle  # There is no newTitle saved to SQL
+            # newTitle for metadata, new_title for OS Filename
+            if level == "Song Title":
+                new_title = legal_string  # For OS Filename
+                # Can't update metadata Title because "99-", "99 - " prefix
+                # and ".m4a" suffix need to be stripped. Assume song title
+                # hasn't changed or it will be changed with Kid3.
+            elif level == 'Album':
+                newAlbum = new_album = legal_string  # For OS Filename
             else:
-                new_artist = legal_string
-                newArtist = newArtist  # For SQL Metadata Tag
+                newArtist = new_artist = legal_string
 
             old_path = PRUNED_DIR + old_base
             new_base = new_artist + os.sep + new_album + os.sep + new_title
             new_path = PRUNED_DIR + new_base
 
-            ''' Update Music Table with new OsFileName = new_path '''
+            """ July 18, 2023 conversion notes:
+            artist_dir = OsFileName.rsplit(os.sep, 2)[0]
+            if artist_dir == "Compilations":
+                new_compilation = "1"
+            else:
+                new_compilation = "0"
+            ''' Attempt to update Music Table with new OsFileName base_path '''
+            sql_cmd = "UPDATE Music SET OsFileName=?, Artist=?, Album=?, \
+                       Compilation=? WHERE Id=?"
+            try:
+                sql.cursor.execute(sql_cmd, (new_base, newArtist, newAlbum, 
+                                             new_compilation, music_id))
+            """
+
+            ''' Attempt to update Music Table with new OsFileName base_path '''
             sql_cmd = "UPDATE Music SET OsFileName=?, Artist=?, Album=? WHERE Id=?"
             try:
                 sql.cursor.execute(sql_cmd,
                                    (new_base, newArtist, newAlbum, music_id))
             except sql.sqlite3.IntegrityError:  # UNIQUE constraint failed: Music.OsFileName
                 print("UNIQUE constraint failed: Music.OsFileName")
+                title = "Cannot rename to duplicate file name"
+                text = "Old name: " + old_path + "\n\n"
+                text += "New name: " + new_path + "\n\n"
+                text += "Rename from old to new failed. Moving on to next file."
+                self.info.cast(title + "\n\n" + text, 'error')
+                message.ShowInfo(self.lib_top, title, text, icon='error',
+                                 thread=self.get_refresh_thread())
+                duplicate_count += 1
+                continue
+
             # IntegrityError: UNIQUE constraint failed: Music.OsFileName
             # search: Compilations/Greatest Hits of the 80's [Disc 2]/
             # search: Compilations/Greatest Hits of the 80's [Disc 4]/
-
 
             ''' os.renames(old, new) '''
             os.renames(old_path, new_path)
@@ -4506,15 +4604,21 @@ class MusicTree(PlayCommonSelf):
         self.lib_tree.item(Id, text=legal_string)  # Update Music Location Tree
 
         title = "Renaming completed"
-        text = str(change_count) + " files renamed.\n"
-        text += "\nOld " + level + " name:\n" + old_name
-        text += "\n\nNew " + level + " name:\n"  + legal_string
-        text += "\n\nStorage device and SQL database in mserve have been updated."
-        text += "\n\nUse your file manager to rename directories in other locations."
-        text += "\n\nOtherwise the mserve SQL database will no longer be valid"
-        text += "\nwhen mserve opens the other locations. Duplicate data will"
-        text += "\nappear in SQL database under the old " + level +\
-                " and the new " + level + ".\n"
+        if change_count == 0:
+            text = "No files were renamed!\n"
+        else:
+            text = str(change_count) + " file(s) renamed.\n"
+        if duplicate_count != 0:
+            text += str(duplicate_count) + " duplicate file(s) NOT renamed!\n"
+        if change_count != 0:
+            text += "\nOld " + level + " name:\n" + old_name
+            text += "\n\nNew " + level + " name:\n"  + legal_string
+            text += "\n\nStorage device and SQL database in mserve have been updated."
+            text += "\n\nUse your file manager (not mserve) to rename in other locations."
+            text += "\n\nOtherwise the mserve SQL database will no longer be perfect"
+            text += "\nwhen mserve opens the other locations. Duplicate data will"
+            text += "\nappear in SQL database under the old " + level +\
+                    " and the new " + level + ".\n"
         self.info.cast(title + "\n\n" + text)
         message.ShowInfo(self.lib_top, title, text,
                          thread=self.get_refresh_thread())
@@ -4522,7 +4626,7 @@ class MusicTree(PlayCommonSelf):
 
     @staticmethod
     def rename_path(from_end, old, new, paths):
-        """ Called from rename_file() to process one filename in paths list
+        """ Called from rename_files() to process one filename in paths list
 
         :param from_end: -1 = song, -2 = album, -3 = artist
         :param old: old name
@@ -4618,7 +4722,7 @@ class MusicTree(PlayCommonSelf):
             new_window = os.popen("xdotool getactivewindow").read().strip()
             if new_window != our_window:
                 break
-        ext.t_end('print')
+        ext.t_end('no_print')  # 0.6692051888
         print(i, new_window)
 
         ''' Looped 100 times at 33ms '''
@@ -4640,10 +4744,10 @@ class MusicTree(PlayCommonSelf):
                      width + ' ' + height)
         return new_window
 
-    def fm_open(self, Id, level=None):
+    def fm_open(self, Id):
         """ Open File Manager (Nautilus) for Artist, Album or Music File """
         trg_path = self.make_variable_path(Id)
-        self.run_and_move_window(trg_path, FM_PROGRAM, FM_WIN_SIZE)
+        self.run_and_move_window(trg_path, FM_COMMAND, FM_WIN_SIZE)
 
     # ==============================================================================
     #
@@ -5898,7 +6002,7 @@ class MusicTree(PlayCommonSelf):
 
         # If lambda isn't used the command is executed as soon as popup
         # menu is displayed, not when option is chosen.
-        menu.add_command(label="View Current Row", font=(None, g.MED_FONT),
+        menu.add_command(label="View SQL Table Row", font=(None, g.MED_FONT),
                          command=lambda: self.view_sql_row(pretty))
         menu.add_command(label="Open in library", font=(None, g.MED_FONT),
                          command=lambda: self.view_library(pretty))
@@ -6406,6 +6510,8 @@ class MusicTree(PlayCommonSelf):
             '''
             if self.splash_toplevel:
                 self.splash_toplevel.withdraw()  # Remove splash screen
+                # Default background too bright: '#d9d9d9'
+                root.configure(background="#797979")  # Has no effect
             return
 
         ''' Check for Last selections file on disk '''
@@ -6774,6 +6880,11 @@ class MusicTree(PlayCommonSelf):
                  textvariable=self.song_album_var) \
             .grid(row=2, column=2, sticky=tk.W)
 
+        ''' July 18, 2023 New stuff'''
+        self.song_first_date_var = tk.StringVar()
+        self.song_comment_var = tk.StringVar()
+        self.song_album_date = tk.StringVar()
+
         ''' Current title '''
         self.current_song_path = ""
         self.song_title_var = tk.StringVar()
@@ -6789,21 +6900,22 @@ class MusicTree(PlayCommonSelf):
         tk.Label(self.play_frm, text="", textvariable=self.current_progress,
                  font=ms_font).grid(row=4, column=2, sticky=tk.W)
 
-        ''' VU Meter canvas object spanning 5 rows '''
+        ''' VU Meter canvas object spanning META_DISPLAY_ROWS '''
+        r = META_DISPLAY_ROWS
         self.vu_width = 30
         self.vu_height = 200
 
         self.vu_meter_left = tk.Canvas(self.play_frm, width=self.vu_width,
                                        relief=tk.FLAT,  # Trying to override tk.RIDGE :(
                                        height=self.vu_height, bg='black')
-        self.vu_meter_left.grid(row=0, rowspan=5, column=3, padx=PAD_X * 3)
+        self.vu_meter_left.grid(row=0, rowspan=r, column=3, padx=PAD_X * 3)
         self.vu_meter_left_rectangle = self.vu_meter_left.create_rectangle(
             0, self.vu_height, 0, self.vu_height)
 
         self.vu_meter_right = tk.Canvas(self.play_frm, width=self.vu_width,
                                         relief=tk.FLAT,  # Trying to override tk.RIDGE :(
                                         height=self.vu_height, bg='black')
-        self.vu_meter_right.grid(row=0, rowspan=5, column=4, padx=PAD_X * 3)
+        self.vu_meter_right.grid(row=0, rowspan=r, column=4, padx=PAD_X * 3)
         self.vu_meter_right_rectangle = self.vu_meter_right.create_rectangle(
             0, self.vu_height, 0, self.vu_height)
 
@@ -6818,7 +6930,7 @@ class MusicTree(PlayCommonSelf):
 
         self.play_frm.grid_columnconfigure(5, weight=1)
         self.play_frame3 = tk.Frame(self.play_frm)
-        self.play_frame3.grid(row=0, rowspan=5, column=5,
+        self.play_frame3.grid(row=0, rowspan=r, column=5,
                               padx=PAD_X, pady=PAD_X, sticky=tk.NSEW)
         self.play_frame3.grid_rowconfigure(1, weight=1)
         self.play_frame3.grid_columnconfigure(0, weight=1)
@@ -7221,11 +7333,12 @@ class MusicTree(PlayCommonSelf):
 
     def move_lyrics_right(self):
         """ Chronology (playlist) tree visible. Move lyrics score right. """
-        self.play_frm.grid_rowconfigure(5, weight=0)  # Lyrics Row will be gone now
+        r = META_DISPLAY_ROWS
+        self.play_frm.grid_rowconfigure(r, weight=0)  # Lyrics Row will be gone now
         # May 9, 2023 - Reset for row 1, column 6 (1's based)
-        self.play_frm.grid_columnconfigure(5, weight=1)
-        self.play_frame3.grid(row=0, rowspan=5, column=5, sticky=tk.NSEW)
-        self.play_frm.grid_rowconfigure(5, weight=0)  # Lyrics gone now
+        self.play_frm.grid_columnconfigure(4, weight=1)
+        self.play_frame3.grid(row=0, rowspan=r, column=5, sticky=tk.NSEW)
+        self.play_frm.grid_rowconfigure(r, weight=0)  # Lyrics gone now
         # Define title frame top of play_F3
         self.lyrics_frm.grid(row=0, rowspan=1, column=0, sticky=tk.NSEW)
         # song info column narrow as possible for wide lyrics lines
@@ -7236,9 +7349,10 @@ class MusicTree(PlayCommonSelf):
     def move_lyrics_bottom(self):
         """ The chronology (playlist) tree is hidden. Move lyrics score down. """
         # May 9, 2023 - Reset for row 6, column 2 (1's based)
-        self.play_frm.grid_columnconfigure(5, weight=0)
-        self.play_frame3.grid(row=5, rowspan=1, column=1, columnspan=4, sticky=tk.NSEW)
-        self.play_frm.grid_rowconfigure(5, weight=5)  # Lyrics get more space
+        r = META_DISPLAY_ROWS
+        self.play_frm.grid_columnconfigure(r, weight=0)
+        self.play_frame3.grid(row=r, rowspan=1, column=1, columnspan=4, sticky=tk.NSEW)
+        self.play_frm.grid_rowconfigure(r, weight=5)  # Lyrics get more space
         # Define title frame top of play_F3
         self.lyrics_frm.grid(row=0, rowspan=1, column=0, sticky=tk.NSEW)
         # song info column wide as possible for wide lyrics lines
@@ -7994,6 +8108,9 @@ class MusicTree(PlayCommonSelf):
             self.splash_toplevel.withdraw()  # Remove splash screen
             self.splash_toplevel = None
 
+        root.configure(background="#797979")  # Has no effect
+        self.lib_top.configure(background="#a9a9a9")  # Has no effect
+
         ''' Pulse Audio self.sinks_now is freshly updated by now.
             Check if speech-dispatcher is polluting sound input sinks. '''
         self.check_speech_dispatcher()
@@ -8277,7 +8394,11 @@ class MusicTree(PlayCommonSelf):
         """
         meta_update_succeeded = None
         if file_ctl.path.startswith(PRUNED_DIR):
-            sql_key = file_ctl.path[len(PRUNED_DIR):]  # Remove prefix from filename
+            ''' July 18, 2023 conversion
+            meta_update_succeeded = sql.update_metadata(file_ctl)
+            '''
+            sql_key = file_ctl.path[len(PRUNED_DIR):]
+            # Remove prefix from filename leaving base-path (OsFileName)
             # returns true if metadata changed and row updated
             meta_update_succeeded = \
                 sql.update_metadata(
@@ -8293,7 +8414,7 @@ class MusicTree(PlayCommonSelf):
                     file_ctl.DurationSecs, file_ctl.Duration)
             '''  # convert July 13, 2023 
         else:
-            # Not really an error but needs more testing and enhancing
+            # July 13, 2023 - Not really an error needs testing
             print('mserve.py update_sql_metadata() path:', file_ctl.path)
             print('mserve.py update_sql_metadata() Missing PRUNED_DIR:', PRUNED_DIR)
             pass
@@ -8708,6 +8829,7 @@ class MusicTree(PlayCommonSelf):
             return  # Is user editing lyrics?
         self.play_clear_lyrics()  # Reset all fields
 
+        print("self.play_make_sql_key():", self.play_make_sql_key())
         self.lyrics_score, self.lyrics_time_list = \
             sql.get_lyrics(self.play_make_sql_key())
         if not self.play_top_is_active:
@@ -8725,6 +8847,7 @@ class MusicTree(PlayCommonSelf):
                 # "[Instrumental]" is the shortest lyrics stored so under 10 is empty
                 # It is possible web scraper returns single character we call "None".
                 self.lyrics_score = None
+        print("self.lyrics_score[:40]:", self.lyrics_score[:40])  # Debug messed up
 
         if self.lyrics_score is None:
             # print('web scraping lyrics from internet')
@@ -10835,6 +10958,7 @@ mark set markName index"
         self.wrapup_lib_popup()  # Set color tags and counts
 
     def lib_tree_play_lift(self):
+        """ Lift Music Location Tree to top of stacking order """
         self.ltp_top.focus_force()  # Get focus
         self.ltp_top.lift()  # Raise in stacking order
 
@@ -10845,34 +10969,26 @@ mark set markName index"
     # ==============================================================================
 
     def build_chronology(self, _sbar_width=12):
-        """ Chronology treeview List Box, Columns and Headings
-        """
-        #style = ttk.Style(self.F4)
-        #style.configure("black.Treeview", background="black")
+        """ Chronology treeview List Box, Columns and Headings """
+
+        ''' Create Chronology Treeview (chron_tree) and style Gold on Black '''
+        style = ttk.Style(self.F4)
+        style.configure("chron.Treeview", background='Black',
+                        fieldbackground='Black',
+                        foreground='Gold')
         self.chron_tree = ttk.Treeview(self.F4, show=('tree',), selectmode="none")
-        #self.chron_tree.configure(style="black.Treeview")
-        # https://stackoverflow.com/a/43834987/6929343
-        # black background isn't working. set each row bg color instead
+        self.chron_tree.configure(style="chron.Treeview")
+
+        ''' Single column, when long, unfortunately can't scroll horizontally '''
         self.chron_tree.column("#0", minwidth=900, stretch=tk.YES)
         self.chron_tree.grid(row=0, column=0, sticky=tk.NSEW)
-        #self.chron_tree.rowconfigure(0, weight=1)  # Doesn't fix background prob.
 
-        ''' Chronology Treeview Scrollbars '''
-        # Create a vertical scrollbar linked to the frame.
-        # MON_FONTSIZE
+        ''' Chronology Treeview Vertical Scrollbar '''
         v_scroll = tk.Scrollbar(self.F4, orient=tk.VERTICAL, width=SCROLL_WIDTH,
                                 command=self.chron_tree.yview)
         v_scroll.grid(row=0, column=1, sticky=tk.NS)
         self.chron_tree.configure(yscrollcommand=v_scroll.set)
         v_scroll.config(troughcolor='black', bg='gold')
-        # v_scroll.config(width=SCROLL_WIDTH)
-
-
-        # horizontal scrollbar does nothing in treeview with single column.
-        #h_scroll = tk.Scrollbar(self.F4, orient=tk.HORIZONTAL, width=_sbar_width,
-        #                        command=self.chron_tree.xview)
-        #h_scroll.grid(row=1, column=0, sticky=tk.EW)
-        #self.chron_tree.configure(x scroll command=h_scroll.set)
 
         ''' Use tool_type="canvas_button" for entire treeview
             DISABLED - Leave comments here so mistake isn't repeated... 
@@ -10884,22 +11000,21 @@ mark set markName index"
         #    "Right click on a song for action menus.",
         #    tool_type="canvas_button", anchor="nw")
 
-        ''' Chronology treeview Colors '''
+        ''' Chronology treeview Colors .tag_configure() '''
         self.chron_tree.tag_configure('normal', background='Black',
                                       foreground='Gold')
         self.chron_tree.tag_configure('chron_sel', background='grey18',
                                       foreground='LightYellow')
 
         ''' Configure tag for row highlight '''
-        self.chron_tree.tag_configure('highlight', background='LightBlue')
+        self.chron_tree.tag_configure('highlight', background='LightBlue',
+                                      foreground="Black")
 
         self.chron_tree.bind('<Motion>', self.chron_highlight_row)
         self.chron_tree.bind("<Leave>", self.chron_leave_row)
 
-        ''' Trap left mouse click to select song for playing '''
+        ''' Mouse right-click for popup menu '''
         # Left click on works when clicked twice
-        #self.chron_tree.bind('<Button-1>', self.chron_tree_left_click)
-        #self.chron_tree.bind('<Button-1>', self.chron_tree_right_click)
         self.chron_tree.bind('<Button-3>', self.chron_tree_right_click)
 
         ''' Populate chronology treeview '''
@@ -10938,20 +11053,6 @@ mark set markName index"
                     print('mserve.py populate_chron_tree() insert failed with Error: %s' % (str(err)))
                     print()  # When it breaks tons of errors so separate into grouped msgs
 
-        ''' Create empty rows when row count < 10 '''
-        row_count = len(self.chron_tree.get_children())
-        fake_rows = self.chron_tree.tag_has("empty")  # existing number fake rows
-        needed_rows = 10 - row_count
-        needed_rows = 0 if needed_rows < 0 else needed_rows
-        if needed_rows > len(fake_rows):
-            add_cnt = needed_rows - len(fake_rows)
-            for _ in range(add_cnt):
-                self.chron_tree.insert('', 'end', tags=("normal", "empty"))
-        elif len(fake_rows) > needed_rows:
-            del_cnt = len(fake_rows) - needed_rows
-            for i, _ in enumerate(range(del_cnt)):
-                self.chron_tree.delete(fake_rows[i])
-
         ''' Highlight current song
 
             Only songs that have been played once will have metadata for release
@@ -10971,9 +11072,8 @@ mark set markName index"
         """
         tree = event.widget
         item = tree.identify_row(event.y)
-        #print("item:", item)  # Never getting called?
-        if item.startswith("I"):
-            return
+        if item is None:
+            return  # Empty row
 
         if self.chron_last_row == item:
             return        # Get called dozens of times when still in same row
@@ -10987,14 +11087,10 @@ mark set markName index"
             self.chron_last_tag_removed = "chron_sel"
         elif "normal" in tags:
             toolkit.tv_tag_replace(self.chron_tree, item, "normal", "highlight", strict=True)
-            # Got error that "normal" wasn't in tags when using strict=True June 23, 2023
-            # Probably fixed because 'not' was missing in chron_leave_row() function
             self.chron_last_tag_removed = "normal"
         else:
-            # print("chron_highlight_row() error tags:", tags, type(tags), "item:", item)
-            # Tkinter bug? item is blank and tags is empty string
-            # Happens when you are on top row and go up into play_top button bar
-            return
+            #print("chron_highlight_row() error tags:", tags, type(tags), "item:", item)
+            return  # Get some false-positives, so don't bother printing
 
         self.chron_last_row = item
 
@@ -11020,14 +11116,6 @@ mark set markName index"
         self.chron_last_row = None
         self.chron_last_tag_removed = None
 
-    def chron_tree_left_click(self, event):
-        """
-            Binding goes directly to chron_tree_right_click()
-        """
-        #item = self.chron_tree.identify_row(event.y)
-        #print('mserve.py chron_tree_left_click(self, event):', item)
-        self.chron_tree_right_click(event)
-
     def chron_tree_right_click(self, event):
         """ Drop down menu:
                 Play different song / Restart current song
@@ -11036,9 +11124,10 @@ mark set markName index"
                 Filter songs by artist, with time index, over 5 minutes
         """
         item = self.chron_tree.identify_row(event.y)
-        if item.startswith("I"):
-            self.info.cast("Cannot click on an empty row.")
-            return
+
+        if item is None:
+            # self.info.cast("Cannot click on an empty row.")
+            return  # Empty row, nothing to do
 
         ''' self.mouse_x, self.mouse_y for Kid3 '''
         self.mouse_x, self.mouse_y = event.x_root, event.y_root
@@ -11064,6 +11153,7 @@ mark set markName index"
                              command=lambda: self.chron_apply_filter('time_index', item))
             menu.add_command(label="Filter not Synchronized", font=(None, MED_FONT),
                              command=lambda: self.chron_apply_filter('no_time_index', item))
+            ''' July 18, 2023 - When Artist is "Compilations", narrow down to song artist '''
             menu.add_command(label="Filter by this Artist", font=(None, MED_FONT),
                              command=lambda: self.chron_apply_filter('artist_name', item))
             menu.add_command(label="Filter over 5 Minutes", font=(None, MED_FONT),
@@ -11088,6 +11178,7 @@ mark set markName index"
         # '_' prevents: TypeError: <lambda>() takes no arguments (1 given)
 
     def close_chron_popup(self, menu, item):
+        """ Close the chronology try popup menu """
         self.chron_last_row = item  # Restore item stolen when menu built
         self.chron_leave_row()  # This was called when menu posted but item None
         menu.unpost()  # Remove popup menu
@@ -11152,8 +11243,6 @@ mark set markName index"
 
         if option is "no_time_index":
             for i, iid in enumerate(self.chron_tree.get_children()):
-                if iid.startswith("I"):
-                    continue  # empty row
                 time_index_flag = self.chron_tree.item(iid)['values'][0]
                 #print("time_index_flag:", time_index_flag, "iid:", iid)
                 if time_index_flag == 'no':  # "is 'yes':" doesn't work !!!
@@ -11162,8 +11251,6 @@ mark set markName index"
 
         if option is "over_5":
             for i, iid in enumerate(self.chron_tree.get_children()):
-                if iid.startswith("I"):
-                    continue  # empty row
                 text = self.chron_tree.item(iid)['text']
                 duration = text.split(" ")[-1]
                 if ":" in duration:
@@ -11174,8 +11261,6 @@ mark set markName index"
 
         kept_count = 0
         for i, iid in enumerate(self.chron_tree.get_children()):
-            if iid.startswith("I"):
-                continue  # empty row
             try:
                 self.chron_attached.index(iid)
                 # print("keep iid:", iid)
@@ -11200,14 +11285,13 @@ mark set markName index"
             self.info.fact(quote)
             return  # TODO: Has this been tested? Use small playlist
 
-        # Synchronized comes out ordered. Artist is random order
+        ''' Fix Synchronized sorted out of order. Artist is random order ''' 
         self.chron_attached.sort(key=int)
         #for i, attached in enumerate(self.chron_attached):
         #    print(i, attached)
 
         # Stop current song and remove highlighting in lib_tree
         if self.pp_state == "Playing":
-            # Note something is stopping vu_meter, but it's not this
             self.pp_toggle()  # Pause current song because it will be changing.
         self.wrapup_song()
 
@@ -13216,22 +13300,27 @@ class FileControlCommonSelf:
         self.audio = []             # List of lines about audio streams found
         self.valid_file = None      # len(self.audio) > 0
         self.invalid_file = None    # len(self.audio) == 0
+
         self.Artist = None          # self.metadata.get('ARTIST', "None")
         self.Album = None           # self.metadata.get('ALBUM', "None")
         self.Title = None           # self.metadata.get('TITLE', "None")
+        self.Compilation = None     # self.metadata.get('COMPILATION', "None")
+        self.AlbumArtist = None     # self.metadata.get('ALBUM_ARTIST', "None")
         self.Genre = None           # self.metadata.get('GENRE', "None")
-        # Don't like ReleaseDate it should be FirstDate?
-        self.Date = None            # self.metadata.get('DATE', "None")
+        self.FirstDate = None       # self.metadata.get('DATE', "None")
+        self.Date = None            # self.FirstDate
         self.CreationTime = None    # new July 13, 2023 'CREATION_TIME'
-        # Don't like RecordingDate it should be AlbumDate?
-        self.RecordingDate = None   # new July 13, 2023 YYYY-MM
         self.Composer = None        # new July 13, 2023 'COMPOSER'
+        self.Comment = None         # new July 13, 2023 'COMMENT'
         self.DiscNumber = None      # new July 13, 2023 'DISC'
         self.Track = None           # self.metadata.get('TRACK', "None")
         self.Duration = None        # self.metadata.get('DURATION', "0.0,0")
         self.DurationSecs = None    # hh:mm:ss sting converted to int seconds
+        self.GaplessPlayback = None  # self.metadata.get('GAPLESS_PLAYBACK', "None")
 
         ''' Pippim Metadata Add-ons '''
+        self.RecordingDate = None   # temporary delete after code converted
+        self.AlbumDate = None       # Retrieved from mserve SQL Music Table
         self.PlayCount = None       # new July 13, 2023
         self.LastTimePlayed = None  # new July 13, 2023
         self.Hyperlink = None       # new July 13, 2023
@@ -13257,18 +13346,18 @@ class FileControlCommonSelf:
 class FileControl(FileControlCommonSelf):
     """ Control Music Files, including play, pause, end """
 
-    def __init__(self, parent, info, close_callback=None, silent=False,
+    def __init__(self, tk_top, info, close_callback=None, silent=False,
                  get_thread=None):
         """
         """
         FileControlCommonSelf.__init__(self)
         ''' self-ize parameter list '''
-        self.tk_top = parent        # Tkinter Toplevel window used by parent
+        self.tk_top = tk_top        # Tkinter Toplevel window used by parent
         self.info = info            # Parent's InfoCentre() instance
         self.close_callback = close_callback
         self.silent = silent        # Messages broadcast are logged as facts
         self.get_thread = get_thread
-        self.last_path = None       # Not used as of July 1, 2023
+        self.last_path = None       # Use for fast clicking Next
         self.new_WIP = None         # .new() is Work In Progress
         self.close_WIP = None       # .close() is Work In Progress
 
@@ -13349,12 +13438,27 @@ class FileControl(FileControlCommonSelf):
         """
         self.metadata = OrderedDict()
 
-        ext.t_init("FileControl.get_metadata()")
+        ext.t_init("FileControl.get_metadata() - ffprobe")
         cmd = 'ffprobe ' + '"' + self.last_path + '"' + ' 2>' + TMP_FFPROBE
         result = os.popen(cmd).read().strip()
         ext.t_end('no_print')
         # ffprobe on good files: 0.0858271122 0.0899128914 0.0877139568
         # ffprobe on corrupted : 0.1700458527  (file contains dozen bytes of text)
+        # Jim Steinman Bad for Good: ffprobe: 0.1356880665
+
+        ext.t_init("FileControl.get_metadata() - mutagen")
+        m = mutagen.File(self.last_path, easy=True)
+        #print("Mutagen m['title']:", m['title'])
+        #print("Mutagen m['artist']:", m['artist'])
+        #print("Mutagen m['album']:", m['album'])
+        # print("Mutagen m:", m)
+        # {'album':, 'title':, 'artist':, 'bpm':, 'genre':, 'date':, 
+        # 'tracknumber': [u'1/11'], 'discnumber': [u'2/2']}
+        ext.t_end('no_print')  # 40 times faster than ffprobe: 0.002
+        # Jim Steinman Bad for Good: mutagen: 0.01
+        # Coverart STREAM is in main tag section not in separate
+        # DURATION  is in main tag section not in separate
+        # 'Title' and 'Title(1)' are duplicated
 
         if len(result) > 1:
             print('mserve.py FileControl.get_metadata() ffprobe result:', result)
@@ -13384,36 +13488,53 @@ class FileControl(FileControlCommonSelf):
                     # Key "Stream #0" appears twice
                     self.metadata[key_unique] = val
 
-        path_parts = self.path.split(os.sep)
+        path_parts = self.path.split(os.sep)  # In case metadata missing song parts
+
+        self.Title = self.metadata.get('TITLE', "None")
+        if self.Title == "None":  # Title missing, use OsFileName part
+            self.Title = path_parts[-1].encode('utf-8')
+        self.Title = toolkit.uni_str(self.Title)
+
         self.Artist = self.metadata.get('ARTIST', "None")  # If not in dict, use "None"
-        if self.Artist == "None":
+        if self.Artist == "None":  # Artist missing, use OsFileName part
             self.Artist = path_parts[-3].encode('utf-8')  # .wav files have no metadata
         self.Artist = toolkit.uni_str(self.Artist)
 
         self.Album = self.metadata.get('ALBUM', "None")
-        if self.Album == "None":
+        if self.Album == "None":  # Album missing, use OsFileName part
             self.Album = path_parts[-2].encode('utf-8')
         self.Album = toolkit.uni_str(self.Album)
 
-        self.Title = self.metadata.get('TITLE', "None")
-        if self.Title == "None":
-            self.Title = path_parts[-1].encode('utf-8')
-        self.Title = toolkit.uni_str(self.Title)
-
-        self.Genre = toolkit.uni_str(self.metadata.get('GENRE', "None"))
-        self.Track = toolkit.uni_str(self.metadata.get('TRACK', "None"))
-        self.Date = toolkit.uni_str(self.metadata.get('DATE', "None"))
+        '''
+                        "Title TEXT, Artist TEXT, Album TEXT, Compilation TEXT, " +
+                        "AlbumArtist TEXT, AlbumDate TEXT, FirstDate TEXT, " +
+                        "CreationTime TEXT, DiscNumber TEXT, TrackNumber TEXT, " +
+                        "Rating TEXT, Genre TEXT, Composer TEXT, Comment TEXT, " +
+                        "Hyperlink TEXT, Duration TEXT, Seconds INT, " +
+                        "GaplessPlayback TEXT, PlayCount INT, LastPlayTime FLOAT, " +
+                        "LyricsScore BLOB, LyricsTimeIndex TEXT)")            
+        '''
+        self.Compilation = self.metadata.get('COMPILATION', "0")
+        self.AlbumArtist = self.metadata.get('ALBUM_ARTIST', "None")
+        self.AlbumDate = toolkit.uni_str(
+            self.metadata.get('RECORDING_DATE', "None"))  # iTunes RecordingDates
+        self.FirstDate = toolkit.uni_str(self.metadata.get('DATE', "None"))
+        self.Date = self.FirstDate  # Temporary until rewrite
         self.CreationTime = toolkit.uni_str(
             self.metadata.get('CREATION_TIME', "None"))
+        self.DiscNumber = toolkit.uni_str(self.metadata.get('DISC', "None"))
+        self.Track = toolkit.uni_str(self.metadata.get('TRACK', "None"))
         self.RecordingDate = toolkit.uni_str(
             self.metadata.get('RECORDING_DATE', "None"))  # iTunes RecordingDates
+        self.Genre = toolkit.uni_str(self.metadata.get('GENRE', "None"))
         self.Composer = toolkit.uni_str(self.metadata.get('COMPOSER', "None"))
-        self.DiscNumber = toolkit.uni_str(self.metadata.get('DISC', "None"))
+        self.Comment = self.metadata.get('COMMENT', "None")
 
         self.Duration = self.metadata.get('DURATION', "0.0,0").split(',')[0]
         self.Duration = toolkit.uni_str(self.Duration)
         self.Duration = self.Duration.split('.')[0]
         self.DurationSecs = convert_seconds(self.Duration)  # Note must save in parent
+        self.GaplessPlayback = self.metadata.get('GAPLESS_PLAYBACK', "0")
 
     def check_metadata(self):
         """ Ensure Audio stream exists. """
@@ -16172,20 +16293,20 @@ def open_files(old_cwd, prg_path, parameters, toplevel=None):
     global NEW_LOCATION  # True=Unknown music directory in parameter #1
     global LODICT  # Permanent copy of location dictionary never touched
 
-    print()  # A little separation from the last session's output
+    #print("def open_files(old_cwd, prg_path, parameters):",
+    #      old_cwd, prg_path, parameters)
+    print("prg_path is not used. Review:", prg_path)
+    print("old_cwd:", old_cwd)
+    print("parameters:", parameters)
+
+    print()
     print(r'  ######################################################')
     print(r' //////////////                            \\\\\\\\\\\\\\')
     print(r'<<<<<<<<<<<<<<    mserve - Music Server     >>>>>>>>>>>>>>')
     print(r' \\\\\\\\\\\\\\                            //////////////')
     print(r'  ######################################################')
     print(r'                    Started:',
-          datetime.datetime.now().strftime('%I:%M %p').strip('0'), "\n")
-
-    #print("def open_files(old_cwd, prg_path, parameters):",
-    #      old_cwd, prg_path, parameters)
-    print("prg_path is not used. Review:", prg_path)
-    print("old_cwd:", old_cwd)
-    print("parameters:", parameters)
+          datetime.datetime.now().strftime('%I:%M %p').strip('0'))
 
     ''' Has data directory been created? '''
     if os.path.exists(g.USER_DATA_DIR):
@@ -16352,6 +16473,29 @@ def main(toplevel=None, cwd=None, parameters=None):
         root = tk.Tk()  # Create "very top" toplevel for all top levels
     else:
         root = tk.Toplevel()  # `m` splash screen already used tk.Tk()
+
+    # Get the default background at runtime, you can use the cget
+    # https://stackoverflow.com/a/35409593/6929343  (Bryan Oakley)
+    system_bg = root.cget("background")
+    # July 18, 2023 - '#d9d9d9'
+
+    # Convert that to a tuple of the red, green and blue components
+    system_bg_rgb = root.winfo_rgb(system_bg)
+    # July 18, 2023 - (55770, 55770, 55770)
+
+    # You can then format the value as a hex string:
+    system_bg_hex = "#%x%x%x" % system_bg_rgb
+    # July 18, 2023 - '#d9dad9dad9da'
+    print("system_bg:", system_bg, " | system_bg_rgb:", system_bg_rgb,
+          "system_bg_hex:", system_bg_hex)
+
+    # To reset the background after changing it, save the value,
+    # and then use the value with the configure command:
+
+    #original_background = root.cget("background")
+    # ...
+    #root.configure(background=original_background)
+    
     root.withdraw()  # Remove default window because we have own windows
 
     """ From: https://stackoverflow.com/a/46636970/6929343
