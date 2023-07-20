@@ -8126,9 +8126,10 @@ class MusicTree(PlayCommonSelf):
         if True is True:
             # When training lyrics and clicking 'Next/Prev' buttons the
             # changes are automatically saved.  A better approach needed.
-            self.play_save_time_index()  # Save lyrics & time index
+            pass
 
         if not self.song_set_ndx_just_run:  # Song wasn't manually set
+            self.play_save_time_index()  # Save lyrics & time index
             self.song_set_ndx('next')  # Grab next song in playlist
 
         ''' Reset switch set earlier, or just now with self.song_set_ndx() '''
