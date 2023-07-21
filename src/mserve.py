@@ -73,6 +73,7 @@ warnings.simplefilter('default')  # in future Python versions.
 #       July 13 2023 - sqlite3 overhaul with new field 'MostlyPlayedTime'
 #       July 15 2023 - Rename Artist or Album. Rename files in OS & SQL.
 #       July 16 2023 - Click Artist, Album or Title to open kid3 or nautilus
+#       July 21 2023 - check_missing_artwork() report files missing audio stream.
 
 # noinspection SpellCheckingInspection
 """
@@ -94,11 +95,11 @@ References:
 #   Miscellaneous
 
 #     TODO:
-#       Revise Metadata display from: Playlist #, Artist, Album, Title, Progress
-#       To Title, Year, Comment, Artist, Album, Disc, Track, Year, Playlist #, Disc, Track,
-#       Genre, Progress
+#       Revise Metadata display FROM: Playlist #, Artist, Album, Title, Progress
+#       TO: Title, Year, Comment, Artist, Album, Album Date, Genre, Disc, Track, 
+#       Playlist #, Progress
 
-#       Hard-coded # 5 rows changes to # 8 rows, so use META_DISPLAY_ROWS = 8
+#       Hard-coded # 5 rows changes to # 11 rows, so use META_DISPLAY_ROWS = 8
 
 #       Create help buttons for dropdown menu options.
 
@@ -111,10 +112,6 @@ References:
 
 #       Besides Kid3 and Nautilus right click add Google Search. Later
 #       Hyperlink Recipe Baker small sized window to set new Hyperlink column.
-
-#       Chronology treeview Colors 
-#           fieldbackground='black', then delete all 'normal' tags
-#           Do same for FineTune treeview E.G. Gold on Black
 
 #       Chronology filter "this artist" is pulling all compilations
 
@@ -1089,7 +1086,7 @@ class PlayCommonSelf:
 
         ''' SQL miscellaneous variables '''
         self.meta_scan = None               # Class for song metadata searching
-        self.meta_scan_dtb = None           # metadata searching delayed textbox
+        self.missing_artwork_dtb = None           # metadata searching delayed textbox
         # NOTE: self.view used for both SQL Music and SQL History.
         #       self.view is the left-click and right-click menu for single row
         self.view = None                    # Shared view for SQL Music and SQL History
@@ -1664,6 +1661,7 @@ class MusicTree(PlayCommonSelf):
 
 
         """
+        self.save_last_selections(new_playlist=True)  # special save situation
         self.ndx = 0  # resume will set to last playing song
         self.saved_selections = []  # lib_tree id's in sorted play order
         self.playlist_paths = []  # full path names that need to be pruned
@@ -4557,6 +4555,13 @@ class MusicTree(PlayCommonSelf):
                 new_compilation = "1"
             else:
                 new_compilation = "0"
+            if old_artist == "Compilations" and not new_artist == "Compilations":
+                # flip compilation flag using Kid3 warning
+                pass
+            if new_artist == "Compilations" and not old_artist == "Compilations":
+                # flip compilation flag using Kid3 warning
+                pass
+
             ''' Attempt to update Music Table with new OsFileName base_path '''
             sql_cmd = "UPDATE Music SET OsFileName=?, Artist=?, Album=?, \
                        Compilation=? WHERE Id=?"
@@ -4575,21 +4580,24 @@ class MusicTree(PlayCommonSelf):
                 title = "Cannot rename to duplicate file name"
                 text = "Old name: " + old_path + "\n\n"
                 text += "New name: " + new_path + "\n\n"
-                text += "Rename from old to new failed. Moving on to next file."
+                text += "Rename from old to new failed due to duplicate name."
+                text += "\n\nMoving on to next file."
                 self.info.cast(title + "\n\n" + text, 'error')
                 message.ShowInfo(self.lib_top, title, text, icon='error',
                                  thread=self.get_refresh_thread())
                 duplicate_count += 1
+                sql.hist_add(time.time(), music_id, g.USER, 'rename', level,
+                             old_name, old_path, "Rename FAILED. Target exists.", 
+                             duplicate_count, 0, 0.0, legal_string)
                 continue
-
-            # IntegrityError: UNIQUE constraint failed: Music.OsFileName
-            # search: Compilations/Greatest Hits of the 80's [Disc 2]/
-            # search: Compilations/Greatest Hits of the 80's [Disc 4]/
 
             ''' os.renames(old, new) '''
             os.renames(old_path, new_path)
             change_count += 1
-            
+            sql.hist_add(time.time(), music_id, g.USER, 'rename', level,
+                         old_name, old_path, new_path, change_count, 0, 0.0, 
+                         legal_string)
+
             ''' Update fake_paths, real_paths and playlist_paths '''
             if level == 'Album':
                 self.rename_path(-2, old_album, new_album, self.fake_paths)
@@ -4603,7 +4611,7 @@ class MusicTree(PlayCommonSelf):
         sql.con.commit()  # Write changes to disk
         self.lib_tree.item(Id, text=legal_string)  # Update Music Location Tree
 
-        title = "Renaming completed"
+        title = "Rename completed"
         if change_count == 0:
             text = "No files were renamed!\n"
         else:
@@ -4622,6 +4630,7 @@ class MusicTree(PlayCommonSelf):
         self.info.cast(title + "\n\n" + text)
         message.ShowInfo(self.lib_top, title, text,
                          thread=self.get_refresh_thread())
+
         self.wrapup_lib_popup()  # Set color tags and counts
 
     @staticmethod
@@ -5524,6 +5533,8 @@ class MusicTree(PlayCommonSelf):
     def missing_artwork(self):
         """ Find Songs that have no artwork and update metadata
             Lengthy process so get permission to proceed.
+            File may not exist in this location.
+            If file does exist grab metadata with FileControl.new()
             Updates file last access time which needs to be reversed.
             Uses mus_ctl() class to verify file exists and read metadata so only
                 one instance of SQL Music Table View can be opened at once.
@@ -5534,27 +5545,49 @@ class MusicTree(PlayCommonSelf):
         answer = message.AskQuestion(
             self.mus_top, thread=self.get_refresh_thread(),
             title="Songs with no Artwork confirmation - mserve", confirm='no',
-            text="Every song file will be read which will take awhile.\n" +
+            text="Every song file will be read taking 1 minute/1,000 files.\n" +
                  "Missing metadata in SQL Music Table will be updated.\n" +
-                 "Songs with no artwork are displayed.\n\n" +
-                 "Do you want to perform this lengthy update?")
+                 "Songs with no artwork will be displayed.\n\n" +
+                 "Do you want to perform this lengthy process?")
 
         if answer.result != 'yes':
             return
 
-        self.mus_ctl = FileControl(self.lib_top, self.info)  # Class to get metadata
+        ext.t_init("missing_artwork()")
+        ''' TODO: Clear title when new button clicked '''
+        self.mus_top.title("Music files with missing artwork - mserve")
+        self.info.cast("Begin Update Metadata and display missing artwork.")
 
-        self.meta_scan = encoding.MetaScan(self.mus_top, self.get_refresh_thread())
-        self.meta_scan_dtb = message.DelayedTextBox(title="SQL Music Table Scan",
-                                                    toplevel=self.mus_top, width=1000)
+        ''' Initialize reading file control instance '''
+        self.mus_ctl = FileControl(self.lib_top, self.info, silent=True,
+                                   log_level='error')  # don't log info facts
 
-        self.mus_search = toolkit.SearchText(
+        ''' Initialize scan filter / tally instance '''
+        self.meta_scan = encoding.MetaScan(self.mus_top, self.get_refresh_thread)
+
+        ''' Initialize delayed text box instance for user feed back '''
+        self.missing_artwork_dtb = message.DelayedTextBox(
+            title="SQL Music Table Scan", toplevel=self.mus_top, width=1000)
+
+        ''' Initialize search instance with callback here (below)  '''
+        self.mus_search = toolkit.SearchText(  # search all using callback
             self.mus_view, find_str='callback', callback=self.missing_artwork_callback)
-        self.mus_search.find_callback()
-        self.meta_scan_dtb.close()  # Close delayed text box
-        # TODO: no records found message and reset filter
-        text = "Total scanned:      " + "{:,}".\
+
+        ''' Perform search for missing artwork & update metadata at same time '''
+        self.mus_search.find_callback()  # attach desired to treeview
+
+        ''' Close delayed text window '''
+        self.missing_artwork_dtb.close()  # Close delayed text box
+        ext.t_end("print")
+
+        ''' TODO: Add tag for "RED" row when no audio '''
+        # Display summary counts
+        text = "SQL Music rows:     " + "{:,}".\
             format(self.meta_scan.total_scanned) + "\n" + \
+            "In other locations: " + "{:,}".\
+            format(self.meta_scan.missing_file_at_loc) + "\n" + \
+            "Missing audio:      " + "{:,}".\
+            format(self.meta_scan.missing_audio) + "\n" + \
             "Missing artwork:    " + "{:,}".\
             format(self.meta_scan.missing_artwork) + "\n" + \
             "Found artwork:      " + "{:,}".\
@@ -5574,30 +5607,59 @@ class MusicTree(PlayCommonSelf):
         """ Find Songs that have no artwork and update metadata
             sql.update_metadata() is called by get_ffprobe_metadata(os_filename)
             The .CheckArtwork() function will call self.refresh_play_top()
-            
+            When file has artwork no need to update delayed text box because
+                visual feedback is in treeview when file is detached from list.
+
             REMINDER:
             self.meta_scan = encoding.MetaScan(self.mus_top, self.get_refresh_thread())
-            self.meta_scan_dtb = message.DelayedTextBox(title="SQL Music Table Scan",
-                                                    toplevel=self.mus_top, width=1000)
 
-        :param values: mus_view.tree values for current row being processed
-        :return: True if artwork exists, False if not
+            am values: mus_view.tree values for current row being processed
+        :return: True if artwork exists, False if not or if different location
         """
 
         ''' Reading through filenames in mus_view.tree which also has music ID '''
         os_filename = self.mus_view.column_value(values, 'os_filename')
-        self.mus_ctl.new(PRUNED_DIR + os_filename)  # get metadata
-        if self.mus_ctl.invalid_file:
-            # Not a valid music file
-            return False
-        result = self.update_sql_metadata(self.mus_ctl)
-        # Update SQL metadata columns of Music Table using OsFileName key
-        self.meta_scan_dtb.update(os_filename)  # Refresh screen with song file name
-        self.meta_scan.ChangedCounts(result)
 
+        if not self.mus_ctl.new(PRUNED_DIR + os_filename):  # get metadata
+            # .new() returns False when file doesn't exist at this location
+            self.missing_artwork_dtb.update("2. Other Location: " +
+                                            os_filename)  # Refresh screen with song file name
+            self.meta_scan.missing_file_at_loc += 1
+            self.meta_scan.total_scanned += 1
+            return False  # This could be separate button search
+
+        if self.mus_ctl.invalid_audio:
+            # Not a valid music file
+            print("invalid audio:", os_filename)
+            ''' ERRORS:
+                show in Delayed Text Box but Control C disabled.
+
+
+            '''
+            self.missing_artwork_dtb.update("1. Not a music file: " +
+                                            os_filename)  # Refresh screen with song file name
+            self.meta_scan.total_scanned += 1
+            self.meta_scan.missing_audio += 1
+            self.mus_ctl.close()  # Never was or no longer a music file.
+            return False  # This could be separate button search
+
+        ''' Update SQL metadata using this location's music file metadata '''
+        result = self.update_sql_metadata(self.mus_ctl)  # Is this resetting?
+        # We don't get here until Delayed Text Box finds song from other location
+        self.meta_scan.UpdateChanges(result)  # Tally change counts
+
+        ''' Check if file metadata has artwork '''
         has_art = self.meta_scan.CheckArtwork(self.mus_ctl.metadata)
-        self.mus_ctl.close()  # close filename and reset last access time
-        return has_art
+        self.mus_ctl.close()  # close filename and reset all variables
+        if has_art:
+            ''' Will disappear from treeview to give user feedback '''
+            return False  # Don't keep this one in treeview
+        else:
+            print("missing artwork:", os_filename)
+            ''' Stays in treeview so update delayed text box for user feedback '''
+            self.missing_artwork_dtb.update("Missing artwork: " +
+                                            os_filename)  # Refresh screen with song file name
+            return True  # keep this one in treeview
 
     # noinspection PyUnusedLocal
 
@@ -5612,7 +5674,7 @@ class MusicTree(PlayCommonSelf):
         self.mus_top.destroy()
         self.mus_search = None
         self.meta_scan = None
-        self.meta_scan_dtb = None
+        self.missing_artwork_dtb = None
 
 
     def show_sql_hist(self, sbar_width=12):
@@ -6342,7 +6404,7 @@ class MusicTree(PlayCommonSelf):
                              thread=self.get_refresh_thread())
             self.info.cast(title + "\n\n" + text)
 
-    def save_last_selections(self):
+    def save_last_selections(self, new_playlist=False):
 
         """ Save to ~/.../mserve:
                 last_location    = 'iid' in location master
@@ -6352,11 +6414,13 @@ class MusicTree(PlayCommonSelf):
                 last_playlist    = songs selected for playing in user order
                 last_song_ndx    = pointer into playlist to continue playing
 
+        :param new_playlist: When True a new playlist is being opened so
+            just saving current position for returning to favorites
         """
 
         global LODICT, START_DIR
 
-        if self.playlists.name is not None:
+        if self.playlists.name is not None and not new_playlist:
             print("mserve.py save_last_selection() serious ERROR:" +
                   " playlists.name should be blank:", self.playlists.name)
             return
@@ -6511,7 +6575,7 @@ class MusicTree(PlayCommonSelf):
             if self.splash_toplevel:
                 self.splash_toplevel.withdraw()  # Remove splash screen
                 # Default background too bright: '#d9d9d9'
-                root.configure(background="#797979")  # Has no effect
+                #root.configure(background="#797979")  # Has no effect
             return
 
         ''' Check for Last selections file on disk '''
@@ -7977,7 +8041,7 @@ class MusicTree(PlayCommonSelf):
             self.play_ctl.close()  # this caused failure but full reset needed.
             return True  # Treat like fast clicking Next button
 
-        if self.play_ctl.invalid_file:
+        if self.play_ctl.invalid_audio:
             print(self.play_ctl.metadata)
             self.corrupted_music_file(self.current_song_path)  # No blocking dialog box
             self.play_ctl.close()
@@ -8108,7 +8172,7 @@ class MusicTree(PlayCommonSelf):
             self.splash_toplevel.withdraw()  # Remove splash screen
             self.splash_toplevel = None
 
-        root.configure(background="#797979")  # Has no effect
+        #root.configure(background="#797979")  # Has no effect
         self.lib_top.configure(background="#a9a9a9")  # Has no effect
 
         ''' Pulse Audio self.sinks_now is freshly updated by now.
@@ -8407,15 +8471,9 @@ class MusicTree(PlayCommonSelf):
                     file_ctl.Genre, file_ctl.Track, file_ctl.Date,
                     file_ctl.DurationSecs, file_ctl.Duration, 
                     file_ctl.DiscNumber, file_ctl.Composer)
-            '''
-            meta_update_succeeded = \
-                sql.update_metadata(
-                    sql_key, file_ctl.Artist, file_ctl.Album, file_ctl.Title,
-                    file_ctl.Genre, file_ctl.Track, file_ctl.Date,
-                    file_ctl.DurationSecs, file_ctl.Duration)
-            '''  # convert July 13, 2023 
         else:
-            # July 13, 2023 - Not really an error needs testing
+            # July 21, 2023 - SQL created metadata from another location.
+            #   Needs work to merge for the most robust information.
             print('mserve.py update_sql_metadata() path:', file_ctl.path)
             print('mserve.py update_sql_metadata() Missing PRUNED_DIR:', PRUNED_DIR)
             pass
@@ -8516,7 +8574,7 @@ class MusicTree(PlayCommonSelf):
             self.im = np.array(rgb_image)
             self.fade = np.zeros_like(self.im)
             print(self.play_rotated_art.__dict__)
-            print('self..play_rotated_ar - format, size, mode:',
+            print('self.play_rotated_ar - format, size, mode:',
                   self.play_rotated_art.format,
                   self.play_rotated_art.size,
                   self.play_rotated_art.mode)
@@ -8830,7 +8888,6 @@ class MusicTree(PlayCommonSelf):
             return  # Is user editing lyrics?
         self.play_clear_lyrics()  # Reset all fields
 
-        print("self.play_make_sql_key():", self.play_make_sql_key())
         self.lyrics_score, self.lyrics_time_list = \
             sql.get_lyrics(self.play_make_sql_key())
         if not self.play_top_is_active:
@@ -8848,7 +8905,6 @@ class MusicTree(PlayCommonSelf):
                 # "[Instrumental]" is the shortest lyrics stored so under 10 is empty
                 # It is possible web scraper returns single character we call "None".
                 self.lyrics_score = None
-        print("self.lyrics_score[:40]:", self.lyrics_score[:40])  # Debug messed up
 
         if self.lyrics_score is None:
             # print('web scraping lyrics from internet')
@@ -10782,7 +10838,7 @@ mark set markName index"
 
         ''' Sanity check to see if file really has music inside '''
         self.ltp_ctl.new(path)  # Get metadata for music file
-        if self.ltp_ctl.invalid_file:
+        if self.ltp_ctl.invalid_audio:
             print(self.ltp_ctl.metadata)
             self.corrupted_music_file(path)  # Non-blocking dialog box
             ''' Sanity check - Should .close() or .end() be used??? '''
@@ -11402,28 +11458,12 @@ mark set markName index"
             return line, None  # No SQL Music Table Row exists, use short line
         line = line + ARTIST_PREFIX + d['Artist'].encode("utf8")
         line = line + ALBUM_PREFIX + d['Album'].encode("utf8")
+        ''' July 18, 2023
+        if d['FirstDate'] is not None:
+            line = line + DATE_PREFIX + d['FirstDate'].encode("utf8")
+        '''
         if d['ReleaseDate'] is not None:
             line = line + DATE_PREFIX + d['ReleaseDate'].encode("utf8")
-        '''
-        try:
-            line = number_str + TITLE_PREFIX + d['MetaSongName'].encode("utf8")
-        except AttributeError:  # 'NoneType' object has no attribute 'encode'
-            # When playing a new location no SQL library information exists
-            return line, None  # No SQL Music Table Row exists, use short line
-        line = line + ARTIST_PREFIX + d['MetaArtistName'].encode("utf8")
-        line = line + ALBUM_PREFIX + d['MetaAlbumName'].encode("utf8")
-        date = None
-        if type(d['ReleaseDate']) is str:
-            if d['ReleaseDate'] != "None":  # Strange but true... See "She's No Angel" by April Wine.
-                date = d['ReleaseDate']
-        elif type(d['ReleaseDate']) is float:
-            date = str(int(d['ReleaseDate']))
-        if date is not None:
-            line = line + DATE_PREFIX + date  # bad idea having float
-        '''  # convert July 13, 2023 
-
-
-
 
         line = line + CLOCK_PREFIX + d['Duration'].encode("utf8")
         # Replace "00:09:99" duration with "9:99" duration
@@ -11598,6 +11638,8 @@ class FineTune:
         self.top = None  # Toplevel window. Bugs lift() and force_focus() ???
         self.song_art = None  # Converted artwork image in frame 1
         self.tree = None  # CheckboxTreeview in frame2
+        self.tree_last_row = None  # For highlighting row under cursor
+        self.tree_last_tag_removed = None
         self.check2 = None  # Duplicated treeview checkboxes
         self.btn_bar_frm = None  # Button bar built on the fly in frame 3
         self.pp_state = None  # Sample all is 'Playing' or 'Paused'
@@ -11713,9 +11755,9 @@ class FineTune:
 
         # From: https://stackoverflow.com/a/43834987/6929343
         style = ttk.Style(frame2)
-        style.configure("syn.Treeview", background=self.theme_bg,
-                        fieldbackground=self.theme_bg,
-                        foreground=self.theme_fg)
+        style.configure("syn.Treeview", background='Black',
+                        fieldbackground='Black',
+                        foreground='Gold')
 
         self.tree = CheckboxTreeview(
             frame2, columns=("new", "lyrics", "old_dur", "new_dur"),
@@ -11732,16 +11774,14 @@ class FineTune:
         self.tree.heading("old_dur", text="Duration")
         self.tree.column("new_dur", width=150, stretch=tk.NO)
         self.tree.heading("new_dur", text="New Dur.")
-
         self.tree.grid(row=1, column=0, sticky=tk.NSEW)
 
-        ''' Treeview select item - custom select processing '''
         # self.tree.bind('<ButtonRelease-1>', self.tree_select)
 
         ''' Create images for checked, unchecked and tristate '''
         # Don't use self.checkboxes list as GC destroys others with that name
-        self.check2 = img.make_checkboxes(row_height - 6, self.theme_fg,
-                                          self.theme_bg, 'DodgerBlue')  # SkyBlue3 not in Pillow
+        self.check2 = img.make_checkboxes(row_height - 6, 'Gold', 'Black',
+                                          'DodgerBlue')  # SkyBlue3 not in Pillow
         self.tree.tag_configure("unchecked", image=self.check2[0])
         self.tree.tag_configure("tristate", image=self.check2[1])
         self.tree.tag_configure("checked", image=self.check2[2])
@@ -11755,12 +11795,20 @@ class FineTune:
                                 command=self.tree.yview)
         v_scroll.grid(row=1, column=1, sticky=tk.NS)
         self.tree.configure(yscrollcommand=v_scroll.set)
+        v_scroll.config(troughcolor='black', bg='gold')
 
         ''' sync lyrics treeview Colors '''
-        self.tree.tag_configure('normal', background=self.theme_bg,
-                                foreground=self.theme_fg)
-        self.tree.tag_configure('sync_sel', background=self.theme_fg,
-                                foreground=self.theme_bg)
+        self.tree.tag_configure('normal', background='Black',
+                                foreground='Gold')
+        self.tree.tag_configure('sync_sel', background='grey18',
+                                foreground='LightYellow')
+
+        ''' Configure tag for row highlight '''
+        self.tree.tag_configure('highlight', background='LightBlue',
+                                foreground="Black")
+
+        self.tree.bind('<Motion>', self.tree_highlight_row)
+        self.tree.bind("<Leave>", self.tree_leave_row)
 
         '''   B U T T O N   B A R   F R A M E   '''
         self.btn_bar_frm = tk.Frame(self.top, relief=tk.GROOVE,
@@ -11783,6 +11831,54 @@ class FineTune:
 
         self.time_ctl = FileControl(self.top, self.info, silent=True)
         self.time_ctl.new(self.play_path)
+
+    def tree_highlight_row(self, event):
+        """ Cursor hovering over row highlights it in light blue """
+        tree = event.widget
+        item = tree.identify_row(event.y)
+        if item is None:
+            return  # Empty row
+
+        if self.tree_last_row == item:
+            return        # Get called dozens of times when still in same row
+
+        self.tree_leave_row()  # If we left a row reset tree background
+
+        ''' Remove "normal" or "sync_sel" tag and replace with "highlight" '''
+        tags = self.tree.item(item)['tags']
+        if "sync_sel" in tags:
+            toolkit.tv_tag_replace(self.tree, item, "sync_sel", "highlight", strict=True)
+            self.tree_last_tag_removed = "sync_sel"
+        elif "normal" in tags:
+            toolkit.tv_tag_replace(self.tree, item, "normal", "highlight", strict=True)
+            self.tree_last_tag_removed = "normal"
+        else:
+            #print("tree_highlight_row() error tags:", tags, type(tags), "item:", item)
+            return  # Get some false-positives, so don't bother printing
+
+        self.tree_last_row = item
+
+    # noinspection PyUnusedLocal
+    def tree_leave_row(self, *args):
+        """ Un-highlight row just left. *args because tree_close_popup() no parameters """
+        if self.tree_last_row is None:
+            return  # Nothing to remove. highlight_row() called just in case....
+
+        tags = self.tree.item(self.tree_last_row)['tags']
+        # BUG tags is <type 'str'>
+        if isinstance(tags, str):
+            print("tv_tag_insert_first got tags type:", type(tags),
+                  "item:", self.tree_last_row)
+            return
+
+        ''' Remove 'highlight' tag and replace with 'normal' or 'sync_sel' tag '''
+        if not toolkit.tv_tag_replace(self.tree, self.tree_last_row, "highlight",
+                                      self.tree_last_tag_removed, strict=False):
+            # "highlight" never existed, but need to add back old
+            toolkit.tv_tag_add(self.tree, self.tree_last_row,  # True = lots errors
+                               self.tree_last_tag_removed, strict=False)
+        self.tree_last_row = None
+        self.tree_last_tag_removed = None
 
     def build_btn_bar_frm(self, level='top'):
         """ Build buttons for top_level, begin sync and sample all """
@@ -13299,8 +13395,10 @@ class FileControlCommonSelf:
         self.metadata = None        # Dictionary containing metadata from music file
         self.artwork = []           # List of lines about artwork found
         self.audio = []             # List of lines about audio streams found
-        self.valid_file = None      # len(self.audio) > 0
-        self.invalid_file = None    # len(self.audio) == 0
+        self.valid_audio = None     # len(self.audio) > 0
+        self.invalid_audio = None   # len(self.audio) == 0
+        self.valid_artwork = None   # len(self.audio) > 0
+        self.invalid_artwork = None  # len(self.audio) == 0
 
         self.Artist = None          # self.metadata.get('ARTIST', "None")
         self.Album = None           # self.metadata.get('ALBUM', "None")
@@ -13348,7 +13446,7 @@ class FileControl(FileControlCommonSelf):
     """ Control Music Files, including play, pause, end """
 
     def __init__(self, tk_top, info, close_callback=None, silent=False,
-                 get_thread=None):
+                 log_level='all', get_thread=None):
         """
         """
         FileControlCommonSelf.__init__(self)
@@ -13357,7 +13455,8 @@ class FileControl(FileControlCommonSelf):
         self.info = info            # Parent's InfoCentre() instance
         self.close_callback = close_callback
         self.silent = silent        # Messages broadcast are logged as facts
-        self.get_thread = get_thread
+        self.log_level = log_level  # E.G when 'silent' often use 'error'
+        self.get_thread = get_thread  # Refresh thread when dialog grabs screen
         self.last_path = None       # Use for fast clicking Next
         self.new_WIP = None         # .new() is Work In Progress
         self.close_WIP = None       # .close() is Work In Progress
@@ -13381,8 +13480,9 @@ class FileControl(FileControlCommonSelf):
         ''' Is last song file still open (path not none)? '''
         if self.path is not None:
             if self.silent:  # In silent mode, normal broadcasts become facts
-                self.info.fact("FileControl.new() last song still open:\n" +
-                               self.path, 'error')
+                if self.log_level == 'all' or self.log_level == 'error':
+                    self.info.fact("FileControl.new() last song still open:\n" +
+                                   self.path, 'error')
             else:
                 self.info.cast("FileControl.new() last song still open:\n" +
                                self.path, 'error')
@@ -13395,7 +13495,16 @@ class FileControl(FileControlCommonSelf):
             return
 
         ''' Initialize parameters '''
-        self.path = path            # Full path to music file
+        self.path = path  # Full path to music file
+        #self.path = path.decode('utf-8')  # Full path to music file
+        #self.path = toolkit.uni_str(path)  # Full path to music file
+        #    self.stat_start = os.stat(self.last_path)
+        # OSError: [Errno 2] No such file or directory:
+        # '/media/rick/SANDISK128/Music/Filter/The Very Best Things_
+        # 1995\xe2\x80\x932008/01 Hey Man Nice Shot.oga'
+        # https://stackoverflow.com/questions/57568020/
+        # whats-the-difference-of-xe2-x80-x93-and-in-python-how-do-i-change-all-t
+
         self.last_path = self.path  # Might be used in future, not July 1, 2023
         self.action = action        # Action to perform. Not used July 1, 2023
         # Keep original stat_start until .close() -> .end()
@@ -13403,9 +13512,16 @@ class FileControl(FileControlCommonSelf):
 
         ''' Did fast clicking close the path? '''
         if self.path is None:
+            # These messages needed during development. Should no longer appear.
             self.info.fact("FileControl.new() path went 'None' step 1")
             return
-        self.stat_start = os.stat(self.last_path)
+
+        try:
+            self.stat_start = os.stat(self.last_path)
+        except OSError:  # [Errno 2] No such file or directory
+            # When searching all SQL metadata encountered OS filename
+            # that has been deleted or belongs to another location.
+            return False
 
         ''' Did fast clicking close the path? '''
         if self.path is None:
@@ -13432,6 +13548,7 @@ class FileControl(FileControlCommonSelf):
 
         self.log('new')             # Initial event for base timeline
         self.new_WIP = False  # Signal new requests will be accepted.
+        return True  # Needed for mserve.py missing_artwork()
 
     def get_metadata(self):
         """ Use ffprobe to write metadata to file TMP_FFPROBE
@@ -13448,7 +13565,21 @@ class FileControl(FileControlCommonSelf):
         # Jim Steinman Bad for Good: ffprobe: 0.1356880665
 
         ext.t_init("FileControl.get_metadata() - mutagen")
-        m = mutagen.File(self.last_path, easy=True)
+        # Song: Heart/GreatestHits/17 Rock and Roll (Live).m4a
+        #m = mutagen.File(self.last_path, easy=True)
+        #     m = mutagen.File(self.last_path, easy=True)
+        #   File "/usr/lib/python2.7/dist-packages/mutagen/_file.py", line 251, in File
+        #     return Kind(filename)
+        #   File "/usr/lib/python2.7/dist-packages/mutagen/_file.py", line 42, in __init__
+        #     self.load(filename, *args, **kwargs)
+        #   File "/usr/lib/python2.7/dist-packages/mutagen/id3/__init__.py", line 1093, in load
+        #     self.info = self._Info(fileobj, offset)
+        #   File "/usr/lib/python2.7/dist-packages/mutagen/mp3.py", line 185, in __init__
+        #     self.__try(fileobj, offset, size - offset, False)
+        #   File "/usr/lib/python2.7/dist-packages/mutagen/mp3.py", line 223, in __try
+        #     raise HeaderNotFoundError("can't sync to an MPEG frame")
+        # HeaderNotFoundError: can't sync to an MPEG frame
+
         #print("Mutagen m['title']:", m['title'])
         #print("Mutagen m['artist']:", m['artist'])
         #print("Mutagen m['album']:", m['album'])
@@ -13548,6 +13679,8 @@ class FileControl(FileControlCommonSelf):
                 if "Audio:" in value:
                     self.audio.append(value)
 
+        self.valid_artwork = True if len(self.artwork) > 0 else False
+        self.invalid_artwork = not self.valid_artwork 
         text = "Title: \t" + self.Title + \
             "\nArtist: \t" + self.Artist + \
             " \tAlbum: \t" + self.Album + \
@@ -13558,10 +13691,10 @@ class FileControl(FileControlCommonSelf):
         for entry in self.audio:
             text += "Audio: \t" + entry + "\n"
 
-        self.valid_file = len(self.audio) > 0
-        self.invalid_file = not self.valid_file
+        self.valid_audio = len(self.audio) > 0
+        self.invalid_audio = not self.valid_audio
 
-        if self.valid_file:
+        if self.valid_audio:
             audio_pattern = ("Audio:", "Green", "Black")
         else:
             audio_pattern = ("Audio:", "Red", "White")
@@ -13570,6 +13703,12 @@ class FileControl(FileControlCommonSelf):
         for entry in self.artwork:
             text += "Artwork: \t" + entry + "\n"
 
+        if self.valid_artwork:
+            artwork_pattern = ("Video:", "Green", "Black")
+        else:
+            artwork_pattern = ("Video:", "Red", "White")
+            text += "Artwork: \tNOT FOUND !!!"
+
         patterns = [("Title:", "Green", "Black"),
                     ("Artist:", "Green", "Black"),
                     ("Album:", "Green", "Black"),
@@ -13577,12 +13716,14 @@ class FileControl(FileControlCommonSelf):
                     ("Date:", "Green", "Black"),
                     ("Duration:", "Green", "Black"),
                     audio_pattern,
-                    ("Artwork:", "Green", "Black")]
+                    artwork_pattern]
 
-        if self.valid_file or self.silent:
-            self.info.fact(text, 'info', patterns=patterns)
+        if self.valid_audio or self.silent:
+            if self.log_level == 'all' or self.log_level == 'info':
+                self.info.fact(text, 'info', patterns=patterns)
         else:
-            self.info.cast(text, 'error', patterns=patterns)
+            if self.log_level == 'all' or self.log_level == 'info':
+                self.info.cast(text, 'error', patterns=patterns)
 
     def log(self, state):
         """
@@ -13661,9 +13802,11 @@ class FileControl(FileControlCommonSelf):
                     ("Inode No:", "Green", "Black")]
 
         if self.silent:
-            self.info.fact(text, patterns=patterns)
+            if self.log_level == 'all' or self.log_level == 'info':
+                self.info.fact(text, patterns=patterns)
         else:
-            self.info.cast(text, patterns=patterns)
+            if self.log_level == 'all' or self.log_level == 'info':
+                self.info.cast(text, patterns=patterns)
 
     def get_artwork(self, width, height):
         """
@@ -13949,7 +14092,11 @@ class FileControl(FileControlCommonSelf):
 
         if self.stat_end is None:
             ''' Below duplicated if self.close() was just called '''
-            self.stat_end = os.stat(self.path)  # get current timestamps
+            try:
+                self.stat_end = os.stat(self.path)
+            except OSError:  # [Errno 2] No such file or directory
+                self.atime_done = True  # Extra precaution time isn't done twice
+                return
             self.cast_stat(self.stat_end)  # Show in InfoCentre
 
         ''' loop through statuses[] to get time played and time stopped '''
@@ -13966,9 +14113,11 @@ class FileControl(FileControlCommonSelf):
                     ("Percent play:", "Green", "Black")]
 
         if self.silent:  # bugs in lib_tree_play()
-            self.info.fact(text, 'info', 'update', patterns)
+            if self.log_level == 'all' or self.log_level == 'info':
+                self.info.fact(text, 'info', 'update', patterns)
         else:
-            self.info.cast(text, 'info', 'update', patterns)
+            if self.log_level == 'all' or self.log_level == 'info':
+                self.info.cast(text, 'info', 'update', patterns)
 
         '''   B I G   T I C K E T   E V E N T   '''
         if self.percent_played < float(ATIME_THRESHOLD):
@@ -13980,23 +14129,26 @@ class FileControl(FileControlCommonSelf):
                         ("Current time:", "Green", "Black"),
                         ("Original time:", "Green", "Black")]
             if self.silent and old_time is not None:
-                self.info.fact("Restoring last access for: \t" + self.Title +
-                               "\n\tCurrent time:  \t" +
-                               tmf.ago(old_time).strip() +
-                               "\n\tOriginal time: \t" +
-                               tmf.ago(new_time).strip(),
-                               patterns=patterns)
+                if self.log_level == 'all' or self.log_level == 'info':
+                    self.info.fact("Restoring last access for: \t" + self.Title +
+                                   "\n\tCurrent time:  \t" +
+                                   tmf.ago(old_time).strip() +
+                                   "\n\tOriginal time: \t" +
+                                   tmf.ago(new_time).strip(),
+                                   patterns=patterns)
             elif old_time is not None:
-                self.info.cast("Restoring last access for: \t" + self.Title +
-                               "\n\tCurrent time:  \t" +
-                               tmf.ago(old_time).strip() +
-                               "\n\tOriginal time: \t" +
-                               tmf.ago(new_time).strip(),
-                               patterns=patterns)
+                if self.log_level == 'all' or self.log_level == 'info':
+                    self.info.cast("Restoring last access for: \t" + self.Title +
+                                   "\n\tCurrent time:  \t" +
+                                   tmf.ago(old_time).strip() +
+                                   "\n\tOriginal time: \t" +
+                                   tmf.ago(new_time).strip(),
+                                   patterns=patterns)
             else:
-                self.info.cast("Could not restore last access for: \t" +
-                               str(self.Title) +
-                               "\nLikely caused by fast clicking Next/Prev")
+                if self.log_level == 'all' or self.log_level == 'info':
+                    self.info.cast("Could not restore last access for: \t" +
+                                   str(self.Title) +
+                                   "\nLikely caused by fast clicking Next/Prev")
 
         #start_atime = self.stat_start.st_atime
         #end_atime = self.stat_start.st_atime
@@ -14076,8 +14228,13 @@ class FileControl(FileControlCommonSelf):
                 self.time_stopped += delta
             last_action, last_time = status  # 'start'/'stop'/'end', time
 
-        self.percent_played = \
-            float(self.time_played) * 100 / float(self.DurationSecs)
+        if self.DurationSecs == 0.0:
+            self.percent_played = 0.0
+            # Kansas/The Ultimate Kansas 2/2-07 Play The Game Tonight.m4a
+            # DURATION:	00:00:00.86, start: 0.000000, bit rate: 1721 kb/s
+        else:
+            self.percent_played = \
+                float(self.time_played) * 100 / float(self.DurationSecs)
         ''' TODO: get_resume then reset it to zero when done. '''
 
     def close(self):
@@ -14101,7 +14258,11 @@ class FileControl(FileControlCommonSelf):
 
         if self.stat_end is None:
             ''' Below duplicated if self.end() was just called '''
-            self.stat_end = os.stat(self.path)  # get current timestamps
+            try:
+                self.stat_end = os.stat(self.path)
+            except OSError:  # [Errno 2] No such file or directory
+                self.atime_done = True  # Extra precaution time isn't done twice
+                return
             self.cast_stat(self.stat_end)  # Show in InfoCentre
 
         ''' Call .end() if not already logged or if Last Access Time not set '''
@@ -14281,14 +14442,14 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
 
     """
 
-    def __init__(self, parent=None, text=None, pending=None, info=None,
+    def __init__(self, tk_top=None, text=None, pending=None, info=None,
                  apply_callback=None, enable_lib_menu=None, play_close=None,
                  tooltips=None, thread=None, display_lib_title=None):
         """
 
         """
         ''' self-ize parameter list '''
-        self.parent = parent  # FOR NOW self.parent MUST BE: lib_top
+        self.parent = tk_top  # FOR NOW self.parent MUST BE: lib_top
         self.text = text  # Text replacing treeview when no playlists on file
         self.get_pending = pending  # What is pending in parent?  - Could be favorites
         self.info = info  # InfoCentre()
@@ -16511,52 +16672,6 @@ def main(toplevel=None, cwd=None, parameters=None):
     img.taskbar_icon(root, 64, 'white', 'lightskyblue', 'black')
 
     open_files(cwd, prg_path, parameters)  # Create application directory
-    
-    # Find location dictionary matching top directory passed as argument
-    """ June 8, 2023 This code now in open_files() function 
-    try:
-        ''' mserve called with parameter to Music Directory? '''
-        START_DIR = parameters[1]
-
-        # Massage parm1 of ".", "..", "../Sibling", etc.
-        START_DIR = os.path.realpath(START_DIR)
-
-        ''' Is passed Top Directory in our known locations? '''
-        if lc.get_dict_by_dirname(START_DIR):
-            # print('mserve manually started with lc.DICT:',lc.DICT)
-            # Make passed Top Directory our last known location then load it
-            lc.save_mserve_location(lc.DICT['iid'])
-            load_last_location()
-        else:
-            # print('START_DIR not in location master file:', START_DIR)
-            LODICT['name'] = START_DIR  # Name required for title bar
-            NEW_LOCATION = True  # Don't use location master
-
-    except IndexError:
-        ''' No Parameter passed. Check for Last location file on disk '''
-        if load_last_location():
-            # We successfully loaded last used location
-            pass
-        else:
-            # First time or no saved locations matching current directory
-            cwd = os.getcwd()
-            dir_path = os.path.dirname(os.path.realpath(__file__))
-            print('current directory:', cwd)
-            print('working path:', dir_path)
-            # Our user ID got initialized in location.py imported as lc.
-            # music_dir = os.sep + "home" + os.sep + lc.USER + os.sep + "Music"
-            music_dir = os.sep + "home" + os.sep + g.USER + os.sep + "Music"
-            # Prompt to get startup directory using /home/USER/Music as default
-            START_DIR = get_dir(root, "Select Music Directory", music_dir)
-            if START_DIR is None:
-                START_DIR = cwd
-            LODICT['name'] = START_DIR  # Name required for title bar
-            NEW_LOCATION = True
-
-    # If no optional `/` at end, add it for equal comparisons
-    if not START_DIR.endswith(os.sep):
-        START_DIR += os.sep
-    """
 
     # Build list of songs in the location
     ext.t_init('make_sorted_list()')
@@ -16585,7 +16700,7 @@ def main(toplevel=None, cwd=None, parameters=None):
     # Temporarily create SQL music tables until search button created.
     # TODO: How to create music tables when location hasn't been defined yet?
     ext.t_init('sql.create_tables()')
-    sql.create_tables(SORTED_LIST, START_DIR, PRUNED_DIR, PRUNED_COUNT, g.USER, LODICT)
+    sql.create_tables(SORTED_LIST, START_DIR, PRUNED_DIR, LODICT)
     ext.t_end('no_print')  # sql.create_tables(): 0.1092669964
         # May 24, 2023 -  sql.create_tables(): 0.1404261589
         # June 3, 2023 -  sql.create_tables(): 0.0638458729

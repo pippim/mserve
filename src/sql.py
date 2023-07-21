@@ -98,37 +98,24 @@ azlyrics link, azlyrics download time
 # Global variables must be defined at module level
 con = cursor = hist_cursor = None
 new_con = new_cursor = new_hist_cursor = None
-START_DIR_SEP  = None
-#MUSIC_ID  = None    # June 3, 2023 - Appears unused
-_START_DIR = _PRUNED_DIR = _PRUNED_COUNT = _USER = _LODICT = None
+NEW_LOCATION = False
+START_DIR = PRUNED_DIR = LODICT = None
 
 
-def create_tables(SortedList, start_dir, pruned_dir, pruned_count, user, lodict):
-    """ Create SQL tables out of OS sorted music top directory
+def create_tables(SortedList, start_dir, pruned_dir, lodict):
+    """ Create SQL tables out of OS sorted music top directory """
+    global NEW_LOCATION, START_DIR, PRUNED_DIR, LODICT
+    START_DIR = start_dir
+    PRUNED_DIR = pruned_dir  # Toplevel directory, EG /mnt/music/
+    LODICT = lodict        # Location dictionary
 
-        if START_DIR = '/mnt/music/'
-        then PRUNED_SUBDIRS = 0
-
-        if START_DIR = '/mnt/music/Trooper/'
-        then PRUNED_SUBDIRS = 1
-
-        if START_DIR = '/mnt/music/Trooper/Hits From 10 Albums/'
-        then PRUNED_SUBDIRS = 2
-
-        if START_DIR = '/mnt/... 10 Albums/08 Raise A Little Hell.m4a'
-        then PRUNED_SUBDIRS = 3
-
-    """
-    # global con, cursor, hist_cursor
-    global START_DIR_SEP    # Count of / or \ separators in toplevel directory
-    #global MUSIC_ID         # primary key into Music table used by History table
-
-    global _START_DIR, _PRUNED_DIR, _PRUNED_COUNT, _USER, _LODICT
-    _START_DIR = start_dir  # Startup music directory, EG /mnt/music/Artist
-    _PRUNED_DIR = pruned_dir  # Toplevel directory, EG /mnt/music/
-    _PRUNED_COUNT = pruned_count  # How many directory levels pruned?
-    _USER = user            # User ID to be stored on history records.
-    _LODICT = lodict        # Location dictionary
+    ''' NOTE from mserve.py:
+    LODICT['iid'] = 'new'  # June 6, 2023 - Something new to fit into code
+    LODICT['name'] = music_dir  # Name required for title bar
+    NEW_LOCATION = True  # Don't use location dictionary (LODICT) fields
+    '''
+    if LODICT['iid'] == 'new':
+        NEW_LOCATION = True
 
     open_db()
     open_new_db()  # July 13, 2023
@@ -136,35 +123,27 @@ def create_tables(SortedList, start_dir, pruned_dir, pruned_count, user, lodict)
     LastArtist = ""         # For control breaks
     LastAlbum = ""
 
-    START_DIR_SEP = start_dir.count(os.sep) - 1  # Number of / separators
-    #print('PRUNED_SUBDIRS:', pruned_count)
-    START_DIR_SEP = START_DIR_SEP - pruned_count
-
     for i, os_name in enumerate(SortedList):
 
-        # split /mnt/music/Artist/Album/Song.m4a into list
-
-        # TODO: Check of os_name in Music Table. If so continue loop
-        #       Move this into mserve.py main loop and update access time in SQL.
-        groups = os_name.split(os.sep)
-        Artist = groups[START_DIR_SEP+1]  # May contain "<No Artist>"
-        Album = groups[START_DIR_SEP+2]  # May contain "<No Album>"
-        key = os_name[len(_START_DIR):]
+        # split '/mnt/music/Artist/Album/Song.m4a' into list
+        base_path = os_name[len(PRUNED_DIR):]
+        groups = base_path.split(os.sep)
+        Artist = groups[0]
+        Album = groups[1]
+        key = os_name[len(PRUNED_DIR):]
 
         if Artist != LastArtist:
-            # In future we can add Artist table with totals
             LastArtist = Artist
             LastAlbum = ""          # Force sub-total break for Album
 
         if Album != LastAlbum:
-            # In future we can add Album table with totals
             LastAlbum = Album
 
         ''' Build full song path from song_list[] '''
         full_path = os_name
         full_path = full_path.replace(os.sep + NO_ARTIST_STR, '')
         full_path = full_path.replace(os.sep + NO_ALBUM_STR, '')
-        sql_key = full_path[len(_START_DIR):]
+        sql_key = full_path[len(PRUNED_DIR):]
 
         ''' June 2, 2023 - Do not store songs with missing artist or album '''
         if os.sep + NO_ARTIST_STR in key or os.sep + NO_ALBUM_STR in key:
@@ -177,26 +156,13 @@ def create_tables(SortedList, start_dir, pruned_dir, pruned_count, user, lodict)
             ofb.AddBlacklist(sql_key)
             continue
 
-        # os.stat gives us all of file's attributes
         ''' TODO: Make into function that sets LastPlayTime '''
-        stat = os.stat(full_path)
-        #size = stat.st_size  # TODO: test if this extra step necessary
-        # converted = float(size) / float(CFG_DIVISOR_AMT)   # Not used
-        # fsize = str(round(converted, CFG_DECIMAL_PLACES))  # Not used
+        stat = os.stat(full_path)  # Get file attributes
 
         ''' Add the song only if it doesn't exist already. '''
-
-
         sql = "INSERT OR IGNORE INTO Music (OsFileName, \
                OsAccessTime, OsModifyTime, OsChangeTime, OsFileSize) \
                VALUES (?, ?, ?, ?, ?)" 
-        '''
-        sql = "INSERT OR IGNORE INTO Music (OsFileName, \
-               OsAccessTime, OsModificationTime, OsCreationTime, OsFileSize) \
-               VALUES (?, ?, ?, ?, ?)" 
-        '''  # convert July 13, 2023
-
-
         cursor.execute(sql, (key, stat.st_atime, stat.st_mtime,
                              stat.st_ctime, stat.st_size))
 
@@ -206,11 +172,11 @@ def create_tables(SortedList, start_dir, pruned_dir, pruned_count, user, lodict)
     # time index synchronizing to lyrics.
     #ext.t_init("SQL startup functions to remove")
     #ext.t_init("hist_init_lost_and_found")
-    #hist_init_lost_and_found(start_dir, user, lodict)
+    #hist_init_lost_and_found()
     #job_time = ext.t_end('print')
     #print("Did not print? job_time:", job_time)  # 0.0426070690155
     #ext.t_init("hist_init_lyrics_and_time")
-    #hist_init_lyrics_and_time(start_dir, user, lodict)
+    #hist_init_lyrics_and_time()
     #job_time = ext.t_end('print')  # 0.0366790294647
     #print("Did not print? job_time:", job_time)
     #job_time = ext.t_end('print')  # 0.0793550014496
@@ -248,16 +214,6 @@ def open_db():
                 "Comment TEXT, Hyperlink TEXT, Duration TEXT, " +
                 "Seconds INT, PlayCount INT, LastPlayTime FLOAT, " +
                 "LyricsScore BLOB, LyricsTimeIndex TEXT)")
-    '''  # convert July 13, 2023 - Old DB 
-    con.execute("create table IF NOT EXISTS Music(Id INTEGER PRIMARY KEY, " +
-                "OsFileName TEXT, OsAccessTime FLOAT, " +
-                "OsModificationTime FLOAT, OsCreationTime FLOAT, " +
-                "OsFileSize INT, MetaArtistName TEXT, MetaAlbumName TEXT, " +
-                "MetaSongName TEXT, ReleaseDate FLOAT, OriginalDate FLOAT, " +
-                "Genre TEXT, Seconds INT, Duration TEXT, PlayCount INT, " +
-                "TrackNumber TEXT, Rating TEXT, UnsynchronizedLyrics BLOB, " +
-                "LyricsTimeIndex TEXT)")
-    '''
 
     con.execute("CREATE UNIQUE INDEX IF NOT EXISTS OsFileNameIndex ON " +
                 "Music(OsFileName)")
@@ -279,27 +235,6 @@ def open_db():
     ''' For mserve.py rename_file() function to rename "the" to "The" '''
     con.execute("PRAGMA case_sensitive_like = ON;")
 
-    '''
-        INDEX on OsSongName and confirm original when OsArtistName and
-            OsAlbumName match up to SORTED_LIST (aka self.song_list) which is
-            format of:
-                # split song /mnt/music/Artist/Album/Song.m4a into names:
-                groups = os_name.split(os.sep)
-                Artist = str(groups [START_DIR_SEP+1])
-                Album = str(groups [START_DIR_SEP+2])
-                Title = str(groups [START_DIR_SEP+3])
-
-            (last_playlist and last_selections uses the same record format)
-
-        Saving/retrieving LyricsTimeIndex (seconds from start):
-
-        >>> import json
-        >>> json.dumps([1.2,2.4,3.6])
-        '[1.2, 2.4, 3.6]'
-        >>> json.loads('[1.2, 2.4, 3.6]')
-        [1.2, 2.4, 3.6]
-
-    '''
     # Retrieve column names
     #    cs = con.execute('pragma table_info(Music)').fetchall() # sqlite column metadata
     #    print('cs:', cs)
@@ -382,8 +317,8 @@ def populate_new_database():
                 RecordingDate           -> FirstDate
 
     Revise: update_metadata2() below
-            mserve.py update_metadadta
-            mserve.py rename_files (to set Compilation flag
+            mserve.py update_sql_metadadta(fc)
+            mserve.py rename_files to set Compilation flag or at least warning.
         '''
         OsFileName = row['OsFileName']
         OsAccessTime = row['OsAccessTime']
@@ -700,37 +635,6 @@ class OsFileNameBlacklist:
 ofb = OsFileNameBlacklist()
 
 
-def make_key(fake_path):
-    """
-        DEPRECATED: June 3, 2023
-
-        Create key to read Music index by OsFileName which is
-        /path/to/topdir/album/artist/song.ext
-
-    TODO: What about PRUNED_SUBDIRS from mserve code?
-
-        # Temporarily create SQL music tables until search button created.
-        sql.CreateMusicTables(SORTED_LIST, START_DIR, PRUNED_SUBDIRS)
-
-        What about '(NO_ARTIST)' and '(NO_ALBUM)' strings?
-    """
-    ''' Version prior to June 3, 2023 when new Blacklist implemented '''
-    groups = fake_path.split(os.sep)
-    artist = groups[START_DIR_SEP+1]
-    album = groups[START_DIR_SEP+2]
-    song = groups[START_DIR_SEP+3]
-
-    ''' June 3, 2023 - <No Artist> already stripped for new Blacklist '''
-    global _START_DIR
-    suffix = fake_path
-    suffix = suffix.replace(os.sep + NO_ARTIST_STR, '')
-    suffix = suffix.replace(os.sep + NO_ALBUM_STR, '')
-    suffix = suffix[len(_START_DIR):]
-
-    #return suffix
-    return artist + os.sep + album + os.sep + song
-
-
 def update_lyrics(key, lyrics, time_index):
     """
         Apply Unsynchronized Lyrics and Lyrics Time Index.
@@ -742,10 +646,6 @@ def update_lyrics(key, lyrics, time_index):
 
     sql = "UPDATE Music SET LyricsScore=?, LyricsTimeIndex=? \
            WHERE OsFileName = ?" 
-    '''
-    sql = "UPDATE Music SET UnsynchronizedLyrics=?, LyricsTimeIndex=? \
-           WHERE OsFileName = ?" 
-    '''  # convert July 13, 2023
 
     if time_index is not None:
         # count = len(time_index)  # Not used
@@ -762,16 +662,8 @@ def get_lyrics(key):
     """
     """ June 3, 2023 - May get whitelisted version """
     d = ofb.Select(key)
-    print("sql.get_lyrics() d:", d)
     if d is None:
         return None, None
-
-    '''
-    if d["LyricsTimeIndex"] is not None:
-        return d["UnsynchronizedLyrics"], json.loads(d["LyricsTimeIndex"])
-    else:
-        return d["UnsynchronizedLyrics"], None
-    '''  # convert July 13, 2023
     if d["LyricsTimeIndex"] is not None:
         return d["LyricsScore"], json.loads(d["LyricsTimeIndex"])
     else:
@@ -794,17 +686,11 @@ def music_get_row(key):
     return OrderedDict(row)
 
 
-update_print_count = 10  # Change this number to 0 to show first 10 songs
-
-
-'''  # convert July 13, 2023
-def update_metadata(key, artist, album, title, genre, tracknumber, date, 
-                    seconds, duration):
-'''
+update_print_count = 0  # Change this number to 0 to show first 10 songs
 
 
 def update_metadata(key, artist, album, title, genre, tracknumber, date,
-                    seconds, duration, disk_number, composer):
+                    seconds, duration, disc_number, composer):
     """
         Update Music Table with metadata tags.
         Called from mserve.py and encoding.py
@@ -856,22 +742,10 @@ def update_metadata(key, artist, album, title, genre, tracknumber, date,
             date = str(date)
         else:
             print("sql.update_metadata() invalid date:", date, type(date))
-    if disk_number is not None:
-        disk_number = disk_number.decode("utf8")
+    if disc_number is not None:
+        disc_number = disc_number.decode("utf8")
     if composer is not None:
         composer = composer.decode("utf8")
-    '''
-    if type(date) is str:
-        if date != "None":  # See "She's No Angel" by April Wine.
-            # Problem with date "1993-01-26"
-            try:
-                date = float(date)  # Dumb idea because it's year
-            except ValueError:
-                pass  # Leave date as string
-    '''  # convert July 13, 2023
-
-
-
     if genre is not None:
         genre = genre.decode("utf8")
 
@@ -883,14 +757,7 @@ def update_metadata(key, artist, album, title, genre, tracknumber, date,
     if artist == NO_ALBUM_STR or album == NO_ALBUM_STR:
         return False
 
-    """ Prior to June 3, 2023 - TODO Add to Whitelist if possible
-    cursor.execute("SELECT * FROM Music WHERE OsFileName = ?", [key])
-    try:
-        d = dict(cursor.fetchone())
-    except TypeError:  # TypeError: 'NoneType' object is not iterable:
-        d = None
-        print("sql.py update_metadata() Bad key:", key)
-    """
+    ''' TODO Add to Whitelist if possible '''
     d = ofb.Select(key)
     if d is None:
         ''' June 3, 2023 - See if Whitelist can be created '''
@@ -923,9 +790,9 @@ def update_metadata(key, artist, album, title, genre, tracknumber, date,
         album        != d['Album'] or \
         title        != d['Title'] or \
         genre        != d['Genre'] or \
-        str(tracknumber)  != str(d['TrackNumber']) or \
+        tracknumber  != d['TrackNumber'] or \
         date         != d['ReleaseDate'] or \
-        disk_number  != d['DiscNumber'] or \
+        disc_number  != d['DiscNumber'] or \
         composer     != d['Composer'] or \
         seconds      != d['Seconds'] or \
             duration != d['Duration']:
@@ -946,13 +813,14 @@ def update_metadata(key, artist, album, title, genre, tracknumber, date,
         print(album, d['Album'])
         print(title, d['Title'])
         print(genre, d['Genre'])
+        print(disc_number, d['DiscNumber'])
         print(tracknumber, d['TrackNumber'])
         print(date, d['ReleaseDate'])
-        print(DiscNumber, d['DiscNumber'])
         print(composer, d['Composer'])
         print(seconds, d['Seconds'])
         print(duration, d['Duration'])
 
+        print("Variable causing Change:")
         if artist != d['Artist']:
             print('artist:', artist, d['Artist'])
         elif album != d['Album']:
@@ -961,7 +829,9 @@ def update_metadata(key, artist, album, title, genre, tracknumber, date,
             print('title:', title, d['Title'])
         elif genre != d['Genre']:
             print('genre:', genre, d['Genre'])
-        elif str(tracknumber)  != str(d['TrackNumber']):
+        elif disc_number != d['DiscNumber']:
+            print('disc_number:', disc_number, d['DiscNumber'])
+        elif tracknumber  != d['TrackNumber']:
             print('tracknumber:', tracknumber, d['TrackNumber'])
         elif date != d['ReleaseDate']:
             print('date:', date, d['ReleaseDate'])
@@ -977,87 +847,13 @@ def update_metadata(key, artist, album, title, genre, tracknumber, date,
            ReleaseDate=?, Seconds=?, Duration=?, DiscNumber=?, Composer=? \
            WHERE OsFileName = ?"
     cursor.execute(sql, (artist, album, title, genre, tracknumber, date,
-                         seconds, duration, disk_number, composer, key))
+                         seconds, duration, disc_number, composer, key))
     con.commit()
-    '''
-    # Are we adding a new 'init' or 'edit' history record?
-    if d['MetaArtistName'] is None:
-        # This happens when title has never been played in mserve
-        action = 'init'
-        #print('\nSQL adding metadata for:', key)
-        # June 6, 2023 not legalized for white_key:
-        # SQL adding metadata for: Filter/The Very Best Things: 1995–2008/01 Hey Man Nice Shot.oga
-    elif \
-        artist       != d['MetaArtistName'] or \
-        album        != d['MetaAlbumName'] or \
-        title        != d['MetaSongName'] or \
-        genre        != d['Genre'] or \
-        str(tracknumber)  != str(d['TrackNumber']) or \
-        date         != d['ReleaseDate'] or \
-        seconds      != d['Seconds'] or \
-            duration != d['Duration']:
-        # To test, use kid3 to temporarily change track number
-        # float(date) != d['ReleaseDate'] or  <- They both could be None
-        # Metadata hsa changed from last recorded version
-        action = 'edit'
-    else:
-        return False  # Metadata same as library
-
-    # For debugging, set update_print_count to 0. Otherwise set initial value to 10
-    global update_print_count
-    if update_print_count < 10:
-        print('\nSQL updating metadata for:', key)
-        print('artist type :', type(artist), 'album type :', type(album),
-              'title type :', type(title), 'tracknumber type :', type(tracknumber))
-        print('SQL type    :', type(d['MetaArtistName']), 'album type :',
-              type(d['MetaAlbumName']), 'title type :', type(d['MetaSongName']),
-              'tracknumber type :', type(d['TrackNumber']))
-        print(artist, d['MetaArtistName'])
-        print(album, d['MetaAlbumName'])
-        print(title, d['MetaSongName'])
-        print(genre, d['Genre'])
-        print(tracknumber, d['TrackNumber'])
-        print(date, d['ReleaseDate'])
-        print(seconds, d['Seconds'])
-        print(duration, d['Duration'])
-
-        if artist != d['MetaArtistName']:
-            print('artist:', artist, d['MetaArtistName'])
-        elif album != d['MetaAlbumName']:
-            print('album:', album, d['MetaAlbumName'])
-        elif title != d['MetaSongName']:
-            print('title:', title, d['MetaSongName'])
-        elif genre != d['Genre']:
-            print('genre:', genre, d['Genre'])
-        elif str(tracknumber)  != str(d['TrackNumber']):
-            print('tracknumber:', tracknumber, d['TrackNumber'])
-        elif date != d['ReleaseDate']:
-            print('date:', date, d['ReleaseDate'])
-        elif seconds != d['Seconds']:
-            print('seconds:', seconds, d['Seconds'])
-        elif duration != d['Duration']:
-            print('duration:', duration, d['Duration'])
-        else:
-            print('All things considered EQUAL')
-        update_print_count += 1
-    # Update metadata for title into library Music Table
-    sql = "UPDATE Music SET MetaArtistName=?, MetaAlbumName=?, MetaSongName=?, \
-           Genre=?, TrackNumber=?, ReleaseDate=?, Seconds=?, Duration=? \
-           WHERE OsFileName = ?" 
-    cursor.execute(sql, (artist, album, title, genre, tracknumber, date,
-                         seconds, duration, key))
-    con.commit()
-    '''  # convert July 13, 2023
-
-
-
-
-
 
     # Add history record
     # Time will be file's last modification time
     ''' Build full title path '''
-    full_path = _START_DIR.encode("utf8") + key
+    full_path = START_DIR.encode("utf8") + key
     # Below not needed because "<No Album>" strings not in Music Table filenames
     # June 2, 2023, no longer relevant because rejected above.
     full_path = full_path.replace(os.sep + NO_ARTIST_STR, '')
@@ -1074,7 +870,7 @@ def update_metadata(key, artist, album, title, genre, tracknumber, date,
 
     Size = stat.st_size                     # File size in bytes
     Time = stat.st_mtime                    # File's current mod time
-    SourceMaster = _LODICT['name']
+    SourceMaster = LODICT['name']
     SourceDetail = time.asctime(time.localtime(Time))
     Comments = "Found: " + time.asctime(time.localtime(time.time()))
     if seconds is not None:
@@ -1087,17 +883,12 @@ def update_metadata(key, artist, album, title, genre, tracknumber, date,
     # If adding, the file history record may be missing too.
     if action == 'init' and \
        not hist_check(d['Id'], 'file', action):
-        hist_add(Time, d['Id'], _USER, 'file', action, SourceMaster,
+        hist_add(Time, d['Id'], g.USER, 'file', action, SourceMaster,
                  SourceDetail, key, Size, Count, FloatSeconds,
                  Comments)
 
     # Add the meta Found or changed record
-    '''
-    print(time.time(), d['Id'], _USER, 'meta', action, SourceMaster, \
-             SourceDetail, key, Size, Count, FloatSeconds, 
-             Comments, sep=" # ")
-    '''
-    hist_add(Time, d['Id'], _USER, 'meta', action, SourceMaster,
+    hist_add(Time, d['Id'], g.USER, 'meta', action, SourceMaster,
              SourceDetail, key, Size, Count, FloatSeconds,
              Comments)
 
@@ -1144,6 +935,7 @@ def update_metadata2(fc, commit=True):
         else:
             print("sql.update_metadata() invalid date:", fc.FirstDate, type(fc.FirstDate))
 
+    ''' Problem when one location has more metadata for song than another '''
     if fc.DiscNumber is not None:
         fc.DiscNumber = fc.DiscNumber.decode("utf8")
     else:
@@ -1164,7 +956,7 @@ def update_metadata2(fc, commit=True):
     if fc.Artist == NO_ALBUM_STR or fc.Album == NO_ALBUM_STR:
         return False
 
-    key = fc.path[len(_PRUNED_DIR):]  # Create OsFileName (base path)
+    key = fc.path[len(PRUNED_DIR):]  # Create OsFileName (base path)
     d = ofb.Select(key)
     if d is None:
         ''' July 18, 2023 - Run scan on database to confirm not too legal. '''
@@ -1266,8 +1058,8 @@ def update_metadata2(fc, commit=True):
 
     # Add history record
     # Time will be file's last modification time
-    ''' Build full fc.Title path '''
-    full_path = _START_DIR.encode("utf8") + key
+    ''' Build full music file path '''
+    full_path = START_DIR.encode("utf8") + key
     # Below not needed because "<No Album>" strings not in Music Table filenames
     # June 2, 2023, no longer relevant because rejected above.
     full_path = full_path.replace(os.sep + NO_ARTIST_STR, '')
@@ -1284,7 +1076,7 @@ def update_metadata2(fc, commit=True):
 
     Size = stat.st_size                     # File size in bytes
     Time = stat.st_mtime                    # File's current mod time
-    SourceMaster = _LODICT['name']
+    SourceMaster = LODICT['name']
     SourceDetail = time.asctime(time.localtime(Time))
     Comments = "Found: " + time.asctime(time.localtime(time.time()))
     if fc.DurationSecs is not None:
@@ -1297,17 +1089,12 @@ def update_metadata2(fc, commit=True):
     # If adding, the file history record may be missing too.
     if action == 'init' and \
        not hist_check(d['Id'], 'file', action):
-        hist_add(Time, d['Id'], _USER, 'file', action, SourceMaster,
+        hist_add(Time, d['Id'], g.USER, 'file', action, SourceMaster,
                  SourceDetail, key, Size, Count, FloatSeconds,
                  Comments)
 
     # Add the meta Found or changed record
-    '''
-    print(time.time(), d['Id'], _USER, 'meta', action, SourceMaster, \
-             SourceDetail, key, Size, Count, FloatSeconds, 
-             Comments, sep=" # ")
-    '''
-    hist_add(Time, d['Id'], _USER, 'meta', action, SourceMaster,
+    hist_add(Time, d['Id'], g.USER, 'meta', action, SourceMaster,
              SourceDetail, key, Size, Count, FloatSeconds,
              Comments)
 
@@ -1393,7 +1180,7 @@ def hist_add_time_index(key, time_list):
 
     d['Count'] = len(time_list)
     Comments = Action + " time: " + time.asctime(time.localtime(time.time()))
-    hist_add(time.time(), d['Id'], _USER, 'time', Action, d['SourceMaster'],
+    hist_add(time.time(), d['Id'], g.USER, 'time', Action, d['SourceMaster'],
              d['SourceDetail'], key, d['Size'], d['Count'], d['Seconds'], 
              Comments)
 
@@ -1424,7 +1211,7 @@ def hist_default_dict(key, time_type='access'):
         return None
 
     hist = {}                               # History dictionary
-    SourceMaster = _LODICT['name']
+    SourceMaster = LODICT['name']
     hist['SourceMaster'] = SourceMaster
 
     ''' Build full song path '''
@@ -1491,14 +1278,14 @@ def hist_delete_time_index(key):
         return False
 
     Comments = "Removed: " + time.asctime(time.localtime(time.time()))
-    hist_add(time.time(), d['Id'], _USER, 'time', 'remove', d['SourceMaster'],
+    hist_add(time.time(), d['Id'], g.USER, 'time', 'remove', d['SourceMaster'],
              d['SourceDetail'], key, d['Size'], d['Count'], d['Seconds'], 
              Comments)
 
     return True
 
 
-def hist_init_lost_and_found(START_DIR, USER, LODICT):
+def hist_init_lost_and_found():
     """ Tool to initialize history time for all songs in database.
         This step just records 'file' and 'init' for OS song filename.
         If metadata present then 'meta' and 'init' also recorded.
@@ -1518,48 +1305,25 @@ def hist_init_lost_and_found(START_DIR, USER, LODICT):
     add_count = 0
     add_meta_count = 0
     # History Table columns
-    # Time = time.time()    # Aug 8/21 use time.time() instead of job start
-    User = USER             # From location.py
+    User = g.USER           # From location.py
     Type = 'file'           # This records OS filename into history
     Action = 'init'         # Means we "found" the file or it was renamed
-    '''
-    LODICT (location dictionary in memory) format as of April 13, 2021:
-    DICT={'iid': iid, 'name': name, 'topdir': topdir, 'host': host, 'wakecmd': \
-      wakecmd, 'testcmd': testcmd, 'testrep': testrep, 'mountcmd': \
-      mountcmd, 'activecmd': activecmd, 'activemin': activemin}
-    '''
     SourceMaster = LODICT['name']
-    #  Aug 8/21 comment out fields below not used
-    #SourceDetail = 'Today'  # Formatted time string "DDD MMM DD HH:MM:SS YYYY"
-    #Target = '/path/file'   # Replaced with OS filename below
-    #Size = 0                # File size in bytes
-    #Count = 0               # Number of renaming of path/name/filename
-    #Seconds = 0.0           # Song duration
     Comments = 'Automatically added by hist_init_lost_and_found()'
 
-    # Select songs that have lyrics (Python 'not None:' = SQL 'NOT NULL')
-    ''' convert July 13, 2023
-    for row in cursor.execute('SELECT Id, OsFileName, ' +
-                              'MetaSongName, Seconds FROM Music'):
-    '''
+    ''' Read through all SQL Music Table Rows '''
     for row in cursor.execute('SELECT Id, OsFileName, OsModifyTime, ' +
                               'Title, Seconds FROM Music'):
         song_count += 1
         # Check if history already exists for song
         MusicId = row[0]
         if hist_check(MusicId, Type, Action):
-            continue
+            continue  # 'file'-'init' record already exists
 
         # Name our Music Table columns needed for History Table
         OsFileName = row[1] 
-        MetaSongName = row[2]       # If name not blank, we have metadata
+        Title = row[2]       # If name not blank, we have metadata
         Seconds = row[3]            # Song Duration in seconds (INT)
-
-        ''' TODO: What about PRUNED_SUBDIRS from mserve code?
-
-        # Temporarily create SQL music tables until search button created.
-        sql.CreateMusicTables(SORTED_LIST, START_DIR, PRUNED_SUBDIRS)
-        '''
 
         ''' Build full song path '''
         full_path = START_DIR.encode("utf8") + OsFileName
@@ -1591,7 +1355,7 @@ def hist_init_lost_and_found(START_DIR, USER, LODICT):
                  Target, Size, Count, FloatSeconds, Comments)
         add_count += 1
 
-        if MetaSongName is not None:
+        if Title is not None:
             # Add the Metadata Found row
             hist_add(time.time(), MusicId, User, 'meta', Action, SourceMaster,
                      SourceDetail, OsFileName, Size, Count, FloatSeconds, 
@@ -1756,7 +1520,7 @@ def hist_delete_type_action(Type, Action):
     con.commit()
 
 
-def hist_init_lyrics_and_time(START_DIR, USER, LODICT):
+def hist_init_lyrics_and_time():
     """ Tool to initialize history time for all songs that have lyrics.
         The time will be the last file access time.
 
@@ -1771,26 +1535,15 @@ def hist_init_lyrics_and_time(START_DIR, USER, LODICT):
     add_time_count = 0
     # History Table columns
     # Time = time.time()    # Aug 8/21 not used
-    User = USER             # From location.py
+    User = g.USER
     Type = 'lyrics'
     Action = 'scrape'
     SourceMaster = 'Genius'  # Website lyrics were scraped from
-    # Aug 8/21 comment out fields below not used
-    # SourceDetail = 'Today'  # Formatted time string "DDD MMM DD HH:MM:SS YYYY"
-    # Target = 'https://genius.com/artist/album/song.html'
-    # Size = 0
-    # Count = 0
-    # Seconds = 0.0
     Comments = 'Automatically added by hist_init_lyrics_and_time()'
 
     # Select songs that have lyrics (Python 'not None:' = SQL 'NOT NULL')
-    ''' convert July 13, 2023
-    for row in cursor.execute("SELECT Id, OsFileName, UnsynchronizedLyrics, " +
-                              "LyricsTimeIndex, OsAccessTime, Seconds FROM " +
-                              "Music WHERE UnsynchronizedLyrics IS NOT NULL"):
-    '''
     for row in cursor.execute("SELECT Id, OsFileName, LyricsScore, " +
-                              "LyricsTimeIndex, OsAccessTime, Seconds FROM " +
+                              "LyricsTimeIndex, Seconds FROM " +
                               "Music WHERE LyricsScore IS NOT NULL"):
         song_count += 1
         # Check if history already exists for song
@@ -1802,27 +1555,16 @@ def hist_init_lyrics_and_time(START_DIR, USER, LODICT):
         OsFileName = row[1] 
         LyricsScore = row[2]
         LyricsTimeIndex = row[3]
-        # OsAccessTime = row[4]                   # At time of Music Row creation
-        Seconds = row[5]                        # Song Duration
-
-        ''' TODO: What about PRUNED_SUBDIRS from mserve code?
-
-        # Temporarily create SQL music tables until search button created.
-        sql.CreateMusicTables(SORTED_LIST, START_DIR, PRUNED_SUBDIRS)
-        '''
+        Seconds = row[4]                        # Song Duration
 
         ''' Build full song path '''
-        full_path = START_DIR.encode("utf-8") + OsFileName  # July 13, 2023: "utf8"
+        full_path = START_DIR.encode("utf-8") + OsFileName
         # Below not needed because (No Xxx) stubs not in Music Table filenames
         full_path = full_path.replace(os.sep + NO_ARTIST_STR, '')
         full_path = full_path.replace(os.sep + NO_ALBUM_STR, '')
 
         # os.stat gives us all of file's attributes
         stat = os.stat(full_path)
-        # size = stat.st_size                     # Not used
-        # converted = float(size) / float(CFG_DIVISOR_AMT)
-        # fsize = str(round(converted, CFG_DECIMAL_PLACES))
-
         Time = stat.st_atime                    # File's current access time
         SourceDetail = time.asctime(time.localtime(Time))
         Size = len(LyricsScore)        # Can change after user edits
@@ -1939,7 +1681,7 @@ class Authorization:
         """
         if self.SourceMaster is None:
             # First time add the record
-            hist_add(time.time(), 0, _USER, self.Type, self.Action, self.user,
+            hist_add(time.time(), 0, g.USER, self.Type, self.Action, self.user,
                      self.email, self.Target, 0, 0, 0.0,
                      "User Authorization record created")
             con.commit()
@@ -2144,49 +1886,24 @@ class PrettyMusic:
         self.dict['OS Filename'] = sql_format_value(d['OsFileName'])
         self.dict['File size'] = sql_format_int(d['OsFileSize'])
         self.dict['Last Access'] = sql_format_date(d['OsAccessTime'])
-
-
-        # convert July 13, 2023
         self.dict['Modification time'] = sql_format_date(d['OsModifyTime'])
-        #self.dict['Modify time'] = sql_format_date(d['OsModificationTime'])
-
-        # convert July 13, 2023
         self.dict['Change time'] = sql_format_date(d['OsChangeTime'])
-        #self.dict['Change time'] = sql_format_date(d['OsCreationTime'])
-
-
         self.part_start.append(len(self.dict))
 
-
-        # convert July 13, 2023
         self.dict['Artist'] = sql_format_value(d['Artist'])
-        #self.dict['Artist'] = sql_format_value(d['MetaArtistName'])
-
-        # convert July 13, 2023
         self.dict['Album'] = sql_format_value(d['Album'])
-        #self.dict['Album'] = sql_format_value(d['MetaAlbumName'])
-
-
-        # convert July 13, 2023
         self.dict['Title'] = sql_format_value(d['Title'])
-        #self.dict['Song Name'] = sql_format_value(d['MetaSongName'])
-
         self.dict['Album Track'] = sql_format_value(d['TrackNumber'])
-
         self.part_start.append(len(self.dict))
+
         if d["LyricsTimeIndex"] is None:
             time_index_list = ["No time index"]  # Nothing prints yet.
         else:
             time_index_list = json.loads(d["LyricsTimeIndex"])
-
-        # convert July 13, 2023
-        #if d["UnsynchronizedLyrics"] is None:
         if d["LyricsScore"] is None:
             self.dict['Lyrics score'] = "Webscrape for lyrics not completed."
         else:
-            # convert July 13, 2023
             lyrics = d["LyricsScore"]
-            #lyrics = d["UnsynchronizedLyrics"]
             for i, line in enumerate(lyrics.splitlines()):
                 # If time index exists, put value in front of lyric line
                 try:
@@ -2198,15 +1915,7 @@ class PrettyMusic:
 
         self.part_start.append(len(self.dict))
 
-        ''' SAMPLE FROM ABOVE sql = 
-        "INSERT INTO History (Time, MusicId, User, Type, Action, \
-           SourceMaster, SourceDetail, Target, Size, Count, Seconds, Comments) \
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-
-    hist_cursor.execute(sql, (Time, MusicId, User, Type, Action, SourceMaster,
-                              SourceDetail, Target, Size, Count, Seconds,
-                              Comments))
-        '''
+        ''' Append SQL History Table Rows matching Music ID '''
         hist_cursor.execute("SELECT * FROM History INDEXED BY MusicIdIndex \
                             WHERE MusicId = ?", (d['Id'],))
         rows = hist_cursor.fetchall()
@@ -2511,22 +2220,14 @@ def music_treeview():
 
       OrderedDict([
         ("column", "os_mtime"), ("heading", "Modify Time"), ("sql_table", "Music"),
-
-        # convert July 13, 2023
         ("var_name", "OsModifyTime"), ("select_order", 0), ("unselect_order", 4),
-        #("var_name", "OsModificationTime"), ("select_order", 0), ("unselect_order", 4),
-
         ("key", False), ("anchor", "w"), ("instance", float), ("format", "{0:,.0f}"),
         ("display_width", 180), ("display_min_width", 120),
         ("display_long", None), ("stretch", 0)]),
 
       OrderedDict([
         ("column", "os_ctime"), ("heading", "Change Time"), ("sql_table", "Music"),
-
-        # convert July 13, 2023
         ("var_name", "OsChangeTime"), ("select_order", 0), ("unselect_order", 5),
-        #("var_name", "OsCreationTime"), ("select_order", 0), ("unselect_order", 5),
-
         ("key", False), ("anchor", "e"), ("instance", float),
         ("format", "{0:,.0f}"), ("display_width", 180),
         ("display_min_width", 120), ("display_long", None), ("stretch", 0)]),
@@ -2540,33 +2241,21 @@ def music_treeview():
 
       OrderedDict([
         ("column", "artist"), ("heading", "Artist"), ("sql_table", "Music"),
-
-        # convert July 13, 2023
         ("var_name", "Artist"), ("select_order", 0), ("unselect_order", 7),
-        #("var_name", "MetaArtistName"), ("select_order", 0), ("unselect_order", 7),
-
         ("key", False), ("anchor", "w"), ("instance", str), ("format", None),
         ("display_width", 200), ("display_min_width", 140),
         ("display_long", None), ("stretch", 1)]),  # 0=NO, 1=YES
 
       OrderedDict([
         ("column", "album"), ("heading", "Album"), ("sql_table", "Music"),
-
-        # convert July 13, 2023
         ("var_name", "Album"), ("select_order", 0), ("unselect_order", 8),
-        #("var_name", "MetaAlbumName"), ("select_order", 0), ("unselect_order", 8),
-
         ("key", False), ("anchor", "w"), ("instance", str), ("format", None),
         ("display_width", 200), ("display_min_width", 140),
         ("display_long", None), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "title"), ("heading", "Title"), ("sql_table", "Music"),
-
-        # convert July 13, 2023
         ("var_name", "Title"), ("select_order", 0), ("unselect_order", 9),
-        #("var_name", "MetaSongName"), ("select_order", 0), ("unselect_order", 9),
-
         ("key", False), ("anchor", "w"), ("instance", str), ("format", None),
         ("display_width", 200), ("display_min_width", 140),
         ("display_long", None), ("stretch", 1)]),
@@ -2574,25 +2263,14 @@ def music_treeview():
       OrderedDict([
         ("column", "release_date"), ("heading", "Release Date"), ("sql_table", "Music"),
         ("var_name", "ReleaseDate"), ("select_order", 0), ("unselect_order", 10),
-
-        # convert July 13, 2023
         ("key", False), ("anchor", "w"), ("instance", str), ("format", None),
-        #("key", False), ("anchor", "w"), ("instance", float), ("format", "{0:,.0f}"),
-
         ("display_width", 180), ("display_min_width", 120),
         ("display_long", None), ("stretch", 0)]),
 
       OrderedDict([
         ("column", "remaster_date"), ("heading", "Remaster Date"), ("sql_table", "Music"),
-
-
-        # convert July 13, 2023
         ("var_name", "RecordingDate"), ("select_order", 0), ("unselect_order", 11),
         ("key", False), ("anchor", "w"), ("instance", str), ("format", None),
-        #("var_name", "OriginalDate"), ("select_order", 0), ("unselect_order", 11),
-        #("key", False), ("anchor", "w"), ("instance", float), ("format", "{0:,.0f}"),
-
-
         ("display_width", 180), ("display_min_width", 120),
         ("display_long", None), ("stretch", 0)]),
 
@@ -2640,11 +2318,7 @@ def music_treeview():
 
       OrderedDict([
         ("column", "lyrics"), ("heading", "Lyrics"), ("sql_table", "Music"),
-
-        # convert July 13, 2023
         ("var_name", "LyricsScore"), ("select_order", 0), ("unselect_order", 18),
-        #("var_name", "UnsynchronizedLyrics"), ("select_order", 0), ("unselect_order", 18),
-
         ("key", False), ("anchor", "w"), ("instance", str), ("format", None),
         ("display_width", 200), ("display_min_width", 140),
         ("display_long", None), ("stretch", 1)]),
@@ -2657,7 +2331,6 @@ def music_treeview():
         ("display_long", None), ("stretch", 1)]),
 
       OrderedDict([
-        # convert July 13, 2023 add #20 to #25
         ("column", "creation_time"), ("heading", "Creation Time"), ("sql_table", "Music"),
         ("var_name", "CreationTime"), ("select_order", 0), ("unselect_order", 20),
         ("key", False), ("anchor", "w"), ("instance", float), ("format", "{0:,.0f}"),
@@ -2672,7 +2345,7 @@ def music_treeview():
         ("display_long", None), ("stretch", 0)]),
 
       OrderedDict([
-        ("column", "disk_number"), ("heading", "Disk #"), ("sql_table", "Music"),
+        ("column", "disc_number"), ("heading", "Disc #"), ("sql_table", "Music"),
         ("var_name", "DiscNumber"), ("select_order", 0), ("unselect_order", 22),
         ("key", False), ("anchor", "center"), ("instance", str), ("format", None),
         ("display_width", 160), ("display_min_width", 140),
@@ -2780,7 +2453,7 @@ def history_treeview():
         ("display_width", 300), ("display_min_width", 200),
         ("display_long", None), ("stretch", 1)]),
 
-      OrderedDict([  # Offset 8 cheating in mserve.py Playlists() populate_his_tree
+      OrderedDict([  # Hard coded as Offset 8 in Playlists().populate_his_tree()
         ("column", "size"), ("heading", "Size"), ("sql_table", "History"),
         ("var_name", "Size"), ("select_order", 0), ("unselect_order", 9),
         ("key", False), ("anchor", "e"), ("instance", int), ("format", "{:,}"),
@@ -2822,11 +2495,6 @@ def history_treeview():
         ("display_width", 160), ("display_min_width", 140),
         ("display_long", None), ("stretch", 1)])
     ]
-
-    ''' Future retention is calculated in order of Monthly, Weekly, Daily. 
-        Last year retention is same as Future but Yearly test inserted first.
-        The newest backup will always be classified as Monthly until tomorrow.
-    '''
 
     return history_treeview_list
 
@@ -2959,59 +2627,6 @@ def playlist_treeview():
     return playlist_treeview_list
 
 
-def update_history(scraped_dict):
-    """ NOT USED """
-    for i, website in enumerate(scraped_dict):
-        if len(website['link']) > 2 and website['flag'] != 'skip':
-            pass
-            # Check for duplicates
-        else:
-            pass
-
-# if there are existing history records identical to scraped_dict
-# we want to skip adding. We might want to update time though.
-
-
-def create_webscrape(music_id, website):
-    """ NOT USED """
-    # Read all history records finding the last one for each website
-    # if the flag is 'downloaded' then set dict flag to 'skip'
-    print('remove website parameter:', website)
-    for website in webscape.WEBSITE_LIST:
-        if get_history(music_id, website=website):
-            # update dict
-            pass
-        else:
-            add_dict(xxx)
-
-# After loop go back and assign priority flags 1 to 8. Initial priority list 
-#can be redefined by user.
-
-
-def create_radio_buttons(music_id):
-    """ NOT USED """
-    # if already downloaded set text to grey with date in parentheses.
-    # if no link add (no link) after website name.
-    # can you make a deactivated tkinter radio button? Or simply
-    # don't add unavailable to list.
-
-    # From:
-    # https://stackoverflow.com/questions/49061602/how-to-disable-multiple-radiobuttons-in-python
-
-    print('music_id parameter not used:', music_id)
-    sum_label['text'] += var.get()
-    if sum_label['text'] >= 30:
-        for key in radiobuttons:
-            radiobuttons[key]['state'] = 'disabled'
-
-
-def get_last_history(music_id, website='all'):
-    """ NOT USED """
-    # match is on website human formatted name not internet
-    #  formatted name. EG "Genius' not '//genius.com'
-    print('sql.py - get_last_history(music_id, website):', music_id, website)
-
-
 # ==============================  FIX SQL ROWS  ============================
 
 
@@ -3037,15 +2652,6 @@ class FixData:
             Second pass delete Music Table rows matching Id range.
 
             FIXES ERRORS after another location wasn't handled properly:
-
-sql.hist_init_lost_and_found(): File below doesn't exist:
-COLUMN: Id                        VALUE: 3928
-COLUMN: OsFileName                VALUE: Faith No More/<No Album>/19 The Perfect Crime.m4a
-
-sql.hist_init_lost_and_found(): File below doesn't exist:
-COLUMN: Id                        VALUE: 3936
-COLUMN: OsFileName                VALUE: Fleetwood Mac/<No Album>/RandomSong2.m4a
-
         """
         # Backup database before updating
         self.backup(update)
@@ -3109,11 +2715,11 @@ COLUMN: OsFileName                VALUE: Fleetwood Mac/<No Album>/RandomSong2.m4
             print_all = False
             #if 15879 <= row['Id'] <= 15880:
             if row['Id'] == 999999:  # Change 999999 to MusicId to print for debugging
-                print("\nFound history History Row Id:", row['Id'], "| MetaSongName:", row['MetaSongName'])
+                print("\nFound history History Row Id:", row['Id'], "| Title:", row['Title'])
                 print_all = True
 
             del_list.append(OrderedDict([('Id', row['Id']),
-                                         ('MetaSongName', row['MetaSongName']),
+                                         ('Title', row['Title']),
                                          ('Count', 0), ('Error', 0)]))
             d = del_list[len(del_list) - 1]
 
@@ -3346,43 +2952,6 @@ COLUMN: OsFileName                VALUE: Fleetwood Mac/<No Album>/RandomSong2.m4
         """ Change UTC dates to Local format
             Summer time April to October (7 months) is UTC-6
             Winter time November to March (5 months) is UTC-7
-
-    Code to desk check for converting gmtime to localtime prior to May 7, 2023
-
-    'file' or 'meta + 'init' or 'edit'
-    ./sql.py:521:    SourceDetail = time.asctime(time.localtime(Time))
-    ./sql.py:790:    SourceDetail = time.asctime(time.localtime(Time))
-    ./sql.py:522:    Comments = "Found: " + time.asctime(time.localtime(time.time()))
-    ./sql.py:619:    Comments = Action + " time: " + time.asctime(time.localtime(time.time()))
-
-    hist_default_dict(key, time_type='access'):
-    'time', 'init' or 'edit'
-    ./sql.py:669:    SourceDetail = time.asctime(time.localtime(Time))
-
-    'time', 'remove'
-    ./sql.py:707:    Comments = "Removed: " + time.asctime(time.localtime(time.time()))
-
-    def hist_init_lyrics_and_time(START_DIR, USER, LODICT):
-    'file' or 'meta + 'init' or 'edit'
-    ./sql.py:989:        SourceDetail = time.asctime(time.localtime(Time))
-
-    'scrape', 'parm'
-    ./sql.py:1140:                         time.asctime(time.localtime(time.time())))
-    ./mserve.py:6791:                         time.asctime(time.localtime(time.time())))
-
-    'encode', 'discid'
-    ./encoding.py:676:                   "Get disc ID: " + time.asctime(time.localtime(time.time())))
-    'encode', 'mbz_get1'
-    ./encoding.py:757:             "Get releases list: " + time.asctime(time.localtime(time.time())))
-    'encode', 'mbz_get2'
-    ./encoding.py:805:                "Get cover art: " + time.asctime(time.localtime(time.time())))
-    'encode', 'album'
-    ./encoding.py:1103:                    " Finished: " + time.asctime(time.localtime(time.time())))
-    'file', 'init'
-    ./encoding.py:1170:            "encoded: " + time.asctime(time.localtime(time.time())))
-    'encode', 'track'
-    ./encoding.py:1175:            "finished: " + time.asctime(time.localtime(time.time())))
-
         """
 
         # Backup database before updating

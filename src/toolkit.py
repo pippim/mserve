@@ -80,6 +80,7 @@ import image as img         # Pippim image.py module
         from gi.repository import Gdk, GdkPixbuf, Gtk, Wnck
 '''
 
+
 def print_trace():
     """ Mimic trace """
     for line in traceback.format_stack():
@@ -337,7 +338,7 @@ def uni_str(s):
         # TypeError: decoding Unicode is not supported
 
     if isinstance(s, unicode):
-        print("toolkit.py uni_str() already unicode:", s, type(s))
+        #print("toolkit.py uni_str() already unicode:", s, type(s))
         return s  # Already unicode, cannot do twice or get error message:
         # TypeError: decoding Unicode is not supported
 
@@ -1200,7 +1201,10 @@ class SearchText:
         if s:
             for iid in self.tree.get_children():
                 # searches for desired string
-                values = self.tree.item(iid)['values']
+                try:
+                    values = self.tree.item(iid)['values']
+                except TclError:  # Window wsa closed
+                    return
 
                 if any(s.lower() in t.lower() for t in values if isinstance(t, basestring)):
                     # Searching all columns of basestring type
@@ -1212,17 +1216,17 @@ class SearchText:
         self.edit.focus_set()
 
     def find_callback(self):
-        """ Search treeview testing with callback function
-        """
+        """ Search treeview and use callback function to test """
         self.reattach()         # Put back items excluded on last search
         for iid in self.tree.get_children():
             # Get all treeview values for testing via callback function
             values = self.tree.item(iid)['values']
 
             if self.callback(values):
-                # Searching all columns of basestring type
+                # callback says to keep this row
                 continue
 
+            # callback says to drop row
             self.tree.detach(iid)
             self.attached[iid] = False
 

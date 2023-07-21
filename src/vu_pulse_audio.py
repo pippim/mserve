@@ -313,7 +313,7 @@ pulsectl.pulsectl.PulseOperationFailed: 56
                 if str(sink.index) == target_sink:
                     try:
                         self.pulse.volume_set_all_chans(sink, float(percent) / 100.0)
-                    except pulsectl.pulsectl.PulseOperationFailed as err:  # 144
+                    except pulsectl.PulseOperationFailed as err:  # 144
                         # noinspection SpellCheckingInspection
                         '''
 FIRST Exception HAPPENED AFTER CHANGING SOUND OUTPUT DEVICES
@@ -329,8 +329,26 @@ FIRST Exception HAPPENED AFTER CHANGING SOUND OUTPUT DEVICES
   File "/home/rick/python/pulsectl/pulsectl.py", line 523, in _pulse_op_cb
     if not self._actions[act_id]: raise PulseOperationFailed(act_id)
 pulsectl.pulsectl.PulseOperationFailed: 144
+
+SECOND Exception HAPPENED DURING SQL MUSIC TABLE SEARCH MISSING ARTWORK
+
+  File "/home/rick/python/mserve.py", line 16687, in main
+    ext.t_init('sql.create_tables()')
+  File "/home/rick/python/mserve.py", line 1421, in __init__
+    self.load_last_selections()  # Play songs in favorites or playlists
+  File "/home/rick/python/mserve.py", line 6642, in load_last_selections
+    """ Selected songs can be filtered by having time index or by Artist """
+  File "/home/rick/python/mserve.py", line 7114, in play_selected_list
+    #    self.splash_toplevel.withdraw()  # Remove splash screen
+  File "/home/rick/python/mserve.py", line 8140, in play_one_song
+    elif self.play_ctl.sink is not None:
+  File "/home/rick/python/vu_pulse_audio.py", line 316, in set_volume
+    except pulsectl.pulsectl.PulseOperationFailed as err:  # 144
+AttributeError: 'module' object has no attribute 'pulsectl'
+
+
                         '''
-                        print(who + "pulsectl.pulsectl.PulseOperationFailed:", err)
+                        print(who + "pulsectl.PulseOperationFailed:", err)
                         return None, str(err)
 
                     for i, S in enumerate(self.sinks_now):

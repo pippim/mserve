@@ -193,6 +193,15 @@ class DelayedTextBox:
         self.msg_top = None
 
     def update(self, msg_line):
+        """ 
+        Update delayed text box with message line if delay has expired. Include
+        lines suppressed earlier. Typically 1 second delay before creating
+        text box window.
+        
+        
+        :param msg_line: Text for display
+        :return: 
+        """
         self.line_cnt += 1                  # Message lines encountered so far
         now = time.time()                   # Current time
         if now > self.mount_time:           # Current time > mont time target?

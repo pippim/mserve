@@ -2837,36 +2837,53 @@ class MetaScan:
 
     """
 
-    def __init__(self, toplevel, thread=None):
-
+    def __init__(self, toplevel, get_refresh_thread=None):
+        
         self.top_level = toplevel
-        self.thread = thread
+        self.get_refresh_thread = get_refresh_thread
 
         self.total_scanned = 0
+        self.missing_file_at_loc = 0  # Tallied by caller?
+        self.missing_audio = 0  # Tallied by caller
         self.missing_artwork = 0
         self.found_artwork = 0
         self.meta_data_updated = 0
         self.meta_data_unchanged = 0
-        self.meta_dict = None
+        self.last_thread_call = time.time()
 
     def CheckArtwork(self, meta_dict):
         """ :param meta_dict: Key/Value Pairs of ID tags 
             :returns True if Song File has artwork, False if "Video" not found
         """
-        if self.thread:
-            self.thread()
+        if self.get_refresh_thread:
+            ''' Call refresh thread for tool tips, etc. '''
+            now = time.time()
+            if now - self.last_thread_call > .033:
+                thread = self.get_refresh_thread()  # Can change if play_top closes
+                thread()
+                self.last_thread_call = now  # Adds 4 seconds but should be less :(
+                # When called: 389 seconds, but no tooltips
 
         self.total_scanned += 1
+
+        ''' Move to mserve.py missing_artwork_callback() function '''
+        """
+        if not meta_dict:
+            self.missing_file_at_loc += 1
+            return False  # Driven by FileControl.new() when OSError
+        """
+        
+        ''' TODO: Use FileControl.valid_artwork add counts for missing audio '''
         for key, value in meta_dict.iteritems():
             if key.startswith("STREAM"):
                 if "Video:" in value:
-                    self.found_artwork += 1
+                    self.found_artwork += 1  # Not showing up
                     return True
 
-        self.missing_artwork += 1
+        self.missing_artwork += 1  # Shows up in missing_file_at_loc ???
         return False
 
-    def ChangedCounts(self, flag):
+    def UpdateChanges(self, flag):
         """ :parameter flag: Can be True, False or None """
         if flag:
             self.meta_data_updated += 1
