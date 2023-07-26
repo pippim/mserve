@@ -99,7 +99,14 @@ References:
 #       TO: Title, Year, Comment, Artist, Album, Album Date, Genre, Disc, Track, 
 #       Playlist #, Progress
 
-#       Hard-coded # 5 rows changes to # 11 rows, so use META_DISPLAY_ROWS = 8
+#       Hard-coded # 5 rows changes to # 11 rows, so use META_DISPLAY_ROWS = 11
+
+        Metadata glitches
+            .oga files do not store audio and video in separate streams. 
+            The TAG section has to be checked to see if they exist. 
+            Check the music file type in FileControl.check_metadata() method.
+            ARTWORK OK THOUGH???: April Wine/The Hits/01 - Say Hello.oga
+
 
 #       Create help buttons for dropdown menu options.
 
@@ -166,9 +173,6 @@ References:
 #       'self.song_list'        -> 'self.lib_tree_paths'
 #       'self.song_list'        -> 'self.lib_song_paths'
 #       'self.song_list'        -> 'self.fake_paths'  # Already DONE
-# BIG PROBLEM. self.fake_paths may contain /<No Artist>/<No Album>
-#              As self.fake_paths is read create self.real_paths
-#              FIXED - July 3, 2023 keep self.fake_paths to rebuild lib_tree
 
 #       'self.ndx'              -> 'self.curr_iid_ndx'
 #       'self.ndx'              -> 'self.play_curr_ndx'
@@ -363,20 +367,10 @@ except ImportError:  # Python 2
 #
 from PIL import Image, ImageTk, ImageDraw, ImageFont
 from ttkwidgets import CheckboxTreeview
-#print("Using ttkwidgets.py CheckboxTreeview from path:",
-#      inspect.getfile(CheckboxTreeview))
 
 import signal  # Shutdown signals
-#print(signal.__file__)
-# AttributeError: 'module' object has no attribute '__file__'
-#print(inspect.getfile(signal))
-# TypeError: <module 'signal' (built-in)> is a built-in module
-
 import sqlite3  # Was only used for error messages but needed sql. in front
-#print(sqlite3.__file__)  # /usr/lib/python2.7/sqlite3/__init__.pyc
-#print(inspect.getfile(sqlite3))
-# still needs testing creating invalid artist name for sql.hist_add()
-# search on "except sql.sqlite3.Error as er"
+
 
 try:
     import subprocess32 as sp
@@ -457,6 +451,7 @@ CFG_DIVISOR_UOM = "MB"      # Unit of Measure becomes Megabyte
 RESTART_SLEEP = .3          # Delay for mserve close down
 KEEP_AWAKE_MS = 250         # Milliseconds between time checks
 META_DISPLAY_ROWS = 5       # Number of Metadata Rows displayed in frame
+# Search on 'July 18, 2023' to see code impacted by global variable usage.
 SCROLL_WIDTH = 16           # Scroll bar width, July 3, 2023 used to be 12
 MON_FONTSIZE = 12           # Font size for monitor name
 WIN_FONTSIZE = 11           # Font size for Window name
@@ -469,8 +464,6 @@ BTN_BRD_WID = 3             # Width for button border
 FRM_BRD_WID = 2             # Width for frame border
 # TODO: Calculate PANEL_HGT (height)
 PANEL_HGT = 24              # Height of Unity panel
-#MAX_DEPTH = 3               # Sanity check if starting at c:\ or /
-# If MAX_DEPTH changes from 3, change 'depth_count = [ 0, 0, 0 ]' below.
 
 '''
 TODO:
@@ -539,10 +532,10 @@ GRID_REMOVE_SUPPORTED = True
 LIBRARY_UNSELECT_REMOVE_PLAYING = True
 
 # When checking song in music location, how does it go into currently playing list?
-LIBRARY_SELECT_INSERT_PLAY_HERE = False
+#LIBRARY_SELECT_INSERT_PLAY_HERE = False  # Not supported
 LIBRARY_SELECT_INSERT_PLAY_NEXT = True
-LIBRARY_SELECT_INSERT_PLAY_RANDOM = False
-LIBRARY_SELECT_INSERT_PLAY_ORDER = False
+#LIBRARY_SELECT_INSERT_PLAY_RANDOM = False  # Not supported
+#LIBRARY_SELECT_INSERT_PLAY_ORDER = False  # Not supported
 '''
 If an entire album or artist is inserted as anything but RANDOM
 then a new function to randomize those songs just inserted should
@@ -613,7 +606,7 @@ SLEEP_PLAYING = 33          # play_top is playing music
 SLEEP_NO_PLAY = 33          # play_top closed, refresh_lib_top() running
 
 
-def make_sorted_list(start_dir, toplevel=None, idle=None):
+def make_sorted_list(start_dir, toplevel=None, idle=None, check_only=False):
     """ Build list of songs on storage device beginning at 'start_dir'
         Insert '/<No Artist>' and or '/<No Album>' subdirectory names
         Called at startup and by refresh_acc_times()
@@ -621,6 +614,9 @@ def make_sorted_list(start_dir, toplevel=None, idle=None):
         which doesn't appear if process shorter than a second.
         
         TODO: dtb would crash system if tkinter import failed. REVIEW
+        
+        When check_only just ensure /Artist/Album/at least one song
+        bail out after two songs
     """
 
     ''' If system argument 1 is for random directory, we have no last location.
@@ -652,7 +648,7 @@ def make_sorted_list(start_dir, toplevel=None, idle=None):
     dtb = message.DelayedTextBox(title="Scanning music directories",
                                  toplevel=toplevel, width=1000)
 
-    depth_count = [0, 0, 0]  # Count of songs at each level
+    depth_count = [0, 0, 0]  # Count of songs at topdir, artist, album
     last_check = time.time()  # Time we last checked to enter idle loop
     next_check = last_check  # For PyCharm warning message
     if idle is not None:
@@ -661,16 +657,16 @@ def make_sorted_list(start_dir, toplevel=None, idle=None):
     idle_loops = 0  # How many times we idled while building list
 
     start_dir = unicode(start_dir)  # Get results in unicode
+    loop_count = 0
     # What's the difference between unicode() and .encode('utf-8')?
     #   https://stackoverflow.com/questions/643694/
     #   what-is-the-difference-between-utf-8-and-unicode
     for subdir, dirs, files in os.walk(start_dir, topdown=True):
 
-        ''' Limit search to files in 3 levels (/Artist/Album/Songs) '''
+        ''' Limit search to files in 2 levels (/Artist/Album) '''
         curr_depth = subdir.count(os.sep) - start_dir.count(os.sep)
-        #if curr_depth == MAX_DEPTH - 1:
         if curr_depth == 2:
-            # Sanity check - delete directories found below /Artist/Album
+            # Sanity check - delete directories below TopDir/Artist/Album/
             del dirs[:]
             continue
 
@@ -690,7 +686,7 @@ def make_sorted_list(start_dir, toplevel=None, idle=None):
                     # print('make_sorted_list() next sleeping at:', next_check)
                     idle_loops += 1
 
-            # Take sub-path /Artist/Album/Song.xxx and build full path for tests
+            # Take sub-path /Artist/Album/Song.xxx and build full path
             full_path = os.path.join(subdir, f)
 
             ''' July 13, 2023 - Test code from new sql.update_metadata2() '''
@@ -708,24 +704,35 @@ def make_sorted_list(start_dir, toplevel=None, idle=None):
                 print("illegal names:", legal_artist, legal_album, legal_title)
 
             # There are depths with no files so must recalculate current depth
-            curr_depth = full_path.count(os.sep) - start_dir.count(os.sep)
+            #curr_depth = full_path.count(os.sep) - start_dir.count(os.sep)
             dtb.update(full_path)
             # Valid songs are regular files with known extensions
             if os.path.isfile(full_path) and \
                     os.path.splitext(f)[1] in FILE_TYPES:
                 # Count song occurrences at this level
-                depth_count[curr_depth] += 1
+                work_level = full_path.count(os.sep) - start_dir.count(os.sep)
+                depth_count[work_level] += 1
+
+                ''' Were 100 files checked without success? '''
+                loop_count += 1
+                if check_only and loop_count > 100:
+                    return work_list, depth_count  # song paths & file counts
+
+                ''' If checking only for valid topdir success after 10 found '''
+                if check_only and depth_count[2] > 10:
+                    return work_list, depth_count  # song paths & file counts
+
                 # Insert missing Artists and Albums directories into work_f
                 work_f = f
-                work_level = full_path.count(os.sep) - start_dir.count(os.sep)
                 if NEW_LOCATION:
                     # print('WIP work_f, work_level:', work_f, work_level)
                     pass
-                if work_level is 0:
-                    # Note leading / break os.path.join
+                if work_level == 0:
+                    # song sitting at Artist directory level
                     work_f = NO_ARTIST_STR + os.sep + NO_ALBUM_STR \
                              + os.sep + work_f
-                if work_level is 1:
+                if work_level == 1:
+                    # song sitting at Album directory level
                     work_f = NO_ALBUM_STR + os.sep + work_f
 
                 # Build full path name from root directory
@@ -741,14 +748,12 @@ def make_sorted_list(start_dir, toplevel=None, idle=None):
     dtb.close()
     # print('make_sorted_list idle loop count:', idle_loops)
 
-    # print(depth_count)
-    # print(work_list)
+    if check_only:
+        ''' less than 100 files and didn't find 10 music files at Album level '''
+        return work_list, depth_count  # song paths & file counts
 
-    ''' NOT pointing at Topdir, eg An Artist or an Album is the target.
+    ''' Check if NOT pointing at Topdir, eg An Artist or an Album is the target.
         If all three levels are zero, bail out because no music at all.
-        If level 2 and 3 is zero, No Artist/No Album become dir_name-2/dir_name-1
-        If 3 is zero, /No Album becomes Artist Name level
-                      Artist Name becomes dir_name - 1
     '''
     PRUNED_DIR = START_DIR  # Needed to prune off /Artist Name/Album Name
     PRUNED_COUNT = 0
@@ -757,14 +762,11 @@ def make_sorted_list(start_dir, toplevel=None, idle=None):
         return work_list, depth_count  # No songs, or started pointing at single song
 
     if depth_count[1] == 0 and depth_count[2] == 0:
-        # No Artist & No Album encountered
-        PRUNED_COUNT = 2
-
+        PRUNED_COUNT = 2  # Both "<No Artist>" and "<No Album>" forced inserts
     if depth_count[1] > 0 and depth_count[2] == 0:
-        # No Album encountered
-        PRUNED_COUNT = 1
+        PRUNED_COUNT = 1  # "<No Album>" forced insert
 
-    ''' Create the pseudo start directory '''
+    ''' Create the pseudo start directory - Probably more efficient way... '''
     for i in range(0, PRUNED_COUNT):
         #print("looping through prunes:", i)
         PRUNED_DIR = PRUNED_DIR[:-1]  # Remove os.sep from end
@@ -773,22 +775,21 @@ def make_sorted_list(start_dir, toplevel=None, idle=None):
 
     if PRUNED_COUNT > 0:
         work_list = [w.replace(os.sep + NO_ALBUM_STR, '') for w in work_list]
-
     if PRUNED_COUNT > 1:
         work_list = [w.replace(os.sep + NO_ARTIST_STR, '') for w in work_list]
 
-    return work_list, depth_count  # Started pointing at an album
+    return work_list, depth_count
 
 
 # ==============================================================================
 #
-#       MusicTree class - Define lib (library of music)
+#       MusicLocationTree class - Define lib (library of music)
 #
 # ==============================================================================
 
 class PlayCommonSelf:
     """ Class Variables used by play_selected_list().
-        Must appear before MusicTree() class
+        Must appear before MusicLocationTree() class
         
         TODO: Move suitable variables to FileControl().FileControlCommonSelf
 
@@ -1077,12 +1078,24 @@ class PlayCommonSelf:
         self.his_view = None                # SQL History Table Viewer Scrollbox
         self.his_search = None              # 
         self.his_view_btn1 = None           # ✘ Close
-        self.his_view_btn2 = None           # 🗑 Configuration rows
-        self.his_view_btn3 = None           # 🗑
+        self.his_view_btn2 = None           # ? Configuration rows
+        self.his_view_btn3 = None           # ? Encode CD rows
         self.his_view_btn4 = None           # 🗑
         self.his_view_btn5 = None           # ? Text Search
         self.his_view_btn6 = None           # 🖸
         self.his_view_btn7 = None           # ∑ Summary
+
+        ''' SQL Location Table viewer '''
+        self.lcs_top = None                 # SQL Location Viewer Top Window
+        self.lcs_view = None                # SQL Location Table Viewer Scrollbox
+        self.lcs_search = None              # 
+        self.lcs_view_btn1 = None           # ✘ Close
+        self.lcs_view_btn2 = None           # 🗑 Configuration rows
+        self.lcs_view_btn3 = None           # 🗑
+        self.lcs_view_btn4 = None           # 🗑
+        self.lcs_view_btn5 = None           # ? Text Search
+        self.lcs_view_btn6 = None           # 🖸
+        self.lcs_view_btn7 = None           # ∑ Summary
 
         ''' SQL miscellaneous variables '''
         self.meta_scan = None               # Class for song metadata searching
@@ -1104,6 +1117,7 @@ class PlayCommonSelf:
         #self.sync_top_is_active = False      # Sync Time Index window open?
         self.mus_top_is_active = False      # View SQL Music open?
         self.his_top_is_active = False      # View SQL History open?
+        self.lcs_top_is_active = False      # View SQL Location open?
         self.hdr_top_is_active = None       # Did we open SQL drill down window?
         self.sync_paused_music = False      # Important this is False now
         #self.sync_changed_score = False     # For warning messages
@@ -1149,7 +1163,7 @@ class PlayCommonSelf:
         self.last_sleep_time = time.time()
 
 
-class MusicTree(PlayCommonSelf):
+class MusicLocationTree(PlayCommonSelf):
     """ Create self.lib_tree = tk.Treeview() via CheckboxTreeview()
 
         Resizeable, Scroll Bars, select songs, play songs.
@@ -1161,13 +1175,16 @@ class MusicTree(PlayCommonSelf):
     def __init__(self, toplevel, song_list, sbar_width=12):
 
         PlayCommonSelf.__init__(self)  # Define self. variables
-        ext.t_init('MusicTree() __init__(toplevel, song_list, sbar_width=12)')
+        ext.t_init('MusicLocationTree() __init__(toplevel, song_list, sbar_width=12)')
 
         # If we are started by splash screen get object, else it will be None
         self.splash_toplevel = toplevel
 
         # Create our tooltips pool (hover balloons)
         self.tt = toolkit.ToolTips()
+        lcs.register_tt(self.tt)  # Assign in Locations() class
+        lcs.register_menu(self.enable_lib_menu)
+        lcs.register_pending(self.get_pending_cnt_total)
 
         dtb = message.DelayedTextBox(title="Building music view",
                                      toplevel=None, width=1000)
@@ -1180,6 +1197,8 @@ class MusicTree(PlayCommonSelf):
         self.lib_top = tk.Toplevel()
         self.lib_top_is_active = True
         self.lib_top.minsize(g.WIN_MIN_WIDTH, g.WIN_MIN_HEIGHT)
+
+        lcs.register_parent(self.lib_top)  # Assign in Locations() class
 
         ''' Set program icon in taskbar '''
         img.taskbar_icon(self.lib_top, 64, 'white', 'lightskyblue', 'black')
@@ -1269,6 +1288,8 @@ class MusicTree(PlayCommonSelf):
                                self.banner_btn, self.build_banner_btn, self.tt)
 
         pav.registerInfoCentre(self.info)  # Wasn't available earlier
+        lcs.register_info(self.info)  # Assign in Locations() class
+        lcs.register_get_thread(self.get_refresh_thread)  # Assign in Locations() class
 
         patterns = [("using directory:", "Green", "Black")]
         self.info.fact("mserve started using directory: " + g.MSERVE_DIR,
@@ -1415,8 +1436,8 @@ class MusicTree(PlayCommonSelf):
 
         dtb.close()  # Close our startup messages delayed text box
         self.lib_top.bind("<FocusIn>", self.handle_lib_top_focus)
-        ext.t_end('no_print')  # May 24, 2023 - MusicTree() : 1.0563580990
-        # June 13, 2023 -    MusicTree() init__(toplevel...): 1.3379859924
+        ext.t_end('no_print')  # May 24, 2023 - MusicLocationTree() : 1.0563580990
+        # June 13, 2023 -    MusicLocationTree() init__(toplevel...): 1.3379859924
 
         ''' Load last selections and resume playing music from last session '''
         self.load_last_selections()  # Play songs in favorites or playlists
@@ -1428,7 +1449,7 @@ class MusicTree(PlayCommonSelf):
                 break
 
     def build_banner_btn(self):
-        """ Called from init in MusicTree() class and InfoCentre() class """
+        """ Called from init in MusicLocationTree() class and InfoCentre() class """
         # Use lambda because self.info.view() hasn't been defined yet.
         self.banner_btn = tk.Button(self.banner_frm, height=0, bg="SkyBlue3",
                                     fg="black", command=lambda: self.info.view())
@@ -1497,10 +1518,10 @@ class MusicTree(PlayCommonSelf):
 
         ext.t_init('self.file_menu = tk.Menu(mb)')
         self.file_menu = tk.Menu(mb, tearoff=0)
-        self.file_menu.add_command(label="New Location", font=(None, MED_FONT),
+        self.file_menu.add_command(label="OLD New Location", font=(None, MED_FONT),
                                    command=lambda: self.loc_add_new(caller='Drop',
                                                                     mode='Add'))
-        self.file_menu.add_command(label="Open Location & Play", font=(None, MED_FONT),
+        self.file_menu.add_command(label="OLD Open Location & Play", font=(None, MED_FONT),
                                    command=lambda: self.loc_open_play(caller='Drop'))
         self.file_menu.add_separator()
 
@@ -1542,9 +1563,11 @@ class MusicTree(PlayCommonSelf):
         # Edit Menu - Edit Location
         ext.t_init('self.edit_menu = tk.Menu(mb)')
         self.edit_menu = tk.Menu(mb, tearoff=0)
-        self.edit_menu.add_command(label="Edit Location", font=(None, MED_FONT),
+        self.edit_menu.add_command(label="OLD Edit Location", font=(None, MED_FONT),
                                    command=lambda: self.loc_edit(
                                    caller='Drop', mode='Edit'))
+        self.edit_menu.add_command(label="Edit Locations", font=(None, MED_FONT),
+                                   command=lcs.edit)
         self.edit_menu.add_command(label="Compare Location", font=(None, MED_FONT),
                                    command=lambda: self.loc_compare(
                                    caller='Drop', mode='Compare'))
@@ -1565,9 +1588,11 @@ class MusicTree(PlayCommonSelf):
         self.view_menu = tk.Menu(mb, tearoff=0)
         self.view_menu.add_command(label="Information Centre", font=(None, MED_FONT),
                                    command=self.info.view)
-        self.view_menu.add_command(label="Show Location", font=(None, MED_FONT),
+        self.view_menu.add_command(label="OLD Show Location", font=(None, MED_FONT),
                                    command=lambda: self.show_location(
                                    caller='Drop', mode='Show'))
+        self.view_menu.add_command(label="View Locations", font=(None, MED_FONT),
+                                   command=lcs.view)
         self.play_hockey_allowed = self.get_hockey_state()
         if self.play_hockey_allowed:
             text = "Enable FF/Rewind buttons"  # TODO: Make self.variable names
@@ -1581,6 +1606,8 @@ class MusicTree(PlayCommonSelf):
                                    command=self.show_sql_music)
         self.view_menu.add_command(label="SQL History Table", font=(None, MED_FONT),
                                    command=self.show_sql_hist)
+        self.view_menu.add_command(label="SQL Location Table", font=(None, MED_FONT),
+                                   command=self.show_sql_location)
         self.view_menu.add_separator()
         self.view_menu.add_command(label="Debug Information", font=(None, MED_FONT),
                                    command=self.show_debug)
@@ -1593,7 +1620,7 @@ class MusicTree(PlayCommonSelf):
     def enable_lib_menu(self):
         """
         Called from build_lib_menu() and passed to self.playlists to manually
-        set options.
+        set options.  Also passed with lcs.register_menu(self.enable_lib_menu)
         :return: None
         """
         self.disable_playlist_menu()
@@ -1730,11 +1757,19 @@ class MusicTree(PlayCommonSelf):
             self.playlists.top.focus_force()  # Get focus
             self.playlists.top.lift()  # Raise in stacking order
 
+        if lcs.test_top:
+            ''' Testing Host (test_top) always covers top '''
+            lcs.test_top.focus_force()  # Get focus
+            lcs.test_top.lift()  # Raise in stacking order
+        elif lcs.main_top:
+            lcs.main_top.focus_force()  # Get focus
+            lcs.main_top.lift()  # Raise in stacking order
+
         ''' Synchronizing lyrics to time index controls music '''
         if self.fine_tune and self.fine_tune.top_is_active:
             #self.fine_tune.top_lift()  # Need name change....
             # Above steals focus and keyboard from other applications !
-            #self.fine_tune.top.focus_force()
+            self.fine_tune.top.focus_force()  # Uncomment July 25, 2023
             #self.fine_tune.top.lift()
             self.fine_tune_lift()
         #if self.sync_top_is_active:
@@ -2106,8 +2141,8 @@ class MusicTree(PlayCommonSelf):
 
         if self.ndx < 0:
             dprint("mserve.py pending_apply() self.ndx is negative:", self.ndx)
-            self.info.cast("mserve.py pending_apply() self.ndx is negative:" +
-                           self.ndx, 'error')
+            self.info.cast("mserve.py pending_apply() self.ndx is negative: " +
+                           str(self.ndx), 'error')
             self.ndx = 0
             self.last_started = self.ndx  # Prevents different song playing
 
@@ -2183,6 +2218,7 @@ class MusicTree(PlayCommonSelf):
         DPRINT_ON = False  # Turn off debug printing
 
     def get_refresh_thread(self):
+        """ For functions / methods waiting for user input """
         if self.play_top_is_active:
             thread = self.refresh_play_top
         elif self.lib_top_is_active:
@@ -2192,6 +2228,7 @@ class MusicTree(PlayCommonSelf):
         return thread
 
     def pending_reset(self, ShowInfo=True):
+        """ Pending Music Location Tree checkboxes have been processed. """
         # Rebuild checkboxes, selected totals, song play order numbers
         # Get current open states to reopen after cancel processing
         # Uncheck all artists, albums, songs and "songsel" tags
@@ -2570,7 +2607,7 @@ class MusicTree(PlayCommonSelf):
 
     # ==============================================================================
     #
-    #       MusicTree Processing - Location and Dropdown Menu options
+    #       MusicLocationTree Processing - Location and Dropdown Menu options
     #
     # ==============================================================================
 
@@ -3448,7 +3485,7 @@ class MusicTree(PlayCommonSelf):
 
     # ==============================================================================
     #
-    #       MusicTree Processing - Compare locations and update file differences
+    #       MusicLocationTree Processing - Compare locations and update file differences
     #
     # ==============================================================================
 
@@ -3603,7 +3640,7 @@ class MusicTree(PlayCommonSelf):
     def cmp_populate_tree(self, trg_dict_iid):
 
         """ Add Artist, Album and Song to treeview self.cmp_tree.
-            Similar to add_items() in MusicTree
+            Similar to add_items() in MusicLocationTree
 
             TODO: Rest of mserve is unresponsive while this is running.
                   Take all compare location code and make new python module
@@ -3915,7 +3952,7 @@ class MusicTree(PlayCommonSelf):
 
     # ==============================================================================
     #
-    #       MusicTree Processing - Select items, Popup Menus
+    #       MusicLocationTree Processing - Select items, Popup Menus
     #
     # ==============================================================================
 
@@ -4396,6 +4433,8 @@ class MusicTree(PlayCommonSelf):
             self.wrapup_lib_popup()  # Set color tags and counts
             return
 
+        artist_name = None  # Added July 24, 2023 for pycharm syntax check
+        album_name = None  # Added July 24, 2023 for pycharm syntax check
         if level == 'Song Title':
             album_id = self.lib_tree.parent(Id)
             album_name = self.lib_tree.item(album_id)['text']
@@ -4512,7 +4551,7 @@ class MusicTree(PlayCommonSelf):
 
             if old_playing:
                 title = level + " is being played."
-                text = "The " + level + ":" + old_name + "is in use.\n\n"
+                text = "The " + level + ":" + old_name + " is in use.\n\n"
                 text += "Cannot rename the " + level
                 text += " current being played.\n"
                 text += "\n\nSwitch music player to a different " + level + "."
@@ -4725,6 +4764,7 @@ class MusicTree(PlayCommonSelf):
         ''' Wait until a new window opens '''
         ext.t_init("new_window = our_window")
         new_window = our_window
+        i = 0  # For pycharm syntax checker
         for i in range(100):
             thread = self.get_refresh_thread()
             thread()
@@ -4760,7 +4800,7 @@ class MusicTree(PlayCommonSelf):
 
     # ==============================================================================
     #
-    #       MusicTree Processing section - Top level functions
+    #       MusicLocationTree Processing section - Top level functions
     #
     # ==============================================================================
 
@@ -4833,10 +4873,16 @@ class MusicTree(PlayCommonSelf):
             self.mus_close()
         if self.his_top_is_active:          # Viewing SQL History Table?
             self.his_close()
+        if self.lcs_top_is_active:          # Viewing SQL Location Table?
+            self.lcs_close()
         if self.tv_vol and self.tv_vol.top:
             self.tv_vol.close()             # Adjusting Volume during TV commercials?
         if self.playlists.top:              # Close Playlists window and tell it
-            self.playlists.reset(shutdown=True)  # NOT to update other windows
+            self.playlists.reset(shutdown=True)  # NOT to enable lib_top menu options
+        if lcs.test_top:  # Test Host Window is open
+            lcs.test_top.destroy()
+        if lcs.main_top:  # Locations Maintenance Window is open
+            lcs.reset()
 
         if encoding.RIP_CD_IS_ACTIVE:       # Ripping CD currently active?
             encoding.RIP_CD_IS_ACTIVE = False
@@ -4946,7 +4992,7 @@ class MusicTree(PlayCommonSelf):
 
     # ==============================================================================
     #
-    #       MusicTree Processing - Refresh Library
+    #       MusicLocationTree Processing - Refresh Library
     #
     # ==============================================================================
 
@@ -5055,43 +5101,58 @@ class MusicTree(PlayCommonSelf):
 
         print("\nglobal_variables.py (g) - Machine Information")
         print("=============================================\n")
-        print("g.OS_PLATFORM :", g.OS_PLATFORM)
-        print("g.OS_NAME     :", g.OS_NAME)
-        print("g.OS_VERSION  :", g.OS_VERSION)
-        print("g.OS_RELEASE  :", g.OS_RELEASE)
+        print("g.OS_PLATFORM     :", g.OS_PLATFORM)
+        print("g.OS_NAME         :", g.OS_NAME)
+        print("g.OS_VERSION      :", g.OS_VERSION)
+        print("g.OS_RELEASE      :", g.OS_RELEASE)
 
-        print("\nMonitors (mon) uses monitor.py.Monitors()")
-        print("=========================================\n")
+        print("g.USER            :", g.USER)
+        print("g.USER_ID         :", g.USER_ID)
+        print("g.HOME            :", g.HOME)
+        print("g.USER_CONFIG_DIR :", g.USER_CONFIG_DIR)
+        print("g.USER_DATA_DIR   :", g.USER_DATA_DIR)
+        print("g.MSERVE_DIR      :", g.MSERVE_DIR)
+        print("g.PROGRAM_DIR     :", g.PROGRAM_DIR)
+        print("g.TEMP_DIR        :", g.TEMP_DIR)
+
+        print("\nmon = monitor.Monitors()")
+        print("=============================================\n")
         mon = monitor.Monitors()            # Monitors class list of dicts
 
-        print("\nmon.screen_width x mon.screen_height:",
+        print("mon.screen_width x mon.screen_height:",
               mon.screen_width, "x", mon.screen_height, "\n")
 
         print("Number of monitors - mon.get_n_monitors():", mon.get_n_monitors())
+        print("for m in mon.monitors_list: -- print(' ', m):")
         for m in mon.monitors_list:
-            print(m)
+            print(" ", m)
             
-        print('\nPrimary - mon.primary_monitor:', mon.primary_monitor)
+        print('\nPrimary Monitor - mon.primary_monitor:\n  ', mon.primary_monitor)
 
-        print('\n"active_win" - Active Window Tuple - mon.get_active_window():')
+        print('\nActive Window Tuple -  active_win = mon.get_active_window():')
         active_win = mon.get_active_window()  # Get tuple
         '''
         Window = namedtuple('Window', 'number, name, x, y, width, height')
         x_id, window_name, geom.xp, geom.yp, geom.width p, geom.height p) 
         '''
-        print('active_win.number:', active_win.number)
-        print('active_win. x + y + Width x Height:',
-              active_win.x, "+", active_win.y, "+", active_win.width,
-              "x", active_win.height)
-        print('active_win.name:', active_win.name)
+        print('  active_win.number   :', active_win.number)
+        print('  active_win. WxH+X+Y :',
+              active_win.width, "x", active_win.height, "+", active_win.x,
+              "x", active_win.y)
+        print('  active_win.name     :', active_win.name[:75])
+        print()
+
+        print("Active Monitor - mon.get_active_monitor():\n  ",
+              mon.get_active_monitor())
         print()
 
         print("sys.getfilesystemencoding()", sys.getfilesystemencoding())
         #print("os.environ", os.environ)  # Environment is long long long
 
-        print("\nAll Windows - mon.get_all_windows():")
-        print("====================================\n")
+        print("\nAll Windows (Wnck) - mon.get_all_windows():")
+        print("=============================================\n")
         for i, window in enumerate(mon.get_all_windows()):
+            ''' Testing desktop - should check each monitor individually '''
             if window.x > mon.screen_width or window.y > mon.screen_height:
                 ''' When second monitor loses power '''
                 print("\nERROR: Window is off screen at x+y:",
@@ -5125,21 +5186,25 @@ class MusicTree(PlayCommonSelf):
             else:
                 print(window)
 
-        print("\nCURRENT SONG and POPULAR VARIABLES")
-        print("==================================\n")
+        print("\nCURRENT SONG and COMMON VARIABLES")
+        print("=============================================\n")
 
-        song_iid = self.saved_selections[self.ndx]
-        song = self.lib_tree.item(song_iid)['text']
-        album_iid = self.lib_tree.parent(song_iid)
-        album = self.lib_tree.item(album_iid)['text']
-        artist_iid = self.lib_tree.parent(album_iid)
-        artist = self.lib_tree.item(artist_iid)['text']
+        try:
+            song_iid = self.saved_selections[self.ndx]
+            song = self.lib_tree.item(song_iid)['text']
+            album_iid = self.lib_tree.parent(song_iid)
+            album = self.lib_tree.item(album_iid)['text']
+            artist_iid = self.lib_tree.parent(album_iid)
+            artist = self.lib_tree.item(artist_iid)['text']
 
-        print("self.ndx:", self.ndx, ' | Song iid:', song_iid, " |", song)
-        print("tree values:", self.lib_tree.item(song_iid)['values'])
-        print("Artist iid:", artist_iid, " |", artist,
-              " | Album iid:", album_iid, " |", album)
-        print("real_path:", self.real_path(int(song_iid)))
+            print("self.ndx:", self.ndx, ' | Song iid:', song_iid, " |", song)
+            print("tree values:", self.lib_tree.item(song_iid)['values'])
+            print("Artist iid:", artist_iid, " |", artist,
+                  " | Album iid:", album_iid, " |", album)
+            print("real_path:", self.real_path(int(song_iid)))
+        except IndexError:  # list index out of range
+            print("INVALID self.ndx:", self.ndx)
+
         print("len(SORTED_LIST):", len(SORTED_LIST))
         print('len(self.lib_tree.tag_has("Artist")):',
               len(self.lib_tree.tag_has("Artist")))
@@ -5148,18 +5213,22 @@ class MusicTree(PlayCommonSelf):
         print('len(self.lib_tree.tag_has("Song")):',
               len(self.lib_tree.tag_has("Song")))
         print()
-        print("self.playlist_paths[0]:", self.playlist_paths[0],
-              " | self.playlist_paths[-1]:", self.playlist_paths[-1])
-        print("len(self.playlist_paths):", len(self.playlist_paths),
-              " | sys.get size of(self.playlist_paths):",
-              sys.getsizeof(self.playlist_paths))
-        print()
-        print("self.saved_selections[0]:", self.saved_selections[0],
-              " | self.saved_selections[-1]:", self.saved_selections[-1])
-        print("len(self.saved_selections):", len(self.saved_selections),
-              " | sys.get size of(self.saved_selections):",
-              sys.getsizeof(self.saved_selections))
-        print()
+        try:
+            print("self.playlist_paths[0]:", self.playlist_paths[0],
+                  " | self.playlist_paths[-1]:", self.playlist_paths[-1])
+            print("len(self.playlist_paths):", len(self.playlist_paths),
+                  " | sys.get size of(self.playlist_paths):",
+                  sys.getsizeof(self.playlist_paths))
+            print()
+            print("self.saved_selections[0]:", self.saved_selections[0],
+                  " | self.saved_selections[-1]:", self.saved_selections[-1])
+            print("len(self.saved_selections):", len(self.saved_selections),
+                  " | sys.get size of(self.saved_selections):",
+                  sys.getsizeof(self.saved_selections))
+            print()
+        except IndexError:  # list index out of range
+            print("self.playlist_paths is empty.")
+
         print("self.fake_paths[0]:", self.fake_paths[0],
               " | self.fake_paths[-1]:", self.fake_paths[-1])
         print("len(self.fake_paths):", len(self.fake_paths),
@@ -5313,7 +5382,7 @@ class MusicTree(PlayCommonSelf):
 
     # ==============================================================================
     #
-    #       MusicTree Processing - Top menu: SQL Music & SLQ History
+    #       MusicLocationTree Processing - Top menu: SQL Music & SLQ History
     #
     # ==============================================================================
 
@@ -5434,25 +5503,24 @@ class MusicTree(PlayCommonSelf):
         ''' Colors for tags '''
         self.ignore_item = None  # purpose?
         self.mus_view.tree.tag_configure('menu_sel', background='Yellow')
+        self.mus_view.tree.tag_configure('no_audio', background='Red',
+                                         foreground='White')
 
     def populate_mus_tree(self, delayed_textbox):
-
-        """ Stuff SQL header rows into treeview
-        """
-
+        """ Stuff SQL Music Table rows into treeview """
         sql.cursor.execute("SELECT * FROM Music INDEXED BY OsFileNameIndex\
                            ORDER BY OsFileName")
         rows = sql.cursor.fetchall()
-        self.insert_view_lines(self.mus_view, rows, delayed_textbox)
+        if rows:
+            self.insert_view_lines(self.mus_view, rows, delayed_textbox)
 
     def mus_text_search(self):
-        """ Search all treeview columns for text string """
-        if self.mus_search:
+        """ Search all Music Table treeview columns for text string """
+        if self.mus_search:  # Already running? Close last search.
             self.mus_search.close()
-
-        self.mus_search = toolkit.SearchText(
-            self.mus_view, find_str=None, tt=self.tt)
-        self.mus_search.find()
+        self.mus_search = toolkit.SearchText(self.mus_view, find_str=None, 
+                                             tt=self.tt)
+        self.mus_search.find()  # Search the text string in all columns
 
     def missing_metadata(self):
         """ Uses string search function for title is None """
@@ -5479,7 +5547,7 @@ class MusicTree(PlayCommonSelf):
         # Popup row count and total file sizes
         self.tree_summary(self.mus_view, title="Songs with no Lyrics")
 
-    def missing_lyrics_callback(self, values):
+    def missing_lyrics_callback(self, _Id, values):
         """ Find Songs that have no lyrics (no webscrape has been done)
 
             If Treeview value is u'None' for song name so no lyrics anyway
@@ -5509,7 +5577,7 @@ class MusicTree(PlayCommonSelf):
         # Popup row count and total file sizes
         self.tree_summary(self.mus_view, title="Lyrics not synchronized")
 
-    def unsynchronized_callback(self, values):
+    def unsynchronized_callback(self, _Id, values):
         """ Find Songs that have have lyrics but no time_index
 
             If Treeview value is u'None' for song name so no lyrics just return false.
@@ -5555,7 +5623,8 @@ class MusicTree(PlayCommonSelf):
 
         ext.t_init("missing_artwork()")
         ''' TODO: Clear title when new button clicked '''
-        self.mus_top.title("Music files with missing artwork - mserve")
+        self.mus_top.title("Music files with missing artwork and " +
+                           "missing audio (in Red) - mserve")
         self.info.cast("Begin Update Metadata and display missing artwork.")
 
         ''' Initialize reading file control instance '''
@@ -5582,28 +5651,28 @@ class MusicTree(PlayCommonSelf):
 
         ''' TODO: Add tag for "RED" row when no audio '''
         # Display summary counts
-        text = "SQL Music rows:     " + "{:,}".\
+        text = "SQL Music Table rows: " + "{:,}".\
             format(self.meta_scan.total_scanned) + "\n" + \
             "In other locations: " + "{:,}".\
             format(self.meta_scan.missing_file_at_loc) + "\n" + \
-            "Missing audio:      " + "{:,}".\
+            "Missing audio: " + "{:,}".\
             format(self.meta_scan.missing_audio) + "\n" + \
-            "Missing artwork:    " + "{:,}".\
+            "Missing artwork: " + "{:,}".\
             format(self.meta_scan.missing_artwork) + "\n" + \
-            "Found artwork:      " + "{:,}".\
+            "Found artwork: " + "{:,}".\
             format(self.meta_scan.found_artwork) + "\n" + \
-            "Metadata updated:   " + "{:,}".\
+            "Metadata updated: " + "{:,}".\
             format(self.meta_scan.meta_data_updated) + "\n" + \
-            "Metadata unchanged: " + "{:,}".\
+            "Metadata skipped: " + "{:,}".\
             format(self.meta_scan.meta_data_unchanged) + "\n\n" + \
-            "Click 'OK' to close. Then reload window for metadata refresh.\n"
+            "Click 'OK' to close and then you can continue working.\n"
 
         title = "Update Metadata & Metadata Summary"
         message.ShowInfo(self.mus_top, title, text, 
                          thread=self.get_refresh_thread())
         self.info.fact(title + "\n\n" + text)
 
-    def missing_artwork_callback(self, values):
+    def missing_artwork_callback(self, Id, values):
         """ Find Songs that have no artwork and update metadata
             sql.update_metadata() is called by get_ffprobe_metadata(os_filename)
             The .CheckArtwork() function will call self.refresh_play_top()
@@ -5622,7 +5691,7 @@ class MusicTree(PlayCommonSelf):
 
         if not self.mus_ctl.new(PRUNED_DIR + os_filename):  # get metadata
             # .new() returns False when file doesn't exist at this location
-            self.missing_artwork_dtb.update("2. Other Location: " +
+            self.missing_artwork_dtb.update("2) Other Location: " +
                                             os_filename)  # Refresh screen with song file name
             self.meta_scan.missing_file_at_loc += 1
             self.meta_scan.total_scanned += 1
@@ -5636,12 +5705,13 @@ class MusicTree(PlayCommonSelf):
 
 
             '''
-            self.missing_artwork_dtb.update("1. Not a music file: " +
+            self.missing_artwork_dtb.update("1) Not a music file: " +
                                             os_filename)  # Refresh screen with song file name
             self.meta_scan.total_scanned += 1
             self.meta_scan.missing_audio += 1
+            toolkit.tv_tag_add(self.mus_view.tree, Id, 'no_audio')
             self.mus_ctl.close()  # Never was or no longer a music file.
-            return False  # This could be separate button search
+            return True  # Keep in treeview
 
         ''' Update SQL metadata using this location's music file metadata '''
         result = self.update_sql_metadata(self.mus_ctl)  # Is this resetting?
@@ -5662,10 +5732,9 @@ class MusicTree(PlayCommonSelf):
             return True  # keep this one in treeview
 
     # noinspection PyUnusedLocal
-
     def mus_close(self, *args):
         """ Close SQL Music Table View """
-        self.pretty_close()  # Inadvertently closes if opened by his_top
+        self.pretty_close()  # Inadvertently closes his_top or lcs_top pretty too
         last_geometry = monitor.get_window_geom_string(
             self.mus_top, leave_visible=False)
         monitor.save_window_geom('sql_music', last_geometry)
@@ -5764,28 +5833,23 @@ class MusicTree(PlayCommonSelf):
                                        width=g.BTN_WID - 2, command=self.his_close)
         self.his_view_btn1.grid(row=0, column=0, padx=2)
         self.tt.add_tip(self.his_view_btn1,
-                        "Close backups view but bserve remains open.", anchor="nw")
+                        "Close SQL History Table viewer .", anchor="nw")
 
         ''' Configuration Rows '''
         self.his_view_btn2 = tk.Button(
             frame3, text="🔍 Configuration Rows", width=g.BTN_WID + 2,
             command=self.his_configuration_rows)
         self.his_view_btn2.grid(row=0, column=1, padx=2)
-        self.tt.add_tip(self.his_view_btn2, "Song never played in mserve.", anchor="nw")
+        self.tt.add_tip(self.his_view_btn2, "History Rows used for configuration.",
+                        anchor="nw")
 
-        ''' “🗑” U+1F5D1 (trash can) - 🗑 Missing Lyrics '''
-        self.his_view_btn3 = tk.Button(
-            frame3, text="🗑 Missing Lyrics", width=g.BTN_WID - 1, command=self.his_missing_lyrics)
-        self.his_view_btn3.grid(row=0, column=2, padx=2)
-        self.tt.add_tip(self.his_view_btn3,
-                        "Lyrics have not be scraped from websites.", anchor="nw")
-
-        ''' 🗑 Lyrics UnSynced '''
-        self.his_view_btn4 = tk.Button(
-            frame3, text="🗑 Lyrics UnSynced", width=g.BTN_WID - 1, command=self.his_unsynchronized)
-        self.his_view_btn4.grid(row=0, column=3, padx=2)
-        self.tt.add_tip(self.his_view_btn4,
-                        "Lyric score not time synchronized.", anchor="ne")
+        ''' Encode CD Rows '''
+        self.his_view_btn2 = tk.Button(
+            frame3, text="🔍 Encode CD Rows", width=g.BTN_WID + 2,
+            command=self.his_encoding_rows)
+        self.his_view_btn2.grid(row=0, column=2, padx=2)
+        self.tt.add_tip(self.his_view_btn2, "History of CD encoding (Ripping).",
+                        anchor="nw")
 
         ''' 🔍 Text Search '''
         self.his_view_btn5 = tk.Button(frame3, text="🔍  Text Search",
@@ -5793,13 +5857,6 @@ class MusicTree(PlayCommonSelf):
         self.his_view_btn5.grid(row=0, column=4, padx=2)
         self.tt.add_tip(self.his_view_btn5,
                         "Refresh view, removing any filters", anchor="ne")
-
-        '''  🖸 (1f5b8) - Apply Metadata '''
-        self.his_view_btn6 = tk.Button(frame3, text="🖸  Apply Metadata",
-                                       width=g.BTN_WID - 2, command=self.his_text_search)
-        self.his_view_btn6.grid(row=0, column=5, padx=2)
-        self.tt.add_tip(self.his_view_btn6,
-                        "Read song files for metadata.", anchor="ne")
 
         '''  “∑” (U+2211) - Summarize sizes and count rows '''
         self.his_view_btn7 = tk.Button(frame3, text="∑  Summary",
@@ -5817,12 +5874,10 @@ class MusicTree(PlayCommonSelf):
         """ Stuff SQL header rows into treeview
             TODO: Review 'delayed_textbox'. If only used here, define it below.
         """
-
-        #sql.cursor.execute("SELECT * FROM History INDEXED BY TimeIndex\
-        #                   ORDER BY Time")
         sql.hist_cursor.execute("SELECT * FROM History")
         rows = sql.hist_cursor.fetchall()
-        self.insert_view_lines(self.his_view, rows, delayed_textbox)
+        if rows:
+            self.insert_view_lines(self.his_view, rows, delayed_textbox)
 
     def his_text_search(self):
         """ Search all treeview columns for text string """
@@ -5834,71 +5889,45 @@ class MusicTree(PlayCommonSelf):
         self.his_search.find()
 
     def his_configuration_rows(self):
-        """ Uses string search function for title is None """
+        """ Uses callback for Music ID = 0, <> 'Encoding' """
         if self.his_search is not None:
             self.his_search.close()
 
-        self.his_search = toolkit.SearchText(
-            self.his_view, column='music_id', find_str=0, find_op='==')
-        self.his_search.find_column()
+        ''' Initialize search instance with callback here (below)  '''
+        self.his_search = toolkit.SearchText(  # search all using callback
+            self.his_view, find_str='callback', callback=self.his_config_callback)
 
-    def his_missing_lyrics(self):
-        """ Find Songs that have no lyrics (no webscrape has been done)
+        ''' Perform search for missing artwork & update metadata at same time '''
+        self.his_search.find_callback()  # attach desired to treeview
+
+    def his_config_callback(self, _Id, values):
+        """ Find History rows where Music ID = 0, SourceMaster != 'encode'
+        :return: True if matches, else returns False
         """
+        music_id = self.his_view.column_value(values, 'music_id')
+        Type = self.his_view.column_value(values, 'type')
+
+        return music_id == 0 and Type != 'encode'
+
+    def his_encoding_rows(self):
+        """ Uses callback for Music ID = 0, == 'Encoding' """
         if self.his_search is not None:
             self.his_search.close()
+            ''' Initialize search instance with callback here (below)  '''
+            self.his_search = toolkit.SearchText(  # search all using callback
+                self.his_view, find_str='callback', callback=self.his_encode_callback)
 
-        self.his_search = toolkit.SearchText(
-            self.his_view, find_str='callback', callback=self.his_missing_lyrics_callback)
-        self.his_search.find_callback()
+            ''' Perform search for missing artwork & update metadata at same time '''
+            self.his_search.find_callback()  # attach desired to treeview
 
-    def his_missing_lyrics_callback(self, values):
-        """ Find Songs that have no lyrics (no webscrape has been done)
-
-            If Treeview value is u'None' for song name so no lyrics anyway
-            and return false.
+    def his_encode_callback(self, _Id, values):
+        """ Find History rows where Music ID = 0, SourceMaster == 'encode'
+        :return: True if matches, else returns False
         """
-        title = self.his_view.column_value(values, 'title')
-        if title == u'None':
-            return False  # Treeview value is u'None' for song name so no lyrics
+        music_id = self.his_view.column_value(values, 'music_id')
+        Type = self.his_view.column_value(values, 'type')
 
-        os_filename = self.his_view.column_value(values, 'os_filename')
-        lyrics, _time_index = sql.get_lyrics(os_filename)
-        if lyrics is not None:
-            return False  # Lyrics are non-blank.
-
-        return True  # Song with metadata (title) has no lyrics.
-
-    def his_unsynchronized(self):
-        """ Find songs that have no time index (lyric score not synchronized)
-        """
-        if self.his_search is not None:
-            self.his_search.close()
-
-        self.his_search = toolkit.SearchText(
-            self.his_view, find_str='callback', callback=self.his_unsynchronized_callback)
-        self.his_search.find_callback()
-
-    def his_unsynchronized_callback(self, values):
-        """ Find Songs that have have lyrics but no time_index
-
-            If Treeview value is u'None' for song name so no lyrics just return false.
-            If lyrics is None, then no need to test for time index just return false.
-        """
-        title = self.his_view.column_value(values, 'title')
-        if title == u'None':
-            return False  # Treeview value is u'None' for song name so no lyrics
-
-        os_filename = self.his_view.column_value(values, 'os_filename')
-        lyrics, time_index = sql.get_lyrics(os_filename)
-
-        if lyrics is None:
-            return False  # Lyrics haven't been scraped so skip time check
-
-        if time_index is not None:
-            return False  # Time index is non-blank.
-
-        return True  # Song with metadata (title) and lyrics has no time_index.
+        return music_id == 0 and Type == 'encode'
 
     # noinspection PyUnusedLocal
     def his_close(self, *args):
@@ -5911,6 +5940,145 @@ class MusicTree(PlayCommonSelf):
         self.his_top_is_active = False
         self.his_top.destroy()
         self.his_search = None
+
+
+    def show_sql_location(self, sbar_width=12):
+        """
+            Open SQL Location treeview. Patterned after show_sql_music()
+        """
+
+        ''' SQL Location Table View already active? '''
+        if self.lcs_top_is_active is True:
+            self.lcs_top.lift()
+            return
+
+        location_dict = sql.location_treeview()
+        '''
+        Define Data Dictionary treeview columns for location table.
+        self.scr_code.set(loc_dict['code'])  # Replacement for 'iid'
+        self.scr_name.set(loc_dict['name'])
+        self.scr_modify_time.set(loc_dict['modify_time'])  # New
+        self.scr_image_path.set(loc_dict['image_path'])  # New
+        self.scr_mount_point.set(loc_dict['mount_point'])  # New
+        self.scr_topdir.set(loc_dict['topdir'])
+        self.scr_host.set(loc_dict['host'])
+        self.scr_wakecmd.set(loc_dict['wakecmd'])
+        self.scr_testcmd.set(loc_dict['testcmd'])
+        self.scr_testrep.set(loc_dict['testrep'])
+        self.scr_mountcmd.set(loc_dict['mountcmd'])
+        self.scr_activecmd.set(loc_dict['activecmd'])
+        self.scr_activemin.set(loc_dict['activemin'])
+        self.scr_touchcmd.set(loc_dict['touch_cmd'])  # Replaces 'activecmd'
+        self.scr_touchmin.set(loc_dict['touch_min'])  # Replaces 'activemin'
+        self.scr_comments.set(loc_dict['comments'])  # New
+        '''
+        columns = ["code", "name", "topdir", "image_path", "host_name",
+                   "comments"]
+        toolkit.select_dict_columns(columns, location_dict)
+
+        ''' SQL Location Table View is now active '''
+        self.lcs_top_is_active = True
+        self.lcs_top = tk.Toplevel()
+        self.lcs_top.title("SQL Location Table - mserve")
+
+        ''' Set program icon in taskbar '''
+        img.taskbar_icon(self.lcs_top, 64, 'white', 'lightskyblue', 'black')
+
+        ''' Mount window at previously used location '''
+        self.lcs_top.minsize(width=g.WIN_MIN_WIDTH, height=g.WIN_MIN_HEIGHT)
+        geom = monitor.get_window_geom('sql_location')
+        self.lcs_top.geometry(geom)
+
+        self.lcs_top.configure(background="Gray")
+        self.lcs_top.columnconfigure(0, weight=1)
+        self.lcs_top.rowconfigure(0, weight=1)
+
+        ''' Create master frame for treeview and buttons '''
+        master_frame = tk.Frame(self.lcs_top, bg="olive", relief=tk.RIDGE)
+        master_frame.grid(sticky=tk.NSEW)
+        master_frame.columnconfigure(0, weight=1)
+        master_frame.rowconfigure(0, weight=1)
+
+        ''' Create treeview frame with scrollbars '''
+        self.lcs_view = toolkit.DictTreeview(
+            location_dict, self.lcs_top, master_frame, columns=columns,
+            sbar_width=sbar_width)
+
+        ''' Treeview select item - custom select processing '''
+        toolkit.MoveTreeviewColumn(self.lcs_top, self.lcs_view.tree,
+                                   row_release=self.lcs_button_3_click)
+        self.lcs_view.tree.bind("<Button-3>", self.lcs_button_3_click)
+
+        ''' Create Treeview item list with all history. '''
+        dtb = message.DelayedTextBox(title="Building SQL Location Table View",
+                                     toplevel=self.lcs_top, width=1000)
+        self.populate_lcs_tree(dtb)
+        dtb.close()
+
+        ''' Treeview Buttons '''
+        frame3 = tk.Frame(master_frame, bg="Blue", bd=2, relief=tk.GROOVE,
+                          borderwidth=g.BTN_BRD_WID)
+        frame3.grid_rowconfigure(0, weight=1)
+        frame3.grid_columnconfigure(0, weight=0)
+        frame3.grid(row=1, column=0, sticky=tk.NW)
+
+        ''' ✘ Close Button ✘ ✔ '''
+        self.lcs_top.bind("<Escape>", self.lcs_close)
+        self.lcs_top.protocol("WM_DELETE_WINDOW", self.lcs_close)
+        self.lcs_view_btn1 = tk.Button(frame3, text="✘ Close",
+                                       width=g.BTN_WID - 2, command=self.lcs_close)
+        self.lcs_view_btn1.grid(row=0, column=0, padx=2)
+        self.tt.add_tip(self.lcs_view_btn1,
+                        "Close SQL Location Table viewer .", anchor="nw")
+
+        ''' 🔍 Text Search '''
+        self.lcs_view_btn5 = tk.Button(frame3, text="🔍  Text Search",
+                                       width=g.BTN_WID - 2, command=self.lcs_text_search)
+        self.lcs_view_btn5.grid(row=0, column=4, padx=2)
+        self.tt.add_tip(self.lcs_view_btn5,
+                        "Refresh view, removing any filters", anchor="ne")
+
+        '''  “∑” (U+2211) - Summarize sizes and count rows '''
+        self.lcs_view_btn7 = tk.Button(frame3, text="∑  Summary",
+                                       width=g.BTN_WID - 2, command=lambda:
+                                       self.tree_summary(self.lcs_view))
+        self.lcs_view_btn7.grid(row=0, column=6, padx=2)
+        self.tt.add_tip(self.lcs_view_btn7,
+                        "Tally sizes and count rows.", anchor="ne")
+
+        ''' Colors for tags '''
+        self.ignore_item = None
+        self.lcs_view.tree.tag_configure('menu_sel', background='Yellow')
+
+    def populate_lcs_tree(self, delayed_textbox):
+        """ Stuff SQL header rows into treeview
+            TODO: Review 'delayed_textbox'. If only used here, define it below.
+        """
+        sql.loc_cursor.execute("SELECT * FROM Location")
+        rows = sql.loc_cursor.fetchall()
+        if rows:
+            self.insert_view_lines(self.lcs_view, rows, delayed_textbox)
+
+    def lcs_text_search(self):
+        """ Search all treeview columns for text string """
+        if self.lcs_search is not None:
+            self.lcs_search.close()
+
+        self.lcs_search = toolkit.SearchText(
+            self.lcs_view, find_str=None, tt=self.tt)
+        self.lcs_search.find()
+
+    # noinspection PyUnusedLocal
+    def lcs_close(self, *args):
+        """ Close SQL Location Table View """
+        self.pretty_close()  # Inadvertently closes if opened by mus_top
+        last_geometry = monitor.get_window_geom_string(
+            self.lcs_top, leave_visible=False)
+        monitor.save_window_geom('sql_location', last_geometry)
+        self.tt.close(self.lcs_top)  # Close tooltips under top level
+        self.lcs_top_is_active = False
+        self.lcs_top.destroy()
+        self.lcs_search = None
 
 
     @staticmethod
@@ -5941,8 +6109,10 @@ class MusicTree(PlayCommonSelf):
             ''' Delayed Text Box (dtb_line) displays only if lag experienced  '''
             if 'OsFileName' in row:
                 dtb_line = row['OsFileName']  # SQL Music Table only
-            else:
+            elif 'MusicId' in row:
                 dtb_line = "History time: " + sql.sql_format_date(row['Time'])
+            else:
+                dtb_line = "Code-Name time: " + row['Code'] + "-" + row['Name']
 
             if delayed_textbox.update(dtb_line):
                 # delayed_textbox returns true only when visible otherwise
@@ -5955,25 +6125,32 @@ class MusicTree(PlayCommonSelf):
         dd_view.tree.see(first_id)
         dd_view.tree.update()
 
-    def his_button_3_click(self, event):
-        """ Left button clicked to drill down on SQL History treeview line.
-            Short click to retrieve and display gmail message header.
-            Click and hold changes cursor to hand and allows column to
-            be moved in the treeview.
-        """
-        self.view = self.his_view  # Set self.view to self.his_view or self.mus_view
-        self.common_top = self.his_top
-        self.common_button_3(event)
-
     def mus_button_3_click(self, event):
-        """ Left button clicked to drill down on Backups treeview line.
+        """ Right button clicked to drill down on SQL Music treeview line.
+            Left Click and hold on heading allows column to be dragged.
         """
         self.view = self.mus_view  # Set self.view to self.his_view or self.mus_view
         self.common_top = self.mus_top
         self.common_button_3(event)
 
+    def his_button_3_click(self, event):
+        """ Right button clicked to drill down on SQL History treeview line.
+            Left Click and hold on heading allows column to be dragged.
+        """
+        self.view = self.his_view  # Set self.view to self.his_view or self.mus_view
+        self.common_top = self.his_top
+        self.common_button_3(event)
+
+    def lcs_button_3_click(self, event):
+        """ Right button clicked to drill down on SQL Location treeview line.
+            Left Click and hold on heading allows column to be dragged.
+        """
+        self.view = self.lcs_view  # Set self.view to self.his_view or self.mus_view
+        self.common_top = self.lcs_top
+        self.common_button_3(event)
+
     def common_button_3(self, event):
-        """ Right button clicked in SQL History or SQL Music treeview.
+        """ Right button clicked in SQL Music, History or Location treeview.
 
             If clicked on a row then use message header dictionary to
             pretty format gmail message header details, or extract backup.
@@ -6555,7 +6732,7 @@ class MusicTree(PlayCommonSelf):
         ''' Call:
          m.main()
           mserve.main()
-           MusicTree(PlayCommonSelf)  # Builds lib_top, lib_tree, etc. 
+           MusicLocationTree(PlayCommonSelf)  # Builds lib_top, lib_tree, etc. 
             load_last_selections()  # Load favorites for location
              play_selected_list()  # Builds play_top, chronology, etc.
               play_one_song()  # Setup song art, lyrics, etc.
@@ -6627,7 +6804,7 @@ class MusicTree(PlayCommonSelf):
                 ndx = self.real_paths.index(song)
             except ValueError:
                 if spam_count < 10:
-                    print('Not found:', song)
+                    print('load_last_selections() Not found:', song)
                     # print(self.real_paths[spam_count])
                     spam_count += 1
                 continue
@@ -6665,6 +6842,9 @@ class MusicTree(PlayCommonSelf):
             self.play_from_start = False  # TODO: Review variable usage, kinda weird!
             # print('Continue playing with song#:',self.ndx)
             self.play_selected_list()
+        elif self.splash_toplevel:
+            self.splash_toplevel.withdraw()  # Remove splash screen
+
 
     def clear_all_checks_and_opened(self):
         """ Called from self.pending_reset() and self.playlists.apply_callback()
@@ -6715,7 +6895,7 @@ class MusicTree(PlayCommonSelf):
         if update:
             self.lib_tree.item(iid, tags=tags)
             if is_open:
-                self.lib_tree.item(iid, open=0)
+                self.lib_tree.item(iid, open=False)
 
     def set_all_checks_and_opened(self, opened=True):
         """ Called from self.pending_reset() and self.load_last_selections()
@@ -6791,7 +6971,7 @@ class MusicTree(PlayCommonSelf):
 
     # ==============================================================================
     #
-    #       MusicTree Processing - Play All Songs forever
+    #       MusicLocationTree Processing - Play All Songs forever
     #
     # ==============================================================================
 
@@ -6802,7 +6982,7 @@ class MusicTree(PlayCommonSelf):
         ''' Call:
          m.main()
           mserve.main()
-           MusicTree(PlayCommonSelf)  # Builds lib_top, lib_tree, etc. 
+           MusicLocationTree(PlayCommonSelf)  # Builds lib_top, lib_tree, etc. 
             load_last_selections()  # Load favorites for location
              play_selected_list()  # Builds play_top, chronology, etc.
               play_one_song()  # Setup song art, lyrics, etc.
@@ -6965,21 +7145,21 @@ class MusicTree(PlayCommonSelf):
                  font=ms_font).grid(row=4, column=2, sticky=tk.W)
 
         ''' VU Meter canvas object spanning META_DISPLAY_ROWS '''
-        r = META_DISPLAY_ROWS
+        r = META_DISPLAY_ROWS  # July 18, 2023
         self.vu_width = 30
         self.vu_height = 200
 
         self.vu_meter_left = tk.Canvas(self.play_frm, width=self.vu_width,
                                        relief=tk.FLAT,  # Trying to override tk.RIDGE :(
                                        height=self.vu_height, bg='black')
-        self.vu_meter_left.grid(row=0, rowspan=r, column=3, padx=PAD_X * 3)
+        self.vu_meter_left.grid(row=0, rowspan=r, column=3, padx=PAD_X)
         self.vu_meter_left_rectangle = self.vu_meter_left.create_rectangle(
             0, self.vu_height, 0, self.vu_height)
 
         self.vu_meter_right = tk.Canvas(self.play_frm, width=self.vu_width,
                                         relief=tk.FLAT,  # Trying to override tk.RIDGE :(
                                         height=self.vu_height, bg='black')
-        self.vu_meter_right.grid(row=0, rowspan=r, column=4, padx=PAD_X * 3)
+        self.vu_meter_right.grid(row=0, rowspan=r, column=4, padx=PAD_X)
         self.vu_meter_right_rectangle = self.vu_meter_right.create_rectangle(
             0, self.vu_height, 0, self.vu_height)
 
@@ -7166,13 +7346,10 @@ class MusicTree(PlayCommonSelf):
             self.lib_tree_play_lift()  # Raise in stacking order
 
     def fine_tune_lift(self):
-        """ lift fine-tune time index window to top of stacking order. """
+        """ lift fine-tune time index window to top of stacking order.
+            TODO: Harmonize with lib_top handle focus lifting
+        """
         if self.fine_tune and self.fine_tune.top_is_active:
-            ''' July 4, 2023 - All the problems started when code converted
-                to new class FineTune(). Somehow TCL gets confused and lifts
-                the window overtop of other applications, not just tkinter.
-                The focus_force() steals keyboard from PyCharm, Gnome Terminal
-            '''
             self.fine_tune.top.focus_force()  # Retest July 5, 2023
             self.fine_tune.top.lift()  # Retest July 5, 2023
 
@@ -7383,7 +7560,9 @@ class MusicTree(PlayCommonSelf):
         self.vu_meter_left.config(height=100)  # So title, progress, etc. get fresh start
         self.vu_meter_right.config(height=100)
         self.play_frm.update_idletasks()  # Artwork resize
-        _x, _y, _width, height = self.play_frm.grid_bbox(1, 0, 1, 4)
+        ''' Height of META_DISPLAY_ROWS used for VU meter height '''
+        r = META_DISPLAY_ROWS - 1  # July 18, 2023
+        _x, _y, _width, height = self.play_frm.grid_bbox(1, 0, 1, r)
         #print("height:", height, "_width:", _width)
         #print("self.art_height:", self.art_height)
         self.vu_height = height - 12  # Create some padding at top & bottom of vu meters
@@ -7397,7 +7576,7 @@ class MusicTree(PlayCommonSelf):
 
     def move_lyrics_right(self):
         """ Chronology (playlist) tree visible. Move lyrics score right. """
-        r = META_DISPLAY_ROWS
+        r = META_DISPLAY_ROWS  # July 18, 2023
         self.play_frm.grid_rowconfigure(r, weight=0)  # Lyrics Row will be gone now
         # May 9, 2023 - Reset for row 1, column 6 (1's based)
         self.play_frm.grid_columnconfigure(4, weight=1)
@@ -7413,7 +7592,7 @@ class MusicTree(PlayCommonSelf):
     def move_lyrics_bottom(self):
         """ The chronology (playlist) tree is hidden. Move lyrics score down. """
         # May 9, 2023 - Reset for row 6, column 2 (1's based)
-        r = META_DISPLAY_ROWS
+        r = META_DISPLAY_ROWS  # July 18, 2023
         self.play_frm.grid_columnconfigure(r, weight=0)
         self.play_frame3.grid(row=r, rowspan=1, column=1, columnspan=4, sticky=tk.NSEW)
         self.play_frm.grid_rowconfigure(r, weight=5)  # Lyrics get more space
@@ -7947,7 +8126,7 @@ class MusicTree(PlayCommonSelf):
         ''' Call:
          m.main()
           mserve.main()
-           MusicTree(PlayCommonSelf)  # Builds lib_top, lib_tree, etc. 
+           MusicLocationTree(PlayCommonSelf)  # Builds lib_top, lib_tree, etc. 
             load_last_selections()  # Load favorites for location
              play_selected_list()  # Builds play_top, chronology, etc.
               play_one_song()  # Setup song art, lyrics, etc.
@@ -8198,7 +8377,11 @@ class MusicTree(PlayCommonSelf):
 
         ''' Reset switch set earlier, or just now with self.song_set_ndx() '''
         self.song_set_ndx_just_run = False
-        self.current_song_path = self.playlist_paths[self.ndx]
+        if self.ndx + 1 >= len(self.playlist_paths):
+            print("Ooops playlist was changed and self.ndx not changed.")
+            self.ndx = 0
+        else:
+            self.current_song_path = self.playlist_paths[self.ndx]
 
     def check_speech_dispatcher(self):
         """ Four annoying speech dispatchers appear in Ubuntu """
@@ -8295,7 +8478,7 @@ class MusicTree(PlayCommonSelf):
             ''' Call:
              m.main()
               mserve.main()
-               MusicTree(PlayCommonSelf)  # Builds lib_top, lib_tree, etc. 
+               MusicLocationTree(PlayCommonSelf)  # Builds lib_top, lib_tree, etc. 
                 load_last_selections()  # Load favorites for location
                  play_selected_list()  # Builds play_top, chronology, etc.
                   play_one_song()  # Setup song art, lyrics, etc.
@@ -8668,7 +8851,7 @@ class MusicTree(PlayCommonSelf):
 
     # ==============================================================================
     #
-    #       MusicTree Processing - VU Meter
+    #       MusicLocationTree Processing - VU Meter
     #
     # ==============================================================================
 
@@ -8878,7 +9061,7 @@ class MusicTree(PlayCommonSelf):
 
     # ==============================================================================
     #
-    #       MusicTree Processing - Lyrics Score
+    #       MusicLocationTree Processing - Lyrics Score
     #
     # ==============================================================================
 
@@ -9384,7 +9567,7 @@ class MusicTree(PlayCommonSelf):
 
     # ==============================================================================
     #
-    #       MusicTree Processing - Basic time index
+    #       MusicLocationTree Processing - Basic time index
     #
     # ==============================================================================
 
@@ -9864,7 +10047,7 @@ mark set markName index"
 
     # ==============================================================================
     #
-    #       MusicTree class - Lyrics Right click menu - Edit, Scrape options
+    #       MusicLocationTree class - Lyrics Right click menu - Edit, Scrape options
     #
     # ==============================================================================
 
@@ -10156,7 +10339,7 @@ mark set markName index"
 
     # ==============================================================================
     #
-    #       MusicTree Processing - Edit lyrics
+    #       MusicLocationTree Processing - Edit lyrics
     #
     # ==============================================================================
 
@@ -10384,7 +10567,7 @@ mark set markName index"
 
     # ==============================================================================
     #
-    #       MusicTree class - Smaller sized functions
+    #       MusicLocationTree class - Smaller sized functions
     #
     # ==============================================================================
 
@@ -10572,10 +10755,10 @@ mark set markName index"
         """ Song has been checked. Insert it into sorted playlist.
 
             Convert selections to list, insert index, convert back to tuple
-                LIBRARY_SELECT_INSERT_PLAY_HERE = False
+                #LIBRARY_SELECT_INSERT_PLAY_HERE = False  # Not supported
                 LIBRARY_SELECT_INSERT_PLAY_NEXT = True
-                LIBRARY_SELECT_INSERT_PLAY_RANDOM = False
-                LIBRARY_SELECT_INSERT_PLAY_ORDER = False
+                #LIBRARY_SELECT_INSERT_PLAY_RANDOM = False  # Not supported
+                #LIBRARY_SELECT_INSERT_PLAY_ORDER = False  # Not supported
 
             If an entire album or artist is inserted as anything but RANDOM
             then a new function to randomize those songs just inserted should
@@ -10668,17 +10851,13 @@ mark set markName index"
 
         self.play_top.destroy()
         self.pp_state = None
-        #self.play_top = None  #Nonetype error, try reassigning and destroy first
 
     def get_resume(self):
-        """
-            Get last saved state of playing / paused and seconds progress into song.
-        """
+        """ Get state of playing / paused and seconds progress into song. """
         d = self.get_config_for_loc('resume')
         if d is None:
             return None
 
-        # print("Found SourceMaster:", d['SourceMaster'], "SourceDetail:", d['SourceDetail'])
         if d['SourceDetail'] != str(self.ndx):
             if self.playlists.name is not None:
                 ''' self.ndx not initialized for playlists like last_location. '''
@@ -10703,8 +10882,7 @@ mark set markName index"
 
     def get_config_for_loc(self, Type):
         """ Wrapper Action is auto assigned as location or playlist number string
-            TODO:   Same function in MusicTree() class and tvVolume() class.
-                    Awkward that tvVolume() class needs to be passed Playlists().
+            TODO:   Same function in MusicLocationTree() class and tvVolume() class.
         """
         if NEW_LOCATION:
             return None
@@ -10713,16 +10891,17 @@ mark set markName index"
             Action = self.playlists.act_number_str
         else:
             Action = LODICT['iid']
+
         return sql.get_config(Type, Action)
 
     def save_config_for_loc(self, Type, SourceMaster="", SourceDetail="", Target="",
                             Size=0, Count=0, Seconds=0.0, Comments=""):
         """ Wrapper Action is auto assigned as location or playlist number string
-            TODO:   Same function in MusicTree() class and tvVolume() class.
-                    Awkward that tvVolume() class needs to be passed Playlists().
+            TODO:   Same function in MusicLocationTree() class and tvVolume() class.
         """
         if NEW_LOCATION:
             return None
+
         if self.playlists.name is not None:
             Action = self.playlists.act_number_str
         else:
@@ -10734,9 +10913,7 @@ mark set markName index"
             Comments=Comments)
 
     def get_chron_state(self):
-        """
-            Get last saved state of Show/Hide Chronology button
-        """
+        """ Get last saved state of Show/Hide Chronology button """
         d = self.get_config_for_loc('chron_state')
         if d is None:
             return None
@@ -10785,9 +10962,7 @@ mark set markName index"
             Seconds=float(TV_BREAK2), Comments=Comments)
 
     def get_open_states_to_list(self):
-        """
-            Get list of artists and albums that are expanded (opened)
-        """
+        """ Get list of artists and albums that are expanded (opened) """
         self.lib_tree_open_states = []
 
         d = self.get_config_for_loc('open_states')
@@ -10803,9 +10978,7 @@ mark set markName index"
         return True
 
     def save_open_states(self):
-        """
-            Save state of playing / paused and seconds progress into song.
-        """
+        """ Save state of playing / paused and seconds progress into song. """
         open_states = self.get_all_open_states()
         Comments = "Artists and Albums that were expanded when play closed."
         self.save_config_for_loc(
@@ -10818,23 +10991,14 @@ mark set markName index"
     # ==============================================================================
 
     def lib_tree_play(self, Id, sample='middle'):
-        """
-            Sample middle 10 seconds or full song. Turn down other applications
-            when starting and restore other application volume when ending.
-
-        """
+        """ Sample middle 10 seconds or full song. Turn down other applications
+            when starting and restore other application volume when ending. """
         ''' Build full song path '''
         path = self.real_path(int(Id))
 
-        ''' Use self.lib_top because self.ltp_top not declared yet. 
-            ltp = lib_tree_play '''
+        ''' FileControl() class for playing song. ltp = lib_tree_play '''
         self.ltp_ctl = FileControl(self.lib_top, self.info,
                                    close_callback=self.close_lib_tree_song)
-
-        ''' When clicking Zombies/Liar and Zombies/Pretty no sink available '''
-        # June 30, 2023 debugging stuff that was never really solved and
-        #   patched with JACK-HAMMER
-        # July 2, 2023 turns out songs simply cannot be played in middle.
 
         ''' Sanity check to see if file really has music inside '''
         self.ltp_ctl.new(path)  # Get metadata for music file
@@ -10845,16 +11009,8 @@ mark set markName index"
             self.ltp_ctl.close()  # reset last access time to original value
             return
 
-        ''' July 3, 2023 - test is not needed. No problem with ffplay
-        if not self.ltp_ctl.test_middle():
-            self.ltp_ctl.close()
-            return
-        '''
-
         ''' Set start (beginning or middle) and duration (all or 10 seconds) '''
         if sample == 'middle':
-            # July 3, 2023 - BIG BUG was using self.DurationSecs which was
-            #                really self.play_ctl.DurationSecs and twice length
             start = self.ltp_ctl.DurationSecs / 2 - 5.0
             limit = 10.0
         else:
@@ -11385,9 +11541,11 @@ mark set markName index"
         """
         # Notes kept in SQL History Type = "notes" Action = "playlist"
         #   SourceMaster = <Tags> SourceDetail = <Notes Body> Comments = ?
-        _x, _y, width, height = self.play_frm.grid_bbox(0, 0, 4, 4)
+        ''' Height of META_DISPLAY_ROWS used for notes height '''
+        r = META_DISPLAY_ROWS  # July 18, 2023
+        _x, _y, width, height = self.play_frm.grid_bbox(0, 0, r - 1, r - 1)
         print("4,4 width, height:", width, height)
-        _x, _y, width, height = self.play_frm.grid_bbox(0, 0, 5, 5)
+        _x, _y, width, height = self.play_frm.grid_bbox(0, 0, r, r)
         print("5,5 width, height:", width, height)
         iid = self.saved_selections[Id - 1]
         full_path = self.real_path(int(iid))
@@ -11822,11 +11980,11 @@ class FineTune:
                 # This line starts later than current time so use last (i).
                 item = i - 1
                 item = item if item > 0 else 1
-                tags = self.tree.item(item)['tags']
+                tags = self.tree.item(str(item))['tags']
                 tags.remove("unchecked")
                 tags.append("checked")
-                self.tree.item(item, tags=tags)
-                self.tree.see(item)
+                self.tree.item(str(item), tags=tags)
+                self.tree.see(str(item))
                 break
 
         self.time_ctl = FileControl(self.top, self.info, silent=True)
@@ -11985,7 +12143,7 @@ class FineTune:
             elif name == "HelpT":
                 ''' 🔗 Help - Videos and explanations on pippim.com '''
                 help = tk.Button(self.btn_bar_frm, text="🔗 Help", width=BTN_WID2 - 4,
-                                 font=ms_font, command=lambda: get_help("HelpT"))
+                                 font=ms_font, command=lambda: g.web_help("HelpT"))
                 help.grid(row=0, column=col)
                 self.tt.add_tip(help, help_text, anchor="ne")
 
@@ -12017,7 +12175,7 @@ class FineTune:
             elif name == "HelpB":
                 ''' 🔗 Help - Videos and explanations on pippim.com '''
                 help = tk.Button(self.btn_bar_frm, text="🔗 Help", width=BTN_WID2-4,
-                                 font=ms_font, command=lambda: get_help("HelpB"))
+                                 font=ms_font, command=lambda: g.web_help("HelpB"))
                 help.grid(row=0, column=col)
                 self.tt.add_tip(help, help_text, anchor="nw")
 
@@ -12063,7 +12221,7 @@ class FineTune:
                 ''' 🔗 Help - Videos and explanations on pippim.com '''
                 help = tk.Button(self.btn_bar_frm, text="🔗 Help", width=BTN_WID2 - 4,
                                  font=ms_font,
-                                 command=lambda: get_help("HelpS"))
+                                 command=lambda: g.web_help("HelpS"))
                 help.grid(row=0, column=col)
                 self.tt.add_tip(help, help_text, anchor="ne")
 
@@ -13127,7 +13285,7 @@ class tvVolume:
         try:
             xy = (self.parent.winfo_x() + PANEL_HGT * 3,
                   self.parent.winfo_y() + PANEL_HGT * 3)
-        except AttributeError:  # MusicTree instance has no attribute 'winfo_x'
+        except AttributeError:  # MusicLocationTree instance has no attribute 'winfo_x'
             print("self.parent failed to get winfo_x")
             xy = (100, 100)
 
@@ -13313,7 +13471,7 @@ class tvVolume:
 
     def get_config_for_loc(self, Type):
         """ Wrapper Action is auto assigned as location or playlist number string
-            TODO:   Same function in MusicTree() class and tvVolume() class.
+            TODO:   Same function in MusicLocationTree() class and tvVolume() class.
                     Awkward that tvVolume() class needs to be passed Playlists().
         """
         if NEW_LOCATION:
@@ -13328,7 +13486,7 @@ class tvVolume:
     def save_config_for_loc(self, Type, SourceMaster="", SourceDetail="", Target="",
                             Size=0, Count=0, Seconds=0.0, Comments=""):
         """ Wrapper Action is auto assigned as location or playlist number string
-            TODO:   Same function in MusicTree() class and tvVolume() class.
+            TODO:   Same function in MusicLocationTree() class and tvVolume() class.
                     Awkward that tvVolume() class needs to be passed Playlists().
         """
         if NEW_LOCATION:
@@ -13553,6 +13711,10 @@ class FileControl(FileControlCommonSelf):
     def get_metadata(self):
         """ Use ffprobe to write metadata to file TMP_FFPROBE
             Loop through TMP_FFPROBE lines to create dictionary self.metadata
+
+            .oga files do not store audio and video in separate streams.
+            The TAG section has to be checked to see if they exist.
+            Check the music file type in FileControl.check_metadata() method.
         """
         self.metadata = OrderedDict()
 
@@ -14370,11 +14532,8 @@ class Playlists:
         - open(P999999) - Pick existing Playlist and set checkboxes
         - save() - Save changes made to Playlist
         - save_as() - Save changes under new Playlist Name and Description
-        - copy_to(P999999, L999) - Copy Playlist to location, deleting any orphans
-        - copy_from(P999999, L999) - Copy Playlist from location, deleting orphans
-        - delete_all(P999999) - Delete entire Playlist
-        - delete_song(P999999, M999999) - Delete one song from Playlist
-        - add_song(P999999, M999999, ndx) - Add song to Playlist
+        - rename() - Rename Playlist
+        - delete() - Delete Playlist - leaves hole in playlist numbers
 
 Create playlists on iPhone
 
@@ -14525,7 +14684,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         self.build_playlists()
         ''' Save geometry for Playlists() '''
         self.top = tk.Toplevel()  # Playlists top level
-        geom = monitor.get_window_geom('pls_top')
+        geom = monitor.get_window_geom('playlists')
         self.top.geometry(geom)
         self.top.minsize(width=BTN_WID * 10, height=PANEL_HGT * 10)
         name = name if name is not None else "Playlists"
@@ -14552,8 +14711,8 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                         "After Playlists have been created, they will\n" + \
                         "appear in this spot.\n\n" + \
                         "You can create a playlist by selecting\n" + \
-                        "the 'New Playlist' option or 'Copy Playlist'\n" + \
-                        "option from the 'File' dropdown menu bar.\n"
+                        "the 'New Playlist' option from the 'File' \n" + \
+                        "dropdown menu bar.\n"
 
         if len(self.all_numbers) == 0:
             # No playlists have been created yet
@@ -14972,11 +15131,13 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         if self.state == 'close':
             if self.get_pending() > 0:
                 # self.top window hasn't been created so use self.parent instead
+                title = "Playlist has not been saved!"
                 text = "Checkboxes in Music Location have added songs or\n" + \
                        "removed songs. These changes have not been saved to\n" + \
                        "storage."
+                self.info.cast(title + "\n\n" + text, "warning")
                 dialog = message.AskQuestion(
-                    self.parent, "Playlist has not been saved!", text, icon='warning',
+                    self.parent, title, text, icon='warning',
                     align='left', thread=self.get_thread_func())
 
                 if dialog.result != 'yes':
@@ -15049,7 +15210,6 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             self.act_description = new_description
 
         if self.state == 'open':
-            # TODO broadcast message to Information Centre
             pass
 
         if self.state == 'delete':
@@ -15113,7 +15273,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             self.tt.close(self.top)
         if self.top:
             geom = monitor.get_window_geom_string(self.top, leave_visible=False)
-            monitor.save_window_geom('pls_top', geom)
+            monitor.save_window_geom('playlists', geom)
             self.top.destroy()
         # print("self.top after .destroy()", self.top)
         self.top = None  # Indicate Playlist Maintenance is closed
@@ -15964,6 +16124,8 @@ FADE_OUT_SPAN = 400     # 1/5 second to fade out
             self.tt.close(self.widget)  # Remove 'piggy_back' tooltip
             self.frame = None
 
+        self.tt.close(self.banner_frm)  # July 22, 2023 - btn was staying in tt
+
         ''' Rebuild banner button '''
         self.build_banner_btn()
         self.test = False
@@ -15984,24 +16146,6 @@ FADE_OUT_SPAN = 400     # 1/5 second to fade out
 #
 # ==============================================================================
 
-
-def get_help(id_name):
-    # noinspection SpellCheckingInspection
-    """
-        g.HELP defined in global_variables.py imported as g.  It contains:
-        https://www.pippim.com/programs/mserve.html#
-
-    :param id_name: E.G. "HelpT", "HelpB" and "HelpS" used above
-    :return None: You will see an error message if there is a typo in the link:
-            gvfs-open: # https://www.pippim.com/programs/mserve.html#HelpT:
-            error opening location: Error when getting information for file
-            '/.../# https:/www.pippim.com/programs/mserve.html#HelpT':
-            No such file or directory
-
-    """
-    link = g.HELP_URL + id_name
-    webbrowser.open_new(link)
-    # see: https://docs.python.org/3/library/webbrowser.html
 
 
 def play_padded_number(song_number, number_digits, prefix=NUMBER_PREFIX):
@@ -16025,7 +16169,7 @@ def make_ellipsis(string, cutoff):
 
 def human_mb(size):
     """ Change '99,999,999' bytes to '99.9 MB'
-        Called by MusicTree() class and Playlists() class
+        Called by MusicLocationTree() class and Playlists() class
         June 18, 2023 - Ported to toolkit.py without CFG_XXX constants.
     """
     converted = float(size) / float(CFG_DIVISOR_AMT)
@@ -16258,12 +16402,11 @@ def cat3(line, prefix, string):
         # inspection SpellCheckingInspection
 
 
-def get_dir(parent, title, start):
-    """ Get directory name
-    """
+def get_dir(top, title, start):
+    """ Get directory name same function in location.py """
 
     root.directory = filedialog.askdirectory(initialdir=start,
-                                             parent=parent,
+                                             parent=top,
                                              title=title)
     # print (root.directory)
     return root.directory
@@ -16314,91 +16457,10 @@ def load_last_location():
     return True
 
 
-class ToolTip(object):
-    """ DEPRECATED. Simplified version of message.ToolTip() """
-
-    def __init__(self, widget, text, thread=None, pool=None, tool_type='button'):
-        """ Background defaults to yellow """
-        self.widget = widget
-        # Invert tooltip colors from widget colors
-        if type is 'button':
-            self.fg = self.widget["background"]
-            self.bg = self.widget["foreground"]
-        else:
-            self.fg = None
-            self.bg = None
-
-        self.tip_window = None
-        self.id = None
-        self.x = self.y = 0
-        self.text = text
-        self.thread = thread
-        self.pool = pool
-        self.tool_type = tool_type
-        self.left_already = False
-        self.enter_time = time.time()
-        self.leave_time = time.time()
-        self.enter_count = 0
-        self.leave_count = 0
-
-    #def showtip(self, text):
-    def showtip(self):
-        """ Display text in tooltip window """
-        #self.text = text
-
-        if self.left_already or self.tip_window or not self.text:
-            return
-
-        # Text doesn't have a bbox
-        x, y, cx, cy = self.widget.bbox("insert")
-        x = x + self.widget.winfo_rootx() + 37
-        y = y + cy + self.widget.winfo_rooty() + 37
-
-        # Invert tooltip colors from current widget album art colors.
-        if type is 'button':
-            self.fg = self.widget["background"]
-            self.bg = self.widget["foreground"]
-        else:
-            self.fg = None
-            self.bg = None
-
-        self.tip_window = tw = tk.Toplevel(self.widget)
-        self.tip_window.withdraw()  # Remain invisible while we figure out the geometry
-        # Default background color must be same as widget foreground
-        self.tip_window['background'] = self.bg
-        tw.wm_overrideredirect(1)
-        tw.wm_geometry("+%d+%d" % (x, y))
-
-        try:
-            # For macOS
-            # noinspection PyProtectedMember
-            tw.tk.call("::tk::unsupported::MacWindowStyle",
-                       "style", tw._w,
-                       "help", "noActivates")
-        except tk.TclError:
-            pass
-
-        label = tk.Label(tw, text=self.text, justify=tk.LEFT,
-                         background=self.bg, foreground=self.fg, relief=tk.SOLID,
-                         borderwidth=2, pady=10, padx=10, font=(None, MED_FONT))
-        label.pack(ipadx=2)
-        self.tip_window.deiconify()  # Become visible at the desired location
-
-    def hidetip(self):
-        """ Indirect removal via 'tw' var is necessary to prevent artifacts
-        """
-        tw = self.tip_window
-        self.tip_window = None
-        if tw:
-            tw.destroy()
-
-        self.left_already = True  # In case delayed balloon tries to mount
-        # Reset button colors
-
-
 def custom_paste(event):
     """ Allow paste to wipe out current selection. Doesn't work yet!
         From: https://stackoverflow.com/a/46636970/6929343
+        July 23, 2023 - Fix and move to toolkit.py
     """
     # noinspection PyBroadException
     try:
@@ -16417,8 +16479,7 @@ root = None  # Tkinter toplevel object. Can be passed by `m`
 
 
 def create_files():
-    """ g.USER_DATA_DIR/mserve doesn't exist. Create directory and files. 
-    """
+    """ g.USER_DATA_DIR/mserve doesn't exist. Create directory and files. """
 
     # Create directory
     try:
@@ -16449,17 +16510,17 @@ def open_files(old_cwd, prg_path, parameters, toplevel=None):
         prompt for a music directory. If prompt cancelled then exit.
     """
 
-    global root  # named when main() called
+    global root  # named when main() called by 'm' splash screen
     global SORTED_LIST  # os.walk() results: artist/album/songs
     global START_DIR  # Music directory. E.G. "/home/USER/Music
     global NEW_LOCATION  # True=Unknown music directory in parameter #1
     global LODICT  # Permanent copy of location dictionary never touched
 
-    #print("def open_files(old_cwd, prg_path, parameters):",
-    #      old_cwd, prg_path, parameters)
-    print("prg_path is not used. Review:", prg_path)
-    print("old_cwd:", old_cwd)
-    print("parameters:", parameters)
+    if prg_path is None:
+        # it will never be None. Just don't want to code this stuff yet.
+        print("prg_path is not used. Review:", prg_path)
+        print("old_cwd:", old_cwd)
+        print("parameters:", parameters)
 
     print()
     print(r'  ######################################################')
@@ -16515,6 +16576,44 @@ def open_files(old_cwd, prg_path, parameters, toplevel=None):
 
     ''' create START_DIR, test location awake, check files exist '''
     if use_location:
+
+        ''' When NEW_LOCATION is True no Locations() to read or save '''
+        lcs.register_NEW(NEW_LOCATION)
+        lcs.register_parent(root)  # ShowInfo will go to root window parent
+
+        ''' Still need hooks to New Location and Edit Location. '''
+        ret = lcs.load_last_location()  # Open last location
+
+        if ret == 0:
+            START_DIR = lcs.open_topdir
+            if not START_DIR.endswith(os.sep):
+                START_DIR += os.sep
+            # return  After locations fully converted we leave now.
+        title = "Error retrieving Location to play"
+        text2 = "Proceeding to use music_dir: " + str(music_dir)
+
+        if ret == 1:
+            ''' last location code in SQL History Table not found '''
+            text = "last location code in SQL History Table not found\n\n"
+            text += text2
+            print('\nmserve.py main() ERROR:\n')
+            print(text)  # Print to console and show message on screen at 100, 100
+            message.ShowInfo(root, title=title, text=text, icon='error', root=True)
+        if ret == 2:
+            ''' last location code in SQL History exists but not in Location Table '''
+            text = "The last used location not found in SQL Location Table\n\n"
+            text += text2
+            print('\nmserve.py main() ERROR:\n')
+            print(text)  # Print to console and show message on screen at 100, 100
+            message.ShowInfo(root, title=title, text=text, icon='error', root=True)
+        if ret == 3:
+            ''' Top Directory doesn't exist or host is off-line '''
+            text = "Check: " + lcs.open_topdir + "\n\n"
+            text += text2
+            print('\nmserve.py main() ERROR:\n')
+            print(text)  # Print to console and show message on screen at 100, 100
+            message.ShowInfo(root, title=title, text=text, icon='error', root=True)
+
         if load_last_location():
             # If no optional `/` at end, add it for equal comparisons
             if not START_DIR.endswith(os.sep):
@@ -16555,10 +16654,8 @@ def open_files(old_cwd, prg_path, parameters, toplevel=None):
             print("mserve.py open_files() START_DIR forced to old_cwd," +
                   " should not happen:", old_cwd)
         if not START_DIR.endswith(os.sep):
-            print("\nmserve.py open_files() File picker shortfall, adding" +
-                  " / to end of:", START_DIR)
-            print()
             START_DIR += os.sep
+
         # Check how many songs
         music_list, depth_count = make_sorted_list(START_DIR, toplevel=toplevel)
         if depth_count[0] == 0 and depth_count[1] == 0 and depth_count[2] == 0:
@@ -16567,12 +16664,14 @@ def open_files(old_cwd, prg_path, parameters, toplevel=None):
             #       Clicking Cancel in filepicker is an endless loop
             #       Entering '~/Music' into Filepicker and clicking 'OK' should work but doesn't
             #       Control+C doesn't terminate in terminal. Have to close tab
+            title = "No music files found."
             text = "Music Location appears empty !!!\n\n" + \
                    "    " + START_DIR + "\n\n" + \
                    "No songs were found in target directory nor the\n" + \
                    "next three subdirectory levels under the target.\n\n" + \
                    "Verify the directory name and try again."
-            messagebox.showinfo(title="No music files found.", message=text)
+            message.ShowInfo(root, title=title, text=text, icon='error', root=True)
+            #messagebox.showinfo(title=title, message=text)
             #message.ShowInfo(root, title="No music files found.", text=text,
             #                 align='left', icon='error')  # Doesn't work without parent
             # NOTE: OK doesn't work so use messagebox.showinfo() instead
@@ -16596,7 +16695,7 @@ def open_files(old_cwd, prg_path, parameters, toplevel=None):
     print("End of open_files()")
 
 
-pav = None
+pav = lcs = None  # Pulse Audio, Locations
 
 
 def main(toplevel=None, cwd=None, parameters=None):
@@ -16614,13 +16713,14 @@ def main(toplevel=None, cwd=None, parameters=None):
     global START_DIR  # Music directory. E.G. "/home/USER/Music
     global NEW_LOCATION  # True=Unknown music directory in parameter #1
     global LODICT  # June 1, 2023 - Wasn't declared global before today
-    global pav  # July 8, 2023 - global until start_ffplay relocated
+    global pav, lcs  # July 8, 2023 - global until start_ffplay relocated
 
     ''' cwd is saved and passed by "m" before calling mserve.py '''
     prg_path = os.path.dirname(os.path.realpath(__file__))
     # prg_path is already available in g.PROGRAM_DIR so deprecate it.
+    ''' 'm' splash screen passes the old current working directory (cwd) '''
     if cwd is None:
-        ''' Change to working path - same code in m and mserve.py '''
+        ''' Save current working directory - same code in m and mserve.py '''
         cwd = os.getcwd()
         if cwd != prg_path:
             #print("Changing to dir_path:", dir_path)
@@ -16636,29 +16736,21 @@ def main(toplevel=None, cwd=None, parameters=None):
     else:
         root = tk.Toplevel()  # `m` splash screen already used tk.Tk()
 
+    root.wm_attributes('-type', 'splash')  # No window decorations
+    monitor.center(root)
+    root.withdraw()  # Remove default window because we have own windows
+
+    ''' Create initial instance of Locations class passing make_sorted_list()
+    used for testing music files.'''
+    lcs = lc.Locations(make_sorted_list)  # Pass reference
+    ''' sql.open_db() is called again in sql.populate_tables() OK '''
+    sql.open_db()  # SQL needs to be opened before building locations table
+    lcs.build_locations()  # Build SQL locations table
+
     # Get the default background at runtime, you can use the cget
     # https://stackoverflow.com/a/35409593/6929343  (Bryan Oakley)
-    system_bg = root.cget("background")
-    # July 18, 2023 - '#d9d9d9'
+    #system_bg = root.cget("background")
 
-    # Convert that to a tuple of the red, green and blue components
-    system_bg_rgb = root.winfo_rgb(system_bg)
-    # July 18, 2023 - (55770, 55770, 55770)
-
-    # You can then format the value as a hex string:
-    system_bg_hex = "#%x%x%x" % system_bg_rgb
-    # July 18, 2023 - '#d9dad9dad9da'
-    print("system_bg:", system_bg, " | system_bg_rgb:", system_bg_rgb,
-          "system_bg_hex:", system_bg_hex)
-
-    # To reset the background after changing it, save the value,
-    # and then use the value with the configure command:
-
-    #original_background = root.cget("background")
-    # ...
-    #root.configure(background=original_background)
-    
-    root.withdraw()  # Remove default window because we have own windows
 
     """ From: https://stackoverflow.com/a/46636970/6929343
         Should deleted highlighted text when paste is used.
@@ -16671,15 +16763,21 @@ def main(toplevel=None, cwd=None, parameters=None):
     ''' Set program icon in taskbar '''
     img.taskbar_icon(root, 64, 'white', 'lightskyblue', 'black')
 
+    ''' Open Files - Shouldn't it return True or False though?'''
     open_files(cwd, prg_path, parameters)  # Create application directory
 
-    # Build list of songs in the location
+    ''' Original version open Locations and build LIST '''
+    if not lc.read():
+        toolkit.print_trace()
+        exit()
+
+    ''' Sorted list of songs in the location - Need Delayed Text Box '''
     ext.t_init('make_sorted_list()')
     SORTED_LIST, depth_count = make_sorted_list(START_DIR, toplevel=toplevel)
-    #print(depth_count)
-    ext.t_end('no_print')  # May 24, 2023 - make_sorted_list(): 0.1631240845
+    ext.t_end('print')  # May 24, 2023 - make_sorted_list(): 0.1631240845
+    # July 24, 2023 - make_sorted_list(): 0.2467391491 (50% slower vs 2 mo ago)
 
-    # TODO: Use message.ShowInfo()  Perform this test when selecting start dir
+    ''' Empty Sorted list '''
     if len(SORTED_LIST) == 0:
         text = "Music Location appears empty !!!\n\n" + \
                "    " + START_DIR + "\n\n" + \
@@ -16694,23 +16792,21 @@ def main(toplevel=None, cwd=None, parameters=None):
         print('\nmserve.py main() ERROR:\n')
         print(text)  # Print to console and show message on screen at 100, 100
         message.ShowInfo(root, title="No music files found.", text=text,
-                         align='left', icon='error')
+                         align='left', icon='error', root=True)
         # NOTE: Tempting to exit now but need to proceed to select different location.
 
-    # Temporarily create SQL music tables until search button created.
-    # TODO: How to create music tables when location hasn't been defined yet?
+    ''' Process sorted list to create SQL Music Table - Need Delayed Text Box '''
     ext.t_init('sql.create_tables()')
-    sql.create_tables(SORTED_LIST, START_DIR, PRUNED_DIR, LODICT)
+    sql.populate_tables(SORTED_LIST, START_DIR, PRUNED_DIR, LODICT)
     ext.t_end('no_print')  # sql.create_tables(): 0.1092669964
-        # May 24, 2023 -  sql.create_tables(): 0.1404261589
-        # June 3, 2023 -  sql.create_tables(): 0.0638458729
 
+    ''' Pulse Audio Instance for sinks and volume. '''
     pav = vup.PulseAudio()
-    #print("pav.pulse_is_working:", pav.pulse_is_working)
-    #print(pav.sinks_at_init)
 
-    MusicTree(toplevel, SORTED_LIST)  # Build treeview of songs
+    ''' Open Music Location Tree and Favorites Playlist '''
+    MusicLocationTree(toplevel, SORTED_LIST)  # Build treeview of songs
 
+    ''' root mainloop '''
     # https://stackoverflow.com/questions/12800007/why-photoimages-dont-exist
     if toplevel is None:
         # `m` already has mainloop(). If `m` didn't pass toplevel, call mainloop().

@@ -256,7 +256,7 @@ class Monitors:
                 self.desk_width = x2
             y2 = geometry.y + geometry.height
             if y2 > self.desk_height:
-                self.desk_height = x2
+                self.desk_height = y2
 
         ''' Variables needed for get_all_windows '''
         self.windows_list = []             # List of named tuples
@@ -273,26 +273,13 @@ class Monitors:
         if primary is None:
             print('ERROR monitor.py: Primary monitor not found!')
 
-        # TODO: Calculate dead zones in desk top (no monitor)
-
-    def get_focus(self):
-        """ Set monitor dictionary to monitor with focus
-
-            First get window that has focus. Then use coordinates to devise
-            which monitor it is on.
-        """
-        pass
-
     def get_n_monitors(self):
         """ For external call to get number of monitors connected to computer """
         return self.monitor_count
 
     # noinspection PyUnusedLocal
     def get_active_window(self):
-        """
-            From: https://stackoverflow.com/a/41046548/6929343
-
-        """
+        """ From: https://stackoverflow.com/a/41046548/6929343 """
         import gi
         gi.require_version('Wnck', '3.0')
         from gi.repository import Wnck
@@ -325,10 +312,7 @@ class Monitors:
         # noinspection PyUnusedLocal
 
     def get_all_windows(self):
-        """
-            Jun. 14, 2023 - Build list of all windows. To find those off-screen
-
-        """
+        """ Jun. 14, 2023 - Build list of all windows. To find those off-screen """
         import gi
         gi.require_version('Wnck', '3.0')
         from gi.repository import Wnck
@@ -355,10 +339,8 @@ class Monitors:
         return self.windows_list
     
     def get_active_monitor(self):
-        """
-            First find the active window. Then find what monitor it is on and
-            then return that monitor.
-        """
+        """ First find the active window. Then find what monitor it is on and
+            then return that monitor. """
 
         win = self.get_active_window()      # Results in self.found_window too
 
@@ -370,7 +352,7 @@ class Monitors:
                   'x-offset:', win.x, 'was off screen.\n', win.name)
         if y < 0 or y > self.screen_height:  # same as self.desk_height
             y = 0
-            print('ERROR monitor.py: Window:,', win.number,
+            print('ERRO R monitor.py: Window:,', win.number,
                   'y-offset:', win.y, 'was off screen.\n', win.name)
 
         primary_monitor = None
@@ -408,6 +390,8 @@ class Monitors:
 
     def tk_center(self, window):
         """
+        Similar to mainline center()
+
         From: https://stackoverflow.com/a/10018670/6929343
         centers a tkinter window on monitor in multi-monitor setup
         :param window: the main window or Toplevel window to center
@@ -506,6 +490,8 @@ def get_monitors():
 
 def center(window):
     """
+    Similar to Monitor.tk_center()
+    
     From: https://stackoverflow.com/a/10018670/6929343
     centers a tkinter window on monitor in multi-monitor setup
     :param window: the main window or Toplevel window to center
@@ -617,20 +603,26 @@ def get_window_geom_raw(window, leave_visible=True):
     return x, y, w, h
 
 
-def get_window_geom_rect(window, leave_visible=True):
-    """ Get Tkinter window's x0, y0, x1, y1 tuple """
+def get_window_bbox(window, leave_visible=True):
+    """ NOT USED.
+     Get Tkinter window's x0, y0, x1, y1 tuple """
     x, y, w, h = get_window_geom_raw(window, leave_visible)
     return x, y, (x + w), (y + h)
 
 
 def get_window_geom_string(window, leave_visible=True):
-    """ Get Tkinter window's width x height + x-offset + y-offset """
+    """ Get Tkinter window's width x height + x-offset + y-offset
+    Primarily used to for writing window geometry to disk for next restart.
+    Used in encoding.py(1), location.py(1), mserve.py(6) and webscrape.py(1)
+    :returns "WxH+X+Y" string.
+    """
     x, y, w, h = get_window_geom_raw(window, leave_visible)
     return str(w) + 'x' + str(h) + '+' + str(x) + '+' + str(y)
 
 
 def get_xrandr_monitors():
-    """ Return list of monitors by parsing output from:
+    """ NOT USED. 
+    Return list of monitors by parsing output from:
 
         $ xrandr --list monitors
 
@@ -689,7 +681,7 @@ def get_window_geom(name):
 
     CURRENT:
         Get geometry for window which was saved on last exit. If no record
-        use 100,100 and predefined default width & height. Returns string
+        use 130,130 and predefined default width & height. Returns string
         of "width x height + x + y" with no spaces in between variables.
 
     FUTURE:
@@ -733,40 +725,44 @@ def get_window_geom(name):
                 ChromeOS and Android. See: https://stackoverflow.com/a/21213145/6929343
     """
 
+    xy = (130, 130)  # Default coordinates for first encounter windows.
+    # Could also use active monitor but that requires compiz?
+
     if name == 'library':  # mserve.py & bserve.py
         _w = int(1920 * .75)
         _h = int(1080 * .75)
         _root_xy = (100, 100)  # Temporary hard-coded coordinates
         default_geom = '%dx%d+%d+%d' % (_w, _h, _root_xy[0], _root_xy[1])
     elif name == 'playlist':  # mserve.py - Playing selected songs
-        xy = (130, 130)
         default_geom = '+%d+%d' % (xy[0], xy[1])
     elif name == 'backups':  # bserve.py
-        xy = (130, 130)
         default_geom = '+%d+%d' % (xy[0], xy[1])
-    elif name == 'history':  # webscrape.py
-        xy = (130, 130)
+    elif name == 'history':  # scrape.py (OBSOLETE) & webscrape.py
         default_geom = '+%d+%d' % (xy[0], xy[1])
     elif name == 'encoding':  # encoding.py
-        xy = (130, 130)
         default_geom = '+%d+%d' % (xy[0], xy[1])
-    elif name == 'results':  # webscrape.py
-        xy = (130, 130)
+    elif name == 'results':  # scrape.py (OBSOLETE) - Can be deleted
         default_geom = '+%d+%d' % (xy[0], xy[1])
     elif name == 'sql_music':  # mserve.py
-        xy = (130, 130)
         default_geom = '+%d+%d' % (xy[0], xy[1])
     elif name == 'sql_history':  # mserve.py
-        xy = (130, 130)
         default_geom = '+%d+%d' % (xy[0], xy[1])
-    elif name == 'pls_top':  # mserve.py - Playlist maintenance toplevel window
-        xy = (130, 130)
+    elif name == 'sql_location':  # mserve.py
+        default_geom = '+%d+%d' % (xy[0], xy[1])
+    elif name == 'pls_top':  # mserve.py - Playlists - Can be deleted
+        default_geom = '+%d+%d' % (xy[0], xy[1])
+    elif name == 'playlists':  # mserve.py - Playlists maintenance toplevel window
+        default_geom = '+%d+%d' % (xy[0], xy[1])
+    elif name == 'lcs_top':  # location.py - Locations - Can be deleted
+        default_geom = '+%d+%d' % (xy[0], xy[1])
+    elif name == 'locations':  # location.py - Locations
         default_geom = '+%d+%d' % (xy[0], xy[1])
     else:
         print('monitor.get_window_geom(): Bad window name:', name)
         xy = (130, 130)
         default_geom = '+%d+%d' % (xy[0], xy[1])
 
+    ''' Override defaults when window was previously saved. '''
     if sql.hist_check(0, 'window', name):
         sql.hist_cursor.execute("SELECT * FROM History WHERE Id = ?",
                                 [sql.HISTORY_ID])
@@ -775,10 +771,68 @@ def get_window_geom(name):
             # If we get here there is programmer error
             print('monitor.get_window_geom(): No History ID:', sql.HISTORY_ID)
             return default_geom
-        return d['SourceMaster']
+        else:
+            new_geom = check_window_geom(d['SourceMaster'])
+            return d['SourceMaster']  # Geometry (Coordinates, width & height)
     else:
-        # First time add the record
+        # First time.
         return default_geom
+
+
+def check_window_geom(geom):
+    """
+        When switching from multi-head system to laptop ony windows may be
+        off visible desktop. Also if xrandr resets same problem.
+
+        Get real estate of all monitors and when window isn't 50% inside a
+        monitor, make it so. If exactly split over two monitors, leave alone.
+
+        Build list of monitors bounding boxes (bbox):
+            [(x1, y1, x2, y2), (x1, y1, x2, y2), (x1, y1, x2, y2)]
+            cords = {"x1":[],"y1":[],"x2":[],"y2":[]}
+
+        NOTE: Gnome (or X11) already moves new window fully onto monitor.
+
+    :param geom: Geometry (width & height plus coordinates: "WxH+X+Y")
+    :return: Valid geometry to use
+    """
+    ms = Monitors()
+    #print("\nDebugging monitor.check_window_geom(" + geom + "):\n")
+    #for m in ms.monitors_list:
+    #    print("m:", m)
+    ''' SUMMARY of Monitors() class
+class Monitors:
+    def __init__(self):
+        self.screen_width = SCREEN.width()    # Screen width (all monitors)
+        self.screen_height = SCREEN.height()  # 3240 not equal to desk_height: 5760
+        self.monitors_list = []             # List of dictionaries w/monitor
+            # IMPORTANT - Assign in same order as namedtuple!
+            mon['number'] = index
+            mon['name'] = name
+            mon['x'] = geometry.x
+            mon['y'] = geometry.y
+            mon['width'] = geometry.width
+            mon['height'] = geometry.height
+            if index == primary:
+                mon['primary'] = True  # Usually static but user could change
+    def get_n_monitors(self):
+        return self.monitor_count
+    def get_active_window(self):
+        self.found_window = Window(x_id, window_name, geom.xp, geom.yp,
+                                   geom.widthp, geom.heightp)
+    def get_all_windows(self):
+        Wnck.shutdown()
+        return self.windows_list
+    def get_active_monitor(self):
+        """ First find the active window. Then find what monitor it is on and
+            then return that monitor. """
+    def tk_center(self, window):
+        """ Centers a tkinter window on monitor in multi-monitor setup """
+        window.update_idletasks()  # Refresh window's current position
+        mon = self.get_active_monitor()
+
+    '''
+    pass
 
 
 def save_window_geom(name, geom):

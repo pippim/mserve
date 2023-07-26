@@ -25,7 +25,8 @@ from collections import namedtuple
 
 
 def date_matrix(d=None, eow=5):
-    """ Return named tuple with date attributes:
+    """ Used by bserve.py only. 
+        Return named tuple with date attributes:
             we, wed, me, med, ye, yed
         From: https://stackoverflow.com/a/31997309/6929343
     """

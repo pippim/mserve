@@ -60,6 +60,7 @@ import image as img
 import external as ext              # For timings
 import timefmt as tmf               # Format hh:mm:ss.hh
 import toolkit
+import monitor  # To center Dialogs when running under root.
 
 
 class Open:
@@ -86,28 +87,20 @@ class Open:
         self.line_cnt = 0                   # Message lines displayed so far
 
     def update(self, msg_line):
-        """
-        Add new line to message box
+        """ Add new line to message box
         :param msg_line:
-        :return: Nothing but can print error messages.
-        """
-        # TODO: Why is ndx always 'None'?
+        :return: Nothing but can print error messages. """
+
         ndx = self.textbox.insert(tk.END, msg_line + '\n')
         try:
-            # self.textbox.see(ndx)  # ndx is always "None"
             self.textbox.see(tk.END)
         finally:
-            print('update() passed blank string?:', ndx, msg_line)
+            print('message.py update() passed blank string?:', ndx, msg_line)
         self.msg_top.update()
-        self.line_cnt += 1                  # Message lines displayed so far
-        # print('MsgDisplay.Update():', msg_list)
-        # time.sleep(.1)
+        self.line_cnt += 1  # Message lines displayed so far
 
     def close(self):
         """ Close message box """
-        # self.textbox.insert(tk.END, "CLOSING DOWN NOW")
-        # self.msg_top.update()
-        # time.sleep(.5)
         self.msg_top.destroy()
         self.msg_top = None
 
@@ -130,10 +123,9 @@ def common_code(title, toplevel, width, height):
     else:
         x, y = get_mouse_coordinates()
 
-    if x < 0:
-        x = 0                     # Can't have negative co-ordinates
-    if y < 0:
-        y = 0
+    x = 0 if x < 0 else x  # Can't have negative co-ordinates
+    y = 0 if y < 0 else y
+        
     msg_top.geometry('%dx%d+%d+%d' % (width, height, x, y))
     text_box = tk.Text(msg_top, height=height, width=width,
                        font=(None, g.MED_FONT))
@@ -158,8 +150,6 @@ def get_mouse_coordinates():
 
     if text:
         x, y, screen, window = [tok.split(":")[1] for tok in text.split(" ")]
-        # import re
-        # x, y, screen, window = re.findall("[0-9]+", text)
         return int(x), int(y)
 
     if err:
@@ -185,26 +175,29 @@ class DelayedTextBox:
         self.mount_time = time.time() + float(startup_delay)
         self.update_interval = 1.0 / float(frame_rate)
         self.next_update = self.mount_time  # When we will mount textbox
-        self.mounted = False                # Is textbox mounted yet?
-        self.textbox = None                 # The Text box instance
-        self.old_lines = []                 # Lines that were not displayed
-        self.line_cnt = 0                   # Message lines encountered so far
-        self.display_cnt = 0                # Message lines displayed so far
-        self.msg_top = None
+        self.mounted = False  # Is window created & textbox mounted yet?
+        self.textbox = None  # The Text box instance
+        self.old_lines = []  # Lines that were not displayed
+        self.line_cnt = 0  # Message lines encountered so far
+        self.display_cnt = 0  # Message lines displayed so far
+        self.msg_top = None  # Assigned by common_code()
 
     def update(self, msg_line):
-        """ 
-        Update delayed text box with message line if delay has expired. Include
-        lines suppressed earlier. Typically 1 second delay before creating
-        text box window.
+        """ Update delayed text box with message line if delay has expired.
+            Window remains unpacked until first line encountered after delay.
+            If mounting window this time, include lines suppressed earlier.
+            Typically 1 second delay before creating text box window.
+            Use common_code() function shared with message.Open()
         
-        
+            If frame passed, text box created within it for message lines.
+            A separate top-level is not used and common_code() is not called.
+
         :param msg_line: Text for display
         :return: 
         """
         self.line_cnt += 1                  # Message lines encountered so far
         now = time.time()                   # Current time
-        if now > self.mount_time:           # Current time > mont time target?
+        if now > self.mount_time:           # Current time > mount time target?
             if not self.mounted:            # Do we need to mount?
                 ''' Mount message window centered in toplevel or at mouse'''
                 self.msg_top, self.textbox = common_code(
@@ -244,6 +237,7 @@ class DelayedTextBox:
         return False
 
     def close(self):
+        """ Close Delayed Text Box """
         # print('DelayedTextBox lines in:',self.line_cnt,'out:',self.display_cnt)
         if self.mounted:                    # Is textbox mounted yet?
             self.msg_top.destroy()
@@ -266,18 +260,17 @@ class FakeEvent:
 
 # ==============================================================================
 #
-#   message.py - ShowInfo, AskQuestion, AskString
+#   message.py - ShowInfo, AskQuestion, AskString, AskDirectory (NEW JULY 24)
 #
 #   NOTE: If a refresh thread isn't passed to .ShowInfo it closes right away
 #
 # ==============================================================================
 
 
-class CommonSelf:
+class AskCommonSelf:
     """ Variables common to ShowInfo, AskQuestion and AskString
         Must appear before first reference (ShowInfo)
     """
-#    def __init__(self, parent, title=None, text=None, confirm='yes',
     def __init__(self, parent, text=None, confirm='yes', align='center',
                  thread=None, icon='warning', string=None, string_width=None,
                  help=None):
@@ -290,7 +283,7 @@ class CommonSelf:
         elif callable(thread):
             self.thread = thread    # The thread runs whilst waiting for button click
         else:
-            print("message.py, CommonSelf, invalid thread= passed:", thread)
+            print("message.py, AskCommonSelf, invalid thread= passed:", thread)
             toolkit.print_trace()
             self.thread = None
         self.loop_no = 1            # Loop counter (not used yet)
@@ -319,17 +312,91 @@ class CommonSelf:
         self.wait_window = wait_window_func
 
 
-class ShowInfo(simpledialog.Dialog, CommonSelf):
+#class AskDirectory(filedialog.Directory, AskCommonSelf):
+#class AskDirectory(filedialog.Directory, commondialog.Dialog, AskCommonSelf):
+
+class AskDirectory(filedialog.Directory, AskCommonSelf):
+    """
+        documentation:
+            https://docs.python.org/3/library/dialog.html
+
+        installed code:
+            gedit /usr/lib/python2.7/lib-tk/tkFileDialog.py
+        
+        example code(different than installed):
+            https://github.com/python/cpython/blob/main/Lib/tkinter/filedialog.py
+
+        USAGE for normal class:
+        root.directory = filedialog.askdirectory(
+            initialdir=start, parent=parent, title=title)
+    """
+    def __init__(self, parent=None, title=None, initialdir=None,
+                 thread=None, root=None):
+
+        #        AskCommonSelf.__init__(self, parent, title=title, text=text, confirm=confirm,
+        AskCommonSelf.__init__(self, parent, thread=thread)
+
+        #filedialog.FileDialog.__init__(self, parent, title=title)
+        #filedialog.Directory.__init__(self, parent, title=title,
+        #filedialog.askdirectory.__init__(self, parent, title=title,
+        #  Above: return Directory(**options).show()
+        filedialog.Directory.__init__(self, parent, title=title,
+                                      initialdir=initialdir).show()
+        #commondialog.Dialog.__init__(self, parent, title=title)
+        if root:
+            ''' When using root window message s/b centered  '''
+            mon = monitor.Monitors()
+            mon.tk_center(self)
+
+        if thread is None:
+            toolkit.print_trace()
+            print("message.py, ShowInfo() thread is none, 'OK' won't work")
+
+    #
+    # standard button semantics
+    def ok(self, event=None):
+        """ OK button clicked """
+        # From: /usr/lib/python2.7/lib-tk/tkSimpleDialog.py (returns 1)
+        if not self.validate():
+            self.initial_focus.focus_set()  # put focus back
+            return
+
+        self.withdraw()
+        self.update_idletasks()
+
+        try:
+            self.apply()  # There is no apply() for AskQuestion or ShowInfo
+        finally:
+            self.cancel()
+        return self.directory
+
+    def cancel(self, event=None):
+        """ Cancel button clicked. """
+        # put focus back to the parent window
+        if self.parent is not None:
+            self.parent.focus_set()
+        self.destroy()
+
+
+class ShowInfo(simpledialog.Dialog, AskCommonSelf):
     """ Show information message with "OK" button at end
         Prepends and appends "\n" to text passed.
+        https://docs.python.org/3/library/dialog.html
     """
     def __init__(self, parent=None, title=None, text=None, align='center',
-                 thread=None, confirm='no', icon='info'):
+                 thread=None, confirm='no', icon='info', root=None):
 
-        #        CommonSelf.__init__(self, parent, title=title, text=text, confirm=confirm,
-        CommonSelf.__init__(self, parent, text=text, confirm=confirm,
-                            align=align, thread=thread, icon=icon)
+        AskCommonSelf.__init__(self, parent, text=text, confirm=confirm,
+                               align=align, thread=thread, icon=icon)
         simpledialog.Dialog.__init__(self, parent, title=title)
+        if root:
+            ''' When using root window message s/b centered  '''
+            mon = monitor.Monitors()
+            mon.tk_center(self)
+
+        if thread is None:
+            toolkit.print_trace()
+            print("message.py, ShowInfo() thread is none, 'OK' won't work")
 
     def body(self, parent):
         """ Wrapper to body_func in mainline """
@@ -474,7 +541,7 @@ def body_func(self):
     return self.textbox
 
 
-class AskQuestion(simpledialog.Dialog, CommonSelf):
+class AskQuestion(simpledialog.Dialog, AskCommonSelf):
     """ Prepends "\n" to text passed.
         Appends "\n\nAre you sure?\n" to text passed.
         Allows text to be highlighted and copied to clipboard with CTRL+C.
@@ -487,12 +554,16 @@ class AskQuestion(simpledialog.Dialog, CommonSelf):
     """
 
     def __init__(self, parent, title=None, text=None, confirm='yes',
-                 align='center', thread=None, icon='warning'):
+                 align='center', thread=None, icon='warning', root=None):
 
-        #        CommonSelf.__init__(self, parent, title=title, text=text, confirm=confirm,
-        CommonSelf.__init__(self, parent, text=text, confirm=confirm,
-                            align=align, thread=thread, icon=icon)
+        #        AskCommonSelf.__init__(self, parent, title=title, text=text, confirm=confirm,
+        AskCommonSelf.__init__(self, parent, text=text, confirm=confirm,
+                               align=align, thread=thread, icon=icon)
         simpledialog.Dialog.__init__(self, parent, title=title)
+        if root:
+            ''' When using root window message s/b centered  '''
+            mon = monitor.Monitors()
+            mon.tk_center(self)
         if thread is None:
             toolkit.print_trace()
             print("message.py, AskQuestion() thread is none, Yes won't work")
@@ -521,8 +592,7 @@ TclError: grab failed: another application has grab
         '''
 
     def body(self, parent):
-        """
-        """
+        """ Apply bod to textbox """
         self.textbox = body_func(self)
         return self.textbox
 
@@ -548,7 +618,7 @@ TclError: grab failed: another application has grab
     #
     # standard button semantics
     def ok(self, event=None):
-
+        """ OK button clicked """
         # From: /usr/lib/python2.7/lib-tk/tkSimpleDialog.py (returns 1)
         if not self.validate():
             self.initial_focus.focus_set()  # put focus back
@@ -564,7 +634,7 @@ TclError: grab failed: another application has grab
         self.result = "yes"
 
     def cancel(self, event=None):
-
+        """ Cancel button clicked. """
         # put focus back to the parent window
         if self.parent is not None:
             self.parent.focus_set()
@@ -572,7 +642,7 @@ TclError: grab failed: another application has grab
         self.destroy()
 
 
-class AskString(simpledialog.Dialog, CommonSelf):
+class AskString(simpledialog.Dialog, AskCommonSelf):
     """ Prepends "\nInput:" to text passed.
         Appends Entry field after "Input:"
         Allows text to be highlighted and copied to clipboard with CTRL+C.
@@ -582,13 +652,17 @@ class AskString(simpledialog.Dialog, CommonSelf):
 
     def __init__(self, parent, title=None, text=None, confirm='no',
                  align='center', thread=None, icon='question', string=None,
-                 string_width=None):
+                 string_width=None, root=None):
 
-        CommonSelf.__init__(self, parent, text=text, confirm=confirm, 
+        AskCommonSelf.__init__(self, parent, text=text, confirm=confirm, 
                             align=align, thread=thread, icon=icon,
                             string=string, string_width=string_width)
 
         simpledialog.Dialog.__init__(self, parent, title=title)
+        if root:
+            ''' When using root window message s/b centered  '''
+            mon = monitor.Monitors()
+            mon.tk_center(self)
 
     def new_body(self):
         """ Remove parent from parameter list Aug 12/2021.
@@ -1223,6 +1297,7 @@ class ToolTipsPool:
         self.fade_object.update_idletasks()
 
     def set_button(self, widget, state):
+        """ Set button """
         self.reset_widget = widget
         self.reset_state = state
 

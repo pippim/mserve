@@ -96,13 +96,13 @@ azlyrics link, azlyrics download time
 '''
 
 # Global variables must be defined at module level
-con = cursor = hist_cursor = None
+con = cursor = hist_cursor = loc_cursor = None
 new_con = new_cursor = new_hist_cursor = None
 NEW_LOCATION = False
 START_DIR = PRUNED_DIR = LODICT = None
 
 
-def create_tables(SortedList, start_dir, pruned_dir, lodict):
+def populate_tables(SortedList, start_dir, pruned_dir, lodict):
     """ Create SQL tables out of OS sorted music top directory """
     global NEW_LOCATION, START_DIR, PRUNED_DIR, LODICT
     START_DIR = start_dir
@@ -117,7 +117,7 @@ def create_tables(SortedList, start_dir, pruned_dir, lodict):
     if LODICT['iid'] == 'new':
         NEW_LOCATION = True
 
-    open_db()
+    #open_db()  # July 24, 2023 Note new Locations() class has alredy opened
     open_new_db()  # July 13, 2023
 
     LastArtist = ""         # For control breaks
@@ -193,7 +193,7 @@ def open_db():
 
     #open_new_db()  # Database 'library_new.db' only used for conversions.
 
-    global con, cursor, hist_cursor
+    global con, cursor, hist_cursor, loc_cursor
     con = sqlite3.connect(FNAME_LIBRARY)
 
     # MUSIC TABLE
@@ -202,7 +202,7 @@ def open_db():
     #   how-do-i-clean-up-sqlite-master-format-in-python
     # Create the table (key must be INTEGER not just INT !
     #   See https://stackoverflow.com/a/7337945/6929343 for explanation
-    con.execute("create table IF NOT EXISTS Music(Id INTEGER PRIMARY KEY, " +
+    con.execute("CREATE TABLE IF NOT EXISTS Music(Id INTEGER PRIMARY KEY, " +
                 "OsFileName TEXT, OsAccessTime FLOAT, OsModifyTime FLOAT, " +
                 "OsChangeTime FLOAT, OsFileSize INT, " +
                 "Title TEXT, Artist TEXT, Album TEXT, " +
@@ -219,7 +219,7 @@ def open_db():
                 "Music(OsFileName)")
 
     # HISTORY TABLE
-    con.execute("create table IF NOT EXISTS History(Id INTEGER PRIMARY KEY, " +
+    con.execute("CREATE TABLE IF NOT EXISTS History(Id INTEGER PRIMARY KEY, " +
                 "Time FLOAT, MusicId INTEGER, User TEXT, Type TEXT, " +
                 "Action TEXT, SourceMaster TEXT, SourceDetail TEXT, " +
                 "Target TEXT, Size INT, Count INT, Seconds FLOAT, " +
@@ -231,6 +231,17 @@ def open_db():
                 "History(Time)")
     con.execute("CREATE INDEX IF NOT EXISTS TypeActionIndex ON " +
                 "History(Type, Action)")
+
+    # LOCATION TABLE
+    con.execute("CREATE TABLE IF NOT EXISTS Location(Id INTEGER PRIMARY KEY, " +
+                "Code TEXT, Name TEXT, ModifyTime FLOAT, ImagePath TEXT, " +
+                "MountPoint TEXT, TopDir TEXT, HostName TEXT, " +
+                "HostWakeupCmd TEXT, HostTestCmd TEXT, HostTestRepeat INT, " +
+                "HostMountCmd TEXT, HostTouchCmd TEXT, HostTouchMinutes INT, " +
+                "Comments TEXT)")
+    con.execute("CREATE UNIQUE INDEX IF NOT EXISTS LocationCodeIndex ON " +
+                "Location(Code)")
+
 
     ''' For mserve.py rename_file() function to rename "the" to "The" '''
     con.execute("PRAGMA case_sensitive_like = ON;")
@@ -244,6 +255,7 @@ def open_db():
     con.row_factory = sqlite3.Row
     cursor = con.cursor()
     hist_cursor = con.cursor()
+    loc_cursor = con.cursor()
 
     ''' Functions to fix errors in SQL database '''
     # fd = FixData("Thu Jun 10 23:59:59 2023")  # Class for common fix functions
@@ -1425,10 +1437,14 @@ def get_config(Type, Action):
         VARIABLE        DESCRIPTION
         --------------  -----------------------------------------------------
         Type - Action   'window' - library, playlist, history, encoding,
-                                   results, sql_music, sql_history
+                                   sql_music, sql_history, sql_location,
+                                   location
         Type - Action   'resume' - LODICT[iid]. SourceMaster = Playing/Paused
                         'chron_state' - LODICT[iid]. SourceMaster = hide/show
                         'hockey_state' - LODICT[iid]. SourceMaster = On/Off
+        Type - Action   'location' - 'last': The last location played.
+                        SourceMaster = loc. Code, SourceDetail = loc. Name,
+                        Target = TopDir
         Target          For Type='window' = geometry (x, y, width, height)
     """
     hist_cursor.execute("SELECT * FROM History INDEXED BY TypeActionIndex " +
@@ -1606,8 +1622,37 @@ def hist_init_lyrics_and_time():
     con.commit()
 
 
-# ===============================  AUTHENTICATION =============================
+# ===============================  LOCATION  ==================================
 
+
+def loc_add(Code, Name, ModifyTime, ImagePath, MountPoint, TopDir, HostName,
+            HostWakeupCmd, HostTestCmd, HostTestRepeat, HostMountCmd,
+            HostTouchCmd, HostTouchMinutes, Comments):
+    """ Add Location Row """
+    sql = "INSERT INTO Location (Code, Name, ModifyTime, ImagePath, \
+           MountPoint, TopDir, HostName, HostWakeupCmd, HostTestCmd, \
+           HostTestRepeat, HostMountCmd, HostTouchCmd, HostTouchMinutes, Comments) \
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"  # 14 columns
+    loc_cursor.execute(
+        sql, 
+        (Code, Name, ModifyTime, ImagePath, MountPoint, TopDir, HostName, 
+         HostWakeupCmd, HostTestCmd, HostTestRepeat, HostMountCmd, HostTouchCmd, 
+         HostTouchMinutes, Comments))
+    con.commit()
+
+
+def loc_read(Code):
+    """ Read Location Row for location code """
+    loc_cursor.execute("SELECT * FROM Location WHERE Code = ?", [Code])
+    try:
+        d = dict(loc_cursor.fetchone())
+    except TypeError:  # TypeError: 'NoneType' object is not iterable:
+        d = None
+
+    return d
+
+
+# ===============================  AUTHENTICATION =============================
 class Authorization:
     """ NOT USED YET - Initially designed for MusicBrainz authorization """
     def __init__(self, toplevel, organization, http, message, tt=None, thread=None):
@@ -2303,7 +2348,7 @@ def music_treeview():
         ("display_long", None), ("stretch", 1)]),
 
       OrderedDict([
-        ("column", "track_number"), ("heading", "Track Number"), ("sql_table", "Music"),
+        ("column", "track_number"), ("heading", "Track"), ("sql_table", "Music"),
         ("var_name", "TrackNumber"), ("select_order", 0), ("unselect_order", 16),
         ("key", False), ("anchor", "e"), ("instance", str), ("format", None),
         ("display_width", 140), ("display_min_width", 100),
@@ -2500,23 +2545,7 @@ def history_treeview():
 
 
 def playlist_treeview():
-    """ Define Data Dictionary treeview columns for history table.  Snippet:
-        ("column", "time"), ("heading", "Time"), ("sql_table", "History"),
-        ("column", "music_id"), ("heading", "Music ID"), ("sql_table", "History"),
-        ("column", "user"), ("heading", "User"), ("sql_table", "History"),
-        ("column", "type"), ("heading", "Type"), ("sql_table", "History"),
-        ("column", "action"), ("heading", "Action"), ("sql_table", "History"),
-        ("column", "master"), ("heading", "Master"), ("sql_table", "History"),
-        ("column", "detail"), ("heading", "Detail"), ("sql_table", "History"),
-        ("column", "target"), ("heading", "Target"), ("sql_table", "History"),
-        ("column", "size"), ("heading", "Size"), ("sql_table", "History"),
-        ("column", "count"), ("heading", "Count"), ("sql_table", "History"),
-        ("column", "comments"), ("heading", "Comments"), ("sql_table", "History"),
-        ("column", "seconds"), ("heading", "Seconds"), ("sql_table", "History"),
-        ("column", "row_id"), ("heading", "Row ID"), ("sql_table", "History"),
-        ("column", "reason"), ("heading", "Reason"), ("sql_table", "calc"),
-
-    """
+    """ Define Data Dictionary treeview columns for playlists in history table. """
 
     playlist_treeview_list = [
 
@@ -2619,13 +2648,139 @@ def playlist_treeview():
         ("display_long", None), ("stretch", 1)])
     ]
 
-    ''' Future retention is calculated in order of Monthly, Weekly, Daily. 
-        Last year retention is same as Future but Yearly test inserted first.
-        The newest backup will always be classified as Monthly until tomorrow.
-    '''
-
     return playlist_treeview_list
 
+
+def location_treeview():
+    """ Define Data Dictionary treeview columns for location table.
+        self.scr_code.set(loc_dict['code'])  # Replacement for 'iid'
+        self.scr_name.set(loc_dict['name'])
+        self.scr_modify_time.set(loc_dict['modify_time'])  # New
+        self.scr_image_path.set(loc_dict['image_path'])  # New
+        self.scr_mount_point.set(loc_dict['mount_point'])  # New
+        self.scr_topdir.set(loc_dict['topdir'])
+        self.scr_host.set(loc_dict['host'])
+        self.scr_wakecmd.set(loc_dict['wakecmd'])
+        self.scr_testcmd.set(loc_dict['testcmd'])
+        self.scr_testrep.set(loc_dict['testrep'])
+        self.scr_mountcmd.set(loc_dict['mountcmd'])
+        self.scr_activecmd.set(loc_dict['activecmd'])
+        self.scr_activemin.set(loc_dict['activemin'])
+        self.scr_touchcmd.set(loc_dict['touch_cmd'])  # Replaces 'activecmd'
+        self.scr_touchmin.set(loc_dict['touch_min'])  # Replaces 'activemin'
+        self.scr_comments.set(loc_dict['comments'])  # New
+    """
+
+    location_treeview_list = [
+
+      OrderedDict([  # iid = Item identifier (Don't like name) use 'code'?
+        ("column", "code"), ("heading", "Code"), ("sql_table", "Location"),
+        ("var_name", "Code"), ("select_order", 0), ("unselect_order", 1),
+        ("key", False), ("anchor", "w"), ("instance", str),
+        ("format", None), ("display_width", 80),
+        ("display_min_width", 100), ("display_long", None), ("stretch", 0)]),
+
+      OrderedDict([
+        ("column", "name"), ("heading", "Name"), ("sql_table", "Location"),
+        ("var_name", "Name"), ("select_order", 0), ("unselect_order", 2),
+        ("key", False), ("anchor", "w"), ("instance", str), ("format", None),
+        ("display_width", 300), ("display_min_width", 200),
+        ("display_long", None), ("stretch", 1)]),  # 0=NO, 1=YES
+
+      OrderedDict([
+        ("column", "modify_time"), ("heading", "Modified Time"),
+        ("sql_table", "Location"), ("var_name", "ModifyTime"), ("select_order", 0),
+        ("unselect_order", 3), ("key", False), ("anchor", "w"), ("instance", float),
+        ("format", "date"), ("display_width", 240), ("display_min_width", 180),
+        ("display_long", None), ("stretch", 1)]),
+
+      OrderedDict([
+        ("column", "image_path"), ("heading", "Location Image Path"),
+        ("sql_table", "Location"), ("var_name", "ImagePath"), ("select_order", 0),
+        ("unselect_order", 4), ("key", False), ("anchor", "w"), ("instance", str),
+        ("format", None), ("display_width", 80), ("display_min_width", 60),
+        ("display_long", None), ("stretch", 1)]),
+
+      OrderedDict([
+        ("column", "mount_point"), ("heading", "Mount Point"),
+        ("sql_table", "Location"), ("var_name", "MountPoint"), ("select_order", 0),
+        ("unselect_order", 5), ("key", False), ("anchor", "w"), ("instance", str),
+        ("format", None), ("display_width", 80), ("display_min_width", 60),
+        ("display_long", None), ("stretch", 1)]),
+
+      OrderedDict([
+        ("column", "topdir"), ("heading", "Music Top Directory"),
+        ("sql_table", "Location"), ("var_name", "TopDir"), ("select_order", 0),
+        ("unselect_order", 6), ("key", False), ("anchor", "w"), ("instance", str),
+        ("format", None), ("display_width", 300), ("display_min_width", 200),
+        ("display_long", None), ("stretch", 1)]),
+
+      OrderedDict([
+        ("column", "host_name"), ("heading", "Host Name"),
+        ("sql_table", "Location"), ("var_name", "HostName"), ("select_order", 0),
+        ("unselect_order", 7), ("key", False), ("anchor", "w"), ("instance", str),
+        ("format", None), ("display_width", 200), ("display_min_width", 120),
+        ("display_long", None), ("stretch", 1)]),
+
+      OrderedDict([
+        ("column", "wake_cmd"), ("heading", "Host Wakeup Command"),
+        ("sql_table", "Location"), ("var_name", "HostWakeupCmd"), ("select_order", 0),
+        ("unselect_order", 8), ("key", False), ("anchor", "w"), ("instance", str),
+        ("format", None), ("display_width", 200), ("display_min_width", 100),
+        ("display_long", None), ("stretch", 1)]),  # 0=NO, 1=YES
+
+      OrderedDict([
+        ("column", "test_cmd"), ("heading", "Host Test Command"),
+        ("sql_table", "Location"), ("var_name", "HostTestCmd"), ("select_order", 0),
+        ("unselect_order", 9), ("key", False), ("anchor", "w"), ("instance", str),
+        ("format", None), ("display_width", 300), ("display_min_width", 200),
+        ("display_long", None), ("stretch", 1)]),
+
+      OrderedDict([
+        ("column", "test_repeat"), ("heading", "Host Test Repeat"),
+        ("sql_table", "Location"), ("var_name", "HostTestRepeat"), ("select_order", 0),
+        ("unselect_order", 10), ("key", False), ("anchor", "w"), ("instance", int),
+        ("format", "{:,}"),  ("display_width", 100), ("display_min_width", 80),
+        ("display_long", None), ("stretch", 1)]),
+
+      OrderedDict([
+        ("column", "mount_cmd"), ("heading", "Mount Command"),
+        ("sql_table", "Location"), ("var_name", "HostMountCmd"), ("select_order", 0),
+        ("unselect_order", 11), ("key", False), ("anchor", "w"), ("instance", str),
+        ("format", None), ("display_width", 300), ("display_min_width", 200),
+        ("display_long", None), ("stretch", 1)]),
+
+      OrderedDict([
+        ("column", "touch_cmd"), ("heading", "Host Touch Command"),
+        ("sql_table", "Location"), ("var_name", "HostTouchCmd"), ("select_order", 0),
+        ("unselect_order", 12), ("key", False), ("anchor", "w"), ("instance", str),
+        ("format", None), ("display_width", 160), ("display_min_width", 140),
+        ("display_long", None), ("stretch", 1)]),
+
+      OrderedDict([
+        ("column", "touch_cmd_minutes"), ("heading", "Host Touch Minutes"),
+        ("sql_table", "Location"), ("var_name", "HostTouchMinutes"), ("select_order", 0),
+        ("unselect_order", 13), ("key", False), ("anchor", "w"), ("instance", int),
+        ("format", "{:,}"), ("display_width", 140), ("display_min_width", 80),
+        ("display_long", None), ("stretch", 1)]),
+
+      OrderedDict([
+        ("column", "comments"), ("heading", "Comments"), ("sql_table", "Location"),
+        ("var_name", "Comments"), ("select_order", 0), ("unselect_order", 14),
+        ("key", True), ("anchor", "w"), ("instance", str), ("format", None),
+        ("display_width", 300), ("display_min_width", 200),
+        ("display_long", None), ("stretch", 1)]),
+
+      OrderedDict([
+        ("column", "row_id"), ("heading", "Row ID"), ("sql_table", "Location"),
+        ("var_name", "Id"), ("select_order", 0), ("unselect_order", 15),
+        ("key", True), ("anchor", "e"), ("instance", int), ("format", "{:,}"),
+        ("display_width", 80), ("display_min_width", 60),
+        ("display_long", None), ("stretch", 1)]),
+
+    ]
+
+    return location_treeview_list
 
 # ==============================  FIX SQL ROWS  ============================
 
@@ -2924,7 +3079,7 @@ class FixData:
                 print("Step 5 for :", row['Id'])
 
             if not found_ok:
-                print("Not found:")
+                print("fix_meta_edit() not found:")
                 print(self.make_pretty_line(d))
 
             if self.test:

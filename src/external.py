@@ -248,7 +248,19 @@ def kill_pid_running(active_pid):
         os.kill(active_pid, 9)      # 0 is status check, 9 kills
         return True                 # pid killed
     except OSError:
-        toolkit.print_trace()
+        ''' Problem when 'pulseaudio -k' run in CLI '''
+        # toolkit.print_trace()
+        # File "/home/rick/python/mserve.py", line 4780, in close
+        #     self.close_sleepers()  # Shut down running functions
+        # File "/home/rick/python/mserve.py", line 4827, in close_sleepers
+        #     self.play_close()
+        # File "/home/rick/python/mserve.py", line 10665, in play_close
+        #     ext.kill_pid_running(self.vu_meter_pid)
+        # File "/home/rick/python/external.py", line 251, in kill_pid_running
+        #     toolkit.print_trace()
+        # File "/home/rick/python/toolkit.py", line 86, in print_trace
+        #     for line in traceback.format_stack():
+        # external.kill_pid_running() ERROR: os.kill  failed for PID: 6910
         print("external.kill_pid_running() ERROR: os.kill " + 
               " failed for PID:", active_pid)
         return 0                    # pid has finished

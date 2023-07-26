@@ -24,6 +24,9 @@ NOTE: Use pavucontrol to create loopback from sound output to microphone:
       https://wiki.ubuntu.com/record_system_sound - Required by vu_meter.py
       Keep an eye open if vu_meter.py can be made more robust.
 
+NOTE: Unstable if 'pulseaudio -k' run from command line.
+      Lose vu_meter.py updates
+      'Next' song stays at 25% volume until another 'Next' click
 """
 
 import global_variables as g
@@ -183,6 +186,34 @@ class PulseAudio:
         """ Every 33ms (in theory) process next step of fade job
             When finished, set volume to final amount (end_perc)
             Same as poll_fades() except loaded with debug information.
+
+            Run 'pulseaudio -k' to reset static:
+
+Traceback (most recent call last):
+  File "./m", line 81, in <module>
+    main()
+  File "./m", line 75, in main
+    mserve.main(toplevel=splash, cwd=cwd, parameters=sys.argv)
+  File "/home/rick/python/mserve.py", line 16727, in main
+    MusicTree(toplevel, SORTED_LIST)  # Build treeview of songs
+  File "/home/rick/python/mserve.py", line 1422, in __init__
+    self.load_last_selections()  # Play songs in favorites or playlists
+  File "/home/rick/python/mserve.py", line 6675, in load_last_selections
+    self.play_selected_list()
+  File "/home/rick/python/mserve.py", line 7150, in play_selected_list
+    if not self.play_one_song(resume=resume, chron_state=chron_state):
+  File "/home/rick/python/mserve.py", line 8194, in play_one_song
+    self.play_to_end()  # Play entire song unless next/prev, etc.
+  File "/home/rick/python/mserve.py", line 8304, in play_to_end
+    self.refresh_play_top()  # Rotate art, refresh vu meter
+  File "/home/rick/python/mserve.py", line 8340, in refresh_play_top
+    pav.poll_fades()
+  File "/home/rick/python/vu_pulse_audio.py", line 176, in poll_fades
+    fade_dict['sink_no_str'], fade_dict['begin_perc'] + adjust)
+  File "/home/rick/python/vu_pulse_audio.py", line 301, in set_volume
+    except pulsectl.pulsectl.PulseOperationFailed as err:  # 56
+AttributeError: 'module' object has no attribute 'pulsectl'
+
         """
         who = who_am_i + "poll_fades_debug(): "
         ext.t_init('self.pav.poll()')
@@ -298,16 +329,36 @@ class PulseAudio:
             err = None  # Default to no error
             try:
                 self.last_sink_input_list = self.pulse.sink_input_list()
-            except pulsectl.pulsectl.PulseOperationFailed as err:  # 56
+            except pulsectl.PulseOperationFailed as err:  # 56
                 # noinspection SpellCheckingInspection
                 '''
 SECOND Exception HAPPENED AFTER `pulseaudio -k` to fix FIRST EXCEPTION
   File "/home/rick/python/pulsectl/pulsectl.py", line 523, in _pulse_op_cb
     if not self._actions[act_id]: raise PulseOperationFailed(act_id)
 pulsectl.pulsectl.PulseOperationFailed: 56
+
+THIRD Exception after fixing pulsectl.pulsectl. reference to pulsectl.
+
+  File "/home/rick/python/vu_pulse_audio.py", line 176, in poll_fades
+    fade_dict['sink_no_str'], fade_dict['begin_perc'] + adjust)
+  File "/home/rick/python/vu_pulse_audio.py", line 328, in set_volume
+    self.last_sink_input_list = self.pulse.sink_input_list()
+  File "/home/rick/python/pulsectl/pulsectl.py", line 563, in _wrapper_method
+    *([index, cb, None] if index is not None else [cb, None]) )
+  File "/home/rick/python/pulsectl/_pulsectl.py", line 673, in _wrapper
+    raise self.CallError(*err)
+pulsectl._pulsectl.CallError: ('pa_context_get_sink_input_info_list', (<pulsectl._pulsectl.LP_PA_CONTEXT object at 0x7f91c772c560>, <CFunctionType object at 0x7f91bd039a10>, None), <pulsectl._pulsectl.LP_PA_OPERATION object at 0x7f91c772cd40>, 'Bad state [pulse errno 15]')
+
+
                 '''
-                print(who + "pulsectl.pulsectl.PulseOperationFailed:", err)
-                return None, str(err)
+                try:
+                    self.pulse = pulsectl.Pulse()
+                    self.info.cast("PulseAudio reloaded. Restart mserve",
+                                   "error")
+                    return  # User can try again or poll_fades will do next step
+                except:
+                    print(who + "pulsectl.PulseOperationFailed:", err)
+                    return None, str(err)
 
             for sink in self.last_sink_input_list:
                 if str(sink.index) == target_sink:
@@ -348,8 +399,14 @@ AttributeError: 'module' object has no attribute 'pulsectl'
 
 
                         '''
-                        print(who + "pulsectl.PulseOperationFailed:", err)
-                        return None, str(err)
+                        try:
+                            self.pulse = pulsectl.Pulse()
+                            self.info.cast("PulseAudio reloaded. Restart mserve",
+                                           "error")
+                            return  # User can try again or poll_fades will do next step
+                        except pulsectl.PulseOperationFailed as err:  # ???
+                            print(who + "pulsectl.PulseOperationFailed:", err)
+                            return None, str(err)
 
                     for i, S in enumerate(self.sinks_now):
                         if S.sink_no_str == target_sink:
@@ -432,7 +489,7 @@ AttributeError: 'module' object has no attribute 'pulsectl'
                 if Sink.pid == pid:
                     self.curr_pid_sink = str(Sink.sink_no_str)
                     if str(self.last_pid_sink) == self.curr_pid_sink:
-                        self.info_cast("Same sink used twice in row: " +
+                        self.info.cast("Same sink used twice in row: " +
                                        self.curr_pid_sink)
                     ''' If too quick the volume is 'None' so drop down to wait.
                         Also the sink# is 1 less than the real sink# later after

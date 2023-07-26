@@ -24,6 +24,7 @@ from appdirs import user_data_dir, user_config_dir
 import tempfile         # Gets TMP_DIR /tmp, C:\Temp, etc.
 import os               # USER_ID = str(os.get uid())
 import pwd              # USER = pwd.get pw uid(os.get uid()).pw_name
+import webbrowser       # Display help text on www.pippim.com
 
 ''' Code duplicated in mserve_config.py '''
 import platform as plat  # Gets OS Name, Version, Release
@@ -148,6 +149,32 @@ def init(caller=None):
     systemd = "/run/user/" + USER_ID
     if os.path.isdir(systemd):
         TEMP_DIR = systemd + os.sep
+
+
+# ==============================================================================
+#
+#       Independent (Stand Alone) Functions
+#
+# ==============================================================================
+
+
+def web_help(id_name):
+    # noinspection SpellCheckingInspection
+    """
+        g.HELP defined in global_variables.py imported as g.  It contains:
+        https://www.pippim.com/programs/mserve.html#
+
+    :param id_name: E.G. "HelpT", "HelpB" and "HelpS" used above
+    :return None: You will see an error message if there is a typo in the link:
+            gvfs-open: # https://www.pippim.com/programs/mserve.html#HelpT:
+            error opening location: Error when getting information for file
+            '/.../# https:/www.pippim.com/programs/mserve.html#HelpT':
+            No such file or directory
+
+    """
+    link = HELP_URL + id_name
+    webbrowser.open_new(link)
+    # see: https://docs.python.org/3/library/webbrowser.html
 
 
 def main(caller=None):

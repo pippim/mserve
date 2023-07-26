@@ -190,6 +190,7 @@ def make_mserve_cfg():
     cfg.append(make_dict(m, None, "datetime"))
     cfg.append(make_dict(m, None, "re"))
     cfg.append(make_dict(m, None, "traceback"))
+    # noinspection SpellCheckingInspection
     cfg.append(make_dict(m, None, "webbrowser"))
     cfg.append(make_dict(m, "OrderedDict", "collections"))
     cfg.append(make_dict(m, None, "pickle"))
@@ -323,6 +324,7 @@ def make_msg_cfg():
     cfg.append(make_dict(m, None, "re"))
     cfg.append(make_dict(m, None, "time"))
     cfg.append(make_dict(m, None, "datetime"))
+    # noinspection SpellCheckingInspection
     cfg.append(make_dict(m, None, "webbrowser"))
     cfg.append(make_dict(m, "g", "global_variables", "pippim.com"))
     cfg.append(make_dict(m, "img", "image", "pippim.com"))
@@ -410,6 +412,7 @@ def make_x11_cfg():
     m = "x11"  # Module name to python interpreter
     cfg.append(make_dict(m, None, "time"))
     cfg.append(make_dict(m, "namedtuple", "collections"))
+    # noinspection SpellCheckingInspection
     '''
         Needs revamping:
             # /usr/lib/python2.7/dist-packages/Xlib/X.py
@@ -429,9 +432,10 @@ def make_x11_cfg():
                          "https://github.com/python-xlib/python-xlib"))
     cfg.append(make_dict(m, None, "Xlib/display",
                          "https://github.com/python-xlib/python-xlib"))
+    # noinspection SpellCheckingInspection
     cfg.append(make_dict(m, "randr", "Xlib.ext",
                          "https://github.com/python-xlib/python-xlib"))
-    # /usr/lib/python2.7/dist-packages/Xlib/ext/randr.py
+    # /usr/lib/python2.7/dist-packages/Xlib/ext/r and r.py
     return cfg
 
 
@@ -439,9 +443,6 @@ def make_web_cfg():
     """ Configuration for: 'popen(webscrape.py...)' """
     cfg = list()  # Return list of dictionaries
     m = "webscrape"  # Module name to python interpreter
-    d1 = "https://requests.readthedocs.io/en/latest/"
-    d2 = "https://pypi.org/project/musicbrainzngs/"
-    d3 = "https://github.com/sebastinas/python-libdiscid"
     cfg.extend(make_tk_cfg(m))
     cfg.append(make_dict(m, None, "sys"))
     cfg.append(make_dict(m, None, "os"))
@@ -504,6 +505,7 @@ def make_encoding_cfg():
     cfg.append(make_dict(m, "discid", "libdiscid", d3, "2", "python-libdiscid"))
     cfg.append(make_dict(m, None, "mutagen", d4, "3", "python3-mutagen"))
     cfg.append(make_dict(m, None, "mutagen", d4, "2", "python-mutagen"))
+    # noinspection SpellCheckingInspection
     ''' TODO:
             Buried in functions:
             https://mutagen-specs.readthedocs.io/en/latest/id3/id3v2.3.0.html
@@ -933,19 +935,21 @@ drwxr-xr-x   2 root root   4096 Mar 10  2019 zope.interface-4.1.3.egg-info/
     return
 
 
-def main(module=None):
+def main(caller=None):
     """
     Load saved configuration if it exists. Otherwise create new configuration.
     Loop through every configuration dictionary and tests if it exists.
 
-    Set flags on what modules/methods exist. The flags are used to check which
+    Set flags on what packages/modules exist. The flags are used to check which
     features will work. E.G. if 'xdo-tool' is not available 'kid3' window cannot
     be moved.
 
-    Save configuration so tests can be skipped next time.
+    Save configuration so tests can be skipped next time. Whenever an error
+    occurs, mserve can be called with 'fix' option and saved configuration is
+    deleted and the process repeats.
 
     """
-    print("mserve_config.py startup called from:", module)
+    print("mserve_config.py startup called from:", caller)
     make_default_cfg()  # Create default configuration
 
     ''' 
@@ -974,7 +978,9 @@ def main(module=None):
         #res = os.popen("wc -l " + module).read().strip()
         #res = res.replace(" ", "\t")
         #print(res)
-        print("module:", module)
+        if True is False:
+            print("module:", module)
+        pass
 
     """
         REVIEW:
@@ -986,7 +992,7 @@ def main(module=None):
             import os
             os.utime(path_to_file, (access_time, modification_time))
             https://www.tutorialspoint.com/python/os_utime.htm
-        ''' How is atime and mtime formatted? 
+            How is atime and mtime formatted? 
             The exact meaning and resolution of the st_atime, st_mtime, and 
             st_ctime attributes depend on the operating system and the file 
             system. For example, on Windows systems using the FAT or FAT32 
@@ -1003,6 +1009,7 @@ def main(module=None):
 
 
     #print(pippim_modules)
+    # noinspection SpellCheckingInspection
     ''' os.walk() path and merge results with default configuration dictionary to 
         make machine configuration dictionary
 
@@ -1056,7 +1063,7 @@ TypeError: unsupported operand type(s) for +: 'NoneType' and 'str'
     '''
     ''' from: https://stackoverflow.com/a/4858123/6929343 '''
     try:
-        import types
+        import types  # Part of Python standard library
         #print('The list of imported Python modules reported by types.ModuleType :')
         for name, val in globals().items():
             if isinstance(val, types.ModuleType):
@@ -1072,7 +1079,7 @@ TypeError: unsupported operand type(s) for +: 'NoneType' and 'str'
     #after = [str(m) for m in sys.modules]
     #print([m for m in after if m not in before])
 
-    #print("\nsys.path:", sys.path)
+    #print("\n sys.path:", sys.path)
     return True  # All tests succeeded :)
 
 

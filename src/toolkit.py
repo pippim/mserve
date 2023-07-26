@@ -647,14 +647,14 @@ class DictTreeview:
         self.toplevel = toplevel
         self.master_frame = master_frame    # Master frame for treeview frame
         self.tree_dict = tree_dict          # Data dictionary
-        self.attached = OrderedDict()       # Mgs attached, detached, skipped
+        self.attached = OrderedDict()       # Rows attached, detached, skipped
+        self.tree = None  # Treeview was surviving close in location.Locations()
 
-        ''' Key fields may be hidden. Add as last column not displayed.
-        '''
+        ''' Key fields may be hidden. Add as last column not displayed. '''
         columns_list = list(columns)
         for d in self.tree_dict:
             if d['select_order'] == 0 and d['key'] is True:
-                # Add to list
+                # SQL Table Ids (Keys) are required for optional retrieving rows
                 columns_list.append(d['column'])
 
         columns = tuple(columns_list)
@@ -763,7 +763,7 @@ class DictTreeview:
         self.highlight_callback = highlight_callback
 
     def insert(self, parent_iid="", row=None, iid="", tags="unchecked"):
-        """ Insert new row into treeview.
+        """ Insert new row or update existing row in treeview.
             NOTE: Formatting integers "{:,}" and floats "{0:,.0f}"
         """
         if row is None:
@@ -820,7 +820,14 @@ class DictTreeview:
             else:
                 values.append(unmasked_value)  # String with no formatting
 
-        self.tree.insert(parent_iid, tk.END, iid=iid, values=values, tags=tags)
+        try:
+            # insert new row into treeview
+            self.tree.insert(parent_iid, tk.END, iid=iid, values=values, tags=tags)
+        except tk.TclError:  # Item L001 already exists
+            # update existing row into treeview
+            self.tree.item(iid, values=values, tags=tags)
+
+        ''' highlight row as mouse traverses across treeview '''
         self.tree.tag_bind(iid, '<Motion>', self.highlight_row)
 
 
@@ -1103,14 +1110,37 @@ def print_dict_columns(dict_list):
               d['key'])
 
 
-def human_mb(size, decimals=1, uom="MB"):
-    """ Change '99,999,999' bytes to '99.9 MB'
-        Called by MusicTree() class and Playlists() class
-    """
-    converted = float(size) / float(1000000)
+def human_mb(size, decimals=1, uom=" MB"):
+    """ Change '99,999,999' bytes to '99.9 MB', etc.
+        Called by mserve.py MusicTree() class and Playlists() class """
+    divisor = float(1000 * 1000)
+    converted = float(size) / divisor
     rounded = round(converted, decimals)
     rounded = '{:n}'.format(rounded)  # Test will locale work for float?
-    return rounded + " " + uom
+    return rounded + uom
+
+
+def human_bytes(size, decimals=1, space=True):
+    """ Return 127.38 MB, 3.12 GB, 876 KB, etc.
+        Called by location.py Locations()
+
+    Credit:
+    https://unix.stackexchange.com/questions/44040/
+    a-standard-tool-to-convert-a-byte-count-into-human-kib-mib-etc-like-du-ls1/
+    259254#259254 """
+    size = float(size)
+    off = 0
+    uom = ("Bytes", "KB", "MB", "GB", "TB", "EB", "PB", "YB", "ZB")
+    while size > 999:
+        off += 1
+        size = size / 1000.0
+        
+    rounded = round(size, decimals)
+    rounded = '{:n}'.format(rounded)
+    rounded = rounded.rstrip("0")  # Remove trailing 0's
+    rounded = rounded.rstrip(".")  # Remove trailing '.' if there
+    pad = " " if space is True else ""
+    return rounded + pad + uom[off]
 
 
 def days(seconds):
@@ -1222,7 +1252,7 @@ class SearchText:
             # Get all treeview values for testing via callback function
             values = self.tree.item(iid)['values']
 
-            if self.callback(values):
+            if self.callback(iid, values):
                 # callback says to keep this row
                 continue
 
