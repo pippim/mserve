@@ -12,7 +12,7 @@ from __future__ import with_statement       # Error handling for file opens
 
 #==============================================================================
 #
-#       toolkit.py - tkinter (took kit interface) functions
+#       toolkit.py - tkinter functions
 #
 #       Jan. 18 2022 - Set tooltip location SW, SE, NW or NE of parent widget.
 #       Feb. 26 2022 - Add border to tooltip, don't vary y-axis mouse movement.

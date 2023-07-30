@@ -1631,13 +1631,29 @@ def loc_add(Code, Name, ModifyTime, ImagePath, MountPoint, TopDir, HostName,
     """ Add Location Row """
     sql = "INSERT INTO Location (Code, Name, ModifyTime, ImagePath, \
            MountPoint, TopDir, HostName, HostWakeupCmd, HostTestCmd, \
-           HostTestRepeat, HostMountCmd, HostTouchCmd, HostTouchMinutes, Comments) \
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"  # 14 columns
+           HostTestRepeat, HostMountCmd, HostTouchCmd, HostTouchMinutes, \
+           Comments) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     loc_cursor.execute(
         sql, 
         (Code, Name, ModifyTime, ImagePath, MountPoint, TopDir, HostName, 
          HostWakeupCmd, HostTestCmd, HostTestRepeat, HostMountCmd, HostTouchCmd, 
          HostTouchMinutes, Comments))
+    con.commit()
+
+
+def loc_update(Code, Name, ModifyTime, ImagePath, MountPoint, TopDir, HostName,
+               HostWakeupCmd, HostTestCmd, HostTestRepeat, HostMountCmd,
+               HostTouchCmd, HostTouchMinutes, Comments, Id):
+    """ Add Location Row """
+    sql = "UPDATE Location SET Code=?, Name=?, ModifyTime=?, ImagePath=?, \
+           MountPoint=?,  TopDir=?, HostName=?, HostWakeupCmd=?, HostTestCmd=?, \
+           HostTestRepeat=?, HostMountCmd=?, HostTouchCmd=?, HostTouchMinutes=?, \
+           Comments=? WHERE Id=?"
+    loc_cursor.execute(
+        sql, 
+        (Code, Name, ModifyTime, ImagePath, MountPoint, TopDir, HostName, 
+         HostWakeupCmd, HostTestCmd, HostTestRepeat, HostMountCmd, HostTouchCmd, 
+         HostTouchMinutes, Comments, Id))
     con.commit()
 
 

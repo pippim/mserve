@@ -33,6 +33,10 @@ OS_NAME = plat.system()  # 'Linux'
 OS_VERSION = plat.release()  # '4.14.216-0414216-generic'
 OS_RELEASE = plat.version()  # '#202101171339 SMP Sun Jan 17 13:56:04 UTC 2021'
 
+##import external as ext  # Check if command installed to support features
+# Cannot import external because it imports toolkit which imports global_variables.py
+# Circular references give error g.USER is not defined
+
 USER = None             # User ID, Name, GUID varies by platform
 USER_ID = None          # Numeric User ID in Linux
 HOME = None             # In Linux = /home/USER

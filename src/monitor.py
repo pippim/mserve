@@ -19,6 +19,7 @@ from __future__ import with_statement  # Error handling for file opens
 #
 #       Jun. 14 2023 - Build list of all windows. To find those off-screen
 #       July 12 2023 - Interface to/from mserve_config.py
+#       July 29 2023 - Fix Monitor.get_active_monitor()
 #
 # ==============================================================================
 
@@ -161,8 +162,8 @@ def get_gtk_window():
     # Then get the geometry of that monitor
     monitor = s.get_monitor_geometry(m)
     # This is an example output
-    print("Height: %s, Width: %s, X: %s, Y: %s" %
-          (monitor.height, monitor.width, monitor.x, monitor.y))
+    #print("Height: %s, Width: %s, X: %s, Y: %s" %
+    #      (monitor.height, monitor.width, monitor.x, monitor.y))
     
 
 """  REAL REAL REAL REAL REAL REAL REAL REAL REAL REAL REAL REAL REAL REAL """
@@ -228,7 +229,7 @@ class Monitors:
                 geometry = SCREEN.get_monitor_geometry(index)
                 name = SCREEN.get_monitor_plug_name(index)
 
-            # print("Monitor {} = {}x{}+{}+{}".format(
+            #print("Monitor {} = {}x{}+{}+{}".format(
             #    index, geometry.width, geometry.height, geometry.x, geometry.y),
             #    name)
 
@@ -345,22 +346,36 @@ class Monitors:
         win = self.get_active_window()      # Results in self.found_window too
 
         x, y, w, h = win.x, win.y, win.width, win.height
+        #print("win.name:", win.name, "win.x:", win.x, "win.y:", win.y, 
+        #      "win.width:", win.width, "win.height:", win.height)
+
+        x_center = win.x + win.width // 2
+        y_center = win.y + win.height // 2
+        #print("x_center:", x_center, "y_center:", y_center)
 
         if x < 0 or x > self.screen_width:  # same as self.desk_width
             x = 0  # Window top left may be off screen!
-            print('ERROR monitor.py: Window:,', win.number,
-                  'x-offset:', win.x, 'was off screen.\n', win.name)
+            #print('ERROR monitor.py: Window:,', win.number,
+            #      'x-offset:', win.x, 'was off screen.\n', win.name)
         if y < 0 or y > self.screen_height:  # same as self.desk_height
             y = 0
-            print('ERRO R monitor.py: Window:,', win.number,
-                  'y-offset:', win.y, 'was off screen.\n', win.name)
+            #print('ERROR monitor.py: Window:,', win.number,
+            #      'y-offset:', win.y, 'was off screen.\n', win.name)
 
         primary_monitor = None
 
         for mon in self.monitors_list:
+            #print("mon.name:", mon.name, "mon.x:", mon.x, "mon.y:", mon.y,
+            #      "mon.width:", mon.width, "mon.height:", mon.height)
             # Save primary monitor if needed later
             if mon.primary is True:
                 primary_monitor = mon
+
+            ''' July 29, 2023 - Test window center inside monitor bbox '''
+            if mon.x <= x_center <= (mon.x + mon.width):
+                if mon.y <= y_center <= (mon.y + mon.height):
+                    #print("FOUND:", mon.name)
+                    return mon
 
             # Most of window must be on monitor to qualify
             if x < mon.x:
@@ -368,18 +383,23 @@ class Monitors:
                 # win.x could be 10 pixels before mon.x but
                 # win.width could be 1000 and most of window
                 # does sit inside mon
+                #print("x < mon.x:", x, mon.x)
                 continue
             if x >= mon.x + mon.width // 2:
                 # B) This is flawed test.
                 # win.x could be 10 pixels past mon.x middle
                 # win.width might only be 400 pixels and all of window
                 # sits inside mon
+                #print("x >= mon.x + mon.width // 2:", x, mon.x, mon.width // 2)
                 continue
-            if y < mon.y:
+            if y > mon.y:
                 # C) This is flawed test similar to A).
+                # July 29, 2023 used to be "y < mon.y"
+                #print("y > mon.y:", y, mon.y)
                 continue
             if y >= mon.y + mon.height // 2:
                 # D) This is flawed test similar to B).
+                #print("y >= mon.y + mon.height // 2:", y, mon.y, mon.height // 2)
                 continue
 
             # Window is mostly on this monitor.
@@ -468,7 +488,7 @@ def get_monitors():
             geometry = SCREEN.get_monitor_geometry(index)
             name = SCREEN.get_monitor_plug_name(index)
 
-        # print("Monitor {} = {}x{}+{}+{}".format(
+        #print("Monitor {} = {}x{}+{}+{}".format(
         #    index, geometry.width, geometry.height, geometry.x, geometry.y),
         #    name)
 
@@ -488,8 +508,11 @@ def get_monitors():
     return monitors
 
 
+''' Start of REAL code used today (May 2, 2021) '''
+
+
 def center(window):
-    """
+    """  July 28, 2023... centers on monitor 0, not monitor 2?
     Similar to Monitor.tk_center()
     
     From: https://stackoverflow.com/a/10018670/6929343
@@ -508,17 +531,11 @@ def center(window):
     # Calculate X, Y of window to center within monitors X, Y, width and height
     x = mon_dict['width'] // 2 - window.winfo_width() // 2 + mon_dict['x']
     y = mon_dict['height'] // 2 - window.winfo_height() // 2 + mon_dict['y']
-    if x < 0:
-        x = 0  # Window top left may be off screen!
-    if y < 0:
-        y = 0
-
+    x = 30 if x < 0 else x  # Window top left may be off screen!
+    y = 30 if y < 0 else y
     window.geometry('+{}+{}'.format(x, y))
 
     return mon_dict
-
-
-''' Start of REAL code used today (May 2, 2021) '''
 
 
 def get_tk_window_monitor_dict(window):
@@ -537,9 +554,9 @@ def get_tk_window_monitor_dict(window):
     x, y, w, h = get_window_geom_raw(window)    # Tkinter style window geometry
 
     if x < 0 or x > SCREEN.width():
-        x = 0  # Window top left may be off screen!
+        x = 30  # Window top left may be off screen!
     if y < 0 or y > SCREEN.height():
-        y = 0
+        y = 30
 
     first_monitor = None
     ''' Assumes another function has already set NUMBER_OF_MONITORS '''
@@ -611,7 +628,7 @@ def get_window_bbox(window, leave_visible=True):
 
 
 def get_window_geom_string(window, leave_visible=True):
-    """ Get Tkinter window's width x height + x-offset + y-offset
+    """ Get Tkinter window's: Width x Height + X-offset + Y-offset
     Primarily used to for writing window geometry to disk for next restart.
     Used in encoding.py(1), location.py(1), mserve.py(6) and webscrape.py(1)
     :returns "WxH+X+Y" string.
@@ -636,8 +653,8 @@ def get_xrandr_monitors():
     result = os.popen('xrandr --listmonitors').read().splitlines()
     # inspection SpellCheckingInspection
 
-    # print('get_xrandr_monitors() result:')
-    # print(result)
+    #print('get_xrandr_monitors() result:')
+    #print(result)
 
     monitors = []
     for line in result:
@@ -648,15 +665,15 @@ def get_xrandr_monitors():
             continue              # First line needs to be skipped
 
         monitor = {'number': int(line.split(':')[0])}
-        # print('line:', line)
-        # print('field 0:', line.split(':')[0])
+        #print('line:', line)
+        #print('field 0:', line.split(':')[0])
         if "*" in line:
             monitor['primary'] = True
         else:
             monitor['primary'] = False
         full_geom_list = line.split()[2:3]
         full_geom = full_geom_list[0]
-        # print('full_geom:', full_geom)
+        #print('full_geom:', full_geom)
         monitor['x'] = int(full_geom.split('+')[1:2][0])
         monitor['y'] = int(full_geom.split('+')[2:][0])
         width_height = full_geom.split('+')[0]
@@ -667,8 +684,8 @@ def get_xrandr_monitors():
         monitor['name'] = line.split()[-1]
         monitors.append(monitor)
 
-    # print('get_xrandr_monitors() monitors:')
-    # print(monitors)
+    #print('get_xrandr_monitors() monitors:')
+    #print(monitors)
 
     return monitors     # List of mon_dict
 
@@ -726,6 +743,7 @@ def get_window_geom(name):
     """
 
     xy = (130, 130)  # Default coordinates for first encounter windows.
+    # When changing (130, 130), revise location.py Locations.display_test_window()
     # Could also use active monitor but that requires compiz?
 
     if name == 'library':  # mserve.py & bserve.py
@@ -772,7 +790,8 @@ def get_window_geom(name):
             print('monitor.get_window_geom(): No History ID:', sql.HISTORY_ID)
             return default_geom
         else:
-            new_geom = check_window_geom(d['SourceMaster'])
+            # new_geom intention for windows off desktop but gnome seems to fix?
+            #new_geom = check_window_geom(d['SourceMaster'])
             return d['SourceMaster']  # Geometry (Coordinates, width & height)
     else:
         # First time.
@@ -799,7 +818,7 @@ def check_window_geom(geom):
     ms = Monitors()
     #print("\nDebugging monitor.check_window_geom(" + geom + "):\n")
     #for m in ms.monitors_list:
-    #    print("m:", m)
+    #print("m:", m)
     ''' SUMMARY of Monitors() class
 class Monitors:
     def __init__(self):

@@ -317,10 +317,11 @@ NOTES:
         sudo mount -t auto -v /dev/sdb1 /mnt/music
 
 TODO'S:
-    verify external commands are in path:
-        command -v cp, diff, ffplay, ffprobe, ffmpeg, gsettings, gst-launch-1.0,
-            kid3, kill, nautilus, pactl, pgrep, pqiv, ps, stat, touch, 
-            wmctrl, xclip, xdotool, xprop
+    In mserve_config.py, verify external commands are in path:
+        command -v cp, diff, ffplay, ffprobe, ffmpeg, fusermount, 
+            gsettings, gst-launch-1.0, kid3, kill, 
+            nautilus, nc, nmap, pactl, pgrep, pqiv, ps, stat, touch, 
+            wakeonlan, wmctrl, xclip, xdotool, xprop
 
     Compare Location - Make background process so music player keeps spinning
 """
@@ -449,7 +450,7 @@ CFG_DIVISOR_UOM = "MB"      # Unit of Measure becomes Megabyte
 
 # Global variables
 RESTART_SLEEP = .3          # Delay for mserve close down
-KEEP_AWAKE_MS = 250         # Milliseconds between time checks
+KEEP_AWAKE_MS = 250         # Milliseconds between time checks loc_keep_awake()
 META_DISPLAY_ROWS = 5       # Number of Metadata Rows displayed in frame
 # Search on 'July 18, 2023' to see code impacted by global variable usage.
 SCROLL_WIDTH = 16           # Scroll bar width, July 3, 2023 used to be 12
@@ -509,13 +510,14 @@ TMP_ALL_NAMES = [TMP_CURR_SONG, TMP_CURR_SAMPLE, TMP_CURR_SYNC,
                  TMP_FFPROBE, TMP_FFMPEG, VU_METER_FNAME,
                  VU_METER_LEFT_FNAME, VU_METER_RIGHT_FNAME]
 
-ENCODE_DEV = True  # Should always be False for production versions
+ENCODE_DEV = True  # Development encoding.py last disc ID recycled saving 63 secs
 
-KID3_INSTALLED = True
+KID3_INSTALLED = False  # Reset just before popup menu created
 KID3_NAME = "Kid3 Audio Tagger"
 KID3_COMMAND = "xrandr --dpi 144 && kid3 "  # Kid3 isn't HDPI yet
 KID3_WIN_SIZE = "1280x736"  # Window size changed after program starts
-FM_INSTALLED = True
+
+FM_INSTALLED = False  # Reset just before popup menu created
 FM_NAME = "Nautilus File Manager"  # No HDPI required.  Change to FM_NAME
 FM_COMMAND = "nautilus"
 FM_WIN_SIZE = "1000x600"  # Window size changed after program starts
@@ -1185,6 +1187,7 @@ class MusicLocationTree(PlayCommonSelf):
         lcs.register_tt(self.tt)  # Assign in Locations() class
         lcs.register_menu(self.enable_lib_menu)
         lcs.register_pending(self.get_pending_cnt_total)
+        lcs.register_oap_cb(self.open_and_play_callback)
 
         dtb = message.DelayedTextBox(title="Building music view",
                                      toplevel=None, width=1000)
@@ -1294,6 +1297,11 @@ class MusicLocationTree(PlayCommonSelf):
         patterns = [("using directory:", "Green", "Black")]
         self.info.fact("mserve started using directory: " + g.MSERVE_DIR,
                        patterns=patterns)
+
+        if lcs.open_touchcmd:
+            text = 'Keeping Host awake with Touch command: ' + lcs.open_touchcmd + \
+                   ' every: ' + str(lcs.open_touchmin) + ' minutes.'
+            self.info.cast(text)
 
         ''' Create self.playlists '''
         # thread=self.get_refresh_thread,  # Passing function for each time window opens!
@@ -1521,8 +1529,13 @@ class MusicLocationTree(PlayCommonSelf):
         self.file_menu.add_command(label="OLD New Location", font=(None, MED_FONT),
                                    command=lambda: self.loc_add_new(caller='Drop',
                                                                     mode='Add'))
+        # "Edit Location"
+        self.file_menu.add_command(label="New Location", font=(None, MED_FONT),
+                                   command=lcs.new, state=tk.DISABLED)
         self.file_menu.add_command(label="OLD Open Location & Play", font=(None, MED_FONT),
                                    command=lambda: self.loc_open_play(caller='Drop'))
+        self.file_menu.add_command(label="Open Location and Play", font=(None, MED_FONT),
+                                   command=lcs.open, state=tk.DISABLED)
         self.file_menu.add_separator()
 
         self.file_menu.add_command(label="Open Playlist", font=(None, MED_FONT),
@@ -1566,12 +1579,14 @@ class MusicLocationTree(PlayCommonSelf):
         self.edit_menu.add_command(label="OLD Edit Location", font=(None, MED_FONT),
                                    command=lambda: self.loc_edit(
                                    caller='Drop', mode='Edit'))
-        self.edit_menu.add_command(label="Edit Locations", font=(None, MED_FONT),
-                                   command=lcs.edit)
-        self.edit_menu.add_command(label="Compare Location", font=(None, MED_FONT),
+        self.edit_menu.add_command(label="Edit Location", font=(None, MED_FONT),
+                                   command=lcs.edit, state=tk.DISABLED)
+        self.edit_menu.add_command(label="OLD Compare Location", font=(None, MED_FONT),
                                    command=lambda: self.loc_compare(
                                    caller='Drop', mode='Compare'))
-        self.edit_menu.add_command(label="Forget Location", font=(None, MED_FONT),
+        self.edit_menu.add_command(label="Delete Location", font=(None, MED_FONT),
+                                   command=lcs.delete, state=tk.DISABLED)
+        self.edit_menu.add_command(label="OLD Forget Location", font=(None, MED_FONT),
                                    command=lambda: self.loc_forget(
                                    caller='Drop', mode='Forget'))
         self.edit_menu.add_separator()
@@ -1592,7 +1607,7 @@ class MusicLocationTree(PlayCommonSelf):
                                    command=lambda: self.show_location(
                                    caller='Drop', mode='Show'))
         self.view_menu.add_command(label="View Locations", font=(None, MED_FONT),
-                                   command=lcs.view)
+                                   command=lcs.view, state=tk.DISABLED)
         self.play_hockey_allowed = self.get_hockey_state()
         if self.play_hockey_allowed:
             text = "Enable FF/Rewind buttons"  # TODO: Make self.variable names
@@ -1623,8 +1638,22 @@ class MusicLocationTree(PlayCommonSelf):
         set options.  Also passed with lcs.register_menu(self.enable_lib_menu)
         :return: None
         """
-        self.disable_playlist_menu()
 
+        ''' Quick and dirty solution for now '''
+        if lcs.main_top:
+            self.file_menu.entryconfig("Open Location and Play", state=tk.DISABLED)
+            self.file_menu.entryconfig("New Location", state=tk.DISABLED)
+            self.edit_menu.entryconfig("Edit Location", state=tk.DISABLED)
+            self.edit_menu.entryconfig("Delete Location", state=tk.DISABLED)
+            self.view_menu.entryconfig("View Locations", state=tk.DISABLED)
+        else:
+            self.file_menu.entryconfig("Open Location and Play", state=tk.NORMAL)
+            self.file_menu.entryconfig("New Location", state=tk.NORMAL)
+            self.edit_menu.entryconfig("Edit Location", state=tk.NORMAL)
+            self.edit_menu.entryconfig("Delete Location", state=tk.NORMAL)
+            self.view_menu.entryconfig("View Locations", state=tk.NORMAL)
+
+        self.disable_playlist_menu()
         if self.playlists.top:  # If top level is open, everything disabled.
             return
 
@@ -1757,10 +1786,6 @@ class MusicLocationTree(PlayCommonSelf):
             self.playlists.top.focus_force()  # Get focus
             self.playlists.top.lift()  # Raise in stacking order
 
-        if lcs.test_top:
-            ''' Testing Host (test_top) always covers top '''
-            lcs.test_top.focus_force()  # Get focus
-            lcs.test_top.lift()  # Raise in stacking order
         elif lcs.main_top:
             lcs.main_top.focus_force()  # Get focus
             lcs.main_top.lift()  # Raise in stacking order
@@ -2629,21 +2654,24 @@ class MusicLocationTree(PlayCommonSelf):
         """ Every x minutes issue keep awake command for server. For example:
             'ssh dell "touch /tmp/mserve"' works for ssh-activity bash script.
 
+            Recursive call to self
+
         """
 
-        if self.loc_keep_awake_is_active is False:
-            return  # We are shutting down
+        if not self.loc_keep_awake_is_active:
+            return  # mserve.py is shutting down
 
         self.awake_last_time_check = time.time()
         if self.awake_last_time_check > self.next_active_cmd_time:
             # Test if still awake before sending active command
             # NOTE: Use LODICT[] because user can change lc.DICT[] values
             test_passed = lc.test_host_up(LODICT['host'])
+            test_passed = lcs.test_host_up()  # Quick & dirty nc test
             if self.loc_keep_awake_is_active is False:
-                return
+                return  # Shutting down now
             if test_passed is False:
                 print('Host:', LODICT['host'], 'is off-line. Restarting...')
-                self.restart()              # Temporary - only start device
+                self.restart(host_down=True)  # Temporary - only start device
                 if test_passed is False:    # Dummy test always true
                     return                  # Code below is not developed
 
@@ -2679,10 +2707,12 @@ class MusicLocationTree(PlayCommonSelf):
                 '''
 
             result = os.popen(LODICT['activecmd']).read().strip()
+            result = os.popen(lcs.open_touchcmd).read().strip()
             if len(result) > 4:
                 print('loc_keep_awake() result:', result)
             self.awake_last_time_check = time.time()
             self.next_active_cmd_time = self.awake_last_time_check + (60 * LODICT['activemin'])
+            self.next_active_cmd_time = self.awake_last_time_check + (60 * lcs.open_touchmin)
 
             # noinspection SpellCheckingInspection
             '''
@@ -2693,24 +2723,8 @@ class MusicLocationTree(PlayCommonSelf):
             '''
             # inspection SpellCheckingInspection
 
-            if self.loc_keep_awake_is_active is False:
-                return
-
-        # root.after(250, self.loc_keep_awake)
-        ''' ERROR when click X to close lib_top treeview:
-
-                invalid command name "139661461069488loc_keep_awake"
-                    while executing
-                "139661461069488loc_keep_awake"
-                    ("after" script)
-
-            Final solution was changing global variable:
-                RESTART_SLEEP = .1              # Delay for mserve close down
-            to:
-                RESTART_SLEEP = .3              # Delay for mserve close down
-                
-            Note if program just opened, this delay is too short...
-        '''
+            if not self.loc_keep_awake_is_active:
+                return  # mserve.py is shutting down
 
         # noinspection PyBroadException
         try:
@@ -2983,10 +2997,12 @@ class MusicLocationTree(PlayCommonSelf):
         self.loc_top.update_idletasks()
 
     def loc_hide_fields(self):
+        """ .grid_remove() Doesn't work with ChromeOS in 2020 """
         if GRID_REMOVE_SUPPORTED:
             self.loc_F4.grid_remove()
 
     def loc_show_fields(self):
+        """ .grid_remove() Doesn't work with ChromeOS in 2020 """
         if GRID_REMOVE_SUPPORTED:
             self.loc_F4.grid()
 
@@ -3034,6 +3050,7 @@ class MusicLocationTree(PlayCommonSelf):
 
         ''' Save last opened location iid with next iid to load '''
         lc.save_mserve_location(next_iid)
+        lcs.save_mserve_location(next_iid)
 
         ''' Next top directory to startup '''
         next_topdir = lc.item(item)['topdir']
@@ -3268,7 +3285,6 @@ class MusicLocationTree(PlayCommonSelf):
         answer = message.AskQuestion(
             self.loc_top, thread=self.get_refresh_thread(), align='left',
             icon='warning', title="Forget Location Confirmation", text=text)
-        # print('answer.result:', answer.result)
         if answer.result is not 'yes':
             return
 
@@ -4273,6 +4289,9 @@ class MusicLocationTree(PlayCommonSelf):
                          command=lambda: self.rename_files(Id, level))
         menu.add_separator()
 
+        global KID3_INSTALLED, FM_INSTALLED  
+        KID3_INSTALLED = ext.check_command('kid3')
+        FM_INSTALLED = ext.check_command(FM_COMMAND)
         if KID3_INSTALLED:
             menu.add_command(label="Open " + KID3_NAME, font=(None, MED_FONT),
                              command=lambda: self.kid3_open(Id))
@@ -4303,6 +4322,11 @@ class MusicLocationTree(PlayCommonSelf):
         
         menu.add_command(label="Rename Song Title", font=(None, MED_FONT),
                          command=lambda: self.rename_files(Id, "Song Title"))
+
+        global KID3_INSTALLED, FM_INSTALLED  
+        KID3_INSTALLED = ext.check_command('kid3')
+        FM_INSTALLED = ext.check_command(FM_COMMAND)
+
         if KID3_INSTALLED:
             menu.add_command(label="Open " + KID3_NAME, font=(None, MED_FONT),
                              command=lambda: self.kid3_open(Id))
@@ -4809,7 +4833,7 @@ class MusicLocationTree(PlayCommonSelf):
         self.close(save=False)
 
     # noinspection PyUnusedLocal
-    def close(self, save=True, *args):
+    def close(self, save=True, host_down=False, *args):
         """ save=True is default. False prevents saving data. """
         if save:
             if self.playlists.name is not None:
@@ -4817,23 +4841,56 @@ class MusicLocationTree(PlayCommonSelf):
                 self.write_playlist_to_disk(ShowInfo=False)
             else:
                 self.save_last_selections()  # Last selections for next open
-        self.close_sleepers()  # Shut down running functions
+        self.close_sleepers(host_down)  # Shut down running functions
         self.tt.close(self.lib_top)  # Close tooltips under top level
         root.destroy()
         self.lib_top = None
 
     # noinspection PyUnusedLocal
-    def restart(self, *args):
+    def restart(self, host_down=False, *args):
         """ July 13 2023 - A couple weeks ago this option was removed from
             dropdown menu because after 100 times it causes lag in TCL/Tk """
-        self.close()
+        self.close(host_down)
         # TODO: Test with `m` passing sys.argv via "parameters" keyword.
         os.execl(sys.executable, sys.executable, *sys.argv)
 
+    def open_and_play_callback(self, code, topdir):
+        """ Open location by calling lcs.test() first to check success.
+            After error checking, call restart with new topdir as parameter 1.
+            Called from lcs.apply() self.open_and_play_callback()
+            lcs.act_code and lcs.act_topdir are all current because
+            lcs.reset() has not been run yet. """
+        # Save current selections before restart
+        if self.playlists.name is not None:
+            ''' Not a problem because lcs.open() checks pending counts '''
+            pass
+        else:
+            self.save_last_selections()
+
+        ''' Shouldn't be required. lcs.open should have run test '''
+        lcs.read_location(code)  # setup self.act_code, self.act_host, etc.
+        lcs.sshfs_close()
+        if lcs.test_common(self.lib_top):  # Validate Host can be woken up
+            pass  # We are good to go
+        else:
+            # Location doesn't exist
+            title = "Location Error"
+            text = "Top directory doesn't exist or is off-line."
+            self.info.cast(title + "\n\n" + text)
+            message.ShowInfo(lcs.main_top, title, text,
+                             thread=self.get_refresh_thread())
+            return False  # Pops back into lcs.apply() which calls lcs.reset()
+
+        ''' Save last opened location code '''
+        lcs.save_mserve_location(code)
+
+        ''' Next top directory to startup '''
+        self.parm = topdir
+        self.restart_new_parameters(self)
+
     # noinspection PyUnusedLocal
     def restart_new_parameters(self, *args):
-        """ July 13 2023 - A couple weeks ago this option was removed from
-            dropdown menu because after 100 times it causes lag in TCL/Tk """
+        """ Called by open_and_play() function """
         # NOTE: We've already saved selections and don't want to overwrite
         #       with new location iid
         self.close_sleepers()  # Shut down running functions
@@ -4847,10 +4904,12 @@ class MusicLocationTree(PlayCommonSelf):
             sys.argv.append(self.parm)
         os.execl(sys.executable, sys.executable, *sys.argv)
 
-    def close_sleepers(self):
+    def close_sleepers(self, host_down=False):
         """ COMMON CODE for restart and quit
             Close loc_keep_awake() first as it has .25-second sleep cycle """
-        self.loc_keep_awake_is_active = False
+        if self.loc_keep_awake_is_active:  # Keeping remote host awake?
+            self.loc_keep_awake_is_active = False
+
         self.lib_top_is_active = False      # Tell refresh_acc_times() to bail out
 
         if self.gone_fishing is not None:
@@ -4862,11 +4921,11 @@ class MusicLocationTree(PlayCommonSelf):
         #if self.sync_top_is_active:          # Synchronizing lyrics time indices
         #    self.sync_close()
         if self.fine_tune and self.fine_tune.top_is_active:
-            self.fine_tune.close()          # Synchronizing lyrics time indices
+            self.fine_tune.close(host_down)  # Synchronizing lyrics time indices
         if self.play_top_is_active:         # Is music playing?
-            self.play_close()
+            self.play_close(host_down)
         if self.ltp_top_is_active:          # Sampling middle 10 seconds?
-            self.lib_tree_play_close()
+            self.lib_tree_play_close(host_down)
         if self.loc_top_is_active:          # Editing Locations?
             self.loc_close()
         if self.mus_top_is_active:          # Viewing SQL Music Table?
@@ -4874,7 +4933,7 @@ class MusicLocationTree(PlayCommonSelf):
         if self.his_top_is_active:          # Viewing SQL History Table?
             self.his_close()
         if self.lcs_top_is_active:          # Viewing SQL Location Table?
-            self.lcs_close()
+            self.lcs_close()  # Different than lcs.close() !!!
         if self.tv_vol and self.tv_vol.top:
             self.tv_vol.close()             # Adjusting Volume during TV commercials?
         if self.playlists.top:              # Close Playlists window and tell it
@@ -4882,10 +4941,11 @@ class MusicLocationTree(PlayCommonSelf):
         if lcs.test_top:  # Test Host Window is open
             lcs.test_top.destroy()
         if lcs.main_top:  # Locations Maintenance Window is open
-            lcs.reset()
+            lcs.reset(shutdown=True)
+        lcs.sshfs_close()  # It will check if mounted and act accordingly
 
         if encoding.RIP_CD_IS_ACTIVE:       # Ripping CD currently active?
-            encoding.RIP_CD_IS_ACTIVE = False
+            encoding.RIP_CD_IS_ACTIVE = False  # Force ripping window shutdown.
 
         # Last known window position for music library, saved to SQL
         last_library_geom = monitor.get_window_geom_string(
@@ -6626,6 +6686,7 @@ class MusicLocationTree(PlayCommonSelf):
         try:
             iid = LODICT['iid']
             lc.save_mserve_location(iid)
+            lcs.save_mserve_location(iid)
         except:
             # Occurs when manually started with directory not in locations
             # Occurs when there are no locations defined whatsoever
@@ -6818,6 +6879,9 @@ class MusicLocationTree(PlayCommonSelf):
         ext.t_init('Wrap up')
 
         # Keep host awake if necessary
+        if lcs.open_touchcmd:
+            self.loc_keep_awake_is_active = True
+
         if LODICT.get('activecmd', "") is not "":
             self.loc_keep_awake_is_active = True
 
@@ -8407,7 +8471,6 @@ class MusicLocationTree(PlayCommonSelf):
         text += "\n\t\tAnswer was: " + answer.result
         self.info.cast(title + "\n\n" + text)
 
-        print("answer.result:", answer.result)
         if answer.result != 'yes':
             return  # Don't delete pids
         for pid in found_pids:
@@ -10802,7 +10865,7 @@ mark set markName index"
             self.populate_chron_tree()  # Rebuild with new song
 
     # noinspection PyUnusedLocal
-    def play_close(self, *args):
+    def play_close(self, host_down=False, *args):
         # TODO: last_selections aren't being saved. When clicking play again
         #       shuffle order and last song index are lost.
 
@@ -10811,13 +10874,14 @@ mark set markName index"
 
         ''' Should not be able to call if self.fine_tune is active. '''
         if self.fine_tune and self.fine_tune.top_is_active:
-            self.fine_tune.close()  # Prevents tons of exceptions.
+            self.fine_tune.close(shut_down)  # Prevents tons of exceptions.
 
         self.tt.close(self.play_top)  # Close tooltips under top level
         ''' July 9, 2023 - Doesn't matter if volume left turned down '''
         #if self.play_ctl.sink is not "":
         #    pav.set_volume(self.play_ctl.sink, 100)
-        self.play_ctl.close()  # If playing song update last access time
+        if not host_down:  # If the host is down, touching file stalls mserve.
+            self.play_ctl.close()  # If playing song update last access time
 
         # Reverse filters so proper song index is saved
         if self.chron_filter is not None:
@@ -11131,7 +11195,7 @@ mark set markName index"
             return False
 
     # noinspection PyUnusedLocal
-    def lib_tree_play_close(self, normal=False, *args):  # *args required when lambda used
+    def lib_tree_play_close(self, normal=False, host_down=False, *args):  # *args required when lambda used
         """ Close self.ltp_top - Sample random song
             Can come here twice. Once normally and again with close button.
         """
@@ -11160,7 +11224,8 @@ mark set markName index"
                     break
             pav.fade_in_aliens(1)  # Turn back non-ffplay volumes to original
 
-        self.ltp_ctl.close()  # Close FileControl(), reset ATIME
+        if not host_down:  # If the host is down, touching file stalls mserve.
+            self.ltp_ctl.close()  # Close FileControl(), reset ATIME
         self.tt.close(self.ltp_top)  # Close tooltips under top level
         self.ltp_top_is_active = False
 
@@ -11379,9 +11444,17 @@ mark set markName index"
         # Future Song/Playlist Notes kept in SQL History
         #menu.add_command(label="Notes", font=(None, MED_FONT),
         #                 command=lambda: self.chron_tree_notes(item))
+
+        global KID3_INSTALLED, FM_INSTALLED  
+        KID3_INSTALLED = ext.check_command('kid3')
+        FM_INSTALLED = ext.check_command(FM_COMMAND)
+
         if KID3_INSTALLED:
             menu.add_command(label="kid3", font=(None, MED_FONT),
                              command=lambda: self.chron_tree_kid3(item))
+        if FM_INSTALLED:
+            menu.add_command(label="Open " + FM_NAME, font=(None, MED_FONT),
+                             command=lambda: self.chron_tree_fm(item))
         menu.add_separator()
         menu.add_command(label="Ignore click", font=(None, MED_FONT),
                          command=lambda: self.close_chron_popup(menu, item))
@@ -11560,6 +11633,13 @@ mark set markName index"
         """
         iid = self.saved_selections[int(item) - 1]  # Create treeview ID
         self.kid3_open(iid)
+
+    def chron_tree_fm(self, item):
+        """ Open File Manager
+            Id from song_selections[] vs. treeview Id
+        """
+        iid = self.saved_selections[int(item) - 1]  # Create treeview ID
+        self.fm_open(iid)
 
     def build_chron_line(self, playlist_no, lib_tree_iid, short_line):
         """ № (U+2116)  🎵  (1f3b5)  🎨  (1f3a8)  🖌  (1f58c)  🖸 (1f5b8)
@@ -12640,7 +12720,6 @@ class FineTune:
             text="All times will be permanently erased!!!\n\n" +
                  'To cancel time changes, click "Close" button instead.' +
                  "\n\nAfter deleting, Time Index window will be closed.")
-        # print('answer.result:', answer.result)
         if answer.result != 'yes':
             return
 
@@ -13077,7 +13156,7 @@ class FineTune:
         return False
 
     # noinspection PyUnusedLocal
-    def close(self, *args):  # *args required for lambda
+    def close(self, host_down=False, *args):  # *args required for lambda
         """ Close Synchronize Time Index to Lyrics window
             Modeled after lib_tree_play_close() but with confirmation if changes made.
         """
@@ -13117,8 +13196,9 @@ class FineTune:
             pav.fade_in_aliens(1)  # Doesn't take any time
 
         ''' With so much time spent synchronizing set last access to now '''
-        if self.time_ctl and self.time_ctl.state != 'end':
-            self.time_ctl.close()  # Resets last access time to original
+        if not host_down:  # If the host is down, touching file stalls mserve.
+            if self.time_ctl and self.time_ctl.state != 'end':
+                self.time_ctl.close()  # Resets last access time to original
 
         self.top.destroy()  # Close the window
         if os.path.isfile(TMP_CURR_SYNC):
@@ -15259,8 +15339,6 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                                 [self.act_row_id])
         sql.con.commit()
 
-    # noinspection PyUnusedLocal
-    # def reset(self, *args):
     def reset(self, shutdown=False):
         """
         Named "reset" instead of "close" because, "close()" is used by
@@ -16444,13 +16522,9 @@ def load_last_location():
         print('Keep awake command:', LODICT['activecmd'],
               'every', LODICT['activemin'], 'minutes.')
 
-    # Check if host name not blank and then wake it up and validate topdir
-    if lc.validate_host(LODICT['iid']):  # No toplevel for parm 2
-        # returns true only when host and host is online
-        return True
-
     ''' See if last location path and see if it is mounted '''
     if not os.path.isdir(START_DIR):
+        # NOTE: Should check to make sure not empty.
         print('Location contains invalid or off-line directory:', START_DIR)
         return False
 
@@ -16516,6 +16590,7 @@ def open_files(old_cwd, prg_path, parameters, toplevel=None):
     global NEW_LOCATION  # True=Unknown music directory in parameter #1
     global LODICT  # Permanent copy of location dictionary never touched
 
+    who = "mserve.py open_files() - "
     if prg_path is None:
         # it will never be None. Just don't want to code this stuff yet.
         print("prg_path is not used. Review:", prg_path)
@@ -16569,10 +16644,11 @@ def open_files(old_cwd, prg_path, parameters, toplevel=None):
     ''' Is passed music_dir in our known locations? '''
     if music_dir is not None and lc.get_dict_by_dirname(music_dir):
         use_location = True  # Override to use location found by dir name
-        print('mserve.py open_files() Overriding music_dir:', music_dir,
+        print(who + 'Overriding music_dir:', music_dir,
               'to location:', lc.DICT['iid'])
         # Make passed Top Directory our last known location then load it
         lc.save_mserve_location(lc.DICT['iid'])
+        lcs.save_mserve_location(lc.DICT['iid'])
 
     ''' create START_DIR, test location awake, check files exist '''
     if use_location:
@@ -16581,15 +16657,17 @@ def open_files(old_cwd, prg_path, parameters, toplevel=None):
         lcs.register_NEW(NEW_LOCATION)
         lcs.register_parent(root)  # ShowInfo will go to root window parent
 
-        ''' Still need hooks to New Location and Edit Location. '''
-        ret = lcs.load_last_location()  # Open last location
+        ''' Below mounts host testing window appropriately as required'''
+        ret = lcs.load_last_location(root)  # Open last location and validate
 
         if ret == 0:
             START_DIR = lcs.open_topdir
             if not START_DIR.endswith(os.sep):
                 START_DIR += os.sep
-            # return  After locations fully converted we leave now.
-        title = "Error retrieving Location to play"
+            print(who + "lcs.load_last_location() success")
+            print("Use START_DIR:", START_DIR)
+
+        title = who + "Error retrieving Location to play"  # Default for any errors
         text2 = "Proceeding to use music_dir: " + str(music_dir)
 
         if ret == 1:
@@ -16608,12 +16686,14 @@ def open_files(old_cwd, prg_path, parameters, toplevel=None):
             message.ShowInfo(root, title=title, text=text, icon='error', root=True)
         if ret == 3:
             ''' Top Directory doesn't exist or host is off-line '''
-            text = "Check: " + lcs.open_topdir + "\n\n"
+            text = "Top Directory doesn't exist or host is off-line.  Check:\n\t"
+            text += lcs.open_topdir + "\n\n"
             text += text2
             print('\nmserve.py main() ERROR:\n')
             print(text)  # Print to console and show message on screen at 100, 100
             message.ShowInfo(root, title=title, text=text, icon='error', root=True)
 
+        ''' Version 1 load_last_location() global function'''
         if load_last_location():
             # If no optional `/` at end, add it for equal comparisons
             if not START_DIR.endswith(os.sep):

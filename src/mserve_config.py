@@ -212,7 +212,7 @@ def make_mserve_cfg():
     cfg.append(make_dict(m, "ext", "external", "pippim.com"))
     cfg.append(make_dict(m, "img", "image", "pippim.com"))
     cfg.append(make_dict(m, None, "sql", "pippim.com"))
-    cfg.append(make_dict(m, None, "monitor", "pippim.com"))  # No "as mon"
+    cfg.append(make_dict(m, None, "monitor", "pippim.com"))  # Not "as mon"
     cfg.append(make_dict(m, None, "toolkit", "pippim.com"))
     cfg.append(make_dict(m, "tmf", "timefmt", "pippim.com"))
     cfg.append(make_dict(m, None, "webscrape", "pippim.com"))
@@ -359,15 +359,28 @@ def make_lc_cfg():
     """ Configuration for: 'import location as lc' """
     cfg = list()  # Return list of dictionaries
     m = "location"  # Module name to python interpreter
+    cfg.extend(make_tk_cfg(m))
+    cfg.extend(make_PIL_cfg(m))
+    # Python Standard Library
     cfg.append(make_dict(m, None, "os"))
     cfg.append(make_dict(m, None, "sys"))
+    cfg.append(make_dict(m, None, "errno"))
     cfg.append(make_dict(m, None, "shutil"))
     cfg.append(make_dict(m, None, "time"))
     cfg.append(make_dict(m, None, "pickle"))
     cfg.append(make_dict(m, None, "time"))
     cfg.append(make_dict(m, None, "datetime"))
-    cfg.append(make_dict(m, None, "message", "pippim.com"))
+    cfg.append(make_dict(m, "OrderedDict", "collections"))
+
+    # Pippim modules
     cfg.append(make_dict(m, "g", "global_variables", "pippim.com"))
+    cfg.append(make_dict(m, None, "sql", "pippim.com"))
+    cfg.append(make_dict(m, None, "toolkit", "pippim.com"))
+    cfg.append(make_dict(m, None, "message", "pippim.com"))
+    cfg.append(make_dict(m, None, "monitor", "pippim.com"))  # Not "as mon"
+    cfg.append(make_dict(m, "img", "image", "pippim.com"))
+    cfg.append(make_dict(m, "tmf", "timefmt", "pippim.com"))
+    cfg.append(make_dict(m, "ext", "external", "pippim.com"))
     return cfg
 
 

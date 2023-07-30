@@ -18,7 +18,7 @@ from __future__ import with_statement  # Error handling for file opens
 #       July 22 2023 - Create Locations() class
 #
 #==============================================================================
-import stat
+#import stat
 
 """
 
@@ -54,6 +54,7 @@ from PIL import Image, ImageTk
 
 import os
 import sys
+import errno
 import shutil
 import pickle
 import time
@@ -64,18 +65,20 @@ import global_variables as g
 if g.USER is None:
     print('location.py was forced to run g.init()')
     g.init()
+
+import sql  # SQL Locations Table for Locations()
+import toolkit  # Data dictionary driven treeview for Locations()
 import message  # Dialog Box messages - ShowInfo(), AskQuestion()
 import monitor  # Get Locations() class window geometry
 import image as img  # Taskbar thumbnail image for Locations() window
 import timefmt as tmf  # "date - ago" formatting for Locations()
-import toolkit  # Data dictionary driven treeview for Locations()
-import sql  # SQL Locations Table for Locations()
+import external as ext  # for ext.check_command for Locations()
 
 # Define ~/.../mserve/ directory
 MSERVE_DIR = g.MSERVE_DIR
 # print("MSERVE_DIR:", MSERVE_DIR)
 
-# only files in USER_DATA_DIR/mserve/
+# Files in USER_DATA_DIR/mserve/
 FNAME_LOCATIONS        = MSERVE_DIR + "locations"
 FNAME_LAST_LOCATION    = MSERVE_DIR + "last_location"
 FNAME_LIBRARY          = MSERVE_DIR + "library.db"  # Opened every session
@@ -88,6 +91,9 @@ FNAME_LAST_SONG_NDX    = MSERVE_DIR + "last_song_ndx"        # Last song played 
 # Jun 05 2023 -  last_selections DEPRECATED
 FNAME_LAST_SELECTIONS  = MSERVE_DIR + "last_selections"      # Shuffled play order of songs
 FNAME_LAST_PLAYLIST    = MSERVE_DIR + "last_playlist"        # Songs selected for playing
+
+# Files in /tmp/
+FNAME_TEST             = g.TEMP_DIR + "mserve_test"
 
 # There can be two open at once so unlike other global variables this is never
 # replaced. It is simply used as base for creating new variable.
@@ -473,12 +479,12 @@ def test(iid, toplevel):
     # chmod u+s $( which ping );
     # print('Initial test to see if host is awake')
     dtb.update('Initial test to see if host is awake')
-    test_passed = test_host_up(host)
+    host_is_awake = test_host_up(host)
     
     # Wake up host if not on-line
     #if not wakecmd == "" or not wakecmd.isspace():
     if wakecmd.strip():
-        if test_passed is True:
+        if host_is_awake is True:
             # print("Host:", host, "is already awake.")
             dtb.update("Host: " + host + " is already awake.")
         else:
@@ -494,19 +500,19 @@ def test(iid, toplevel):
         if testrep < 1:
             testrep = 1
         for i in range(testrep):
-            if test_passed is True:
+            if host_is_awake is True:
                 break
             time.sleep(.1)
 
             # We don't want error messages in our result use 2>/dev/null
             result = os.popen(testcmd + ' 2>/dev/null').read().strip()
             if len(result) > 4:
-                test_passed = True
+                host_is_awake = True
                 tests = i
     else:
-        test_passed = True
+        host_is_awake = True
 
-    if test_passed is False:
+    if host_is_awake is False:
         test_time = int(float(testrep) * .1)
         dtb.update("location.test() Host did not come up after: " +
                    str(test_time) + " seconds.")
@@ -538,7 +544,7 @@ def test(iid, toplevel):
         result = os.popen(mountcmd).read().strip()
         if len(result) > 4:
             #print("location.test() errors mounting:", result)
-            dtb.update("location.test() errors mounting:" + result)
+            dtb.update("location.test() errors mounting: " + result)
         else:
             mounted = True
     else:
@@ -729,20 +735,12 @@ class LocationsCommonSelf:
     def __init__(self):
         """ Called on mserve.py startup and for Playlists maintenance """
 
-        ''' All Locations work fields - Set on program start and saving changes '''
+        ''' Lists of all Locations - Built on program start and each maintenance '''
         self.all_codes = []  # "L001", "L002", etc... can be holes
         self.all_names = []  # Names matching all_codes
         self.all_topdir = []  # Top Directories matching all_codes
-        self.names_for_loc = []  # Names sorted for this location
-        self.names_all_loc = []  # Names sorted for all locations
-        self.loc_list = []
-        self.loc_dict = {}
-
-        self.old_name = None  # Name before we changed it - Deprecate names soon.
-        self.name = None  # Location name that is being played right now
-        self.last_number_str = None  # Before operation started L01, etc.
-        self.curr_number_str = None  # After operation completed L01, etc.
-        self.audit_message = None  # Printable text of what was done.
+        self.loc_list = []  # Inserted into Treeview
+        self.loc_dict = {}  # Single line inserted into Treeview
 
         ''' Current Location work fields - Mirrors SQL Location Table Row '''
         self.act_code = None  # Replacement for 'iid'
@@ -760,9 +758,6 @@ class LocationsCommonSelf:
         self.act_touchmin = None  # Replaces activemin
         self.act_comments = None
         self.act_row_id = None  # Location record number
-
-        ''' Extended active variables '''
-        self.act_host_is_mounted = True  # Assume local storage by default
 
         ''' Internal location Code: L001  +
             | Top Directory last modified: <time>  +
@@ -811,20 +806,34 @@ class LocationsCommonSelf:
         self.main_top = None  # tk.Toplevel
         self.main_frame = None  # tk.Frame inside self.main_top
         self.loc_view = None  # tk.Treeview managed by Data Dictionary
+        self.no_locations_label = None  # When no locations are on file
+        self.tree_frame = None
 
         self.artwork = None  # Image of hardware, E.G. Server, Laptop, Cell
         self.art_width = None
         self.art_height = 200  # Width will be calculated proportionally
         self.disp_image = None  # Image scaled to height of 200
         self.art_label = None
-        self.close_button = None
-        self.test_button = None  # Test host
-        self.apply_button = None
+        self.main_close_button = None  # Close the main window
+        self.main_help_button = None  # Help on the main window
+        self.test_host_button = None  # Test host
+        self.apply_button = None  # Apply changes to SQL Location Table Row
 
         ''' Test Window and fields '''
-        self.test_top = None  # tk.Toplevel to Test Host
-        self.test_frame = None  # tk.Frame holding CustomScrolledText
+        self.called_from_main_top = False  # Was test called from main_top?
+        self.test_top = None  # tk.Toplevel to Test Host from mserve.py
+        self.test_frame = None  # tk.Frame holding self.test_scroll_frame & details
+        self.test_scroll_frame = None  # tk.Frame holding CustomScrolledText
         self.test_box = None  # CustomScrolledText with test results
+        self.test_dtb = None  # Delayed Text Box fallback when test window broken
+        self.test_close_button = None  # Close the test window
+        self.test_help_button = None  # Help in the test window
+        self.test_host_is_mounted = True  # Assume local storage by default
+        self.test_host_was_asleep = False  # Assume host wasn't asleep
+        self.test_sshfs_used = False  # Assume host wasn't asleep
+        self.curr_row = None  # Variable Location Detail Rows depending on ssh, etc.
+        self.curr_frame = None  # Either self.main_frame or self.test_frame
+        self.font = (None, g.MON_FONTSIZE)
 
 
 class Locations(LocationsCommonSelf):
@@ -842,6 +851,7 @@ class Locations(LocationsCommonSelf):
             lcs.register_menu(self.enable_lib_menu)
             lcs.register_pending(self.get_pending_cnt_total)
             lcs.register_NEW(NEW_LOCATION)
+            lcs.register_oap_cb(self.open_and_play_callback)
 
         Functions:
     
@@ -866,9 +876,8 @@ class Locations(LocationsCommonSelf):
         self.NEW_LOCATION = None  # When it's new location nothing to open
         self.text = None  # Text replacing treeview when no locations on file
         self.get_pending = None  # What is pending in parent? - Could be favorites
+        self.open_and_play_callback = None
         self.info = None  # InfoCentre()
-        self.apply_callback = None
-        self.play_close = None  # Main music playing window to close down
         self.enable_lib_menu = None
         self.tt = None  # Tooltips pool for buttons
         self.get_thread_func = None  # E.G. self.get_refresh_thread()
@@ -892,7 +901,18 @@ class Locations(LocationsCommonSelf):
         self.open_comments = None
         self.open_row_id = None
 
-        self.open_host_is_mounted = True  # Assume local storage by default
+        ''' Additional Open Location variables not stored on disk '''
+        self.open_sshfs_used = False
+
+        ''' Installed External Command Flags '''
+        self.nmap_installed = False  # Set in display_main_window()
+        self.nmap_installed = False
+        self.ssh_installed = False
+        self.sshfs_installed = False  # includes fusermount test
+        self.wakeonlan_installed = False
+
+        ''' Miscellaneous variables not reset on 'new', 'edit', etc. '''
+        self.do_tell_commands = True  # Tell about missing commands one-time
 
     def register_parent(self, parent):
         """ Register lib_top parent after it's declared in mserve.py """
@@ -924,15 +944,15 @@ class Locations(LocationsCommonSelf):
         """ Register get_pending_cnt_total after it's declared in mserve.py """
         self.get_pending = get_pending  # E.G. self.get_refresh_thread()
 
+    def register_oap_cb(self, open_and_play_callback):
+        """ Register get_pending_cnt_total after it's declared in mserve.py """
+        self.open_and_play_callback = open_and_play_callback  # E.G. self.get_refresh_thread()
+
     def display_main_window(self, name=None):
         """ Mount window with Location Treeview or placeholder text when none.
             :param name: "New Location", "Open Location", etc.
         """
-        self.pending_counts = self.get_pending()
-        ''' Save current name to old_name to make decisions when different. '''
-        self.old_name = self.name
-
-        ''' Rebuild location changes since last time '''
+        ''' Build various lists of locations for treeview and validations '''
         self.build_locations()
 
         ''' Get saved geometry for Locations() '''
@@ -942,26 +962,12 @@ class Locations(LocationsCommonSelf):
         self.main_top.minsize(width=g.BTN_WID * 10, height=g.PANEL_HGT * 10)
         name = name if name is not None else "Locations"
         self.main_top.title(name + " - mserve")
-        self.main_top.configure(background="Gray")
-        self.main_top.columnconfigure(0, weight=1)
-        self.main_top.rowconfigure(0, weight=1)
-        ''' After top created, disable all File Menu options for locations '''
-        self.enable_lib_menu()
-        ''' Set program icon in taskbar '''
-        img.taskbar_icon(self.main_top, 64, 'white', 'lightskyblue', 'black')
-        ''' Create master frame '''
-        self.main_frame = tk.Frame(self.main_top, borderwidth=g.BTN_BRD_WID,
-                                   relief=tk.RIDGE)
-        self.main_frame.grid(sticky=tk.NSEW)
-        self.main_frame.columnconfigure(0, weight=0)
-        self.main_frame.columnconfigure(1, weight=0)
-        self.main_frame.columnconfigure(2, weight=3)  # Data entry fields
-        self.main_frame.rowconfigure(0, weight=1)
-        ms_font = (None, g.MON_FONTSIZE)
 
-        ''' Instructions when no locations have been created yet. 
-            TODO: When "New" location is picked, changed message below.
-        '''
+        ''' Common Top configuration, icon and main_top master frame '''
+        self.main_frame = self.make_display_frame(self.main_top)
+        self.enable_lib_menu()  # disable all Menu options for locations
+
+        ''' Instructions when no locations have been created yet. '''
         if not self.text:  # If text wasn't passed as a parameter use default
             self.text = "\nNo Locations have been created yet.\n\n" + \
                         "After Locations have been created, they will\n" + \
@@ -970,26 +976,49 @@ class Locations(LocationsCommonSelf):
                         "the 'New Location' option from the 'File' \n" + \
                         "dropdown menu bar.\n"
 
-        if len(self.all_codes) == 0:
-            # No locations have been created yet
-            tk.Label(self.main_frame, text=self.text, justify="left", font=ms_font) \
-                .grid(row=0, column=0, columnspan=4, sticky=tk.W, padx=5)
-        else:
+        if len(self.all_codes) == 0:  # No locations have been created yet
+            self.no_locations_label = tk.Label(self.main_frame, text=self.text, 
+                                               justify="left", font=self.font)
+            self.no_locations_label.grid(row=0, column=0, columnspan=4, 
+                                         sticky=tk.W, padx=5)
+        else:  # Treeview of existing locations in first frame
+            self.no_locations_label = None
             self.populate_loc_tree()  # Paint treeview of locations
 
         ''' Shared function between display_main_window() and test_host() '''
         self.display_location_details(self.main_frame, name)
-
         self.input_active = False  # Screen fields are 'readonly'
 
         ''' Close Button - NOTE: This calls reset() function !!! '''
-        self.close_button = tk.Button(self.main_frame, text="✘ Close",
-                                      width=g.BTN_WID2 - 4, command=self.reset)
-        self.close_button.grid(row=14, column=0, padx=5, pady=5, sticky=tk.W)
-        self.tt.add_tip(self.close_button, "Ignore changes and return.",
-                        anchor="nw")
+        self.make_main_close_button()
+
+        ''' Help Button - https://www.pippim.com/programs/mserve.html#locations '''
+        ''' 🔗 Help - Videos and explanations on pippim.com '''
+        self.make_main_help_button()
+
+        ''' Test Host Button whenever a wakeup command present '''
+        if self.fld_wakecmd:  # Is wakeonlan installed?
+            self.wakecmd_focusout()
+
+        ''' Refresh screen '''
+        self.main_top.update_idletasks()
+
+    def make_main_close_button(self):
+        """ Added by main window, removed by testing. """
+
+        ''' Close Button - NOTE: This calls reset() function !!! '''
+        self.main_close_button = tk.Button(
+            self.main_frame, text="✘ Close", font=self.font,
+            width=g.BTN_WID2 - 4, command=self.reset)
+        self.main_close_button.grid(row=14, column=0, padx=5, pady=5, sticky=tk.W)
+        if self.tt:
+            self.tt.add_tip(self.main_close_button, "Ignore changes and return.",
+                            anchor="nw")
         self.main_top.bind("<Escape>", self.reset)
         self.main_top.protocol("WM_DELETE_WINDOW", self.reset)
+
+    def make_main_help_button(self):
+        """ Added by main window, removed by testing. """
 
         ''' Help Button - https://www.pippim.com/programs/mserve.html#locations '''
         ''' 🔗 Help - Videos and explanations on pippim.com '''
@@ -998,259 +1027,270 @@ class Locations(LocationsCommonSelf):
         help_text += "videos and explanations on using this screen.\n"
         help_text += "https://www.pippim.com/programs/mserve.html#\n"
 
-        help = tk.Button(self.main_frame, text="🔗 Help", width=g.BTN_WID2 - 4,
-                         font=ms_font, command=lambda: g.web_help("HelpLocations"))
-        help.grid(row=14, column=1, padx=5, pady=5, sticky=tk.W)
-        self.tt.add_tip(help, help_text, anchor="nw")
+        self.main_help_button = tk.Button(
+            self.main_frame, text="🔗 Help", font=self.font,
+            width=g.BTN_WID2 - 4, command=lambda: g.web_help("HelpLocations"))
+        self.main_help_button.grid(row=14, column=1, padx=5, pady=5, sticky=tk.W)
+        if self.tt:
+            self.tt.add_tip(self.main_help_button, help_text, anchor="nw")
 
-        ''' Test Host Button '''
-        if self.act_host:
-            self.test_button = tk.Button(self.main_frame, text="✔ " + text,
-                                         width=g.BTN_WID2 - 2, command=self.test)
-            self.test_button.grid(row=14, column=2, padx=5, pady=5, sticky=tk.W)
-            self.tt.add_tip(self.test_button, text + " Location and return.",
-                            anchor="ne")
-
-        ''' Apply Button '''
-        action = name.split(" Location")[0]
-        if not action == "View":
-            text = action
-            if action == "New":
-                text = "Add"
-            if action == "Edit":
-                text = "Save"
-            self.apply_button = tk.Button(self.main_frame, text="✔ " + text,
-                                          width=g.BTN_WID2 - 2, command=self.apply)
-            self.apply_button.grid(row=14, column=3, padx=5, pady=5, sticky=tk.W)
-            self.tt.add_tip(self.apply_button, text + " Location and return.",
-                            anchor="ne")
-            self.main_top.bind("<Return>", self.apply)
-
-        ''' Refresh screen '''
-        if self.main_top:  # May have been closed above.
-            self.main_top.update_idletasks()
-
-    def display_test_window(self, cover_top=True):
+    def display_test_window(self):
         """ Mount test host window """
-        ''' Use main_window geometry for Test Host window '''
         self.test_top = tk.Toplevel()  # Locations top level
-        if cover_top:
-            geom = monitor.get_window_geom_raw(self.main_top)
-            print("display_test_window:", geom)
-        else:
-            ''' Need to override for first time '''
-            geom = monitor.get_window_geom('locations')
+        mon = monitor.Monitors()
+        act_mon = mon.get_active_monitor()
+        geom = "1100x750+" + str(act_mon.x + 30) + "+" + str(act_mon.y + 30)
+        self.test_top.geometry(geom)
+        mon.tk_center(self.test_top)  # centers on active monitor
+        self.test_top.title("Test Host: " + self.act_host + " - mserve")
 
-        self.test_top.geometry(geom)  # Cover up Locations Window
-        self.test_top.title("Test Host - mserve")
-        self.test_top.configure(background="Gray")
-        self.test_top.columnconfigure(0, weight=1)
-        self.test_top.rowconfigure(0, weight=1)
+        ''' Common Top configuration, icon and Test Host master frame '''
+        self.test_frame = self.make_display_frame(self.test_top)
 
-        ''' Set program icon in taskbar '''
-        img.taskbar_icon(self.test_top, 64, 'white', 'lightskyblue', 'black')
-        ''' Create master frame '''
-        self.test_frame = tk.Frame(self.test_top, borderwidth=g.BTN_BRD_WID,
-                                   relief=tk.RIDGE)
-        self.test_frame.grid(sticky=tk.NSEW)
-        self.test_frame.columnconfigure(0, weight=0)
-        self.test_frame.columnconfigure(1, weight=0)
-        self.test_frame.columnconfigure(2, weight=3)  # Data entry fields
-        self.test_frame.rowconfigure(0, weight=1)
-        ms_font = (None, g.MON_FONTSIZE)
+        ''' Create frame for test host scrolled text box '''
+        self.make_test_box(self.test_frame)
 
-        ''' Create treeview frame with scrollbars '''
-        scroll_frame = tk.Frame(self.main_frame, bg="olive", relief=tk.RIDGE)
-        scroll_frame.grid(sticky=tk.NSEW, columnspan=4)
-        scroll_frame.columnconfigure(0, weight=1)
-        scroll_frame.rowconfigure(0, weight=1)
+        ''' Shared between display_main_window() and display_test_window() '''
+        self.display_location_details(self.test_frame)
+
+        ''' Put active location variables onto freshly painted window '''
+        self.set_scr_variables(self.test_top)  # Tell them whose calling
+        self.input_active = False  # Screen fields are 'readonly'
+
+        ''' Close Button - calls test_close_window() to wrap up '''
+        self.make_test_close_button(self.test_frame)
+
+        ''' Help Button - https://www.pippim.com/programs/mserve.html#
+                          Optional-Remote-Host-Support '''
+        self.make_test_help_button(self.test_frame)
+        self.test_top.update_idletasks()  # Not powerful enough?
+        self.test_top.update()  # More power !
+
+    def make_test_box(self, frame):
+        """ Can be in main_top or test_top """
+        ''' Create frame for test scrolled text box '''
+        #print("frame:", frame, "self.main_frame:", self.main_frame,
+        #      "self.test_frame:", self.test_frame)
+        self.test_scroll_frame = tk.Frame(frame, bg="olive", relief=tk.RIDGE)
+        self.test_scroll_frame.grid(row=0, column=0, sticky=tk.NSEW, columnspan=4)
+        self.test_scroll_frame.columnconfigure(0, weight=1)
+        self.test_scroll_frame.rowconfigure(0, weight=1)
 
         ''' Custom Scrolled Text Box '''
         Quote = "Testing Host: " + self.act_host + "\n"
         self.test_box = toolkit.CustomScrolledText(
-            scroll_frame, state="normal", font=bs_font, borderwidth=15, relief=tk.FLAT)
+            self.test_scroll_frame, state="normal", font=self.font,
+            borderwidth=15, relief=tk.FLAT)
+        self.test_box.configure(background="Black", foreground="Green")
         self.test_box.insert("end", Quote)
-        self.test_box.grid(row=0, column=1, padx=3, pady=3, sticky=tk.NSEW)
-        #tk.Grid.rowconfigure(test_frame, 0, weight=1)  # TODO
-        #tk.Grid.columnconfigure(test_frame, 1, weight=1)
-
-        self.test_box.tag_config('red', foreground='Red')
-        self.test_box.tag_config('blue', foreground='Blue')
+        self.test_box.grid(row=0, column=0, padx=5, pady=5, sticky=tk.NSEW)
         self.test_box.tag_config('green', foreground='Green')
-        self.test_box.tag_config('black', foreground='Black')
-        self.test_box.tag_config('yellow', background='Yellow')
-        self.test_box.tag_config('cyan', background='Cyan')
-        self.test_box.tag_config('magenta', background='Magenta')
+        self.test_box.tag_config('yellow', foreground='Yellow')
 
-        self.test_box.highlight_pattern(self.act_host, 'Green')
+        self.test_box.highlight_pattern(self.act_host, 'yellow')
 
-        self.test_box.config(tabs=("2m", "20m", "40m"))
+        self.test_box.config(tabs=("10m", "20m", "40m"))
         self.test_box.tag_configure("margin", lmargin1="2m", lmargin2="40m")
         # Fix Control+C  https://stackoverflow.com/a/64938516/6929343
         self.test_box.bind("<Button-1>", lambda event: self.test_box.focus_set())
 
-        ''' Shared function between display_main_window() and test_host() '''
-        self.display_location_details(self.test_frame)
+    def make_test_close_button(self, frame):
+        """ Can be called for new test_top or to replace existing main_top """
+        ''' Close Button - calls test_close_window() to wrap up '''
+        self.test_close_button = tk.Button(
+            frame, text="✘ Close Test Results", font=self.font,
+            width=g.BTN_WID2 + 6, command=self.test_close_window)
+        self.test_close_button.grid(row=14, column=0, padx=5, pady=5, sticky=tk.W)
+        if not self.called_from_main_top:  # no main_top, so escape closes test_top
+            self.test_top.bind("<Escape>", self.test_close_window)
+            self.test_top.protocol("WM_DELETE_WINDOW", self.test_close_window)
+        if self.tt:  # During early boot toolkit.Tooltips() is still 'None'
+            self.tt.add_tip(self.test_close_button, "End test of Host: " +
+                            self.act_host, anchor="nw")
 
-        self.input_active = False  # Screen fields are 'readonly'
+    def make_test_help_button(self, frame):
+        """ Can be called for new test_top or to replace existing main_top """
+        ''' Help Button - https://www.pippim.com/programs/mserve.html#
+                          Optional-Remote-Host-Support '''
+        help_text = "Open new window in default web browser for\n"
+        help_text += "videos and explanations on using this screen.\n"
+        help_text += "https://www.pippim.com/programs/mserve.html#\n"
+        self.test_help_button = tk.Button(
+            frame, text="🔗 Help", font=self.font,
+            width=g.BTN_WID2 - 4, command=lambda: g.web_help("HelpTestHost"))
+        self.test_help_button.grid(row=14, column=1, padx=5, pady=5, sticky=tk.W)
+        if self.tt:  # During early boot toolkit.Tooltips() is still 'None'
+            self.tt.add_tip(self.test_help_button, help_text, anchor="nw")
 
-        ''' Close Button - NOTE: This calls reset() function !!! '''
-        self.close_button = tk.Button(self.test_frame, text="✘ Close",
-                                      width=g.BTN_WID2 - 4, command=self.end_test)
-        self.close_button.grid(row=14, column=0, padx=5, pady=5, sticky=tk.W)
-        self.tt.add_tip(self.close_button, "End test of Host: " + self.act_host,
-                        anchor="nw")
-        self.test_top.protocol("WM_DELETE_WINDOW", self.end_test)
 
-        ''' Refresh screen '''
-        if self.test_top:  # May have been closed above.
-            self.test_top.update_idletasks()
+    @staticmethod
+    def make_display_frame(top):
+        """ Make display window frame for main_top and test_top """
 
-    def end_test(self):
-        """ Close Test Host Window """
-        self.test_top.destroy()
+        ''' Common top configuration '''
+        top.configure(background="Gray")
+        top.columnconfigure(0, weight=1)
+        top.rowconfigure(0, weight=1)
 
-    def display_location_details(self, frame, name=None):
-        """ Shared by display_main_window() and Host testing functions """
+        ''' Set program icon in taskbar '''
+        img.taskbar_icon(top, 64, 'white', 'lightskyblue', 'black')
 
-        ms_font = (None, g.MON_FONTSIZE)  # Unfortunately repeat again
+        ''' Create master frame '''
+        frame = tk.Frame(top, borderwidth=g.BTN_BRD_WID, relief=tk.RIDGE)
+        frame.grid(sticky=tk.NSEW)
+        frame.columnconfigure(0, weight=0)
+        frame.columnconfigure(1, weight=0)
+        frame.columnconfigure(2, weight=3)  # Data entry fields
+        frame.rowconfigure(0, weight=1)
+        return frame
+    
+    def display_location_details(self, frame, mode=None):
+        """ Declare location detail window fields and blank them out.
+            Shared by display_main_window() method and test() methods
+            When mode is passed it is: 'New', 'Add', 'Open'
 
-        ''' Artwork image spanning 3 rows '''
-        self.make_default_image()
+        :param frame: Parent container for location details.
+        :param mode: Mode is 'New', 'Edit', 'Open', etc. or None for test host
+        """
+        ''' See which external commands are available.
+            Could be done during init but that slows boot process.
+            Also being done here allows user to install missing apps and
+            call again without rebooting mserve.
+        '''
+        self.nmap_installed = ext.check_command('nmap')
+        #self.nmap_installed = False  # Test
+        if self.nmap_installed:
+            ''' Command 'nc' also required to quickly check if host is up '''
+            self.nmap_installed = ext.check_command('nc')
+        self.ssh_installed = ext.check_command('ssh')
+        #self.ssh_installed = False  # Test
+        self.sshfs_installed = ext.check_command('sshfs')
+        if self.sshfs_installed:
+            self.sshfs_installed = ext.check_command('fusermount')
+        #self.sshfs_installed = False  # Test
+        self.wakeonlan_installed = ext.check_command('wakeonlan')
+        #self.wakeonlan_installed = False  # Test
 
-        ''' Placeholder for Image '''
-        self.art_label = tk.Label(frame, borderwidth=0,
-                                  image=self.disp_image, font=ms_font)
+        ''' Artwork image spanning 4 rows '''
+        self.make_default_image()  # Dummy Image for picture of location
+        self.art_label = tk.Label(frame, borderwidth=0, image=self.disp_image)
         self.art_label.grid(row=1, rowspan=4, column=0, sticky=tk.W,
                             padx=5, pady=5)
 
-        ''' When testing host, there are no Treeview rows above '''
-        if name:
-            text = "🡅 🡅  Click on row to " + name + "  🡅 🡅"
-        else:
-            text = "Testing Host"
-        self.fld_intro = tk.Label(frame, text=text, font=ms_font)
+        ''' Instructions persist until a Location's Intro Line is formatted '''
+        if mode and not mode == 'New Location':
+            ''' Select a location above to 'Open', 'Edit'  '''
+            text = "🡅 🡅  Click on row above to " + mode + "  🡅 🡅"
+        elif mode and mode == 'New Location':
+            ''' For New Location, cannot select existing location  '''
+            text = "🡇 🡇  Enter New Location details below  🡇 🡇"
+        else:  # When no mode passed, the window is for testing host.
+            ''' When testing host, there are no Treeview rows above '''
+            text = "🡅 🡅  Slide scrollbar above to see Test Host results  🡅 🡅"
+        self.fld_intro = tk.Label(frame, text=text, font=self.font)
         self.fld_intro.grid(row=1, column=1, columnspan=3, stick=tk.W)
 
-        ''' Location Name '''
-        tk.Label(frame, text="Location name:",
-                 font=ms_font).grid(row=2, column=1, sticky=tk.W)
-        self.fld_name = tk.Entry(frame, textvariable=self.scr_name,
-                                 state='readonly', font=ms_font)
-        self.fld_name.grid(row=2, column=2, columnspan=2, sticky=tk.EW,
-                           padx=5, pady=5)
-        self.scr_name.set("")  # Clear left over from last invocation
+        ''' one_loc_var() wrapper for creating all screen input variables '''
+        self.curr_row = 2  # Current row number for self.one_loc_var to incr
+        self.curr_frame = frame  # Current frame for self.one_loc_var to ref
+        self.fld_name = self.one_loc_var(
+            "Location Name", self.scr_name, "")
+        self.fld_topdir = self.one_loc_var(
+            "Music Top Directory", self.scr_topdir, "")
 
-        ''' Music Top Directory readonly except for 'New' button? '''
-        tk.Label(frame, text="Music Top Directory:",
-                 font=ms_font).grid(row=3, column=1, sticky=tk.W)
-        self.fld_topdir = tk.Entry(
-            frame, textvariable=self.scr_topdir, state='readonly',
-            font=ms_font)
-        self.fld_topdir.grid(row=3, column=2, columnspan=2, sticky=tk.EW,
-                             padx=5, pady=5)
-        self.fld_topdir.bind("<Button>", self.get_topdir)
-        self.scr_topdir.set("")  # Clear left over from last invocation
+        """ Remote Host variables will depend on the commands installed:
+                self.nmap_installed = ext.check_command('nmap')  # TWO!
+                self.nmap_installed = ext.check_command('nc')  # TWO TOO!
+                self.ssh_installed = ext.check_command('ssh')
+                self.sshfs_installed = ext.check_command('sshfs')
+                self.wakeonlan_installed = ext.check_command('wakeonlan')
+        """
+        if self.nmap_installed:  # Includes 'nc' installed
+            self.fld_host = self.one_loc_var(
+                "Optional Host Name", self.scr_host, "")
+        if self.nmap_installed and self.wakeonlan_installed:
+            self.fld_wakecmd = self.one_loc_var(
+                "Command to wake up sleeping Host", self.scr_wakecmd, "")
+            ''' Focus out - not trapped when testing host '''
+            if mode:
+                self.wakecmd_focusout()  # Set/Remove test host button
+        if self.nmap_installed and self.ssh_installed:
+            self.fld_testcmd = self.one_loc_var(
+                "Command to test if Host is awake", self.scr_testcmd, "")
+            self.fld_testrep = self.one_loc_var(
+                "Maximum tests every 0.1 second", self.scr_testrep, 0)
+        if self.nmap_installed and self.sshfs_installed:
+            self.fld_mountcmd = self.one_loc_var(
+                "Command to mount Host Music locally", self.scr_mountcmd, "")
+        if self.nmap_installed and self.ssh_installed:
+            self.fld_touchcmd = self.one_loc_var(
+                "Command to prevent Host sleeping", self.scr_touchcmd, "")
+            self.fld_touchmin = self.one_loc_var(
+                "Send prevent sleep every x minutes", self.scr_touchmin, 0)
 
-        ''' Host Name '''
-        tk.Label(frame, text="Optional Host Name:",
-                 font=ms_font).grid(row=4, column=1, sticky=tk.W)
-        self.fld_host = tk.Entry(
-            frame, textvariable=self.scr_host, state='readonly',
-            font=ms_font)
-        self.fld_host.grid(row=4, column=2, columnspan=2, sticky=tk.EW,
-                           padx=5, pady=5)
-        self.scr_host.set("")  # Clear left over from last invocation
+        ''' Comments appear on all windows '''
+        self.fld_comments = self.one_loc_var(
+            "Optional Comments", self.scr_comments, "")
 
-        ''' Host Wakeup Command '''
-        tk.Label(frame, text="Command to wake up sleeping Host:",
-                 font=ms_font).grid(row=5, column=0, columnspan=2,
-                                    sticky=tk.W, padx=5)
-        self.fld_wakecmd = tk.Entry(
-            frame, textvariable=self.scr_wakecmd, state='readonly',
-            font=ms_font)
-        self.fld_wakecmd.grid(row=5, column=2, columnspan=2, sticky=tk.EW,
-                              padx=5, pady=5)
-        self.scr_wakecmd.set("")  # Clear left over from last invocation
+        ''' Image path doesn't appear on test window
+            July 28, 2023 causes corruption if two windows hae different fields.
+        if mode:
+        '''
+        self.fld_image_path = self.one_loc_var(
+            "Optional picture of Location", self.scr_image_path, "")
 
-        ''' Test if Host is awake Command '''
-        tk.Label(frame, text="Command to test if Host is awake:",
-                 font=ms_font).grid(row=6, column=0, columnspan=2,
-                                    sticky=tk.W, padx=5)
-        self.fld_testcmd = tk.Entry(
-            frame, textvariable=self.scr_testcmd, state='readonly',
-            font=ms_font)
-        self.fld_testcmd.grid(row=6, column=2, columnspan=2, sticky=tk.EW,
-                              padx=5, pady=5)
-        self.scr_testcmd.set("")  # Clear left over from last invocation
+    def one_loc_var(self, text, scr_name, scr_value):
+        """ Create single location detail screen field.
+            self.curr_row starts at 2 and self.curr_frame is either
+            self.main_frame or self.test_frame.  Buttons always start on
+            row 14 regardless if location details end on row 8 or row 12.
 
-        ''' Number of times to repeat test every .1 second '''
-        tk.Label(frame, text="Maximum tests every 0.1 second:",
-                 font=ms_font).grid(row=7, column=0, columnspan=2,
-                                    sticky=tk.W, padx=5)
-        self.fld_testrep = tk.Entry(
-            frame, textvariable=self.scr_testrep, state='readonly',
-            font=ms_font)
-        self.fld_testrep.grid(row=7, column=2, columnspan=2, sticky=tk.EW,
-                              padx=5, pady=5)
-        self.scr_testrep.set(0)  # Clear left over from last invocation
+        :param text: text label.  E.G. "Command to wake up sleeping Host"
+        :param scr_name: scr_ variable name.  E.G. self.scr_wakecmd
+        :param scr_value: scr_ clearing value.  "" for string / 0 for int
+        :return self.fld_ variable name: E.G. self.fld_wakecmd """
+        col = 1 if self.curr_row < 5 else 0  # Column number for text
+        span = 1 if self.curr_row < 5 else 2  # Column span for text
 
-        ''' Mount Host's Music Partition Command  '''
-        tk.Label(frame, text="Command to mount Music on Host:",
-                 font=ms_font).grid(row=8, column=0, columnspan=2,
-                                    sticky=tk.W, padx=5)
-        self.fld_mountcmd = tk.Entry(
-            frame, textvariable=self.scr_mountcmd, state='readonly',
-            font=ms_font)
-        self.fld_mountcmd.grid(row=8, column=2, columnspan=2, sticky=tk.EW,
-                               padx=5, pady=5)
-        self.scr_mountcmd.set("")  # Clear left over from last invocation
+        tk.Label(self.curr_frame, text=text, font=self.font).\
+            grid(row=self.curr_row, column=col, columnspan=span, sticky=tk.W)
+        fld = tk.Entry(self.curr_frame, textvariable=scr_name,
+                       state='readonly', font=self.font)
+        fld.grid(row=self.curr_row, column=2, columnspan=2, sticky=tk.EW,
+                 padx=5, pady=5)
+        scr_name.set(scr_value)  # Assign clearing value
+        self.curr_row += 1  # Set for next field
+        return fld
 
-        ''' Touch Host Command  '''
-        tk.Label(frame, text="Command to prevent Host sleeping:",
-                 font=ms_font).grid(row=9, column=0, columnspan=2,
-                                    sticky=tk.W, padx=5)
-        self.fld_touchcmd = tk.Entry(
-            frame, textvariable=self.scr_touchcmd, state='readonly',
-            font=ms_font)
-        self.fld_touchcmd.grid(row=9, column=2, columnspan=2, sticky=tk.EW,
-                               padx=5, pady=5)
-        self.scr_touchcmd.set("")  # Clear left over from last invocation
+    def wakecmd_focusout(self):
+        """ If scr_wakecmd field non-blank show Test button.
+            Automatically called when screen field loses focus.
+            Manually called when caller updates location details.
 
-        ''' Touch Minutes  '''
-        tk.Label(frame, text="Send prevent sleep every x minutes:",
-                 font=ms_font).grid(row=10, column=0, columnspan=2,
-                                    sticky=tk.W, padx=5)
-        self.fld_touchmin = tk.Entry(
-            frame, textvariable=self.scr_touchmin, state='readonly',
-            font=ms_font)
-        self.fld_touchmin.grid(row=10, column=2, columnspan=2, sticky=tk.EW,
-                               padx=5, pady=5)
-        self.scr_touchmin.set(0)  # Clear left over from last invocation
+            TODO: Being called from self.test_top too!
+        """
+        if not self.nmap_installed or not self.wakeonlan_installed:
+            return  # Can't test without commands installed
 
-        ''' Comments '''
-        tk.Label(frame, text="Optional Comments:",
-                 font=ms_font).grid(row=11, column=0, columnspan=2,
-                                    sticky=tk.W, padx=5)
-        self.fld_comments = tk.Entry(
-            frame, textvariable=self.scr_comments, state='readonly',
-            font=ms_font)
-        self.fld_comments.grid(row=11, column=2, columnspan=2, sticky=tk.EW,
-                               padx=5, pady=5)
-        self.scr_comments.set("")  # Clear left over from last invocation
-
-        ''' Image path - not displayed when testing host '''
-        if name:
-            tk.Label(frame, text="Optional Location Device Image:",
-                     font=ms_font).grid(row=12, column=0, columnspan=2,
-                                        sticky=tk.W, padx=5)
-            self.fld_image_path = tk.Entry(
-                frame, textvariable=self.scr_image_path, state='readonly',
-                font=ms_font)
-            self.fld_image_path.grid(row=12, column=2, columnspan=2, sticky=tk.EW,
-                                     padx=5, pady=5)
-            self.scr_image_path.set("")  # Clear left over from last invocation
-
+        if self.scr_wakecmd.get():
+            ''' Wakeup command exists. Create 'Test Host Wakeup' button. '''
+            if self.test_host_button:
+                return  # Button already created
+            # print("self.scr_wakecmd.get():", self.scr_wakecmd.get())
+            self.test_host_button = tk.Button(
+                self.main_frame, text="🔍 Test Host Wakeup", font=self.font,
+                width=g.BTN_WID2 + 4, command=lambda: self.test_common(self.main_top))
+            self.test_host_button.grid(row=14, column=2, padx=5, pady=5, sticky=tk.W)
+            if self.tt:
+                self.tt.add_tip(self.test_host_button,
+                                "Test command to wake up Host.", anchor="ne")
+            self.called_from_main_top = True  # main_top calling test, no test_top
+        elif self.test_host_button:
+            ''' No wakeup command. Destroy button created earlier. '''
+            self.tt.close(self.test_host_button)
+            self.test_host_button.destroy()
+            self.test_host_button = None  # Destroying doesn't set to 'None' for testing
+            self.called_from_main_top = False  # no main_top, so create test_top
 
     def populate_loc_tree(self):
         """ Use custom Data Dictionary routines for managing treeview. """
@@ -1261,19 +1301,17 @@ class Locations(LocationsCommonSelf):
         toolkit.select_dict_columns(columns, location_dict)
 
         ''' Create treeview frame with scrollbars '''
-        tree_frame = tk.Frame(self.main_frame, bg="olive", relief=tk.RIDGE)
-        tree_frame.grid(sticky=tk.NSEW, columnspan=4)
-        tree_frame.columnconfigure(0, weight=1)
-        tree_frame.rowconfigure(0, weight=1)
+        self.tree_frame = tk.Frame(self.main_frame, bg="olive", relief=tk.RIDGE)
+        self.tree_frame.grid(row=0, column=0, sticky=tk.NSEW, columnspan=4)
+        self.tree_frame.columnconfigure(0, weight=1)
+        self.tree_frame.rowconfigure(0, weight=1)
         self.loc_view = toolkit.DictTreeview(
-            location_dict, self.main_top, tree_frame, columns=columns,
+            location_dict, self.main_top, self.tree_frame, columns=columns,
             highlight_callback=self.highlight_callback)
 
         ''' Override generic column heading names for Location usage '''
-        #self.loc_view.tree.heading('code', text='Code')
         self.loc_view.tree.heading('name', text='Location Name')
-        #self.loc_view.tree.heading('topdir', text='Music Top Directory')
-        self.loc_view.tree["displaycolumns"] = columns  # hide row_id
+        self.loc_view.tree["displaycolumns"] = columns
 
         ''' Treeview select item with button clicks '''
         # Moving columns needs work and probably isn't even needed
@@ -1281,7 +1319,8 @@ class Locations(LocationsCommonSelf):
                                    row_release=self.loc_button_click)
         self.loc_view.tree.bind("<Button-1>", self.loc_button_click)
         self.loc_view.tree.bind("<Button-3>", self.loc_button_click)
-        self.loc_view.tree.bind("<Double-Button-1>", self.apply)
+        #self.loc_view.tree.bind("<Double-Button-1>", self.apply)
+        # Above too dangerous. Maybe for View locations OK?
         self.loc_view.tree.tag_configure('loc_sel', background='ForestGreen',
                                          foreground="White")
 
@@ -1317,83 +1356,274 @@ class Locations(LocationsCommonSelf):
 
         """
 
-        number_str = self.loc_view.tree.identify_row(event.y)
-        if not number_str:
+        tree_code = self.loc_view.tree.identify_row(event.y)
+        if not tree_code:
             return  # clicked on empty row
 
-        if self.state == "new" or self.state == "save_as":
-            self.thread = self.get_thread_func()  # FIX huge problem when play_close()
-            # cannot use enable_input because rename needs to pick old name first
-            text = "Cannot pick an old location when new location name required.\n\n" + \
-                   "Enter a new Location name and Top Directory below."
-            message.ShowInfo(self.main_top, "Existing locations for reference only!",
-                             text, icon='warning', thread=self.thread)
-        else:
-            ''' Highlight row clicked '''
-            toolkit.tv_tag_remove_all(self.loc_view.tree, 'loc_sel')
-            toolkit.tv_tag_add(self.loc_view.tree, number_str, 'loc_sel')
+        if self.state == "new":
+            title = "Existing locations for reference only!"
+            text = "Cannot pick existing location when a new location name " + \
+                   "is required.\n\nEnter a Unique Name for the new Location."
+            self.info.cast(title + "\n\n" + text, 'error')
+            thr = self.get_thread_func()
+            message.ShowInfo(self.main_top, title, text, icon='error', thread=thr)
+            return
 
-            if not self.read_location(number_str):
-                print("location.py Locations.loc_button_click()",
-                      "error reading location:", number_str)
+        title = "Location is currently open!"
+        text = None  # Dual-purpose flag if delete or open
+        if tree_code == self.open_code:
+            if self.state == "delete":
+                text = "Cannot delete currently opened location."
+            if self.state == "open":
+                text = "Cannot reopen the same location."
+            if text:  # When no text, neither "delete" nor "open"
+                self.info.cast(title + "\n\n" + text, 'error')
+                thr = self.get_thread_func()
+                message.ShowInfo(self.main_top, title, text, icon='error', thread=thr)
                 return
-            
-            ''' Format image at 150 pix height '''
-            if self.act_image_path:
-                # Try to build photo image into self.disp_image variable
-                self.disp_image = self.make_image_from_path(self.act_image_path)
-                if not self.disp_image:
-                    # Could not convert file to TK photo image format
-                    self.make_default_image()
-            else:
-                # No image path use generic image
-                self.make_default_image()
-            self.art_label.configure(image=self.disp_image)
 
+        #if self.state == "open" and tree_code == self.open_code:
+        #    text = "Cannot reopen currently opened location."
+        #    self.info.cast(title + "\n\n" + text, 'error')
+        #    thr = self.get_thread_func()
+        #    message.ShowInfo(self.main_top, title, text, icon='error', thread=thr)
+        #    return
+
+        ''' Highlight row clicked '''
+        toolkit.tv_tag_remove_all(self.loc_view.tree, 'loc_sel')
+        toolkit.tv_tag_add(self.loc_view.tree, tree_code, 'loc_sel')
+
+        if not self.read_location(tree_code):
+            print("location.py Locations.loc_button_click()",
+                  "error reading location:", tree_code)
+            return
+
+        ''' Display self.scr_xxx variables '''
+        self.set_scr_variables(self.main_top)
+        if self.state == "edit":
+            self.enable_input()  # .new() calls this directly at very start
+        self.enable_last_button()  # For everyone except "New Location"
+        self.main_top.update_idletasks()
+
+    def set_scr_variables(self, top_name):
+        """ Called from self.loc_button_click() and self.display_test_window()
+            top_name ignored because fields must be identical or get corrupted.
+        """
+
+        ''' Format image at 150 pix height '''
+        if self.act_image_path:
+            # Try to build photo image into self.disp_image variable
+            try:
+                self.disp_image = self.make_image_from_path(self.act_image_path)
+            except tk.TclError:
+                self.disp_image = None
+            if not self.disp_image:
+                # Could not convert file to TK photo image format
+                self.make_default_image()
+        else:
+            # No image path use generic image
+            self.make_default_image()
+
+        if self.disp_image:
+            try:
+                self.art_label.configure(image=self.disp_image)
+            except tk.TclError:
+                print("=" * 80)
+                print("self.disp_image:", self.disp_image)
+                print("=" * 80)
+            # Catch error;
+            #   File "/home/rick/python/location.py", line 1413, in set_scr_variables
+            #     self.art_label.configure(image=self.disp_image)
+            #   File "/usr/lib/python2.7/lib-tk/Tkinter.py", line 1329, in configure
+            #     return self._configure('configure', cnf, kw)
+            #   File "/usr/lib/python2.7/lib-tk/Tkinter.py", line 1320, in _configure
+            #     self.tk.call(_flatten((self._w, cmd)) + self._options(cnf))
+            # TclError: invalid command name ".139778335789568.139778088451752.139778088448656"
+            pass
+
+        ''' Test Host doesn't have a location introduction line '''
+        if top_name == self.main_top:
             self.format_intro_line()  # Format introduction line
-            self.scr_name.set(self.act_name)
-            self.scr_topdir.set(self.act_topdir)
+
+        self.scr_name.set(self.act_name)
+        self.scr_topdir.set(self.act_topdir)
+
+        ''' If Test Host fields not defined, no scr_ fields exist '''
+        if self.fld_host:  # nmap and nc installed?
             self.scr_host.set(self.act_host)
+        if self.fld_wakecmd:  # Is wakeonlan installed?
             self.scr_wakecmd.set(self.act_wakecmd)
+            # Only main screen will turn on the Test Host button.
+            if top_name == self.main_top:
+                self.wakecmd_focusout()  # Display test host button when non-blank
+        if self.fld_testcmd:  # Is ssh installed?
             self.scr_testcmd.set(self.act_testcmd)
             self.scr_testrep.set(self.act_testrep)
+        if self.fld_mountcmd:  # Is sshfs installed?
             self.scr_mountcmd.set(self.act_mountcmd)
-            self.scr_touchcmd.set(self.act_touchcmd)  # Was activecmd
-            self.scr_touchmin.set(self.act_touchmin)  # Was activemin
-            self.scr_comments.set(self.act_comments)  # New
-            self.scr_image_path.set(self.act_image_path)  # New
+        if self.fld_touchcmd:  # Is ssh installed?
+            self.scr_touchcmd.set(self.act_touchcmd)
+            self.scr_touchmin.set(self.act_touchmin)
+        self.scr_comments.set(self.act_comments)
 
-            self.main_top.update_idletasks()
+        #if top_name == self.main_top:  # No self.scr_image_path on self.test_frame
+        self.scr_image_path.set(self.act_image_path)  # New
+
+    def enable_input(self):
+        """ Turn on input fields for 'new' and 'edit'
+
+            THOUGHTS about scr_mount_point variable:
+
+            From this answer:https://stackoverflow.com/a/4453715/6929343
+            def find_mount_point(path):
+                path = os.path.abspath(path)
+                while not os.path.ismount(path):
+                    path = os.path.dirname(path)
+                return path
+
+            After getting mount point can find out there are no files or
+            directories and know nothing is mounted yet.
+            Use the 100/10 test described below. Or will mount test file
+            walking back through invalid paths?
+
+            When FileControl.stat_start is called it will generate an error
+             if file system is not mounted. Errno 2.
+
+            Open last location can have 'New' button if the old mount
+            point is fine. Or an 'Edit' button if TopDir has changed. When
+            changing TopDir close music player if current location. Rename
+            all favorites with new TopDir. What if some files don't exist
+            in new TopDir?
+
+            If locations defined default to open. If no locations only
+            'New' button is available.
+
+        """
+        self.input_active = True
+        self.fld_name['state'] = 'normal'  # Allow input
+
+        ''' Changing TopDir restricted '''
+        if self.state == 'new':
+            self.fld_topdir['state'] = 'normal'  # Always allow when 'new'
+
+        if self.state == 'edit' and not self.open_topdir == self.act_topdir:
+            self.fld_topdir['state'] = 'normal'  # Allow input
+        elif self.state == 'edit':
+            title = "Location is currently open."
+            text = "Changes to Music Top Directory disabled when editing " + \
+                   "currently opened location.\n\nYou can start mserve with a " + \
+                   "random Artist as parameter 1 if you need to change.\n\n" + \
+                   "You can also open a different location and then " + \
+                   "'Edit' this location again."
+            self.info.cast(title + "\n\n" + text, 'warning')
+            thr = self.get_thread_func()
+            message.ShowInfo(self.main_top, title, text, icon='warning', thread=thr)
+
+        text = ""  # Default = all commands installed
+        if self.fld_host:  # nmap and nc installed?
+            self.fld_host['state'] = 'normal'
+        else:
+            text += "- 'nmap' and/or 'nc' commands were not found.\n"
+
+        if self.fld_wakecmd:  # Is wakeonlan installed?
+            self.fld_wakecmd['state'] = 'normal'
+        else:
+            text += "- 'wakeonlan' command was not found.\n"
+
+        if self.fld_testcmd:  # Is ssh installed?
+            self.fld_testcmd['state'] = 'normal'
+            self.fld_testrep['state'] = 'normal'
+        else:
+            text += "- 'ssh' command was not found.\n"
+
+        if self.fld_mountcmd:  # Is sshfs installed?
+            self.fld_mountcmd['state'] = 'normal'
+        else:
+            text += "= 'sshfs' command was not found.\n"
+
+        if self.fld_touchcmd:  # Is ssh installed?
+            self.fld_touchcmd['state'] = 'normal'  # Replaces activecmd
+            self.fld_touchmin['state'] = 'normal'  # Replaces activemin
+            # No need for more text as 'ssh' is covered above in fld_testcmd
+
+        if text and self.do_tell_commands:
+            title = "Some features are hidden!"
+            text = "The following command(s) not found:\n\n" + text
+            text += "\nClick the 'Help' button to go to the pippim.com website."
+            text += "\nYou can review what the commands do and if you need them."
+            self.info.cast(title + "\n\n" + text)
+            thr = self.get_thread_func()
+            message.ShowInfo(self.main_top, title, text, thread=thr)
+            self.do_tell_commands = False
+
+        self.fld_comments['state'] = 'normal'
+        self.fld_image_path['state'] = 'normal'
+        ''' Clicking on scr_image_path is treated like button click '''
+        self.fld_image_path.bind("<Button>", self.get_act_image_path)
+
+    def enable_last_button(self):
+        """ Location just picked from treeview
+            Create last button actions of: "Add", "Save", "Delete" or "Open"
+        """
+        if self.state == 'view':
+            return  # No button for view
+
+        ''' Apply Buttons variable text '''
+        if self.state == 'new':
+            text = "Add"
+        elif self.state == 'edit':
+            text = "Save"
+        elif self.state == 'delete':
+            text = "Delete"
+        elif self.state == 'open':
+            text = "Open"
+        else:
+            toolkit.print_trace()
+
+        self.apply_button = tk.Button(
+            self.main_frame, text="✔ " + text, font=self.font,
+            width=g.BTN_WID2 - 2, command=self.apply)
+        self.apply_button.grid(row=14, column=3, padx=5, pady=5, sticky=tk.W)
+        self.main_top.bind("<Return>", self.apply)
+        ''' toolkit.Tooltips() guaranteed to be active for Apply button '''
+        self.tt.add_tip(self.apply_button, text + 
+                        " Location and update records.", anchor="ne")
 
     def format_intro_line(self):
-        """ Format introduction line """
-        text = ""
-        if self.act_code:
-            text = "Code: " + self.act_code
-            if self.act_modify_time:
-                ''' Validate Music Top Directory has modify_time '''
-                # noinspection PyBroadException
-                try:
-                    file_stat = os.stat(self.act_topdir)
-                    self.act_modify_time = file_stat.st_mtime
-                    ''' Total space and free space for ordinary users
-                        Doesn't work for File Server mounted at /mnt/music as
-                        Local storage is reported. 
-                    '''
-                    statvfs = os.statvfs(self.act_topdir)
-                    self.total_bytes = statvfs.f_frsize * statvfs.f_blocks  # Size of filesystem in bytes
-                    self.free_bytes = statvfs.f_frsize * statvfs.f_bavail  # Number of free bytes that ordinary users
-                except:
-                    title = "os.stat FAILED !"
-                    self.act_modify_time = 0.0
-                    self.total_bytes = 0
-                    self.free_bytes = 0
+        """ Format introduction line
+            self.act_code will be blank when adding a new location
+        """
+        if not self.act_code:
+            return  # There is nothing to format
+        
+        # text line to build for row 1 of main_frame or test_frame
+        text = "Code: " + self.act_code
+        self.act_modify_time = 0.0  # Assume worse-case scenario
+        self.total_bytes = 0
+        self.free_bytes = 0
+        # noinspection PyBroadException
+        try:
+            ''' Validate Music Top Directory has modify_time '''
+            file_stat = os.stat(self.act_topdir)
+            self.act_modify_time = file_stat.st_mtime
+            ''' Total space and free space for ordinary users
+                Doesn't work for File Server mounted at /mnt/music as
+                Local storage is reported. 
+            '''
+            statvfs = os.statvfs(self.act_topdir)
+            self.total_bytes = statvfs.f_frsize * statvfs.f_blocks  # Size of filesystem in bytes
+            self.free_bytes = statvfs.f_frsize * statvfs.f_bavail  # Number of free bytes that ordinary users
+        except:
+            #title = "os.stat FAILED !"
+            self.act_modify_time = 0.0
+            self.total_bytes = 0
+            self.free_bytes = 0
 
-                text += "  | Last modified: "
-                text += tmf.ago(self.act_modify_time)
-                if not self.act_host:
-                    text += "  | Free: " + toolkit.human_bytes(self.free_bytes)
-                    text += " of: " + toolkit.human_bytes(self.total_bytes)
+        text += "  | Last modified: "
+        text += tmf.ago(self.act_modify_time)
+        if not self.total_bytes == 0:
+            text += "  | Free: " + toolkit.human_bytes(self.free_bytes)
+            text += " of: " + toolkit.human_bytes(self.total_bytes)
 
         self.fld_intro['text'] = text
 
@@ -1522,7 +1752,7 @@ class Locations(LocationsCommonSelf):
         """ Make a default image when one isn't specified. """
         self.art_width = None
         self.art_height = 150
-        image = img.make_image("Device\nImage", image_w=150, image_h=150)
+        image = img.make_image("Location\nPicture", image_w=150, image_h=150)
         self.disp_image = ImageTk.PhotoImage(image)
 
     def make_image_from_path(self, image_path):
@@ -1559,13 +1789,13 @@ class Locations(LocationsCommonSelf):
                          icon='error', thread=thread)
         return False
 
-    def highlight_callback(self, number_str):
+    def highlight_callback(self, tree_code):
         """
         As lines are highlighted in treeview, this function is called.
-        :param number_str: Location number used as iid inside treeview
+        :param tree_code: Location number used as iid inside treeview
         :return: None
         """
-        # print("number_str:", number_str)
+        # print("tree_code:", tree_code)
         pass
 
     def build_locations(self):
@@ -1576,50 +1806,52 @@ class Locations(LocationsCommonSelf):
         ''' Lists already declared in Init but must reset between calls 
             Put this into newly created CommonSelf()
         '''
-        #self.build_fake_locations()  # Create sample data
+        #if not self.open_code:
+        #    # Only do once or get duplicate codes
+        #    self.build_fake_locations()  # Create sample data
 
-        LocationsCommonSelf.__init__(self)  # Define self. variables
+        #LocationsCommonSelf.__init__(self)  # Define self. variables
+        # Above wipes out self.state set by caller of display_main_window
 
         self.all_codes = []  # "L001", "L002", etc... can be holes
         self.all_names = []  # Names matching all_codes
         self.all_topdir = []  # Descriptions matching all_codes
-        self.names_for_loc = []  # Names sorted for this location
-        self.names_all_loc = []  # Names sorted for all locations
-        self.loc_list = []
+        self.loc_list = []  # List of dictionaries inserted into Treeview
         ''' Read all locations from SQL Location Table into work lists '''
         for row in sql.loc_cursor.execute("SELECT * FROM Location"):
             d = dict(row)
             self.make_act_from_sql_dict(d)
-            self.loc_dict = OrderedDict(d)
-            self.loc_list.append(self.loc_dict)
-            self.all_codes.append(self.act_code)
-            self.all_names.append(self.act_name)
-            self.all_topdir.append(self.act_topdir)
-            self.names_all_loc.append(self.act_name)
-            #if self.act_code == DICT['iid']:  # Not sure DICT['iid'] is error???
-            #    self.names_for_loc.append(self.act_name)
+            self.loc_dict = OrderedDict(d)  # Line inserted into Treeview
+            self.loc_list.append(self.loc_dict)  # All lines inserted into TV
+            self.all_codes.append(self.act_code)  # must match all_topdir order
+            self.all_names.append(self.act_name)  # use to verify unique names
+            self.all_topdir.append(self.act_topdir)  # must match all_codes order
 
-        self.names_all_loc.sort()
-        self.names_for_loc.sort()
+    def out_cast_show_print(self, title, text, icon):
+        """ Check availability of output streams and send to channels
+            This version generally only used during startup.
+        """
+        if self.info:
+            self.info.cast(title + "\n\n" + text, icon)
+        if self.get_thread_func:
+            message.ShowInfo(self.main_top, title, text, icon=icon,
+                             thread=self.get_thread_func())
+        print("\n" + title + "\n\n" + text + "\n")
+
+    def out_fact_show(self, title, text, icon):
+        """ Check availability of output streams and send to channels
+            This version generally used during data entry.
+        """
+        if self.info:
+            self.info.fact(title + "\n\n" + text, icon)
+        if self.get_thread_func:
+            message.ShowInfo(self.main_top, title, text, icon=icon,
+                             thread=self.get_thread_func())
 
     @staticmethod
     def build_fake_locations():
-        """ Use existing LIST to create fake SQL Location Table rows
-        self.act_code.set(loc_dict['code'])  # Replacement for 'iid'
-        self.act_name.set(loc_dict['name'])
-        self.act_modify_time.set(loc_dict['modify_time'])  # New
-        self.act_image_path.set(loc_dict['image_path'])  # New
-        self.act_mount_point.set(loc_dict['mount_point'])  # New
-        self.act_topdir.set(loc_dict['topdir'])
-        self.act_host.set(loc_dict['host'])
-        self.act_wakecmd.set(loc_dict['wakecmd'])
-        self.act_testcmd.set(loc_dict['testcmd'])
-        self.act_testrep.set(loc_dict['testrep'])
-        self.act_mountcmd.set(loc_dict['mountcmd'])
-        self.act_touchcmd.set(loc_dict['touch_cmd'])  # Replaces 'activecmd'
-        self.act_touchmin.set(loc_dict['touch_min'])  # Replaces 'activemin'
-        self.act_comments.set(loc_dict['comments'])  # New
-        """
+        """  TEMPORARY DURING CONVERSION
+        Use existing LIST to create fake SQL Location Table rows """
         for i, d in enumerate(LIST):
             ImagePath = None  # Make pycharm happy :)
             if i == 0:
@@ -1634,16 +1866,18 @@ class Locations(LocationsCommonSelf):
             sql.loc_add(
                 d['iid'], d['name'], time.time(), ImagePath, 'MountPoint',
                 d['topdir'], d['host'], d['wakecmd'], d['testcmd'], d['testrep'],
-                d['mountcmd'], d['activecmd'], d['activemin'], "Comments")
+                d['mountcmd'], d['activecmd'], d['activemin'], u"Comments")
 
-    @staticmethod
-    def get_dict_by_dirname(dirname):
-        """ Look up location dictionary using top directory path """
+    def get_dict_by_dirname(self, dirname):
+        """ Look up location dictionary using top directory path 
+            Called by mserve.py when it was started using parameter 1 to
+            specify top directory. In this case look up to see if it's a
+            location already defined.
+        """
         stripped_last = dirname.rstrip(os.sep)
-        for i, dir_dict in enumerate(LIST):
-            topdir = dir_dict['topdir'].rstrip(os.sep)
+        for i, topdir in enumerate(self.all_topdir):
             if topdir == stripped_last:
-                return dir_dict  # DICT will be matching dirname
+                return self.read_location(self.all_codes[i])
 
         dir_dict = {}  # No match found DICT empty
         return dir_dict
@@ -1653,103 +1887,44 @@ class Locations(LocationsCommonSelf):
             In future may be called by mainline when no location found.
             If new songs are pending, do not allow location to open
         """
-        ''' Music Location Tree checkboxes pending to apply? '''
         if self.get_pending:  # 'None' = MusicLocationTree not called yet.
-            if self.get_pending():  # lib_top.tree checkboxes not applied?
+            ''' Music Location Tree checkboxes pending to apply? '''
+            if self.check_pending():  # lib_top.tree checkboxes not applied?
                 return  # We are all done. No window, no processing, nada
 
         LocationsCommonSelf.__init__(self)  # Define self. variables
         self.state = 'new'
         self.display_main_window("New Location")
-        self.enable_input()
-
-        # After "Add" button click, create the subdirectory - '.../mserve/L009'
-
-    def enable_input(self):
-        """ Turn on input fields for 'new', 'edit' and 'open'
-
-            From this answer:https://stackoverflow.com/a/4453715/6929343
-            def find_mount_point(path):
-                path = os.path.abspath(path)
-                while not os.path.ismount(path):
-                    path = os.path.dirname(path)
-                return path
-
-            After getting mount point can find out there are no files or
-            directories and know nothing is mounted yet.
-            Use the 100/10 test described below. Or will theount test file
-             walking back through invalid paths?
-
-            When FileControl.stat_start is called it will generate an error
-             if file system is not mounted. Errno 2.
-
-            Open last location can have 'New' button if the old mount
-            point is fine. Or an 'Edit' button if TopDir has changed. When
-            changing TopDir close music player if current location. Rename
-            all favorites with new TopDir. What if some files don't exist
-            in new TopDir?
-
-            If locations defined default to open. If no locations only
-            'New' button is available.
-
-        """
-        self.input_active = True
-        self.fld_name['state'] = 'normal'  # Allow input
-
-        ''' If len(last_playlist) > 0: error can't change TopDir. '''
-        count = 1  # Count of favorites stored in L009. When 0 can change TopDir
-        if self.state == 'new' or self.state == 'edit' and count == 0:
-            self.fld_topdir['state'] = 'normal'  # Allow input
-
-        self.fld_host['state'] = 'normal'  # TODO: Host can be it's own class
-        self.fld_wakecmd['state'] = 'normal'  # Requires pycharm add to dictionary
-        self.fld_testcmd['state'] = 'normal'
-        self.fld_testrep['state'] = 'normal'
-        self.fld_mountcmd['state'] = 'normal'
-        self.fld_touchcmd['state'] = 'normal'  # Replaces activecmd
-        self.fld_touchmin['state'] = 'normal'  # Replaces activemin
-        self.fld_comments['state'] = 'normal'
-        self.fld_image_path['state'] = 'normal'
-        self.fld_image_path.bind("<Button>", self.get_act_image_path)
-
+        self.enable_input()  # Allow data entry right off the bat
+        self.enable_last_button()  # Set "Add" into last button
 
     def edit(self):
         """Called by lib_top File Menubar "Edit Location"
             If new songs are pending, do not allow location to open """
         if self.get_pending:  # 'None' = MusicLocationTree not called yet.
             ''' Music Location Tree checkboxes pending to apply? '''
-            if self.get_pending():  # lib_top.tree checkboxes not applied?
+            if self.check_pending():  # lib_top.tree checkboxes not applied?
                 return  # We are all done. No window, no processing, nada
 
         LocationsCommonSelf.__init__(self)  # Define self. variables
         self.state = 'edit'
         self.display_main_window("Edit Location")
-        self.enable_input()
-
-    def rename(self):
-        """ Called by lib_top File Menubar "Rename Location"
-            TODO: Probably want to drop this function
-        """
-        LocationsCommonSelf.__init__(self)  # Define self. variables
-        self.state = 'rename'
-        self.display_main_window("Rename Location")
-        self.enable_input()
 
     def delete(self):
-        """ Called by lib_top File Menubar "Delete Location" """
+        """ Called by lib_top File Menubar 'Delete Location' """
         LocationsCommonSelf.__init__(self)  # Define self. variables
         self.state = 'delete'
         self.display_main_window("Delete Location")
 
     def open(self):
-        """ 
-            Called by main() prior to make_sorted_list()
-            Called by lib_top File Menubar "Open Location"
-            If new songs are pending, do not allow location to open
-        """
-        ''' Music Location Tree checkboxes pending to apply? '''
+        """ Called by lib_top File Menubar "Open Location and Play"
+
+            If new songs are pending, do not allow opening new location.
+            This is NOT called by main() prior to make_sorted_list().
+            For that purpose load_last_location() is called. """
         if self.get_pending:  # 'None' = MusicLocationTree not called yet.
-            if self.get_pending():  # lib_top.tree checkboxes not applied?
+            ''' Music Location Tree checkboxes pending to apply? '''
+            if self.check_pending():  # lib_top.tree checkboxes not applied?
                 return  # We are all done. No window, no processing, nada
 
         LocationsCommonSelf.__init__(self)  # Define self. variables
@@ -1763,109 +1938,26 @@ class Locations(LocationsCommonSelf):
         self.display_main_window("View Locations")
 
     def close(self):
-        """ Called by mserve shutdown.
-            When Location Maintenance window closes the self.reset() is used. 
+        """ Originally designed to be called by mserve shutdown.
+            However, shutdown calls self.reset().
+
+            When Location Maintenance window closes self.reset() is also used. 
+
+            As of July 27, 2023 this function is not used. The last location
+            is saved when "Open Location and Play" opens a new location. The
+            last location is also saved by mserve.py save_last_selections().
+            Also when Music Directory passed in parameter 1 and 
+            lc.get_dict_by_dirname(music_dir) returns True.
+ 
         """
 
         self.state = 'close'
         sql.save_config('location', 'last', self.open_code, self.open_name,
                         self.open_topdir, Comments="Last location opened.")
-        '''
-        if self.validate_location():  # Check if changes pending & confirm
-            #self.curr_number_str = None
-            #self.name = None
-            #self.display_lib_title()
-            return True
-        else:
-            return False
-        '''
-        
-    def load_last_location(self):
-        """ Called by mserve.py early in startup process. No lib_top yet. """
 
-        """ CURRENT CODE from mserve.py:
-
-    def load_last_location():
-        global START_DIR, LODICT  # Never change LODICT after startup!
-    
-        ''' Check for Last known location iid '''
-        if not os.path.isfile(lc.FNAME_LAST_LOCATION):
-            print("lc.FNAME_LAST_LOCATION not found:", lc.FNAME_LAST_LOCATION)
-            return False
-        try:
-            with open(lc.FNAME_LAST_LOCATION, 'rb') as f:
-                # read the data as binary data stream
-                iid = pickle.load(f)
-    
-        except IOError as error:
-            # New installation would not have last location...
-            # User may never create locations... 
-            print('Error opening:', lc.FNAME_LAST_LOCATION)
-            print(error)
-            return False
-    
-        # Set protected LODICT
-        LODICT = lc.item(iid)  # local permanent copy of loc dictionary
-        lc.set_location_filenames(LODICT['iid'])  # insert /L999/ into paths
-        START_DIR = LODICT['topdir']  # Music Top directory
-        # Display keep awake values
-        if LODICT['activecmd'] is not "":
-            print('Keep awake command:', LODICT['activecmd'],
-                  'every', LODICT['activemin'], 'minutes.')
-    
-        # Check if host name not blank and then wake it up and validate topdir
-        if lc.validate_host(LODICT['iid']):  # No toplevel for parm 2
-            # returns true only when host and host is online
-            return True
-    
-        ''' See if last location path and see if it is mounted '''
-        if not os.path.isdir(START_DIR):
-            print('Location contains invalid or off-line directory:', START_DIR)
-            return False
-    
-        return True
-        """
-        self.state = 'load' 
-
-        ''' Retrieve SQL History for last location used. '''
-        hd = sql.get_config('location', 'last')
-
-        if hd is None:
-            print("The last location in SQL History Table wasn't found:",
-                  "Type='location', Action='last")
-            self.NEW_LOCATION = True
-            return 1
-
-        ''' sql.save_config('location', 'last', self.open_code, self.open_name,
-                            self.open_topdir, Comments=comments) '''
-        d = sql.loc_read(hd['SourceMaster'])
-        if d is None:
-            print("The last location used for mserve.py has been deleted:",
-                  hd['SourceMaster'])
-            self.NEW_LOCATION = True
-            return 2
-
-        self.make_open_from_sql_dict(d)
-
-        # Display keep awake values
-        if self.open_touchcmd:
-            print('Keep awake command:', self.open_touchcmd,
-                  'every', self.open_touchmin, 'minutes.')
-
-        # Check if host name not blank and then wake it up and validate topdir
-        if self.validate_host(self.open_code):  # No toplevel for parm 2
-            return 0
-
-        ''' See if last location path and see if it is mounted '''
-        if not os.path.isdir(self.open_topdir):
-            print('Location contains invalid or off-line directory:', START_DIR)
-            return 3
-
-        return 0  # 0 = success
-    
-    def read_location(self, number_str):
-        """ Use location number to read SQL Location Row into work fields """
-        d = sql.loc_read(number_str)
+    def read_location(self, code):
+        """ Use location code to read SQL Location Row into work fields """
+        d = sql.loc_read(code)
         if d is None:
             return None
 
@@ -1874,9 +1966,78 @@ class Locations(LocationsCommonSelf):
 
         return True
 
+    def add_location(self):
+        """ Save Location when 'Add' button applied. """
+        sql.loc_add(
+            self.act_code, self.act_name, self.act_modify_time, self.act_image_path,
+            self.act_mount_point, self.act_topdir, self.act_host, self.act_wakecmd,
+            self.act_testcmd, self.act_testrep, self.act_mountcmd,
+            self.act_touchcmd, self.act_touchmin, self.act_comments)
+
+        ''' Create subdirectory .../mserve/L009 '''
+        directory = MSERVE_DIR + self.act_code + os.sep
+        try:
+            os.makedirs(directory)
+        except OSError as e:
+            if e.errno != errno.EEXIST:
+                raise
+
+    def save_mserve_location(self, Code):
+        """ Called by mserve in a few places in old Location version 1
+            July 2023 - Now called by New lcs.open_location_and_play() 
+        """
+        if not self.read_location(Code):
+            text = "location.py Locations.save_mserve_location() -" + \
+                   "Error reading location: " + Code
+            print(text)
+            if self.info:
+                self.info.cast(text, 'error')
+            return
+        
+        sql.save_config('location', 'last', self.act_code, self.act_name,
+                        self.act_topdir, Comments="Last location opened.")
+
     def save_location(self):
-        """ Save Location """
-        pass
+        """ Save Location when 'Save' button applied. """
+        #if self.act_comments:
+        #    #   File "/home/rick/python/location.py", line 1924, in save_location
+        #    #     self.act_touchcmd, self.act_touchmin, self.act_comments, self.act_row_id)
+        #    #   File "/home/rick/python/sql.py", line 1671, in loc_update
+        #    #     HostTouchMinutes, Comments, [Id]))
+        #    # InterfaceError: Error binding parameter 14 - probably unsupported type.
+        #    self.act_comments = self.act_comments.encode("utf-8")
+        #    self.act_comments = None  # I GIVE UP !!!
+        #print("self.act_touchmin:", self.act_touchmin, type(self.act_touchmin))
+        #print("self.act_comments:", self.act_comments, type(self.act_comments))
+        #print("self.act_row_id:", self.act_row_id, type(self.act_row_id))
+
+        sql.loc_update(
+            self.act_code, self.act_name, self.act_modify_time, self.act_image_path,
+            self.act_mount_point, self.act_topdir, self.act_host, self.act_wakecmd,
+            self.act_testcmd, self.act_testrep, self.act_mountcmd,
+            self.act_touchcmd, self.act_touchmin, self.act_comments, self.act_row_id)
+
+    def delete_location(self):
+        """ Delete Location using Location Row ID """
+        sql.loc_cursor.execute("DELETE FROM Location WHERE Id=?", [self.act_row_id])
+        sql.con.commit()
+
+    def make_act_from_empty_dict(self):
+        """ July 27, 2023 - Currently only used when lcs.new() is called. """
+        self.act_code = ""  # Replacement for 'iid'
+        self.act_name = ""
+        self.act_modify_time = 0.0
+        self.act_image_path = ""
+        self.act_mount_point = ""  # July 27, 2023 - Plan to use for remote host?
+        self.act_topdir = ""
+        self.act_host = ""
+        self.act_wakecmd = ""
+        self.act_testcmd = ""
+        self.act_testrep = 0
+        self.act_mountcmd = ""
+        self.act_touchcmd = ""
+        self.act_touchmin = 0
+        self.act_comments = ""
 
     def make_act_from_sql_dict(self, d):
         """ Make 'Active' location fields from SQL Location Table Row """
@@ -1915,6 +2076,16 @@ class Locations(LocationsCommonSelf):
         self.open_row_id = d['Id']  # Location record number
 
     @staticmethod
+    def code_to_ndx(code):
+        """ Convert 'L001' to 1, 'L002' to 2, etc. """
+        return int(code[1:]) - 1
+
+    @staticmethod
+    def ndx_to_code(ndx):
+        """ Convert 1 to 'L001', 2 to 'L002', etc. """
+        return "L" + str(ndx + 1).zfill(3)
+    
+    @staticmethod
     def make_ver1_dict_from_sql_dict(d):
         """ Make version 1 dictionary from SQL Location Table Row """
         v = OrderedDict()
@@ -1931,8 +2102,7 @@ class Locations(LocationsCommonSelf):
         return v
     
     def check_pending(self):
-        """
-        When lib_top_tree has check boxes for adding/deleting songs that
+        """ When lib_top_tree has check boxes for adding/deleting songs that
         haven't been saved, cannot open location or create new location.
 
         :return: True if pending additions/deletions need to be applied
@@ -1942,105 +2112,96 @@ class Locations(LocationsCommonSelf):
             return False
 
         # self.main_top window hasn't been created so use self.parent instead
-        text = "Checkboxes in Music Location have added songs or\n" + \
+        title = "Playlist has not been saved!"
+        text = "Checkboxes in Music Location Tree have added songs or\n" + \
                "removed songs. These changes have not been saved to\n" + \
                "storage or cancelled.\n\n" + \
                "You must save changes or cancel before working with a\n" + \
                "different location."
-        self.thread = self.get_thread_func()  # FIX huge problem when play_close()
-        message.ShowInfo(self.parent, "Songs have not been saved!",
-                         text, icon='error', align='left', thread=self.thread)
+        self.info.cast(title + "\n\n" + text)
+        thr = self.get_thread_func()
+        message.ShowInfo(self.parent, title, text, thread=thr)
 
         return True  # We are all done. No window, no processing, nada
 
-    def check_save_as(self):
-        """
-            Display message this isn't working yet. Always return false.
-
-            HUGE PROBLEM with passing self.thread to ShowInfo when
-            refresh_play_top() is no longer active. Need to refresh first.
-        """
-        # self.main_top window hasn't been created so use self.parent instead
-        self.thread = self.get_thread_func()  # FIX huge problem when play_close()
-
-        # June 19, 2023 closing playing window when message mounted still causes crash.
-        #    Maybe Locations() should have it's own thread handler?
-
-        text = "The 'Save Location As...' function is a work in progress.\n\n" + \
-               "When 'Save As...' is chosen any changes to current location\n" + \
-               "(such as new songs) are lost and go to the new location.\n\n" + \
-               "The 'Save As...' function will behave like the 'New Location'\n" + \
-               "function except location is fully populated with what's in memory.\n\n" + \
-               "\tOne Tab\tTwo Tabs\tThree Tabs\tFour Tabs\n" + \
-               "\t\tTwo tabs at once\n" + \
-               "\t\t\tThree tabs at once\n" + \
-               "\t\t\t\tFour tabs at once\n" + \
-               "\t\tPair of tabs\t\tAnother pair of tabs\n" + \
-               "\t\t\t\t\t\tSix tabs at once\n" + \
-               "\t\t\t\t\t\t\t\tEight tabs at once\n\n" + \
-               "When there is a need for the function it will be written."
-        message.ShowInfo(self.parent, "Save As... doesn't work yet !!!",
-                         text, icon='error', align='left', thread=self.thread)
-
-        return False  # We are all done. No window, no processing, nada
-
     def validate_location(self):
-        """ Validate Location for current ("scr_") fields
-            Call shared function: validate_host() for special processing.
+        """ Validate Location for current ("scr_") input data entry.
+            Called by lcs.apply() for all states including 'open' and 'view'
+            Differs from Playlists() because only called during scr_ input.
+
+            This is being called by test() function which is causing crashes
+            because test window wasn't opened yet. Remove from test() for now.
         """
+        if not self.state == 'new' and not self.state == 'edit':
+            return True  # 'open' or 'view' are always successful.
 
-        ''' NOTE: redesign for self.input_active is always True '''
-
-        ''' Retrieve name and description from tkinter variables. '''
+        ''' Retrieve name and description from tkinter scr_ variables. '''
         new_name = self.scr_name.get().strip()
         new_topdir = self.scr_topdir.get().strip()
-        new_host = self.scr_host.get().strip()
-        new_wakecmd = self.scr_wakecmd.get().strip()
-        new_testcmd = self.scr_testcmd.get().strip()
-        new_testrep = self.scr_testrep.get()
-        new_mountcmd = self.scr_mountcmd.get().strip()
-        new_touchcmd = self.scr_touchcmd.get().strip()
-        new_touchmin = self.scr_touchmin.get()
+        ''' Retrieve optional remote host from tkinter scr_ variables. '''
+        if self.fld_host:  # nmap and nc installed?
+            new_host = self.scr_host.get().strip()
+        if self.fld_wakecmd:  # wakeonlan installed?
+            new_wakecmd = self.scr_wakecmd.get().strip()
+        if self.fld_testcmd:  # Is ssh installed?
+            new_testcmd = self.scr_testcmd.get().strip()
+            new_testrep = self.scr_testrep.get()
+        if self.fld_mountcmd:  # Is sshfs installed?
+            new_mountcmd = self.scr_mountcmd.get().strip()
+        if self.fld_touchcmd:  # Is ssh installed?
+            new_touchcmd = self.scr_touchcmd.get().strip()
+            new_touchmin = self.scr_touchmin.get()
+        ''' Other "regular" tkinter scr_ variables. '''
         new_comments = self.scr_comments.get().strip()
-        if self.state == 'new' or self.state == 'save_as':
-            # Blank out name and description for name change tests
-            self.act_name = ""
-            self.act_topdir = ""
+        if self.fld_image_path:  # Doesn't exist on test window
+            new_image_path = self.act_image_path
+
+        if self.state == 'new':
+            self.make_act_from_empty_dict()
 
         ''' We need a location name no matter the operation performed '''
-        if new_name == "":
-            if self.input_active:
-                text = "Enter a unique name for the location."
-            else:
-                text = "First click on a location entry."
-            self.thread = self.get_thread_func()  # FIX huge problem when play_close()
-            message.ShowInfo(self.main_top, "Name cannot be blank!",
-                             text, icon='error', thread=self.thread)
+        if not new_name:
+            title = "Location Name cannot be blank!"
+            text = "Enter a unique name for the location."
+            self.info.cast(title + "\n\n" + text, 'error')
+            thr = self.get_thread_func()
+            message.ShowInfo(self.main_top, title, text, icon='error', thread=thr)
             return False
 
-        ''' A location description is recommended for Apple Users '''
-        if new_topdir == "" and self.input_active:
-            text = "Enter a location description gives more functionality\n" + \
-                   "in other Music Players such as iPhone."
-            self.thread = self.get_thread_func()  # FIX huge problem when play_close()
-            message.ShowInfo(self.main_top, "Description is blank?",
-                             text, icon='warning', thread=self.thread)
+        ''' A location music top directory always required '''
+        if not new_topdir:
+            title = "Music Top Directory required!"
+            text = "Select a Music Top Directory.\n"
+            text += "If network location, ensure it is active first."
+            self.info.cast(title + "\n\n" + text, 'error')
+            thr = self.get_thread_func()
+            message.ShowInfo(self.main_top, title, text, icon='error', thread=thr)
+            return False
 
-        ''' Tests when location name and description are keyed in '''
-        if self.input_active:
-            ''' Same name cannot exist in this location '''
-            if new_name in self.all_names and \
-                    new_name != self.act_name:
-                title = "Name must be unique!"
-                text = "Location name has already been used."
+        ''' Same name cannot exist in this location '''
+        if new_name in self.all_names and \
+                new_name != self.act_name:
+            title = "Name must be unique!"
+            text = "Location name has already been used."
+            self.info.cast(title + "\n\n" + text, 'error')
+            thr = self.get_thread_func()
+            message.ShowInfo(self.main_top, title, text, icon='error', thread=thr)
+            return False
+
+        ''' -odebug causes lockup '''
+        if self.fld_mountcmd:  # Is sshfs installed?
+            # noinspection SpellCheckingInspection
+            bad_apple = "-odebug"
+            if bad_apple in new_mountcmd:
+                title = bad_apple + " not allowed!"
+                text = bad_apple + " option hijacks processing and causes mserve to freeze."
                 self.info.cast(title + "\n\n" + text, 'error')
                 thr = self.get_thread_func()
                 message.ShowInfo(self.main_top, title, text, icon='error', thread=thr)
                 return False
 
-        ''' Creating a new location? Similar tests for Save As... '''
+        ''' Creating a new location? Use next available location code '''
         if self.state == 'new':
-            # Passed all tests so create new number string
             if len(self.all_codes) > 0:
                 last_str = self.all_codes[-1]  # Grab last number
                 val = int(last_str[1:]) + 1  # increment to next available
@@ -2048,286 +2209,574 @@ class Locations(LocationsCommonSelf):
             else:
                 self.act_code = "L001"  # Very first location
 
-        if self.input_active:
-            self.act_name = new_name
-            self.act_topdir = new_topdir
+        ''' All validation tests passed. Setup to add new location / save old '''
+        self.act_name = new_name
+        self.act_topdir = new_topdir
+        if self.fld_host:  # nmap and nc installed?
+            self.act_host = new_host
+        if self.fld_wakecmd:  # wakeonlan installed?
+            self.act_wakecmd = new_wakecmd
+        if self.fld_testcmd:  # Is ssh installed?
+            self.act_testcmd = new_testcmd
+            self.act_testrep = new_testrep
+        if self.fld_mountcmd:  # Is sshfs installed?
+            self.act_mountcmd = new_mountcmd
+        if self.fld_touchcmd:  # Is ssh installed?
+            self.act_touchcmd = new_touchcmd
+            self.act_touchmin = new_touchmin
+        self.act_comments = new_comments
+        if self.fld_image_path:
+            # No image on test screen
+            self.act_image_path = new_image_path
 
-        if self.state == 'open':
-            # TODO broadcast message to Information Centre
-            pass
+        return True  # All tests passed, self.act_xxx ready for saving
 
-        if self.state == 'delete':
-            # self.main_top window hasn't been created so use self.parent instead
-            if self.curr_number_str == self.act_code:
-                text += "\nThe location is currently playing and will be stopped.\n"
-            self.thread = self.get_thread_func()  # FIX huge problem when play_close()
-            dialog = message.AskQuestion(
-                self.main_top, "Confirm location deletion", text, icon='warning',
-                thread=self.thread)
-            if dialog.result != 'yes':
-                return False
+    def load_last_location(self, toplevel=None):
+        """ Called by mserve.py open_files(). """
+        print(ext.t(time.time()), "load_last_location()")
+        self.state = 'load'
 
-            return True
+        ''' Retrieve SQL History for last location used. '''
+        hd = sql.get_config('location', 'last')
+        if hd is None:
+            print("The last location in SQL History Table wasn't found:",
+                  "Type='location', Action='last")
+            self.NEW_LOCATION = True
+            return 1
 
-        if self.state == 'save':
-            # DEPRECATED, save() function is not used
-            pass
+        ''' Retrieve SQL Location Table last location used. '''
+        d = sql.loc_read(hd['SourceMaster'])
+        if d is None:
+            print("The last location used for mserve.py has been deleted:",
+                  hd['SourceMaster'])
+            self.NEW_LOCATION = True
+            return 2
 
-        if self.state == 'save_as':
-            pass
+        ''' Initialize working variables '''
+        self.make_act_from_sql_dict(d)  # self.act_ used for testing host
+        self.make_open_from_sql_dict(d)  # self.open_ changed only on load 
+        global DICT  # Be glad when this old code is gone !!!
+        DICT = self.make_ver1_dict_from_sql_dict(d)
+        set_location_filenames(self.act_code)  # Call global function at top
 
-        return True
+        # Display keep awake values
+        if self.open_touchcmd:
+            print('Touch command:', self.open_touchcmd,
+                  'every', self.open_touchmin, 'minutes.')
 
-    def validate_host(self, iid, toplevel=None):
-        """ Is it a host? """
-        if item(iid)['host'] is "":
-            return False  # Always return False when not a host
+        ''' If host used, wake it up and validate topdir '''
+        if self.validate_host(toplevel=toplevel):
+            return 0  # else not a host or host won't wake up
 
-        return self.test(iid, toplevel)
+        ''' Check if last used location's music top directory has subdirs '''
+        if os.path.exists(self.open_topdir) and len(os.listdir(self.open_topdir)):
+            return 0
 
-    @staticmethod
-    def test_host_up(host):
-        """ Simply test if host if up and return True or False """
-        ''' TODO: Fix error:
+        print('Location contains invalid or off-line directory:', 
+              self.open_topdir)
+        return 3
 
-            "This is nc from the netcat-openbsd package. An alternative nc is 
-            available in the netcat-traditional package..."
+    def validate_host(self, toplevel=None):
+        """ Check current self.act_host variable to see if it a host 
+            Called my mserve.py call to self.load_last_location()
+        """
+        #print("location.py Locations.validate_host(toplevel):", toplevel)
+        if self.act_host:
+            ''' Not using Test Button from main_top so fast test first.
+                Desirable during development when lots of mserve restarts.
+                'nc' takes split second when host connected but many seconds
+                when host disconnected. Use display_test_window and immediately
+                remove it. 
+            '''
+            print(ext.t(time.time()), "validate_host()")
+            self.test_init(toplevel, True)  # Open window just in case.
+            # Why is window opening twice???
+            result = os.system("nc -z " + self.open_host + " 22 > /dev/null")
+            if result == 0:
+                if self.open_mountcmd:
+                    ''' Always unmounted when mserve closes. Mount quickly '''
+                    result = os.system(self.open_mountcmd)
+                    if result == 0:
+                        self.open_sshfs_used = True
+                        if os.path.exists(self.open_topdir) and \
+                                len(os.listdir(self.open_topdir)):
+                            print("FAST STARTUP... File count:",
+                                  len(os.listdir(self.open_topdir)))
+                            self.test_close_window()
+                            return True
+                        else:
+                            ''' No subdirs under TopDir. Will do full test '''
+                            self.sshfs_close()  # unmount for full test
+                        
+            ''' Quick & dirty didn't work. Do the long long test '''
+            return self.test_common(toplevel, run_nmap=False)
+        else:  # else not needed but makes easier for others' comprehension.
+            return False  # Return False when not a host for topdir test in parent
 
-            Happens when restarting with new music library: /home/rick/Music
-        '''
-        if host.strip():
-            return True if os.system("nc -z " + host + " 22 > /dev/null") \
-                           is 0 else False
+    def test_host_up(self):
+        """ Simply test if host if up and return True or False
+            Only called from mserve.py to check if connection still up.
+        """
+        if self.act_host:
+            ''' nc returns 0 if host is on-line '''
+            #print("Calling 'nc -z self.act_host 22' using:", self.open_host)
+            print(ext.t(time.time()), "test_host_up()")
+            result = os.system("nc -z " + self.open_host + " 22 > /dev/null")
+            # Above waits for command to end 0.003 seconds when host up
+            # .078s when bad host name passed
+            #print("Calling 'nc -z self.act_host 22' result:", result)
+            return result == 0
         else:
             # Determine function name from within that function
             # http://farmdev.com/src/secrets/framehack/index.html
-            print('test_host_up() received blank host name from:',
+            toolkit.print_trace()
+            print('location.py Locations() test_host_up() blank host name.',
                   sys._getframe(1).f_code.co_name)
             return False
 
-    @staticmethod
-    def code_to_ndx(self, code):
-        """ Convert 'L001' to 1, 'L002' to 2, etc. """
-        return int(code[1:]) - 1
+    def test_common(self, toplevel, run_nmap=True):
+        """ Validate Host Connect. 
 
-    @staticmethod
-    def ndx_to_code(self, ndx):
-        """ Convert 1 to 'L001', 2 to 'L002', etc. """
-        return "L" + str(ndx + 1).zfill(3)
+            In simple form, check that local machine's top directory exists. 
 
-    def test(self, iid, toplevel):
+            In complicated form, a remote host is woken up, the a remote partition
+            is mounted locally and finally, test if top directory exists.
 
-        """ Validate location. In the most simple form check that local machine's
-            top directory exists. In the most complicated form location is on
-            remote / host and host must be woken up, partition mounted and, then
-            test if top directory exists.
+            Called by mserve.py -> lcs.load_last_location() -> lcs.validate_host()
 
-            This function is called by loc_open().
+            Also called by mserve.py: open_and_play_callback(self, code, topdir)
 
-            This function calls md = message.Open(...) to display messages to user.
+            Called internally from self.main_top -> self.test_host_button.
 
-            toplevel is parent window our new window is centered in. It can be None
-            when program first starts and there is no toplevel yet.
+        :param toplevel: 'toplevel' can be 'main_top' that test window fully covers. 
+            'toplevel' can be 'root' and then window centered on active monitor.
+        :param run_nmap: If 'nc' was used for quick test, no need to run 'nmap'.
+            Also display_test_window() was already done. """
 
-            Create "Test Host" command button. This will wake up host if
-            necessary and get top music directory, last modified time and
-            free space.
-        """
+        ''' Perform fastest test for mserve.py open_and_play_callback() '''
+        if not self.called_from_main_top and not self.act_host:
+            if os.path.exists(self.act_topdir) and \
+                    len(os.listdir(self.act_topdir)) > 0:
+                self.test_host_is_mounted = True
+                if self.act_mountcmd:
+                    self.open_sshfs_used = True  # better than nothing...
+                return True  # Probably not even a host.
 
-        ndx = self.code_to_ndx(iid)  # treeview style "L002" to LIST index "1"
-        d = LIST[ndx]  # Get dictionary for LIST index
-
-        host = d['host']
-        # if host == "" or host.isspace():
-        # More elegant way Doesn't work!: if host.strip()
-        if not host.strip():
-            # There is no host so simply check Top Directory exists
-            if os.path.exists(d['topdir']):
-                return True
-            else:
-                print("location.test() Top Directory for Music doesn't exist:",
-                      d['topdir'])
-                return False
+        ''' If using Test Button, validate_location() sets self.act_xxx vars '''
+        if self.called_from_main_top and not self.validate_location():
+            return False  # Called from main_top and error given to user to fix
 
         ''' We have more complicated situation where remote / host is used. '''
-        # Wake up host if necessary
-        wakecmd = d['wakecmd']
-        testcmd = d['testcmd']
-        testrep = d['testrep']
-        tests = 0
+        display_test = run_nmap and not self.called_from_main_top
+        self.test_init(toplevel, display_test)  # Open delayed text box
 
+        if run_nmap:
+            host_is_up, host_is_awake = self.test_nmap(toplevel)
+        else:
+            ''' We know it's down because 'nc' failed already '''
+            host_is_up = host_is_awake = False
 
-        """ TODO: Mount test host window """
-        # Test if host on-line
-        #title = "Testing location: " + d['name'] + ".  host: " + host
-        #dtb = message.DelayedTextBox(title=title, toplevel=toplevel,
-        #                             width=1000, height=260, startup_delay=0)
-        # md = message.Open(title, toplevel, 800, 260)  # 500 wide, 160 high
-
-        # https://serverfault.com/questions/696281/ping-icmp-open-socket-operation-not-permitted-in-vserver
-        # chmod u+s $( which ping );
-        # print('Initial test to see if host is awake')
-        #dtb.update('Initial test to see if host is awake')
-        test_passed = self.test_host_up(host)
-
-        # Wake up host if not on-line
-        # if not wakecmd == "" or not wakecmd.isspace():
-        if wakecmd.strip():
-            if test_passed is True:
-                # print("Host:", host, "is already awake.")
-                dtb.update("Host: " + host + " is already awake.")
+        ''' Wake up host if not on-line '''
+        if self.act_wakecmd:  # Is there a command to wakeup host?
+            if host_is_awake:  # Is host already awake?
+                # nmap leaves extra blank line already
+                text = "Host: " + self.act_host + " is already awake. Skipping:\n\t"
+                text += self.act_wakecmd
+                self.test_see(text, pattern=self.act_host)
+                pass
             else:
-                # print('waking up host:', host, 'using:', wakecmd)
-                #dtb.update('waking up host: ' + host + ' using: ' + wakecmd)
-                os.popen(wakecmd)
-                # TODO: What about error messages on 2>?
+                ''' Host is sleeping '''
+                if host_is_up:
+                    # nmap leaves extra blank line already
+                    text = 'Host: ' + self.act_host
+                    text += ' can be accessed but is NOT awake.'
+                    self.test_see(text, pattern='NOT awake')
 
-        # Test host up if not already done
-        # if not testcmd == "" or not testcmd.isspace():
-        if testcmd.strip():
-            # Loop # of iterations checking if host is up
+                text = '\nWaking up host: ' + self.act_host + ' using:\n\t '
+                text += self.act_wakecmd
+                self.test_see(text, pattern=self.act_wakecmd)
+
+                ''' Launch wakeup command (don't use && sleep 4). '''
+                os.popen(self.act_wakecmd)
+
+        ''' Keep testing host until it is awake '''
+        host_is_awake = False
+        if self.act_testcmd:
+            if os.path.exists(FNAME_TEST):
+                os.remove(FNAME_TEST)
+            cmd1 = ext.shell_quote(self.act_testcmd)
+            if "#" in cmd1:  # Remove any comments from command to append redirects
+                cmd1 = cmd1.split('#')[0]
+            cmd = cmd1 + " > " + FNAME_TEST + " 2>&1 &"
+            os.popen(cmd)  # Launch background command to list files to temp file
+            full_text = "\nRunning test to see if Host awake:\n\t" + cmd
+            self.test_see(full_text, pattern=cmd1)
+
+            text = "Waiting for '" + FNAME_TEST + "' output results to appear."
+            self.test_see(text, pattern=FNAME_TEST)
+
+            testrep = self.act_testrep
             if testrep < 1:
-                testrep = 1
+                text = "testrep is < 1: " + str(testrep)
+                self.test_see(text, pattern=testrep)
+                testrep = 300  # Override negative or zero to 30 seconds
+            start = now = time.time()
+            self.test_see("Dummy Line to replace 2")
             for i in range(testrep):
-                if test_passed is True:
-                    break
-                time.sleep(.1)
+                # .1 second wait
+                self.test_refresh(toplevel, i + 1, testrep, start,
+                                  "test if Host awake")
+                # noinspection PyBroadException
+                try:
+                    strings = ext.read_into_list(FNAME_TEST)
+                    if len(strings) > 2:
+                        self.test_see("Host response first line:\t" + strings[0],
+                                      pattern="response first line")
+                        self.test_see("Response last line " + "[" +
+                                      str(len(strings)) + "]:\t" + strings[-1],
+                                      pattern="Response last line")
+                        host_is_awake = True
+                        text = "Host communicating after: " + str(i + 1) + " tests."
+                        self.test_see(text, pattern="communicating")
+                        break
+                except:
+                    pass
+                os.popen(cmd)  # Launch background command to list files to temp file
 
-                # We don't want error messages in our result use 2>/dev/null
-                result = os.popen(testcmd + ' 2>/dev/null').read().strip()
-                if len(result) > 4:
-                    test_passed = True
-                    tests = i
+            if not host_is_awake:
+                test_time = int(float(self.act_testrep) * .1)
+                text = "Host did not come up after: " + \
+                       str(test_time) + " seconds."
+                self.test_see(text, pattern=str(test_time))
+                return self.test_failure()
         else:
-            test_passed = True
+            ''' Host has no keep awake command, assume test passed. '''
+            text = "\nCan't check if Host is awake. Test command NOT provided!"
+            self.test_see(text, pattern="Test command NOT provided!")
 
-        if test_passed is False:
-            test_time = int(float(testrep) * .1)
-            #dtb.update("location.test() Host did not come up after: " +
-            #           str(test_time) + " seconds.")
-            #dtb.close()
-            return False
-        else:
-            # print("location.test() Host up after:", tests, "tests.")
-            #dtb.update("location.test() Host up after: " + str(tests) + " tests.")
-            pass
+        ''' Check if Top Directory already mounted '''
+        text = '\nChecking for Music Top Directory:\n\t' + self.act_topdir
+        self.test_see(text, pattern=self.act_topdir)
+        if self.test_topdir():
+            text = "\nTop Directory for Music already mounted"
+            self.test_see(text, pattern="already mounted")
+            if not self.called_from_main_top:
+                self.test_host_is_mounted = True  # Still mounted after prev wakeup?
+                if self.act_mountcmd:
+                    self.open_sshfs_used = True
+                else:
+                    self.open_sshfs_used = False
+            return self.test_success()
 
-        # Check if already mounted - Needs fine tuning
-        topdir = d['topdir'].rstrip(os.sep)
-
-        if topdir is "":  # What if topdir is os.sep for a USB or something?
-            topdir = os.sep
-
-        result = os.popen("mount | grep " + topdir + " ").read().strip()
-        if len(result) > 4:
-            # print("location.test() Top Directory for Music already mounted")
-            #dtb.update("location.test() Top Directory for Music already mounted")
-            #dtb.close()
-            return True
-
-        # Mount host directory locally with sshfs
-        mountcmd = d['mountcmd']
-        self.open_host_is_mounted = False
-        # if not mountcmd == "" or not mountcmd.isspace():
-        if mountcmd.strip():
+        ''' sshfs host's music top directory to local mount point '''
+        mountcmd = self.act_mountcmd.strip()
+        self.test_host_is_mounted = False  # Assume host isn't mounted
+        if mountcmd:  # Need Non-blank mount command to run
+            text = '\nMounting: ' + self.act_topdir + \
+                   ' using:\n\t' + self.act_mountcmd + "\n"
+            self.test_see(text, pattern=self.act_mountcmd)
+            # noinspection SpellCheckingInspection
+            ''' Advice about fuse error '''
+            text = "NOTE: 'sshfs' can stall and cause mserve to freeze.\n" + \
+                   "If so, you can test by listing files on mount point.\n\n" + \
+                   "Run the command below and check for the error below:\n" + \
+                   "    $ sshfs '" + self.act_host + ":/mnt/music' /mnt/music\n" + \
+                   "    fuse: bad mount point `/mnt/music`:\n" + \
+                   "    Transport endpoint is not connected\n\n" + \
+                   "If you get the 'fuse' error, unmount the point with:\n" + \
+                   "    $ sudo umount -l /mnt/music'"
+            self.test_see(text, pattern='NOTE:')
             # We want error messages in our result
             result = os.popen(mountcmd).read().strip()
-            if len(result) > 4:
-                # print("location.test() errors mounting:", result)
-                dtb.update("location.test() errors mounting:" + result)
+            text = "\nMount command result: " + result
+            self.test_see(text, pattern=result)
+            if "Connection reset" in result:
+                text = "\nError mounting Top Directory: " + result
+                self.test_see(text, pattern=result)
             else:
-                self.open_host_is_mounted = True
+                self.test_host_is_mounted = True
         else:
-            self.open_host_is_mounted = True
+            text = "\nSkipping Host mount. Mount command NOT provided!"
+            self.test_see(text, pattern="Mount command NOT provided!")
+            self.test_host_is_mounted = True  # When no mountcmd assume mounted
 
-        if self.open_host_is_mounted is False:
-            # print("location.test() Host Top Directory could not be mounted with:",
-            #      d['mountcmd'])
-            #dtb.update("location.test() Host Top Directory could not be mounted with: " +
-            #           d['mountcmd'])
-            return False
+        if self.test_host_is_mounted is False:
+            text = "\nHost's Music Top Directory could not be mounted with:"
+            text += "\n\t" + self.act_mountcmd
+            self.test_see(text, pattern=self.act_mountcmd)
+            return self.test_failure()
 
-        # Host is up and directory mounted, see if it exists
-        if os.path.exists(d['topdir']):
-            #dtb.close()
-            return True
+        text = '\nTest if Music Top Directory exists with files:\n\t' + \
+               self.act_topdir
+        self.test_see(text, pattern=self.act_topdir)
+
+        ''' Host is up and directory mounted. Check if TopDir has subdirs '''
+        if os.path.exists(self.act_topdir) and \
+                len(os.listdir(self.act_topdir)) > 0:
+            return self.test_success()  # Finally we're good to go!
         else:
-            # print("location.test() Top Directory for Music doesn't exist:",
-            #      d['topdir'])
-            #dtb.update("location.test() Top Directory for Music doesn't exist: " +
-            #           d['topdir'])
-            #dtb.close()
-            return False
+            if os.path.exists(self.act_topdir):
+                text = "Music Top Directory exists, but it is empty:"
+                pattern = "is empty"
+            else:
+                text = "Music Top Directory doesn't exist:"
+                pattern = "doesn't exist"
+            text += "\n\t" + self.act_topdir
+            self.test_see(text, pattern=pattern)
+            return self.test_failure()
 
-    def delete_location(self):
-        """ Delete Location using Location Row ID """
-        sql.loc_cursor.execute("DELETE FROM Location WHERE Id=?", [self.act_row_id])
-        sql.con.commit()
+    def test_init(self, toplevel, display_test):
+        """ Initialize variables for Testing Host """
 
-    # noinspection PyUnusedLocal
-    def reset(self, *args):
+        ''' if 'nc' previously run test window already up.
+            if self.test_called_from_main = True then using main_top variables. 
+        '''
+        if display_test:
+            ''' Careful here... Check call chain before revisions... '''
+            print(ext.t(time.time()), "mounting display_test_window")
+            self.display_test_window()
+            toplevel.update()
+            print("toplevel.update()")
+            self.set_scr_variables(self.test_top)
+            self.test_top.update()
+
+        if self.called_from_main_top:
+            ''' Called from main_top using 'Test Host' button '''
+            if self.no_locations_label:
+                self.no_locations_label.grid_remove()
+            else:
+                self.tree_frame.grid_remove()
+            self.main_close_button.grid_remove()
+            self.main_help_button.grid_remove()
+            self.test_host_button.grid_remove()
+            if self.apply_button:
+                self.apply_button.grid_remove()
+            #self.main_top.update()
+            ''' test box will replace treeview '''
+            self.make_test_box(self.main_frame)  # Appears bottom of main_frame?
+            ''' new buttons replace grid_remove '''
+            self.make_test_close_button(self.main_frame)
+            self.make_test_help_button(self.main_frame)
+            self.main_top.update()
+
+        text = '\nInitial test to see if host is connected.'
+        title = "Test Host: " + self.act_host + " - mserve"
+        self.test_see(text, pattern="connected")
+        self.test_dtb = message.DelayedTextBox(
+            title=title, toplevel=toplevel, width=1000, height=260, startup_delay=0)
+
+    def test_close_window(self):
+        """ Close Test Host Window """
+        if self.called_from_main_top:  # main_top exists, so test_top not needed
+            ''' Remove test window overrides and restore original main window '''
+            if self.tt:
+                self.tt.close(self.test_close_button)
+                self.tt.close(self.test_help_button)
+            self.test_close_button.destroy()
+            self.test_help_button.destroy()
+            self.test_scroll_frame.destroy()
+            self.test_close_button = None
+            self.test_help_button = None
+            self.test_scroll_frame = None
+            #self.main_top.update()
+
+            if self.no_locations_label:
+                self.no_locations_label.grid()  # Restore no locations text
+            else:
+                self.tree_frame.grid()  # Restore treeview of locations
+            self.main_close_button.grid()
+            self.main_help_button.grid()
+            self.test_host_button.grid()
+            if self.apply_button:  # If apply button exists, restore it
+                self.apply_button.grid()
+            self.main_top.update()
+        else:
+            self.test_top.destroy()
+            self.test_top = None  # Destroying doesn't set to 'None'
+
+    def test_nmap(self, toplevel):
+        """ Run the nmap command when 'nc' command has not been run. """
+        ''' nmap returns results in lumps '''
+        if os.path.exists(FNAME_TEST):
+            os.remove(FNAME_TEST)
+        text = "nmap -Pn " + self.act_host + " 2>&1 > " + FNAME_TEST + " &"
+        os.popen(text)
+        full_text = "\nRunning command: " + text
+        self.test_see(full_text, pattern="nmap")
+
+        text = "\nWaiting for '" + FNAME_TEST + "' output results to appear."
+        self.test_see(text, pattern=FNAME_TEST)
+        limit = 300  # 30 second time limit. dell takes 6.5 seconds
+        string = ""
+        start = time.time()
+        self.test_see("Dummy Line to replace")
+        for i in range(limit):
+            self.test_refresh(toplevel, i + 1, limit, start,
+                              "'nmap' results")
+            # noinspection PyBroadException
+            try:
+                string = ext.read_into_string(FNAME_TEST)
+            except:
+                continue  # File hasn't appeared yet
+            if "Nmap done:" in string:
+                break
+
+        ''' Check nmap results '''
+        host_is_up = "(1 host up)" in string
+        host_is_awake = "22/tcp open" in string  # what if more spaces? Use re
+        self.test_host_was_asleep = not host_is_awake  # Can do this better...
+        if limit == 0:
+            self.test_see("\n'nmap' FAILED! 10 second timeout exceeded.",
+                          pattern="'nmap' FAILED!")
+        else:
+            self.test_see(string, pattern="(1 host up)")
+
+        return host_is_up, host_is_awake
+
+    def test_see(self, text, pattern=None):
+        """ Insert into self.test_box (scrolled text box) and print to console.
+            Also use dtb (delayed text box), however by design not all lines will
+            appear there. dtb serves as GUI backup when test_window doesn't appear.
+
+        :param text: Text line for self.test_box. "\n" appended
+        :return: Nothing
+        """
+        self.test_box.tag_remove("last_insert", "1.0", "end")
+        self.test_box.insert("end", text + "\n", "last_insert")
+        last_insert = self.test_box.tag_ranges("last_insert")
+        if pattern:
+            self.test_box.highlight_pattern(pattern, 'yellow', start=last_insert[0])
+        self.test_box.see("end")
+        self.test_scroll_frame.update_idletasks()
+        last_insert = self.test_box.tag_ranges("last_insert")
+        print(last_insert[0], last_insert[1], text)
+        #self.test_dtb.update(text)  # Too busy now that Test Window works
+
+    def test_refresh(self, top, step, steps, start, text):
+        """ Refresh last test_box line with .1 second updates
+            Credit: https://stackoverflow.com/a/53639572/6929343 """
+        now = time.time()
+        last_insert = self.test_box.tag_ranges("last_insert")
+        self.test_box.delete(last_insert[0], last_insert[1])
+        self.test_box.tag_remove("last_insert", "1.0", "end")
+        secs = '{0:.1f}'.format(now - start)
+        full_text = str(step) + " of: " + str(steps) + " steps. "
+        full_text += "Waited: " + secs + " seconds for: " + text + "."
+        self.test_box.insert("end", full_text + "\n", "last_insert")
+        self.test_box.highlight_pattern(text, 'yellow')
+        self.test_box.see("end")
+        self.test_scroll_frame.update_idletasks()
+        if self.get_thread_func:  # Update animations & poll tooltips
+            thread = self.get_thread_func()
+            thread()
+        elapsed = time.time() - now  # Sleep .1 seconds between tests
+        sleep = int((.1 - elapsed) * 1000)  # fractional to milliseconds
+        sleep = 1 if sleep < 1 else sleep
+        top.after(sleep)
+
+    def test_topdir(self):
+        """ Short test if topdir is visible """
+        return os.path.exists(self.act_topdir) and \
+            len(os.listdir(self.act_topdir)) > 0
+
+    def test_success(self):
+        """ End test with success """
+        success = "\nHost successfully accessed. Click 'Close' button."
+        self.test_see(success, pattern="'Close'")
+        self.test_dtb.close()
+        if not self.called_from_main_top:
+            if self.test_host_is_mounted and self.open_mountcmd:
+                self.open_sshfs_used = True
+            else:
+                self.open_sshfs_used = False
+            self.test_close_window()  # main_top allows reviewing results
+        return True
+
+    def test_failure(self):
+        """ End test with Failure """
+        failure = "\nHost FAILURE. Review and then click 'Close' button."
+        self.test_see(failure, pattern="FAILURE")
+        self.test_dtb.close()
+        # Leave test window open
+        return False
+
+    def sshfs_close(self):
+        """
+            When exiting need to unmount sshfs music directories. Also when
+            test_host_up() fails with 'nc' test this must be done. Finally,
+            this must be run during mserve.py's self.open_and_play_callback().
+
+            After the "Test Host" button finishes this needs to be run,
+            unless self.act_host = self.open_host.
+
+            It might be tempting to run command all the time:
+                $ time fusermount -u Temp
+                fusermount: entry for /home/rick/Temp not found in /etc/mtab
+                real	0m0.003s
+
+            When mserve.py is running, look inside '/etc/mtab':
+                $ cat /etc/mtab | grep music
+                dell:/mnt/music/Users/Person/Music/iTunes/iTunes\040Media/Music/
+                /mnt/music fuse.sshfs rw,nosuid,nodev,relatime,user_id=1000,group_id=1000 0 0
+
+            From: https://help.ubuntu.com/community/SSHFS
+            (add to command help module mserve_config.py)
+                Your ssh session will automatically log out if it is idle.
+                To keep the connection active (alive) add this to
+                ~/.ssh/config or to /etc/ssh/ssh_config on the client.
+
+        """
+        if self.open_sshfs_used and not self.open_topdir:
+            title = "Programming Error."
+            text = "location.py Locations.sshfs_close() called with no topdir."
+            self.out_cast_show_print(title, text, 'error')
+
+        if self.open_sshfs_used:
+            os.popen("fusermount -u " + self.open_topdir)
+            self.open_sshfs_used = False
+
+    def reset(self, shutdown=False):
         """ Named "reset" because used by shutdown as well. """
-        if self.tt:
+        if self.tt:  # toolkit.Tooltips() won't exist during early startup
             self.tt.close(self.main_top)
         if self.main_top:
             geom = monitor.get_window_geom_string(self.main_top, leave_visible=False)
             monitor.save_window_geom('locations', geom)
             self.main_top.destroy()
+            self.main_top = None  # Destroying doesn't set to 'None' for testing
         LocationsCommonSelf.__init__(self)  # Reset self. variables
+        ''' After top destroyed, enable all File Menu options for locations '''
+        if not shutdown:  # When shutting down lib_top may not exist.
+            self.enable_lib_menu()
 
     # noinspection PyUnusedLocal
     def apply(self, *args):
-        """ Validate, Analyze mode (state), update database appropriately. """
-        if self.validate_location() is False:
-            return
+        """ Validate, Analyze mode (state), update database appropriately. 
+            Only called within Locations() class, never by mserve.py.
+        """
+        if not self.validate_location():
+            return  # Reject apply when data errors
 
-        if self.state == 'delete':
-            # TODO: Delete resume, chron_state, hockey_state and open_states
-            #       Or just set a deleted flag and not physically delete.
+        if self.state == 'new':
+            self.add_location()  # Save brand new location
+            self.info.cast("Created new location: " + self.act_name, action="add")
+        elif self.state == 'edit':
+            self.save_location()
+            self.info.cast("Saved location: " + self.act_name, action="update")
+        elif self.state == 'delete':
             self.delete_location()
             self.info.cast("Deleted location: " + self.act_name, action="delete")
-            if self.curr_number_str == self.act_code:
-                self.name = None
-                self.last_number_str = self.curr_number_str  # Replaces .name in future
-                self.curr_number_str = None  # Replaces .name in future
-                self.play_close()  # must be called before name is set
-                self.name = self.act_name  # Tell parent name of location
-                self.curr_number_str = None  # Was deleted, no longer exists.
         elif self.state == 'open':
-            self.name = None
-            self.curr_number_str = None  # Replaces .name in future
-            self.play_close()  # must be called before name is set
-            self.name = self.act_name  # Tell parent name of location
-            self.last_number_str = self.curr_number_str  # Replaces .name in future
-            self.curr_number_str = self.act_code
-            self.reset()  # Close everything down, E.G. destroy window
-            # June 23, 2023 - info.cast isn't appearing?
-            self.info.cast("Opened location: " + self.act_name)
-            self.apply_callback()  # Parent will start playing (if > 1 song in list)
-            # self.info.cast("Opened location: " + self.act_name)  # doesn't work either
-        elif self.state == 'new':
-            self.save_location()  # Save brand new location
-            self.name = None
-            self.curr_number_str = None  # Replaces .name in future
-            self.play_close()  # must be called before name is set
-            self.name = self.act_name  # Tell parent name of location
-            self.last_number_str = self.curr_number_str  # Replaces .name in future
-            self.curr_number_str = self.act_code
-            # June 23, 2023 - info.cast isn't appearing?
-            self.info.cast("Created new location: " + self.act_name, action="add")
-            self.apply_callback()  # Tell parent to start editing location
-            # self.info.cast("Created new location: " + self.act_name)  # doesn't work either
-            # apply_callback will end right away after closing lib selections
+            self.info.cast("Open location: " + self.act_name, action="open")
+            #self.open_and_play_callback()  # Should be using self.act_code
+            # Inside above function it's using old act_code and old act_topdir
+            self.open_and_play_callback(self.act_code, self.act_topdir)
+            # Above restarts mserve (assuming no errors) so never come back here
         else:
-            ''' Remaining options are Save, Save As, Rename '''
-            self.save_location()
-            self.name = self.act_name  # In case of 'rename' title updates
-            self.curr_number_str = self.act_code
-            self.info.cast("Saved location: " + self.act_name, action="update")
+            toolkit.print_trace()
+            print("Unknown Locations.apply() self.state:", self.state)
 
         self.reset()  # Destroy window & reset self. variables
-
-
 
 
 # End of location.py

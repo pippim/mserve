@@ -40,6 +40,7 @@ TIME_NDX = 0  # index pushed or popped to support nested items
 
 
 def t_init(name):
+    """ Declare timer """
     global TIME_LIST, TIME_NDX
     TIME_LIST.append(tuple([name, time.time()]))
     # print('Adding TIME_NDX:',TIME_NDX,'name:',name)
@@ -47,6 +48,7 @@ def t_init(name):
 
 
 def t_end(option):
+    """ End timer """
     global TIME_LIST, TIME_NDX
     TIME_NDX -= 1
     name, start_time = TIME_LIST[TIME_NDX]
@@ -89,6 +91,23 @@ def tail(f, n, offset=0):
     #return lines[:, -offset]
     # TypeError: list indices must be integers, not tuple
     return lines
+
+
+def read_into_list(fname):
+    """ Read text file into list """
+    with open(fname) as f:
+        return f.read().splitlines()
+
+
+def read_into_string(fname):
+    """ Read text file into string with "\n" separating lines """
+    with open(fname) as f:
+        return f.read()
+
+
+def check_command(name):
+    """ Check if command installed in linux """
+    return os.system("command -v " + name + " >/dev/null 2>&1") == 0
 
 
 def which(cmd, path=None):
@@ -383,6 +402,7 @@ class GracefulKiller:
 
     # noinspection PyUnusedLocal
     def exit_gracefully(self, *args):
+        """ If sigint set kill flag """
         self.kill_now = True
 
 
@@ -433,6 +453,7 @@ class SoundControl:
 
     # noinspection PyUnusedLocal
     def launch(self, *args):
+        """ WIP will probably just delete this someday """
         pass
 
 

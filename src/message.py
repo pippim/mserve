@@ -16,7 +16,7 @@ from __future__ import with_statement  # Error handling for file opens
 #
 #       July 05 2023 - Optional help button on ShowInfo, AskQuestion, AskString
 #       July 12 2023 - Support to/from mserve_config.py
-#       July 15 2023 - AskString cursor invisible. Use insertbackground="white",
+#       July 15 2023 - AskString cursor invisible. Use insert background="white",
 #
 #==============================================================================
 
@@ -312,8 +312,9 @@ class AskCommonSelf:
         self.wait_window = wait_window_func
 
 
+# Failed attempts:
 #class AskDirectory(filedialog.Directory, AskCommonSelf):
-#class AskDirectory(filedialog.Directory, commondialog.Dialog, AskCommonSelf):
+#class AskDirectory(filedialog.Directory, common dialog.Dialog, AskCommonSelf):
 
 class AskDirectory(filedialog.Directory, AskCommonSelf):
     """
@@ -354,7 +355,7 @@ class AskDirectory(filedialog.Directory, AskCommonSelf):
 
     #
     # standard button semantics
-    def ok(self, event=None):
+    def ok(self, _event=None):
         """ OK button clicked """
         # From: /usr/lib/python2.7/lib-tk/tkSimpleDialog.py (returns 1)
         if not self.validate():
@@ -370,7 +371,7 @@ class AskDirectory(filedialog.Directory, AskCommonSelf):
             self.cancel()
         return self.directory
 
-    def cancel(self, event=None):
+    def cancel(self, _event=None):
         """ Cancel button clicked. """
         # put focus back to the parent window
         if self.parent is not None:
@@ -394,7 +395,8 @@ class ShowInfo(simpledialog.Dialog, AskCommonSelf):
             mon = monitor.Monitors()
             mon.tk_center(self)
 
-        if thread is None:
+        ''' Even when root=True is passed, no message pops up '''
+        if thread is None and root is None:
             toolkit.print_trace()
             print("message.py, ShowInfo() thread is none, 'OK' won't work")
 
@@ -617,7 +619,7 @@ TclError: grab failed: another application has grab
 
     #
     # standard button semantics
-    def ok(self, event=None):
+    def ok(self, _event=None):
         """ OK button clicked """
         # From: /usr/lib/python2.7/lib-tk/tkSimpleDialog.py (returns 1)
         if not self.validate():
@@ -633,7 +635,7 @@ TclError: grab failed: another application has grab
             self.cancel()
         self.result = "yes"
 
-    def cancel(self, event=None):
+    def cancel(self, _event=None):
         """ Cancel button clicked. """
         # put focus back to the parent window
         if self.parent is not None:
@@ -655,8 +657,8 @@ class AskString(simpledialog.Dialog, AskCommonSelf):
                  string_width=None, root=None):
 
         AskCommonSelf.__init__(self, parent, text=text, confirm=confirm, 
-                            align=align, thread=thread, icon=icon,
-                            string=string, string_width=string_width)
+                               align=align, thread=thread, icon=icon,
+                               string=string, string_width=string_width)
 
         simpledialog.Dialog.__init__(self, parent, title=title)
         if root:
@@ -665,8 +667,7 @@ class AskString(simpledialog.Dialog, AskCommonSelf):
             mon.tk_center(self)
 
     def new_body(self):
-        """ Remove parent from parameter list Aug 12/2021.
-        """
+        """ Remove parent from parameter list Aug 12/2021. """
         self.textbox = body_func(self)
         return self.textbox
 
@@ -727,8 +728,8 @@ class AskString(simpledialog.Dialog, AskCommonSelf):
 
     #
     # standard button semantics
-    def ok(self, event=None):
-
+    def ok(self, _event=None):
+        """ Clicked Yes/OK button """
         # From: /usr/lib/python2.7/lib-tk/tkSimpleDialog.py (returns 1)
         if not self.validate():
             self.initial_focus.focus_set()  # put focus back
@@ -743,13 +744,14 @@ class AskString(simpledialog.Dialog, AskCommonSelf):
             self.cancel()
         self.result = "yes"
 
-    def apply(self, event=None):
+    def apply(self, _event=None):
+        """ Clicked Apply button. E.G. accept string input """
         self.string = self.entry.get()
         #print('self.string:', self.string)
         return True
 
-    def cancel(self, event=None):
-
+    def cancel(self, _event=None):
+        """ Clicked No/Cancel button. """
         # put focus back to the parent window
         if self.parent is not None:
             self.parent.focus_set()
@@ -1423,7 +1425,7 @@ LEAVE: 4200 172 14
 
 
 class ToolTip(object):
-
+    """ DO NOT USE"""
     def __init__(self, widget, text, pool=None, tool_type='button'):
         """ Background defaults to yellow """
         self.widget = widget
@@ -1576,6 +1578,7 @@ class ToolTip(object):
             self.destroy_window()
 
     def destroy_window(self):
+        """ DO NOT USE"""
         tw = self.tip_window
         self.tip_window = None
         if tw:
@@ -1599,6 +1602,7 @@ class ToolTip(object):
 
 
 class CreateToolTip(object):
+    """ DO NOT USE"""
 
     def __init__(self, widget, text='Pass text here', pool=None,
                  tool_type='button'):

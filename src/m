@@ -53,6 +53,12 @@ size = 300              # Splash Window width and height (300 x 300)
 
 def main():
 
+    ''' Change to working path - same code in m and mserve.py '''
+    cwd = os.getcwd()  # First save the current working directory
+    dir_path = os.path.dirname(os.path.realpath(__file__))
+    if cwd != dir_path:  # Must be done before splash screen or permission errors
+        os.chdir(dir_path)  # Change to directory where mserve python modules reside
+
     ''' Create splash window centered on active monitor '''
     splash = tk.Tk()  # Tkinter toplevel window
     splash.wm_attributes('-type', 'splash')  # No window decorations
@@ -64,12 +70,6 @@ def main():
     canvas.pack()
     canvas.create_image(0, 0, image=m_img, anchor=tk.NW)
     splash.update_idletasks()  # This is required for visibility
-
-    ''' Change to working path - same code in m and mserve.py '''
-    cwd = os.getcwd()  # First save the current working directory
-    dir_path = os.path.dirname(os.path.realpath(__file__))
-    if cwd != dir_path:
-        os.chdir(dir_path)  # Change to directory where mserve python modules reside
 
     ''' Call mserve.py passing old working directory and optional music dir parm '''
     mserve.main(toplevel=splash, cwd=cwd, parameters=sys.argv)
