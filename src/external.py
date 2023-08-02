@@ -358,15 +358,15 @@ def legalize_dir_name(name):
 
 
 def legalize_filename(name):
-    """ '/', ':', and '?' are some of the invalid characters for file and
+    """ '/', ':', and '"' are some of the invalid characters for file and
         directory names that are replaced with "_".
 
-        `/`, `?`, `:`, `<`, `>`, `_` `"`, `_` `\\`, `|` and `*`
+        `/`, `:`, `<`, `>`, `_` `"`, `_` `\\`, `|` and `*`
 
         Credit: https://stackoverflow.com/a/31976060/6929343
     """
     name = name.replace('/', '_')  # Only character that Linux forbids
-    name = name.replace('?', '_')
+    #name = name.replace('?', '_')  # Seems to be legal in Windows & Linux
     name = name.replace(':', '_')
     name = name.replace('<', '_')
     name = name.replace('>', '_')

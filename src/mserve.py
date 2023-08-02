@@ -977,7 +977,7 @@ class PlayCommonSelf:
         self.chron_button = None            # tk.Button(..."🖸 Hide Chronology"
 
         ''' Frame for Playlist Chronology '''
-        self.F4 = None                      # tk.Frame(self.play_top, bg="Black
+        self.chron_frm = None                      # tk.Frame(self.play_top, bg="Black
 
         self.play_ctl = None                # instance of FileControl() class
         self.ltp_ctl = None                 # Location Tree Play sample song
@@ -2703,11 +2703,11 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
             if not self.loc_keep_awake_is_active:
                 return  # Shutting down now
             if test_passed is False:
+                mount_point = lcs.open_mountcmd  # Extract '/mnt/music' at end
+                mount_point = mount_point.split()[-1]  # last part after space
                 title = "Remote Host Disconnected!"
                 text = lcs.open_name + "is off-line. Shutting down...\n\n"
-                text += "sshfs will leave drive mounted for 15 minute timeout.\n"
-                mount_point = lcs.open_mountcmd
-                mount_point = mount_point.split()[-1]  # last part after space
+                text += "'sshfs' MAY leave drive mounted for 15 minute timeout.\n"
                 text += "Try: 'fusermount -u " + mount_point + "\n\n"
                 text += "You can also try 'sshfs -o reconnect' option.\n\n"
                 text += "OR... reboot, or do 15 minutes of other other work."
@@ -2717,28 +2717,12 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
                 ''' Cannot show message because other threads keep closing? '''
                 print(title + "\n" + text)
                 lcs.out_cast_show_print(title, text, 'error')  # CRASHES
-                #   File "/home/rick/python/location.py", line 1847, in out_cast_show_print
-                #     thread=self.get_thread_func())
-                #   File "/home/rick/python/message.py", line 392, in __init__
-                #     simpledialog.Dialog.__init__(self, parent, title=title)
-                #   File "/usr/lib/python2.7/lib-tk/tkSimpleDialog.py", line 53, in __init__
-                #     if parent.winfo_viewable():
-                # AttributeError: 'NoneType' object has no attribute 'winfo_viewable'
-                #print(title + "\n\n" + text)
-                
-                #lcs.sshfs_close()  # Can't access /mnt/music - it will stall
-                #self.restart()  # Temporary - only start device
                 # July 30, 2023, restarting will access /mnt/music and stall
                 # If host suspends when mserve running, use 'ssh-activity -d'.
                 lcs.host_down = True  # Don't close files on frozen sshfs-fuse
-                self.loc_keep_awake_is_active = False
-                self.close()
-                # Above closes play_top but not lib_top or lcs.main_top
-                if test_passed is False:    # Dummy test always true
-                    return                  # Code below is not developed
+                self.close()  # Shutdown.  Could try to wakeup host one time...
 
-                """ 
-
+                """  Experiments below 
                 USING RECONNECT AFTER DROP MAKES EMPTY MOUNT BELOW:
                 https://serverfault.com/a/639735
                 
@@ -2784,11 +2768,15 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
                     loc_keep_awake()'s last time?
                 '''
 
-            #result = os.popen(LODICT['activecmd']).read().strip()
+            # Host is awake. Set next test time.
             result = os.popen(lcs.open_touchcmd).read().strip()
             lcs.save_touch_time()  # SQL history 'location' 'last' w/timestamp
-            if len(result) > 4:
-                print('loc_keep_awake() result:', result)
+            if len(result) > 4:  # Did nc -z have error results?
+                title = "mserve.py .loc_keep_awake()"
+                text = "Running command: 'nc -z " + lcs.open_host + " 22'"
+                text += "\n\nReceived unexpected results show below:\n\n"
+                text += result
+                lcs.out_cast_show_print(title, text, 'error')
             self.awake_last_time_check = time.time()
             self.next_active_cmd_time = self.awake_last_time_check + (60 * LODICT['activemin'])
             self.next_active_cmd_time = self.awake_last_time_check + (60 * lcs.open_touchmin)
@@ -2797,7 +2785,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
             text = "Running: " + lcs.open_touchcmd + "\n"
             text += "  | This time: " + ext.t(self.awake_last_time_check)
             text += "  | Next time: " + ext.t(self.next_active_cmd_time)
-            lcs.out_cast_print(title, text, 'info')
+            lcs.out_fact(title, text, 'info')
             # noinspection SpellCheckingInspection
             '''
             now2 = datetime.datetime.now()
@@ -7478,13 +7466,13 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
         self.build_play_btn_frm()  # Placement varies if Hockey enabled
 
         ''' F4 Frame for Playlist (Chronology) '''
-        self.F4 = tk.Frame(self.play_top, borderwidth=BTN_BRD_WID,
-                           relief=tk.GROOVE)
-        #self.F4.configure(background="Black")  # No effect
-        self.F4.grid(row=8, column=0, sticky=tk.NSEW)
+        self.chron_frm = tk.Frame(self.play_top, borderwidth=BTN_BRD_WID,
+                                  relief=tk.GROOVE)
+        #self.chron_frm.configure(background="Black")  # No effect
+        self.chron_frm.grid(row=8, column=0, sticky=tk.NSEW)
         self.play_frm.grid_rowconfigure(8, weight=1)
-        self.F4.grid_rowconfigure(0, weight=1)
-        self.F4.grid_columnconfigure(0, weight=1)  # Note weight to stretch
+        self.chron_frm.grid_rowconfigure(0, weight=1)
+        self.chron_frm.grid_columnconfigure(0, weight=1)  # Note weight to stretch
         self.build_chronology()  # Treeview in play order
 
         ''' Start at first playlist entry? '''
@@ -7714,10 +7702,6 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
                 text = "Hide the scrollable playlist below and\n" + \
                        "double the size of spinning artwork."
                 self.tt.add_tip(self.chron_button, text, anchor="se")
-                # Problem this is classified as a piggy back in error
-                d = self.tt.check(self.chron_button)
-                if d:
-                    print("self.chron_button 'name':", d['name'])
             else:
                 print("mserve.py build_play_btn_frm() Bad button name:", name)
 
@@ -8494,7 +8478,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
         ''' Hide chronology (playlist) to match last setting for location '''
         if chron_state and chron_state == "Hide":
             ''' resume process wants to hide chronology. '''
-            self.chron_is_hidden = False  # Fake "Show" now then toggle to show
+            self.chron_is_hidden = False  # Fake "Show" now then toggle to hide
             self.chron_toggle()  # Toggle chronology between Show and Hide
 
         ''' Start song with ffplay & Update tree view's last played time
@@ -11399,11 +11383,12 @@ mark set markName index"
         """ Chronology treeview List Box, Columns and Headings """
 
         ''' Create Chronology Treeview (chron_tree) and style Gold on Black '''
-        style = ttk.Style(self.F4)
+        style = ttk.Style(self.chron_frm)
         style.configure("chron.Treeview", background='Black',
                         fieldbackground='Black',
                         foreground='Gold')
-        self.chron_tree = ttk.Treeview(self.F4, show=('tree',), selectmode="none")
+        self.chron_tree = ttk.Treeview(self.chron_frm, show=('tree',),
+                                       selectmode="none")
         self.chron_tree.configure(style="chron.Treeview")
 
         ''' Single column, when long, unfortunately can't scroll horizontally '''
@@ -11411,7 +11396,8 @@ mark set markName index"
         self.chron_tree.grid(row=0, column=0, sticky=tk.NSEW)
 
         ''' Chronology Treeview Vertical Scrollbar '''
-        v_scroll = tk.Scrollbar(self.F4, orient=tk.VERTICAL, width=SCROLL_WIDTH,
+        v_scroll = tk.Scrollbar(self.chron_frm, orient=tk.VERTICAL,
+                                width=SCROLL_WIDTH,
                                 command=self.chron_tree.yview)
         v_scroll.grid(row=0, column=1, sticky=tk.NS)
         self.chron_tree.configure(yscrollcommand=v_scroll.set)
@@ -11926,7 +11912,7 @@ mark set markName index"
 
         """
         if self.chron_is_hidden:  # Is playlist chronology currently hidden?
-            self.F4.grid()  # Restore hidden grid
+            self.chron_frm.grid()  # Restore hidden grid
             self.move_lyrics_right()  # Lyrics score right of VU meters
             self.chron_is_hidden = False  # Chronology no longer hidden
             text = "🖸 Hide Chronology"
@@ -11934,7 +11920,7 @@ mark set markName index"
                     "double the size of spinning artwork."
 
         else:  # Hide chronology (playlist)
-            self.F4.grid_remove()  # Hide grid but remember options
+            self.chron_frm.grid_remove()  # Hide grid but remember options
             self.move_lyrics_bottom()  # Lyrics score under VU meters
             self.chron_is_hidden = True  # Chronology is now hidden
             text = "🖸 Show Chronology"
@@ -11961,7 +11947,7 @@ mark set markName index"
         self.tt.toggle_position(self.chron_button)
 
         self.play_chron_highlight(self.ndx, True)  # Required after shuffle songs
-        self.F4.update_idletasks()
+        self.chron_frm.update_idletasks()
 
 
 # ==============================================================================
@@ -16081,8 +16067,6 @@ class InfoCentre:
             self.tt.poll_tips()
             self.banner_btn.destroy()  # Real Estate commandeered for zoom frame
             self.banner_btn = None  # Extra insurance
-        else:
-            print("InfoCentre.zoom() self.banner_btn is type <None>")
 
         ''' Build tk.Frame and tk.Text widgets. Optional tk.Button to close frame '''
         self.frame = tk.Frame(self.banner_frm, bg="black", height=7)
@@ -16148,7 +16132,6 @@ class InfoCentre:
             anchor = "sc"
 
         ''' Add CustomScrolledText widget to Tooltips() as 'piggy_back' '''
-        print("len(self.tt.tips_list) BEFORE Add:", len(self.tt.tips_list))
         self.tt.add_tip(
             self.widget, text=text, anchor=anchor, tool_type="piggy_back",
             pb_alpha=self._alpha_cb, pb_leave=self._leave_cb, 
@@ -16157,17 +16140,9 @@ class InfoCentre:
             fade_in_span=300, visible_delay=201, fade_out_span=200
             # Limitation: 'visible_delay' must be greater than 'fade_out_span'
         )
-        print("len(self.tt.tips_list) AFTER Add:", len(self.tt.tips_list))
 
-        #tt_dict = self.tt.get_dict(self.widget)
-        #print('\nInfoCentre.zoom() tooltips self.widget dictionary BEFORE:')
-        #print(tt_dict, "\n")
         ''' Start Tooltips() by saying mouse hovered over the text widget. '''
         self.tt.log_event('enter', self.widget, 10, 5)  # x=10, y=5
-        #self.tt.poll_tips()
-        #print('\nInfoCentre.zoom() tooltips self.widget dictionary AFTER:')
-        #print(tt_dict, "\n")  # 'enter_time' = 1688148501.804852
-        # Funny tt_dict is live reference that didn't need updating....
 
     def _close_clicked(self):
         """ When close button clicked tell Tooltips to start fading out """
@@ -16402,9 +16377,7 @@ FADE_OUT_SPAN = 400     # 1/5 second to fade out
             self.tt.close(self.banner_btn)  # July 22, 2023 - btn was staying in tt
 
         ''' Rebuild banner button '''
-        print("len(self.tt.tips_list) BEFORE Add:", len(self.tt.tips_list))
         self.build_banner_btn()
-        print("len(self.tt.tips_list) AFTER  Add:", len(self.tt.tips_list))
         self.test = False
 
         ''' Ugly patch to show that zoom has finished '''
@@ -17053,8 +17026,9 @@ def main(toplevel=None, cwd=None, parameters=None):
     ''' Sorted list of songs in the location - Need Delayed Text Box '''
     ext.t_init('make_sorted_list()')
     SORTED_LIST, depth_count = make_sorted_list(START_DIR, toplevel=toplevel)
-    ext.t_end('print')  # May 24, 2023 - make_sorted_list(): 0.1631240845
+    ext.t_end('no_print')  # May 24, 2023 - make_sorted_list(): 0.1631240845
     # July 24, 2023 - make_sorted_list(): 0.2467391491 (50% slower vs 2 mo ago)
+    # Aug 2/23 - Over ssh new: 15.0521910191 restart: 1.5163669586
 
     ''' Empty Sorted list '''
     if len(SORTED_LIST) == 0:

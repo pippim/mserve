@@ -1816,20 +1816,7 @@ class Locations(LocationsCommonSelf):
         pass
 
     def build_locations(self):
-        """ Get ALL configuration history rows for Type = 'location'
-            Create sorted list of names for current location. Called
-            each time Locations.function() used.
-        """
-        ''' Lists already declared in Init but must reset between calls 
-            Put this into newly created CommonSelf()
-        '''
-        #if not self.open_code:
-        #    # Only do once or get duplicate codes
-        #    self.build_fake_locations()  # Create sample data
-
-        #LocationsCommonSelf.__init__(self)  # Define self. variables
-        # Above wipes out self.state set by caller of display_main_window
-
+        """ Build lists of all SQL Location Table rows """
         self.all_codes = []  # "L001", "L002", etc... can be holes
         self.all_names = []  # Names matching all_codes
         self.all_topdir = []  # Descriptions matching all_codes
@@ -1891,6 +1878,21 @@ class Locations(LocationsCommonSelf):
             if top:
                 message.ShowInfo(top, title, text, icon=icon,
                                  thread=self.get_thread_func())
+        else:
+            # Give them something in console because self.info not defined
+            print("\n" + title + "\n\n" + text + "\n")
+        return icon == 'info'  # Return value has little importance.
+
+    def out_fact(self, title, text, icon='info'):
+        """ Check availability of output streams and send to channels
+            This version generally only used during startup.
+            Returns True if icon is 'info', else returns False.
+        """
+        if self.info:
+            self.info.fact(title + "\n\n" + text, icon)
+        else:
+            # Give them something in console because self.info not defined
+            print("\n" + title + "\n\n" + text + "\n")
         return icon == 'info'  # Return value has little importance.
 
     def out_get_parent(self):

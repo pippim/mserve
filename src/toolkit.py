@@ -2326,6 +2326,7 @@ class ToolTips(CommonTip):
         if self.enter_time == 0.0:
             if self.tip_window:
                 self.tip_window.destroy()
+                # Happens when leaving widget while tip window displayed
                 print('TEMPORARY: forced tip window close')
                 self.tip_window = None
                 self.window_visible = False
@@ -2360,7 +2361,6 @@ class ToolTips(CommonTip):
                     diff = self.now - zero_alpha_time
                     print('diff:', diff)
                 else:
-                    print("tip_window.destroy()")
                     self.tip_window.destroy()
 
                 self.reset_tip()
@@ -2601,14 +2601,14 @@ class ToolTips(CommonTip):
         """
         for i, s in enumerate(self.tips_list):
             if s['widget'] == widget:
-                if self.dict['anchor'] == "nw":
-                    self.dict['anchor'] = "sw"
-                elif self.dict['anchor'] == "ne":
-                    self.dict['anchor'] = "se"
-                elif self.dict['anchor'] == "se":
-                    self.dict['anchor'] = "ne"
-                elif self.dict['anchor'] == "sw":
-                    self.dict['anchor'] = "nw"
+                if s['anchor'] == "nw":
+                    s['anchor'] = "sw"
+                elif s['anchor'] == "ne":
+                    s['anchor'] = "se"
+                elif s['anchor'] == "se":
+                    s['anchor'] = "ne"
+                elif s['anchor'] == "sw":
+                    s['anchor'] = "nw"
                 self.tips_list[i] = s
                 return
 
