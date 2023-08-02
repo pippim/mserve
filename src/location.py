@@ -15,7 +15,8 @@ from __future__ import with_statement  # Error handling for file opens
 #       location.py - Locations file, dictionary and global fields
 #
 #       July 12 2023 - Interface to/from mserve_config.py
-#       July 22 2023 - Create Locations() class
+#       July 22 2023 - Create Locations() class with new sshfs support
+#       July 29 2023 - Create Compare() class
 #
 #==============================================================================
 #import stat
@@ -427,6 +428,7 @@ def test_host_up(host):
         return True if os.system("nc -z " + host + " 22 > /dev/null") \
                                  is 0 else False
     else:
+        # noinspection PyProtectedMember
         print('test_host_up() received blank host name from:',
               sys._getframe(1).f_code.co_name)
         return False
@@ -841,7 +843,7 @@ class Locations(LocationsCommonSelf):
 
         lcs = Locations(make_sorted_list)
 
-        Called from mainline when relevant instances aren't ready to be passed.
+        lcs loads first. Most relevant instances aren't ready to be passed.
         They are registered later with:
 
             lcs.register_parent(root / self.lib_top)
@@ -853,12 +855,13 @@ class Locations(LocationsCommonSelf):
             lcs.register_NEW(NEW_LOCATION)
             lcs.register_oap_cb(self.open_and_play_callback)
 
-        Functions:
+        Major Functions:
     
             - view() - Show existing Locations in treeview
             - new() - Prompt for Location variables and add to database
             - open() - Pick existing Location and play music
             - edit() - Edit existing location and update database
+            - delete() - Delete existing location and update database
             - load_last_location() - Reopen location last used
 
     """
@@ -881,7 +884,6 @@ class Locations(LocationsCommonSelf):
         self.enable_lib_menu = None
         self.tt = None  # Tooltips pool for buttons
         self.get_thread_func = None  # E.G. self.get_refresh_thread()
-        self.thread = None  # E.G. self.get_refresh_thread()
         self.display_lib_title = None  # Rebuild lib_top menubar
 
         ''' Opened Location variables - DON'T TOUCH !!! '''
@@ -902,6 +904,7 @@ class Locations(LocationsCommonSelf):
         self.open_row_id = None
 
         ''' Additional Open Location variables not stored on disk '''
+        self.host_down = False  # For emergency shutdown
         self.open_sshfs_used = False
 
         ''' Installed External Command Flags '''
@@ -947,6 +950,12 @@ class Locations(LocationsCommonSelf):
     def register_oap_cb(self, open_and_play_callback):
         """ Register get_pending_cnt_total after it's declared in mserve.py """
         self.open_and_play_callback = open_and_play_callback  # E.G. self.get_refresh_thread()
+
+    # ==============================================================================
+    #
+    #       Locations() Processing - tkinter Window Methods
+    #
+    # ==============================================================================
 
     def display_main_window(self, name=None):
         """ Mount window with Location Treeview or placeholder text when none.
@@ -1077,17 +1086,18 @@ class Locations(LocationsCommonSelf):
         self.test_scroll_frame.rowconfigure(0, weight=1)
 
         ''' Custom Scrolled Text Box '''
-        Quote = "Testing Host: " + self.act_host + "\n"
+        text = "Beginning test of Host: " + self.act_host + "\n"
         self.test_box = toolkit.CustomScrolledText(
             self.test_scroll_frame, state="normal", font=self.font,
             borderwidth=15, relief=tk.FLAT)
         self.test_box.configure(background="Black", foreground="Green")
-        self.test_box.insert("end", Quote)
         self.test_box.grid(row=0, column=0, padx=5, pady=5, sticky=tk.NSEW)
         self.test_box.tag_config('green', foreground='Green')
         self.test_box.tag_config('yellow', foreground='Yellow')
 
-        self.test_box.highlight_pattern(self.act_host, 'yellow')
+        #self.test_box.insert("end", Quote)
+        #self.test_box.highlight_pattern(self.act_host, 'yellow')
+        self.test_show(text, pattern=self.act_host)
 
         self.test_box.config(tabs=("10m", "20m", "40m"))
         self.test_box.tag_configure("margin", lmargin1="2m", lmargin2="40m")
@@ -1207,7 +1217,7 @@ class Locations(LocationsCommonSelf):
         """
         if self.nmap_installed:  # Includes 'nc' installed
             self.fld_host = self.one_loc_var(
-                "Optional Host Name", self.scr_host, "")
+                "Optional Remote Host Name", self.scr_host, "")
         if self.nmap_installed and self.wakeonlan_installed:
             self.fld_wakecmd = self.one_loc_var(
                 "Command to wake up sleeping Host", self.scr_wakecmd, "")
@@ -1360,7 +1370,7 @@ class Locations(LocationsCommonSelf):
         if not tree_code:
             return  # clicked on empty row
 
-        if self.state == "new":
+        if self.state == 'new':
             title = "Existing locations for reference only!"
             text = "Cannot pick existing location when a new location name " + \
                    "is required.\n\nEnter a Unique Name for the new Location."
@@ -1372,17 +1382,16 @@ class Locations(LocationsCommonSelf):
         title = "Location is currently open!"
         text = None  # Dual-purpose flag if delete or open
         if tree_code == self.open_code:
-            if self.state == "delete":
-                text = "Cannot delete currently opened location."
-            if self.state == "open":
+            if self.state == 'open':
                 text = "Cannot reopen the same location."
-            if text:  # When no text, neither "delete" nor "open"
-                self.info.cast(title + "\n\n" + text, 'error')
-                thr = self.get_thread_func()
-                message.ShowInfo(self.main_top, title, text, icon='error', thread=thr)
-                return
+            if self.state == 'delete':
+                text = "Cannot delete currently opened location."
+            if self.state == 'synchronize':
+                text = "Cannot compare currently opened location to itself."
+            if text:  # When no text there is no error.
+                return self.out_fact_show(title, text, 'error')
 
-        #if self.state == "open" and tree_code == self.open_code:
+        #if self.state == 'open' and tree_code == self.open_code:
         #    text = "Cannot reopen currently opened location."
         #    self.info.cast(title + "\n\n" + text, 'error')
         #    thr = self.get_thread_func()
@@ -1400,7 +1409,7 @@ class Locations(LocationsCommonSelf):
 
         ''' Display self.scr_xxx variables '''
         self.set_scr_variables(self.main_top)
-        if self.state == "edit":
+        if self.state == 'edit':
             self.enable_input()  # .new() calls this directly at very start
         self.enable_last_button()  # For everyone except "New Location"
         self.main_top.update_idletasks()
@@ -1575,10 +1584,13 @@ class Locations(LocationsCommonSelf):
             text = "Save"
         elif self.state == 'delete':
             text = "Delete"
+        elif self.state == 'synchronize':
+            text = "Synchronize"
         elif self.state == 'open':
             text = "Open"
         else:
             toolkit.print_trace()
+            text = "Missing!"
 
         self.apply_button = tk.Button(
             self.main_frame, text="✔ " + text, font=self.font,
@@ -1604,20 +1616,23 @@ class Locations(LocationsCommonSelf):
         # noinspection PyBroadException
         try:
             ''' Validate Music Top Directory has modify_time '''
-            file_stat = os.stat(self.act_topdir)
-            self.act_modify_time = file_stat.st_mtime
-            ''' Total space and free space for ordinary users
-                Doesn't work for File Server mounted at /mnt/music as
-                Local storage is reported. 
-            '''
-            statvfs = os.statvfs(self.act_topdir)
-            self.total_bytes = statvfs.f_frsize * statvfs.f_blocks  # Size of filesystem in bytes
-            self.free_bytes = statvfs.f_frsize * statvfs.f_bavail  # Number of free bytes that ordinary users
+
+            # If host_down below freezes.
+            # But Ctrl+C from command line allows exit
+            # Start below changes but still not good enough because
+            # validate_host should be run and that requires passing parameter
+            # for self.act_host instead of self.open_host.  Also there can be
+            # more than one mount for multiple hosts?
+            if not self.act_host or self.act_host == self.open_host:
+                ''' Top Directory last modified time '''
+                file_stat = os.stat(self.act_topdir)
+                self.act_modify_time = file_stat.st_mtime
+                ''' Total space and free space '''
+                statvfs = os.statvfs(self.act_topdir)
+                self.total_bytes = statvfs.f_frsize * statvfs.f_blocks  # Size of filesystem in bytes
+                self.free_bytes = statvfs.f_frsize * statvfs.f_bavail  # Number of free bytes that ordinary users
         except:
-            #title = "os.stat FAILED !"
-            self.act_modify_time = 0.0
-            self.total_bytes = 0
-            self.free_bytes = 0
+            pass
 
         text += "  | Last modified: "
         text += tmf.ago(self.act_modify_time)
@@ -1638,9 +1653,10 @@ class Locations(LocationsCommonSelf):
         new_topdir = filedialog.askdirectory(
             parent=self.main_top, initialdir=self.act_topdir,
             title="Select Music Top Directory")
+        ''' New AskDirectory class under development '''
         #thread = self.get_thread_func()
         #new_topdir = message.AskDirectory(
-        #    parent=self.main_top, initialdir=self.act_topdir,
+        #    parent=self.main_top, initial dir=self.act_topdir,
         #    title="Select Music Top Directory", thread=thread)
         #print("new_topdir.result:", new_topdir.result)
         # Traceback (most recent call last):
@@ -1681,6 +1697,7 @@ class Locations(LocationsCommonSelf):
             self.info.cast(title + "\n\n" + text, 'error')
             thread = self.get_thread_func()
             message.ShowInfo(self.main_top, title, text, icon='error', thread=thread)
+
         else:
             self.act_topdir = new_topdir
         self.scr_topdir.set(self.act_topdir)
@@ -1827,26 +1844,155 @@ class Locations(LocationsCommonSelf):
             self.all_names.append(self.act_name)  # use to verify unique names
             self.all_topdir.append(self.act_topdir)  # must match all_codes order
 
-    def out_cast_show_print(self, title, text, icon):
+    def out_cast_show_print(self, title, text, icon='info'):
         """ Check availability of output streams and send to channels
             This version generally only used during startup.
+            Returns True if icon is 'info', else returns False.
         """
         if self.info:
             self.info.cast(title + "\n\n" + text, icon)
-        if self.get_thread_func:
-            message.ShowInfo(self.main_top, title, text, icon=icon,
-                             thread=self.get_thread_func())
+        if self.get_thread_func:  # self.top
+            top = self.out_get_parent()
+            if top:
+                message.ShowInfo(top, title, text, icon=icon,
+                                 thread=self.get_thread_func())
         print("\n" + title + "\n\n" + text + "\n")
+        return icon == 'info'  # Return value has little importance.
 
-    def out_fact_show(self, title, text, icon):
+    def out_cast_print(self, title, text, icon='info'):
+        """ Check availability of output streams and send to channels
+            This version generally only used during startup.
+            Returns True if icon is 'info', else returns False.
+        """
+        if self.info:
+            self.info.cast(title + "\n\n" + text, icon)
+        print("\n" + title + "\n\n" + text + "\n")
+        return icon == 'info'  # Return value has little importance.
+
+    def out_fact_print(self, title, text, icon='info'):
+        """ Check availability of output streams and send to channels
+            This version generally only used during startup.
+            Returns True if icon is 'info', else returns False.
+        """
+        if self.info:
+            self.info.fact(title + "\n\n" + text, icon)
+        print("\n" + title + "\n\n" + text + "\n")
+        return icon == 'info'  # Return value has little importance.
+    
+    def out_fact_show(self, title, text, icon='info'):
         """ Check availability of output streams and send to channels
             This version generally used during data entry.
+            Returns True if icon is 'info', else returns False.
         """
         if self.info:
             self.info.fact(title + "\n\n" + text, icon)
         if self.get_thread_func:
-            message.ShowInfo(self.main_top, title, text, icon=icon,
-                             thread=self.get_thread_func())
+            top = self.out_get_parent()
+            if top:
+                message.ShowInfo(top, title, text, icon=icon,
+                                 thread=self.get_thread_func())
+        return icon == 'info'  # Return value has little importance.
+
+    def out_get_parent(self):
+        """ Return self.main_top, self.parent or None """
+        if self.main_top:
+            top = self.main_top
+        elif self.parent:
+            top = self.parent
+        else:
+            top = None
+        return top
+        
+    # ==============================================================================
+    #
+    #       Locations() Processing - mserve.py Dropdown Menus
+    #
+    # ==============================================================================
+
+    def new(self):
+        """ Called by lib_top File Menubar "New Location"
+            In future may be called by mainline when no location found.
+            If new songs are pending, do not allow location to open
+        """
+        if self.get_pending:  # 'None' = MusicLocationTree not called yet.
+            ''' Music Location Tree checkboxes pending to apply? '''
+            if self.check_pending():  # lib_top.tree checkboxes not applied?
+                return  # We are all done. No window, no processing, nada
+
+        LocationsCommonSelf.__init__(self)  # Define self. variables
+        self.state = 'new'
+        self.display_main_window("New Location")
+        self.enable_input()  # Allow data entry right off the bat
+        self.enable_last_button()  # Set "Add" into last button
+
+    def open(self):
+        """ Called by lib_top File Menubar "Open Location and Play"
+
+            If new songs are pending, do not allow opening new location.
+            This is NOT called by main() prior to make_sorted_list().
+            For that purpose load_last_location() is called. """
+        if self.get_pending:  # 'None' = MusicLocationTree not called yet.
+            ''' Music Location Tree checkboxes pending to apply? '''
+            if self.check_pending():  # lib_top.tree checkboxes not applied?
+                return  # We are all done. No window, no processing, nada
+
+        LocationsCommonSelf.__init__(self)  # Define self. variables
+        self.state = 'open'
+        self.display_main_window("Open Location and Play")
+
+    def edit(self):
+        """Called by lib_top File Menubar "Edit Location"
+            If new songs are pending, do not allow location to open """
+        if self.get_pending:  # 'None' = MusicLocationTree not called yet.
+            ''' Music Location Tree checkboxes pending to apply? '''
+            if self.check_pending():  # lib_top.tree checkboxes not applied?
+                return  # We are all done. No window, no processing, nada
+
+        LocationsCommonSelf.__init__(self)  # Define self. variables
+        self.state = 'edit'
+        self.display_main_window("Edit Location")
+
+    def delete(self):
+        """ Called by lib_top Edit Menubar 'Delete Location' """
+        LocationsCommonSelf.__init__(self)  # Define self. variables
+        self.state = 'delete'
+        self.display_main_window("Delete Location")
+
+    def synchronize(self):
+        """ Called by lib_top Edit Menubar 'Synchronize Location' """
+        LocationsCommonSelf.__init__(self)  # Define self. variables
+        self.state = 'synchronize'
+        self.display_main_window("Synchronize Location")
+
+    def view(self):
+        """ Called by lib_top View Menubar 'View Locations' """
+        LocationsCommonSelf.__init__(self)  # Define self. variables
+        self.state = 'view'
+        self.display_main_window("View Locations")
+
+    def close(self):
+        """ Originally designed to be called by mserve shutdown.
+            However, shutdown calls self.reset().
+
+            When Location Maintenance window closes self.reset() is also used. 
+
+            As of July 27, 2023 this function is not used. The last location
+            is saved when "Open Location and Play" opens a new location. The
+            last location is also saved by mserve.py save_last_selections().
+            Also when Music Directory passed in parameter 1 and 
+            lc.get_dict_by_dirname(music_dir) returns True.
+ 
+        """
+
+        self.state = 'close'
+        sql.save_config('location', 'last', self.open_code, self.open_name,
+                        self.open_topdir, Comments="Last location opened.")
+
+    # ==============================================================================
+    #
+    #       Locations() Processing - SQL Database Access
+    #
+    # ==============================================================================
 
     @staticmethod
     def build_fake_locations():
@@ -1869,7 +2015,7 @@ class Locations(LocationsCommonSelf):
                 d['mountcmd'], d['activecmd'], d['activemin'], u"Comments")
 
     def get_dict_by_dirname(self, dirname):
-        """ Look up location dictionary using top directory path 
+        """ Look up location dictionary using top directory path
             Called by mserve.py when it was started using parameter 1 to
             specify top directory. In this case look up to see if it's a
             location already defined.
@@ -1881,79 +2027,6 @@ class Locations(LocationsCommonSelf):
 
         dir_dict = {}  # No match found DICT empty
         return dir_dict
-
-    def new(self):
-        """ Called by lib_top File Menubar "New Location"
-            In future may be called by mainline when no location found.
-            If new songs are pending, do not allow location to open
-        """
-        if self.get_pending:  # 'None' = MusicLocationTree not called yet.
-            ''' Music Location Tree checkboxes pending to apply? '''
-            if self.check_pending():  # lib_top.tree checkboxes not applied?
-                return  # We are all done. No window, no processing, nada
-
-        LocationsCommonSelf.__init__(self)  # Define self. variables
-        self.state = 'new'
-        self.display_main_window("New Location")
-        self.enable_input()  # Allow data entry right off the bat
-        self.enable_last_button()  # Set "Add" into last button
-
-    def edit(self):
-        """Called by lib_top File Menubar "Edit Location"
-            If new songs are pending, do not allow location to open """
-        if self.get_pending:  # 'None' = MusicLocationTree not called yet.
-            ''' Music Location Tree checkboxes pending to apply? '''
-            if self.check_pending():  # lib_top.tree checkboxes not applied?
-                return  # We are all done. No window, no processing, nada
-
-        LocationsCommonSelf.__init__(self)  # Define self. variables
-        self.state = 'edit'
-        self.display_main_window("Edit Location")
-
-    def delete(self):
-        """ Called by lib_top File Menubar 'Delete Location' """
-        LocationsCommonSelf.__init__(self)  # Define self. variables
-        self.state = 'delete'
-        self.display_main_window("Delete Location")
-
-    def open(self):
-        """ Called by lib_top File Menubar "Open Location and Play"
-
-            If new songs are pending, do not allow opening new location.
-            This is NOT called by main() prior to make_sorted_list().
-            For that purpose load_last_location() is called. """
-        if self.get_pending:  # 'None' = MusicLocationTree not called yet.
-            ''' Music Location Tree checkboxes pending to apply? '''
-            if self.check_pending():  # lib_top.tree checkboxes not applied?
-                return  # We are all done. No window, no processing, nada
-
-        LocationsCommonSelf.__init__(self)  # Define self. variables
-        self.state = 'open'
-        self.display_main_window("Open Location and Play")
-
-    def view(self):
-        """ View Locations """
-        LocationsCommonSelf.__init__(self)  # Define self. variables
-        self.state = 'view'
-        self.display_main_window("View Locations")
-
-    def close(self):
-        """ Originally designed to be called by mserve shutdown.
-            However, shutdown calls self.reset().
-
-            When Location Maintenance window closes self.reset() is also used. 
-
-            As of July 27, 2023 this function is not used. The last location
-            is saved when "Open Location and Play" opens a new location. The
-            last location is also saved by mserve.py save_last_selections().
-            Also when Music Directory passed in parameter 1 and 
-            lc.get_dict_by_dirname(music_dir) returns True.
- 
-        """
-
-        self.state = 'close'
-        sql.save_config('location', 'last', self.open_code, self.open_name,
-                        self.open_topdir, Comments="Last location opened.")
 
     def read_location(self, code):
         """ Use location code to read SQL Location Row into work fields """
@@ -1983,34 +2056,29 @@ class Locations(LocationsCommonSelf):
                 raise
 
     def save_mserve_location(self, Code):
-        """ Called by mserve in a few places in old Location version 1
-            July 2023 - Now called by New lcs.open_location_and_play() 
-        """
+        """ Called by mserve in a four places. TODO: Check to enhance. """
         if not self.read_location(Code):
+            title = "Programming Error!"
             text = "location.py Locations.save_mserve_location() -" + \
                    "Error reading location: " + Code
-            print(text)
-            if self.info:
-                self.info.cast(text, 'error')
+            self.out_cast_show_print(title, text, 'error')
             return
         
         sql.save_config('location', 'last', self.act_code, self.act_name,
                         self.act_topdir, Comments="Last location opened.")
 
+    def save_touch_time(self):
+        """ Called by mserve to keep track of last touch time.
+            Note using SELF.OPEN_XXX variables and not self.act_xxx
+        """
+        if self.main_top:
+            return  # Don't want to wipe out current data entry buffer
+
+        sql.save_config('location', 'last', self.open_code, self.open_name,
+                        self.open_topdir, Comments="Last location opened.")
+
     def save_location(self):
         """ Save Location when 'Save' button applied. """
-        #if self.act_comments:
-        #    #   File "/home/rick/python/location.py", line 1924, in save_location
-        #    #     self.act_touchcmd, self.act_touchmin, self.act_comments, self.act_row_id)
-        #    #   File "/home/rick/python/sql.py", line 1671, in loc_update
-        #    #     HostTouchMinutes, Comments, [Id]))
-        #    # InterfaceError: Error binding parameter 14 - probably unsupported type.
-        #    self.act_comments = self.act_comments.encode("utf-8")
-        #    self.act_comments = None  # I GIVE UP !!!
-        #print("self.act_touchmin:", self.act_touchmin, type(self.act_touchmin))
-        #print("self.act_comments:", self.act_comments, type(self.act_comments))
-        #print("self.act_row_id:", self.act_row_id, type(self.act_row_id))
-
         sql.loc_update(
             self.act_code, self.act_name, self.act_modify_time, self.act_image_path,
             self.act_mount_point, self.act_topdir, self.act_host, self.act_wakecmd,
@@ -2018,7 +2086,7 @@ class Locations(LocationsCommonSelf):
             self.act_touchcmd, self.act_touchmin, self.act_comments, self.act_row_id)
 
     def delete_location(self):
-        """ Delete Location using Location Row ID """
+        """ Delete Location  when 'Delete' button applied. """
         sql.loc_cursor.execute("DELETE FROM Location WHERE Id=?", [self.act_row_id])
         sql.con.commit()
 
@@ -2124,16 +2192,14 @@ class Locations(LocationsCommonSelf):
 
         return True  # We are all done. No window, no processing, nada
 
+    # new_xxx fields only exist for fld_xxx and pycharm things might be undef
+    # noinspection PyUnboundLocalVariable
     def validate_location(self):
-        """ Validate Location for current ("scr_") input data entry.
-            Called by lcs.apply() for all states including 'open' and 'view'
-            Differs from Playlists() because only called during scr_ input.
-
-            This is being called by test() function which is causing crashes
-            because test window wasn't opened yet. Remove from test() for now.
+        """ Validate Location's self.scr_xxx input data entry.
+            Called by lcs.apply().
         """
         if not self.state == 'new' and not self.state == 'edit':
-            return True  # 'open' or 'view' are always successful.
+            return True  # Only 'edit' or 'new' are validated.
 
         ''' Retrieve name and description from tkinter scr_ variables. '''
         new_name = self.scr_name.get().strip()
@@ -2188,7 +2254,7 @@ class Locations(LocationsCommonSelf):
             message.ShowInfo(self.main_top, title, text, icon='error', thread=thr)
             return False
 
-        ''' -odebug causes lockup '''
+        ''' -o debug causes lockup '''
         if self.fld_mountcmd:  # Is sshfs installed?
             # noinspection SpellCheckingInspection
             bad_apple = "-odebug"
@@ -2233,7 +2299,7 @@ class Locations(LocationsCommonSelf):
 
     def load_last_location(self, toplevel=None):
         """ Called by mserve.py open_files(). """
-        print(ext.t(time.time()), "load_last_location()")
+        #print(ext.t(time.time()), "load_last_location()")
         self.state = 'load'
 
         ''' Retrieve SQL History for last location used. '''
@@ -2255,14 +2321,15 @@ class Locations(LocationsCommonSelf):
         ''' Initialize working variables '''
         self.make_act_from_sql_dict(d)  # self.act_ used for testing host
         self.make_open_from_sql_dict(d)  # self.open_ changed only on load 
+
         global DICT  # Be glad when this old code is gone !!!
         DICT = self.make_ver1_dict_from_sql_dict(d)
         set_location_filenames(self.act_code)  # Call global function at top
 
         # Display keep awake values
-        if self.open_touchcmd:
-            print('Touch command:', self.open_touchcmd,
-                  'every', self.open_touchmin, 'minutes.')
+        #if self.open_touchcmd:
+        #    print('Touch command:', self.open_touchcmd,
+        #          'every', self.open_touchmin, 'minutes.')
 
         ''' If host used, wake it up and validate topdir '''
         if self.validate_host(toplevel=toplevel):
@@ -2276,60 +2343,138 @@ class Locations(LocationsCommonSelf):
               self.open_topdir)
         return 3
 
+    # ==============================================================================
+    #
+    #       Locations() Processing - Remote Host validations
+    #
+    # ==============================================================================
+
     def validate_host(self, toplevel=None):
         """ Check current self.act_host variable to see if it a host 
             Called my mserve.py call to self.load_last_location()
+            Always use self.open_xxx and never self.act_xxx fields which
+            can be changed in Maintenance.
         """
         #print("location.py Locations.validate_host(toplevel):", toplevel)
-        if self.act_host:
-            ''' Not using Test Button from main_top so fast test first.
-                Desirable during development when lots of mserve restarts.
-                'nc' takes split second when host connected but many seconds
+        title = "location.py Locations.validate_host()"
+        d = sql.get_config('location', 'last')
+        if d['SourceMaster'] == self.open_code:
+            last_time = d['Time']
+        else:
+            last_time = 0.0
+
+        ''' If 10 minutes is touch frequency as 12.5 minutes is safe cutoff '''
+        cutoff_time = last_time + self.open_touchmin * 60 * 1.25
+        start = time.time()
+        #self.out_cast_show_print(title, "STARTUP: " + ext.t(start), 'info')
+
+        if self.open_host and cutoff_time >= start:
+            ''' Avoid 6.5 second 'nmap' test and use .003 second 'nc' test'''
+            text = "Using 'nc'. cutoff_time >= start. Seconds: "
+            text += '{0:.1f}'.format(cutoff_time - start)
+            #self.out_cast_show_print(title, text, 'info')
+            self.test_init(toplevel, True)  # Open window and maybe keep open
+            ''' 'nc' takes split second when host connected but many seconds
                 when host disconnected. Use display_test_window and immediately
                 remove it. 
+
+                    $ time nc -z dell 22  # 0.003s - Host Up
+                    $ time nc -z dell 22  # 24.601s - Host down for 1 minute
+                    $ time nc -z dell 22  # 6.137s - Suspend client and resume
             '''
-            print(ext.t(time.time()), "validate_host()")
-            self.test_init(toplevel, True)  # Open window just in case.
-            # Why is window opening twice???
             result = os.system("nc -z " + self.open_host + " 22 > /dev/null")
+            # Wait for command to end. It takes 0.003 seconds when the host
+            # is up. A once connected host, that disconnects, takes 37 seconds.
             if result == 0:
+                # Testing Window is still open !
+                text = "HOST is CONNECTED"
+                #self.out_fact_print(title, text, 'info')
+                ''' TODO: Make mounting separate method'''
                 if self.open_mountcmd:
                     ''' Always unmounted when mserve closes. Mount quickly '''
+                    text = "Mounting with: " + self.open_mountcmd
+                    #self.out_fact_print(title, text, 'info')
                     result = os.system(self.open_mountcmd)
                     if result == 0:
+                        text = "Mount SUCCESS!"
+                        #self.out_fact_print(title, text, 'info')
                         self.open_sshfs_used = True
                         if os.path.exists(self.open_topdir) and \
                                 len(os.listdir(self.open_topdir)):
-                            print("FAST STARTUP... File count:",
-                                  len(os.listdir(self.open_topdir)))
-                            self.test_close_window()
+                            #text = "FAST STARTUP... Artist count: ",
+                            #text += str(len(os.listdir(self.open_topdir)))
+                            # TypeError: can only concatenate tuple (not "str") to tuple
+                            count = len(os.listdir(self.open_topdir))
+                            text = "FAST STARTUP... Artist count: " + str(count)
+                            #self.out_fact_print(title, text, 'info')
+                            self.test_close_window()  # Old design was to leave it open sometimes
                             return True
                         else:
-                            ''' No subdirs under TopDir. Will do full test '''
+                            ''' No subdirs under TopDir. Do full test '''
+                            text = "No subdirs under TopDir! Fallback"
+                            self.out_fact_print(title, text, 'error')
                             self.sshfs_close()  # unmount for full test
-                        
-            ''' Quick & dirty didn't work. Do the long long test '''
-            return self.test_common(toplevel, run_nmap=False)
-        else:  # else not needed but makes easier for others' comprehension.
-            return False  # Return False when not a host for topdir test in parent
+                            # Keep window up and don't run nmap
+                            return self.test_common(toplevel, run_nmap=False)
+                    else:
+                        # fusermount: failed to access mount point /mnt/music: Permission denied
+                        text = "Mount FAILED! Fallback. result=" + str(result)
+                        self.out_fact_print(title, text, 'error')
+                        # Keep window up and don't run nmap
+                        return self.test_common(toplevel, run_nmap=False)
+                elif os.path.exists(self.open_topdir) and \
+                        len(os.listdir(self.open_topdir)):
+                    ''' No mount required, permanent host path of some sort. '''
+                    text = "No mount required and TopDir is good"
+                    #self.out_fact_print(title, text, 'info')
+                    self.test_close_window()
+                    return False  # This actually means a good thing :)
+                else:
+                    text = "No mount required but TopDir is empty"
+                    self.out_fact_print(title, text, 'error')
+                    self.test_close_window()
+                    return self.test_common(toplevel)
+            else:
+                ''' 'nc' didn't find host '''
+                text = "'nc' Didn't find host SECONDS: "
+                text += '{0:.1f}'.format(time.time() - start)
+                self.out_fact_print(title, text, 'warning')
+                self.test_close_window()
+                return self.test_common(toplevel)
+        elif self.open_host:  # Remote Host past 12 minute cut-off time
+            ''' Avoid 37 second 'nc' test and use 6.5 second 'nmap' test
+                Note if resuming from suspend, the 37 second delay disappears
+                and back to regular a few second delay. Needs to be timed. 
+            '''
+            text = "Skipping 'nc' now - cutoff_time: "
+            text += '{0:.1f}'.format(time.time() - cutoff_time)
+            self.out_fact_print(title, text, 'warning')
+            return self.test_common(toplevel)
+        else:
+            ''' Return False when not a host and parent will test for topdir '''
+            return False  #
 
     def test_host_up(self):
-        """ Simply test if host if up and return True or False
+        """ Simply test if host is up and return True or False
             Only called from mserve.py to check if connection still up.
+            Always use self.open_xxx and never self.act_xxx fields which
+            can be changed in Maintenance.
         """
-        if self.act_host:
+        if self.open_host:
             ''' nc returns 0 if host is on-line '''
-            #print("Calling 'nc -z self.act_host 22' using:", self.open_host)
-            print(ext.t(time.time()), "test_host_up()")
+            #print(ext.t(time.time()), "test_host_up()")
             result = os.system("nc -z " + self.open_host + " 22 > /dev/null")
             # Above waits for command to end 0.003 seconds when host up
-            # .078s when bad host name passed
-            #print("Calling 'nc -z self.act_host 22' result:", result)
+            # If a long suspend and host went down its a few seconds.
+            # A once good host suddenly disconnected takes 37 seconds
+            # Since music has been paused 10+ minutes user will not see this
             return result == 0
+
         else:
             # Determine function name from within that function
             # http://farmdev.com/src/secrets/framehack/index.html
             toolkit.print_trace()
+            # noinspection PyProtectedMember
             print('location.py Locations() test_host_up() blank host name.',
                   sys._getframe(1).f_code.co_name)
             return False
@@ -2373,16 +2518,16 @@ class Locations(LocationsCommonSelf):
         if run_nmap:
             host_is_up, host_is_awake = self.test_nmap(toplevel)
         else:
-            ''' We know it's down because 'nc' failed already '''
-            host_is_up = host_is_awake = False
+            ''' Host is up because 'nc' tested already '''
+            host_is_up = host_is_awake = True
 
         ''' Wake up host if not on-line '''
         if self.act_wakecmd:  # Is there a command to wakeup host?
             if host_is_awake:  # Is host already awake?
                 # nmap leaves extra blank line already
-                text = "Host: " + self.act_host + " is already awake. Skipping:\n\t"
-                text += self.act_wakecmd
-                self.test_see(text, pattern=self.act_host)
+                text = "Host: " + self.act_host + " is already awake. "
+                text += "Skipping Host wakeup command:\n\t" + self.act_wakecmd
+                self.test_show(text, pattern="Skipping Host wakeup")
                 pass
             else:
                 ''' Host is sleeping '''
@@ -2390,11 +2535,11 @@ class Locations(LocationsCommonSelf):
                     # nmap leaves extra blank line already
                     text = 'Host: ' + self.act_host
                     text += ' can be accessed but is NOT awake.'
-                    self.test_see(text, pattern='NOT awake')
+                    self.test_show(text, pattern='NOT awake')
 
                 text = '\nWaking up host: ' + self.act_host + ' using:\n\t '
                 text += self.act_wakecmd
-                self.test_see(text, pattern=self.act_wakecmd)
+                self.test_show(text, pattern=self.act_wakecmd)
 
                 ''' Launch wakeup command (don't use && sleep 4). '''
                 os.popen(self.act_wakecmd)
@@ -2409,19 +2554,19 @@ class Locations(LocationsCommonSelf):
                 cmd1 = cmd1.split('#')[0]
             cmd = cmd1 + " > " + FNAME_TEST + " 2>&1 &"
             os.popen(cmd)  # Launch background command to list files to temp file
-            full_text = "\nRunning test to see if Host awake:\n\t" + cmd
-            self.test_see(full_text, pattern=cmd1)
+            full_text = "\nRunning test to see if Host awake:\n\t" + cmd + "\n"
+            self.test_show(full_text, pattern=cmd1)
 
-            text = "Waiting for '" + FNAME_TEST + "' output results to appear."
-            self.test_see(text, pattern=FNAME_TEST)
+            text = "Waiting for '" + FNAME_TEST + "' output results to appear\n."
+            self.test_show(text, pattern=FNAME_TEST)
 
             testrep = self.act_testrep
             if testrep < 1:
                 text = "testrep is < 1: " + str(testrep)
-                self.test_see(text, pattern=testrep)
+                self.test_show(text, pattern=testrep)
                 testrep = 300  # Override negative or zero to 30 seconds
-            start = now = time.time()
-            self.test_see("Dummy Line to replace 2")
+            start = time.time()
+            self.test_show("Dummy Line to replace 2")
             for i in range(testrep):
                 # .1 second wait
                 self.test_refresh(toplevel, i + 1, testrep, start,
@@ -2430,14 +2575,14 @@ class Locations(LocationsCommonSelf):
                 try:
                     strings = ext.read_into_list(FNAME_TEST)
                     if len(strings) > 2:
-                        self.test_see("Host response first line:\t" + strings[0],
-                                      pattern="response first line")
-                        self.test_see("Response last line " + "[" +
-                                      str(len(strings)) + "]:\t" + strings[-1],
-                                      pattern="Response last line")
+                        self.test_show("\tHost Response first line:\t" + strings[0],
+                                       pattern=strings[0])
+                        self.test_show("\tResponse last line " + "[" +
+                                       str(len(strings)) + "]:\t" + strings[-1],
+                                       pattern=strings[-1])
                         host_is_awake = True
-                        text = "Host communicating after: " + str(i + 1) + " tests."
-                        self.test_see(text, pattern="communicating")
+                        text = "\tHost communicating after: " + str(i + 1) + " tests."
+                        self.test_show(text, pattern="Host communicating")
                         break
                 except:
                     pass
@@ -2447,19 +2592,19 @@ class Locations(LocationsCommonSelf):
                 test_time = int(float(self.act_testrep) * .1)
                 text = "Host did not come up after: " + \
                        str(test_time) + " seconds."
-                self.test_see(text, pattern=str(test_time))
+                self.test_show(text, pattern=str(test_time))
                 return self.test_failure()
         else:
             ''' Host has no keep awake command, assume test passed. '''
             text = "\nCan't check if Host is awake. Test command NOT provided!"
-            self.test_see(text, pattern="Test command NOT provided!")
+            self.test_show(text, pattern="Test command NOT provided!")
 
         ''' Check if Top Directory already mounted '''
         text = '\nChecking for Music Top Directory:\n\t' + self.act_topdir
-        self.test_see(text, pattern=self.act_topdir)
+        self.test_show(text, pattern=self.act_topdir)
         if self.test_topdir():
             text = "\nTop Directory for Music already mounted"
-            self.test_see(text, pattern="already mounted")
+            self.test_show(text, pattern="already mounted")
             if not self.called_from_main_top:
                 self.test_host_is_mounted = True  # Still mounted after prev wakeup?
                 if self.act_mountcmd:
@@ -2474,7 +2619,7 @@ class Locations(LocationsCommonSelf):
         if mountcmd:  # Need Non-blank mount command to run
             text = '\nMounting: ' + self.act_topdir + \
                    ' using:\n\t' + self.act_mountcmd + "\n"
-            self.test_see(text, pattern=self.act_mountcmd)
+            self.test_show(text, pattern=self.act_mountcmd)
             # noinspection SpellCheckingInspection
             ''' Advice about fuse error '''
             text = "NOTE: 'sshfs' can stall and cause mserve to freeze.\n" + \
@@ -2485,30 +2630,30 @@ class Locations(LocationsCommonSelf):
                    "    Transport endpoint is not connected\n\n" + \
                    "If you get the 'fuse' error, unmount the point with:\n" + \
                    "    $ sudo umount -l /mnt/music'"
-            self.test_see(text, pattern='NOTE:')
+            self.test_show(text, pattern='NOTE:')
             # We want error messages in our result
             result = os.popen(mountcmd).read().strip()
             text = "\nMount command result: " + result
-            self.test_see(text, pattern=result)
+            self.test_show(text, pattern=result)
             if "Connection reset" in result:
                 text = "\nError mounting Top Directory: " + result
-                self.test_see(text, pattern=result)
+                self.test_show(text, pattern=result)
             else:
                 self.test_host_is_mounted = True
         else:
             text = "\nSkipping Host mount. Mount command NOT provided!"
-            self.test_see(text, pattern="Mount command NOT provided!")
+            self.test_show(text, pattern="Mount command NOT provided!")
             self.test_host_is_mounted = True  # When no mountcmd assume mounted
 
         if self.test_host_is_mounted is False:
             text = "\nHost's Music Top Directory could not be mounted with:"
             text += "\n\t" + self.act_mountcmd
-            self.test_see(text, pattern=self.act_mountcmd)
+            self.test_show(text, pattern=self.act_mountcmd)
             return self.test_failure()
 
         text = '\nTest if Music Top Directory exists with files:\n\t' + \
                self.act_topdir
-        self.test_see(text, pattern=self.act_topdir)
+        self.test_show(text, pattern=self.act_topdir)
 
         ''' Host is up and directory mounted. Check if TopDir has subdirs '''
         if os.path.exists(self.act_topdir) and \
@@ -2522,7 +2667,7 @@ class Locations(LocationsCommonSelf):
                 text = "Music Top Directory doesn't exist:"
                 pattern = "doesn't exist"
             text += "\n\t" + self.act_topdir
-            self.test_see(text, pattern=pattern)
+            self.test_show(text, pattern=pattern)
             return self.test_failure()
 
     def test_init(self, toplevel, display_test):
@@ -2533,10 +2678,9 @@ class Locations(LocationsCommonSelf):
         '''
         if display_test:
             ''' Careful here... Check call chain before revisions... '''
-            print(ext.t(time.time()), "mounting display_test_window")
+            #print(ext.t(time.time()), "mounting display_test_window")
             self.display_test_window()
             toplevel.update()
-            print("toplevel.update()")
             self.set_scr_variables(self.test_top)
             self.test_top.update()
 
@@ -2559,9 +2703,9 @@ class Locations(LocationsCommonSelf):
             self.make_test_help_button(self.main_frame)
             self.main_top.update()
 
-        text = '\nInitial test to see if host is connected.'
+        text = 'Initial test to see if host: ' + self.act_host + ' is connected.'
         title = "Test Host: " + self.act_host + " - mserve"
-        self.test_see(text, pattern="connected")
+        self.test_show(text, pattern=self.act_host)
         self.test_dtb = message.DelayedTextBox(
             title=title, toplevel=toplevel, width=1000, height=260, startup_delay=0)
 
@@ -2578,10 +2722,9 @@ class Locations(LocationsCommonSelf):
             self.test_close_button = None
             self.test_help_button = None
             self.test_scroll_frame = None
-            #self.main_top.update()
 
             if self.no_locations_label:
-                self.no_locations_label.grid()  # Restore no locations text
+                self.no_locations_label.grid()  # Empty treeview instructions
             else:
                 self.tree_frame.grid()  # Restore treeview of locations
             self.main_close_button.grid()
@@ -2599,20 +2742,23 @@ class Locations(LocationsCommonSelf):
         ''' nmap returns results in lumps '''
         if os.path.exists(FNAME_TEST):
             os.remove(FNAME_TEST)
-        text = "nmap -Pn " + self.act_host + " 2>&1 > " + FNAME_TEST + " &"
-        os.popen(text)
-        full_text = "\nRunning command: " + text
-        self.test_see(full_text, pattern="nmap")
+        cmd = "nmap -Pn " + self.act_host + " 2>&1 > " + FNAME_TEST + " &"
+        os.popen(cmd)
+        text = "\nUsing 'nmap' (Network Mapper) to test if: "
+        text += self.act_host + " is connected."
+        self.test_show(text, pattern="(Network Mapper)")
+        self.test_show("Command: " + cmd, pattern="nmap -Pn " + self.act_host)
 
-        text = "\nWaiting for '" + FNAME_TEST + "' output results to appear."
-        self.test_see(text, pattern=FNAME_TEST)
+        text = "\nWaiting for 'nmap' output results to appear in: "
+        text += FNAME_TEST + "\n"
+        self.test_show(text, pattern="'nmap'")
         limit = 300  # 30 second time limit. dell takes 6.5 seconds
         string = ""
         start = time.time()
-        self.test_see("Dummy Line to replace")
+        self.test_show("Dummy Line to replace")
         for i in range(limit):
             self.test_refresh(toplevel, i + 1, limit, start,
-                              "'nmap' results")
+                              "'nmap' results shown below")
             # noinspection PyBroadException
             try:
                 string = ext.read_into_string(FNAME_TEST)
@@ -2626,31 +2772,34 @@ class Locations(LocationsCommonSelf):
         host_is_awake = "22/tcp open" in string  # what if more spaces? Use re
         self.test_host_was_asleep = not host_is_awake  # Can do this better...
         if limit == 0:
-            self.test_see("\n'nmap' FAILED! 10 second timeout exceeded.",
-                          pattern="'nmap' FAILED!")
+            self.test_show("\n'nmap' FAILED! 10 second timeout exceeded.",
+                           pattern="'nmap' FAILED!")
         else:
-            self.test_see(string, pattern="(1 host up)")
+            self.test_show(string, pattern="(1 host up)")
 
         return host_is_up, host_is_awake
 
-    def test_see(self, text, pattern=None):
+    def test_show(self, text, pattern=None):
         """ Insert into self.test_box (scrolled text box) and print to console.
             Also use dtb (delayed text box), however by design not all lines will
             appear there. dtb serves as GUI backup when test_window doesn't appear.
 
+            last_insert is used by test_refresh to replace previous line.
         :param text: Text line for self.test_box. "\n" appended
         :return: Nothing
         """
+        last_insert = self.test_box.tag_ranges("last_insert")
+        #print("last_insert:", last_insert)
         self.test_box.tag_remove("last_insert", "1.0", "end")
+        #if last_insert:
+        #    self.test_box.delete(last_insert[0], last_insert[1])
         self.test_box.insert("end", text + "\n", "last_insert")
         last_insert = self.test_box.tag_ranges("last_insert")
         if pattern:
             self.test_box.highlight_pattern(pattern, 'yellow', start=last_insert[0])
         self.test_box.see("end")
         self.test_scroll_frame.update_idletasks()
-        last_insert = self.test_box.tag_ranges("last_insert")
-        print(last_insert[0], last_insert[1], text)
-        #self.test_dtb.update(text)  # Too busy now that Test Window works
+        #self.test_dtb.update(text)  # DTB too busy now that Test Window works
 
     def test_refresh(self, top, step, steps, start, text):
         """ Refresh last test_box line with .1 second updates
@@ -2682,9 +2831,10 @@ class Locations(LocationsCommonSelf):
     def test_success(self):
         """ End test with success """
         success = "\nHost successfully accessed. Click 'Close' button."
-        self.test_see(success, pattern="'Close'")
+        self.test_show(success, pattern="'Close'")
         self.test_dtb.close()
         if not self.called_from_main_top:
+            ''' This is a live situation. Set self.open_xxx '''
             if self.test_host_is_mounted and self.open_mountcmd:
                 self.open_sshfs_used = True
             else:
@@ -2695,16 +2845,22 @@ class Locations(LocationsCommonSelf):
     def test_failure(self):
         """ End test with Failure """
         failure = "\nHost FAILURE. Review and then click 'Close' button."
-        self.test_see(failure, pattern="FAILURE")
+        self.test_show(failure, pattern="FAILURE")
         self.test_dtb.close()
         # Leave test window open
         return False
 
+    # ==============================================================================
+    #
+    #       Locations() Processing - Wrapup
+    #
+    # ==============================================================================
+
     def sshfs_close(self):
-        """
-            When exiting need to unmount sshfs music directories. Also when
+        # noinspection SpellCheckingInspection
+        """ When exiting need to unmount sshfs music directories. Also when
             test_host_up() fails with 'nc' test this must be done. Finally,
-            this must be run during mserve.py's self.open_and_play_callback().
+            this must be run during mserve.py self.open_and_play_callback().
 
             After the "Test Host" button finishes this needs to be run,
             unless self.act_host = self.open_host.
@@ -2732,12 +2888,16 @@ class Locations(LocationsCommonSelf):
             self.out_cast_show_print(title, text, 'error')
 
         if self.open_sshfs_used:
-            os.popen("fusermount -u " + self.open_topdir)
+            cmd = "fusermount -u " + self.open_topdir
+            os.popen(cmd)
+            title = "Locations.sshfs_close() called at: " + ext.t(time.time())
+            text = "Running: " + cmd
+            self.out_fact_print(title, text, 'warning')
             self.open_sshfs_used = False
 
     def reset(self, shutdown=False):
         """ Named "reset" because used by shutdown as well. """
-        if self.tt:  # toolkit.Tooltips() won't exist during early startup
+        if self.tt and self.main_top:  # toolkit.Tooltips() won't exist during early startup
             self.tt.close(self.main_top)
         if self.main_top:
             geom = monitor.get_window_geom_string(self.main_top, leave_visible=False)
@@ -2777,6 +2937,548 @@ class Locations(LocationsCommonSelf):
             print("Unknown Locations.apply() self.state:", self.state)
 
         self.reset()  # Destroy window & reset self. variables
+
+
+# ==============================================================================
+#
+#       Compare() class.  Copied from mserve.py
+#
+# ==============================================================================
+
+class CompareCommonSelf:
+    """ Class Variables used by Compare() class """
+
+    def __init__(self):
+        """ Called on mserve.py startup and for Playlists maintenance """
+
+        ''' Compare locations variables '''
+        self.cmp_top_is_active = False
+        self.cmp_top = None                 # Compare Locations toplevel - NEW?
+        self.cmp_target_dir = None          # OS directory comparing to
+        self.cmp_tree = None                # Treeview
+        self.cmp_close_btn = None           # Doesn't need to be instanced
+        self.update_differences_btn = None
+        self.src_mt = None                  # Source modification time
+        self.trg_mt = None                  # Target modification time
+        self.cmp_msg_box = None             # message.Open()
+
+        self.font = (None, g.MON_FONTSIZE)
+
+
+class Compare(CompareCommonSelf):
+    """ Usage:
+            Parent needs to register self.fake_paths -> lcs.register_paths()
+    """
+
+    def __init__(self):
+        """
+
+        """
+        CompareCommonSelf.__init__(self)  # Define self. variables
+        ''' self-ize parameter list '''
+
+        ''' Variables registered by mserve.py when available '''
+
+
+    def loc_compare(self, mode=""):
+        """ Compare songs to other location
+            Called from File menu and from within self.loc_create_tree()
+            Caller:
+                'Drop' called from top bar dropdown menu
+                    We create treeview and return
+                'Tree' called from treeview button
+                    We do the pre-processing for Submit button to take over
+        """
+
+        if mode != "":
+            pass    # Pycharm error, should probably get rid of parameter...
+
+        if self.cmp_top_is_active:
+            ''' Should not happen because menu options disabled '''
+            self.cmp_top.focus_force()  # Get focus
+            self.cmp_top.lift()  # Raise in stacking order
+            self.cmp_top.update_idletasks()
+            return
+
+        # Test target location to make sure it's online
+        # loc_button_click() will need to test target location, just as it does
+        # for open and play, etc.
+        if not test(iid, self.loc_top):  # How to see other class methods?
+            # Location doesn't exist or is off-line
+            messagebox.showinfo(title="Location Error",
+                                message="Top directory doesn't exist or is off-line.",
+                                parent=self.loc_top)
+            return False
+
+        return True
+
+    # ==============================================================================
+    #
+    #       Music Location Tree Processing - Compare locations and update file differences
+    #
+    # ==============================================================================
+
+    def cmp_build_toplevel(self, trg_dict_iid, sbar_width=12):
+        """ Compare target location songs to build treeview of differences.
+
+            Source is current LODICT, Target it selected by user here
+
+            After comparison, we can:
+                - Set modification time (mtime) of target to match source
+                - Set modification time (mtime) of source to match target
+                - Copy files from source to target maintaining mtime
+                - Copy files from target to source maintaining mtime
+
+            NOTE: Doesn't export or import songs
+                  Android doesn't allow setting mod time so track in mserve
+
+            TODO:
+
+            Compare locations can be setup like RipCD () class where generating
+            list is done in background, and it generates a pickle while ps_active
+            is polled. Button to cancel is active with status message in
+            ScrolledText stating work in progress.
+
+            When ps_active is done, text updated with filenames and actions.
+            Button appears to update.
+
+        """
+
+        # print('cmp_build_toplevel() get trg_dict',t(time.time()))
+        trg_dict = lc.item(trg_dict_iid)  # get dictionary for iid
+        self.cmp_target_dir = trg_dict['topdir']
+
+        # If no optional `/` at end, add it for equal comparisons
+        if not self.cmp_target_dir.endswith(os.sep):
+            self.cmp_target_dir += os.sep
+
+        self.cmp_top = tk.Toplevel()
+        self.cmp_top.minsize(g.WIN_MIN_WIDTH, g.WIN_MIN_HEIGHT)
+        self.cmp_top_is_active = True
+
+        xy = (self.loc_top.winfo_x() + PANEL_HGT,
+              self.loc_top.winfo_y() + PANEL_HGT)
+        self.cmp_top.minsize(width=BTN_WID * 10, height=PANEL_HGT * 4)
+        self.cmp_top.geometry('%dx%d+%d+%d' % (1800, 500, xy[0], xy[1]))  # 500 pix high
+        title = "Compare Locations - SOURCE: " + PRUNED_DIR + \
+                " - TARGET: " + self.cmp_target_dir
+        self.cmp_top.title(title)
+        self.cmp_top.columnconfigure(0, weight=1)
+        self.cmp_top.rowconfigure(0, weight=1)
+
+        ''' Set program icon in taskbar '''
+        img.taskbar_icon(self.cmp_top, 64, 'white', 'lightskyblue', 'black')
+
+        ''' Create frames '''
+        master_frame = tk.Frame(self.cmp_top, bg="olive", relief=tk.RIDGE)
+        master_frame.grid(sticky=tk.NSEW)
+        master_frame.columnconfigure(0, weight=1)
+        master_frame.rowconfigure(0, weight=1)
+
+        ''' Create a frame for the treeview and scrollbar(s). '''
+        frame2 = tk.Frame(master_frame)
+        tk.Grid.rowconfigure(frame2, 0, weight=1)
+        tk.Grid.columnconfigure(frame2, 0, weight=1)
+        frame2.grid(row=0, column=0, sticky=tk.NSEW)
+
+        ''' Treeview List Box, Columns and Headings '''
+        self.cmp_tree = ttk.Treeview(frame2, show=('tree', 'headings'),
+                                     columns=("SrcModified", "TrgModified", "SrcSize",
+                                              "TrgSize", "Action", "src_mtime", "trg_mtime"),
+                                     selectmode="none")
+        self.cmp_tree.column("#0", width=630, stretch=tk.YES)
+        # self.cmp_tree.heading("#0", text = "➕ / ➖   Artist/Album/Song")
+        self.cmp_tree.heading(
+            "#0", text="Click ▼ (collapse) ▶ (expand) an Artist or Album")
+        self.cmp_tree.column("SrcModified", width=300, stretch=tk.YES)
+        self.cmp_tree.heading("SrcModified", text="Source Modified")
+        self.cmp_tree.column("TrgModified", width=300, stretch=tk.YES)
+        self.cmp_tree.heading("TrgModified", text="Target Modified")
+        self.cmp_tree.column("SrcSize", width=140, anchor=tk.E,
+                             stretch=tk.YES)
+        self.cmp_tree.heading("SrcSize", text="Source " + CFG_DIVISOR_UOM)
+        self.cmp_tree.column("TrgSize", width=140, anchor=tk.E,
+                             stretch=tk.YES)
+        self.cmp_tree.heading("TrgSize", text="Target " + CFG_DIVISOR_UOM)
+        self.cmp_tree.column("Action", width=280, stretch=tk.YES)
+        self.cmp_tree.heading("Action", text="Action")
+        self.cmp_tree.column("src_mtime")  # Hidden modification time
+        self.cmp_tree.column("trg_mtime")  # Hidden modification time
+        self.cmp_tree.grid(row=0, column=0, sticky=tk.NSEW)
+        self.cmp_tree["displaycolumns"] = ("SrcModified", "TrgModified",
+                                           "SrcSize", "TrgSize", "Action")
+        ''' Treeview Scrollbars '''
+        # Create a vertical scrollbar linked to the frame.
+        v_scroll = tk.Scrollbar(frame2, orient=tk.VERTICAL, width=sbar_width,
+                                command=self.cmp_tree.yview)
+        v_scroll.grid(row=0, column=1, sticky=tk.NS)
+        self.cmp_tree.configure(yscrollcommand=v_scroll.set)
+
+        # Create a horizontal scrollbar linked to the frame.
+        h_scroll = tk.Scrollbar(frame2, orient=tk.HORIZONTAL, width=sbar_width,
+                                command=self.cmp_tree.xview)
+        h_scroll.grid(row=1, column=0, sticky=tk.EW)
+        self.cmp_tree.configure(xscrollcommand=h_scroll.set)
+
+        ''' Treeview Buttons '''
+        frame3 = tk.Frame(master_frame, bg="Blue", bd=2, relief=tk.GROOVE,
+                          borderwidth=BTN_BRD_WID)
+        frame3.grid_rowconfigure(0, weight=1)
+        frame3.grid_columnconfigure(0, weight=0)
+        frame3.grid(row=1, column=0, sticky=tk.NW)
+
+        ''' ✘ Close Button '''
+        # TODO: we aren't keeping remote location awake only home location!
+        self.cmp_top.bind("<Escape>", self.cmp_close)
+        self.cmp_top.protocol("WM_DELETE_WINDOW", self.cmp_close)
+        self.cmp_close_btn = tk.Button(frame3, text="✘ Close",
+                                       width=BTN_WID - 4, command=self.cmp_close)
+        self.cmp_close_btn.grid(row=0, column=0, padx=2)
+
+        ''' Create Treeview using source (START_DIR) as driver '''
+        if not self.cmp_populate_tree(trg_dict_iid):  # populate_
+            self.cmp_close()  # Files are identical
+            return
+
+        ''' 🗘  Update differences Button u1f5d8 🗘'''
+        self.update_differences_btn = tk.Button(frame3, width=BTN_WID + 4,
+                                                text="🗘  Update differences",
+                                                command=self.cmp_update_files)
+        self.update_differences_btn.grid(row=0, column=1, padx=2)
+
+        if self.cmp_top_is_active is False:
+            return  # We are already closed
+        self.cmp_tree.update_idletasks()
+
+    # noinspection PyUnusedLocal
+    def cmp_close(self, *args):
+        """ Close Compare location treeview """
+        if self.cmp_top_is_active is False:
+            return  # We are already closed
+        self.cmp_top_is_active = False
+        if self.tt and self.cmp_top:
+            self.tt.close(self.cmp_top)  # Close tooltips under top level
+        #root.update()  # Comment out July 30, 2023
+        #root.after(50)  # Give time for treeview to close
+        self.cmp_top.destroy()  # Close the treeview window
+        self.cmp_top = None  # Extra insurance
+
+        return True
+
+    def cmp_populate_tree(self, trg_dict_iid):
+
+        """ Add Artist, Album and Song to treeview self.cmp_tree.
+            Similar to add_items() in Music Location Tree
+
+            TODO: Rest of mserve is unresponsive while this is running.
+                  Take all compare location code and make new python module
+                  called compare.py imported as cmp
+
+            It takes 1.5 hour to stat 4,000 songs on phone mounted on sshfs
+            over Wi-Fi. Speed up with: https://superuser.com/questions/344255/
+            faster-way-to-mount-a-remote-file-system-than-sshfs
+
+            -o auto_cache,reconnect,defer_permissions
+            -o Ciphers=aes128-ctr -o Compression=no
+
+
+        """
+        # How many path separators '/' are there in source and target?
+        start_dir_sep = START_DIR.count(os.sep) - 1
+        #target_dir_sep = self.cmp_target_dir.count(os.sep) - 1
+        self.src_mt = lc.ModTime(LODICT['iid'])
+        self.trg_mt = lc.ModTime(trg_dict_iid)
+
+        #first_artist = True
+        LastArtist = ""
+        LastAlbum = ""
+        #first_album = True
+        CurrAlbumId = ""  # When there are no albums?
+        CurrArtistId = ""
+        # do_debug_steps = 0 # DEBUGGING
+        last_i = 0
+
+        for i, os_name in enumerate(self.fake_paths):
+            self.cmp_top.update()  # Allow close button to abort right away
+
+            # Experimental doesn't work! Solution is to make this function
+            # a new python module launched in background. Or use new
+            # tool.thread called every 1000 reads for SSD, less for phone.
+            if self.play_top_is_active:  # Play window open?
+                root.update_idletasks()
+                self.play_top.update()  # Update spinner & text
+
+            # split song /mnt/music/Artist/Album/Song.m4a into variable names
+            groups = os_name.split(os.sep)
+            Artist = str(groups[start_dir_sep + 1])
+            Album = str(groups[start_dir_sep + 2])
+            Song = str(groups[start_dir_sep + 3])
+
+            if Artist != LastArtist:
+                CurrArtistId = self.cmp_tree.insert("", "end", text=Artist,
+                                                    tags=("Artist",), open=True)
+                LastArtist = Artist
+                LastAlbum = ""  # Force subtotal break for Album
+
+            if Album != LastAlbum:
+                CurrAlbumId = self.cmp_tree.insert(CurrArtistId, "end",
+                                                   text=Album, tags=("Album",))
+                LastAlbum = Album
+
+            if self.cmp_top_is_active is False:
+                return  # We are closing down
+
+            ''' Build full song path from song_list[] '''
+            src_path = os_name
+            src_path = src_path.replace(os.sep + NO_ARTIST_STR, '')
+            src_path = src_path.replace(os.sep + NO_ALBUM_STR, '')
+
+            # os.stat gives us all of file's attributes
+            src_stat = os.stat(src_path)
+            src_size = src_stat.st_size
+            src_mtime = float(src_stat.st_mtime)
+
+            # Get target list's size and mtime
+            trg_path = src_path.replace(START_DIR, self.cmp_target_dir)
+            if not os.path.isfile(trg_path):
+                self.cmp_tree.see(CurrAlbumId)
+                continue  # Source song doesn't exist on target
+
+            trg_stat = os.stat(trg_path)
+            trg_size = trg_stat.st_size
+            trg_mtime = float(trg_stat.st_mtime)
+            # Android not updating modification time, keep track ourselves
+            # print('mserve before src:',t(src_mtime),' trg:',t(trg_mtime))
+            src_mtime = self.src_mt.get(src_path, src_mtime)
+            trg_mtime = self.trg_mt.get(trg_path, trg_mtime)
+            # print('mserve AFTER  src:',t(src_mtime),' trg:',t(trg_mtime))
+
+            # FUDGE because cp --preserve=timestamps doesn't do nanoseconds
+            src_mtime = int(src_mtime)
+            trg_mtime = int(trg_mtime)
+            # FUDGE if time difference is 1 second. Caused by copy to SD Card
+            if src_mtime > trg_mtime:
+                diff = src_mtime - trg_mtime
+            else:
+                diff = trg_mtime - src_mtime
+            if diff == 1:
+                src_mtime = trg_mtime  # override 1-second difference
+            # End of patch FUDGE
+
+            if src_size == trg_size and src_mtime == trg_mtime:
+                self.cmp_tree.see(CurrAlbumId)
+                continue
+
+            if not src_size == trg_size:
+                # Copy newer file to older
+                if src_mtime < trg_mtime:
+                    action = "Copy Trg -> Src (Size)"
+                elif src_mtime > trg_mtime:
+                    action = "Copy Src -> Trg (Size)"
+                else:
+                    action = "Size diff but same time!"
+
+
+
+            elif os.system('diff ' + '"' + src_path + '"' + ' ' +
+                           '"' + trg_path + '" 1>/dev/null'):
+
+                if self.cmp_top_is_active is False:
+                    return  # We are closing down
+                # Files have different contents even though size the same
+                # Copy newer file to older
+                if src_mtime < trg_mtime:
+                    action = "Copy Trg -> Src (Diff)"
+                else:
+                    action = "Copy Src -> Trg (Diff)"
+
+            else:
+                # File contents same so modification times must be synced
+                if src_mtime > trg_mtime:
+                    action = "Timestamp Trg -> Src"
+                elif src_mtime < trg_mtime:
+                    action = "Timestamp Src -> Trg"
+                else:
+                    # Impossible situation
+                    action = "OOPS same time?"
+
+            # fsize = '{:n}'.format(size)     # Format size with locale separators
+            converted = float(src_size) / float(CFG_DIVISOR_AMT)
+            src_fsize = str(round(converted, CFG_DECIMAL_PLACES + 2))
+            converted = float(trg_size) / float(CFG_DIVISOR_AMT)
+            trg_fsize = str(round(converted, CFG_DECIMAL_PLACES + 2))
+            #                 '{:n}'.format(Size))) # 9,999,999 format
+            # Format date as "Abbreviation - 99 Xxx Ago"
+            src_ftime = tmf.ago(float(src_stat.st_mtime))
+            trg_ftime = tmf.ago(float(trg_stat.st_mtime))
+
+            # Catch programmer's bug
+            if i == last_i:
+                print('same song ID twice in a row:', i)
+                continue
+            last_i = i
+
+            ''' Add the song '''
+            # NOTE: Numeric 0 allowed for index except for 0 which is converted
+            #       to a parent ID, EG I003. Convert to string to fix bug.
+            self.cmp_tree.insert(CurrAlbumId, "end", iid=str(i), text=Song,
+                                 values=(src_ftime, trg_ftime, src_fsize, trg_fsize, action,
+                                         float(src_stat.st_mtime), float(trg_stat.st_mtime)),
+                                 tags=("Song",))
+            self.cmp_tree.see(str(i))
+
+            # Sept 23 2020 - Treeview doesn't scroll after update button added?
+            # After clicking update differences can you click it again?
+            if self.cmp_top_is_active is False:
+                return  # We are already closed
+            self.cmp_tree.update_idletasks()
+
+            # do_debug_steps += 1
+            # if do_debug_steps == 10000: break     # Set to short for testing
+
+        ''' Prune tree - Albums with no songs, then artists with no albums '''
+        for artist in self.cmp_tree.get_children():
+            album_count = 0
+            for album in self.cmp_tree.get_children(artist):
+                if self.cmp_top_is_active is False:
+                    return  # We are closing down
+                #song_count = 0
+                #for song in self.cmp_tree.get_children(album):
+                #    song_count += 1  # Signal not to delete album
+                #    break
+                song_count = len(self.cmp_tree.get_children(album))
+                if song_count == 0:
+                    self.cmp_tree.delete(album)
+                else:
+                    album_count += 1  # Signal not to delete artist
+            if album_count == 0:
+                self.cmp_tree.delete(artist)
+
+        ''' Message if files are same (no treeview children) '''
+        if self.cmp_tree.get_children():
+            return True
+        else:
+            messagebox.showinfo(title="Files identical",
+                                message="Files common to both locations are identical.",
+                                parent=self.cmp_top)
+            return False
+
+    def cmp_update_files(self):
+        """ Build list of commands to run with subprocess
+            Called via "Update" button on cmp_top treeview
+        """
+        return_code = 0
+        title = "Updating files"
+        self.update_differences_btn.grid_forget()  # Can't click again
+        # Display status messages in window 800 wide x 260 high
+        self.cmp_msg_box = message.Open(title, self.cmp_top, 800, 260)
+        for artist in self.cmp_tree.get_children():
+            for album in self.cmp_tree.get_children(artist):
+                for song in self.cmp_tree.get_children(album):
+                    # Update file and display in message box.
+                    return_code = self.cmp_run_command(song)
+                    root.update_idletasks()
+                    if self.cmp_top_is_active is False:
+                        # TODO: Move duplicated code into common ...close()
+                        self.src_mt.close()  # Save modification_time to disk
+                        self.trg_mt.close()  # If no changes then simply exit
+                        self.cmp_msg_box.close()
+                        return  # Closing down
+                    if not return_code == 0:
+                        break
+                if not return_code == 0:
+                    break
+            if not return_code == 0:
+                break
+
+        self.src_mt.close()  # Save modification_time to disk
+        self.trg_mt.close()  # If no changes then simply exit
+        self.cmp_msg_box.close()
+
+        if not return_code == 0:
+            print('cmp_update_files() received non-zero return_code:', return_code)
+        # All done, close treeview as it's no longer relevant
+        self.cmp_close()
+
+    def cmp_run_command(self, iid):
+        """ Build single commands to run with subprocess
+                cp -p source_path target_path
+                touch -m -r source_path target_path
+
+            NOTE: START_DIR may become target_path and target_dir may become
+                  source_path after deciphering arrow
+        """
+
+        # action = 'Copy Trg -> Src (Size)', 'Timestamp Src -> Trg', etc.
+        action = self.cmp_tree.item(iid)['values'][4]  # 6th treeview column
+        src_mtime = self.cmp_tree.item(iid)['values'][5]
+        trg_mtime = self.cmp_tree.item(iid)['values'][6]
+        # Extract real source path from treeview display e.g. strip <No Album>
+        src_path = self.real_path(int(iid))
+        # replace source topdir with target topdir for target full path
+        trg_path = src_path.replace(START_DIR, self.cmp_target_dir)
+
+        # Build command line list for subprocess
+        command_line_list = []
+        src, trg = self.cmp_decipher_arrow(action, src_path, trg_path)
+        if src is None:
+            return False  # Programmer made error
+
+        if action.startswith("Copy "):  # Is it a copy?
+            command_line_list.append("cp")
+            command_line_list.append("--preserve=timestamps")
+
+        elif action.startswith("Timestamp "):  # Is it a timestamp?
+            command_line_list.append("touch")
+            command_line_list.append("-m")
+            command_line_list.append("-r")
+
+        else:  # None of above? - ERROR!
+            print("cmp_run_command(): action is not 'Copy ' or 'Timestamp '")
+            return False
+
+        # Add common arguments for source and target to end
+        command_line_list.append(src)
+        command_line_list.append(trg)
+
+        command_str = " ".join(command_line_list)  # list to printable string
+        self.cmp_msg_box.update(command_str)  # Display status line
+        pipe = sp.Popen(command_line_list, stdout=sp.PIPE, stderr=sp.PIPE)
+        text, err = pipe.communicate()  # This performs .wait() too
+
+        # print('subprocess:', command_line_list)
+        # print("return_code of subprocess:",pipe.return_code)
+        if text:
+            print("standard output of subprocess:")
+            print(text)
+            self.cmp_msg_box.update(text)
+        if err:
+            print("standard error of subprocess:")
+            print(err)
+            self.cmp_msg_box.update(err)
+
+        if pipe.return_code == 0:
+            if src == src_path:  # Action is from Src -> Trg
+                self.src_mt.update(src_path, trg_mtime, src_mtime)
+                self.trg_mt.update(trg_path, trg_mtime, src_mtime)
+            elif src == trg_path:  # Action is from Trg -> Src
+                self.src_mt.update(src_path, src_mtime, trg_mtime)
+                self.trg_mt.update(trg_path, src_mtime, trg_mtime)
+            else:
+                print('ERROR: paths do not work')
+
+        return pipe.return_code
+
+    @staticmethod
+    def cmp_decipher_arrow(action, src_path, trg_path):
+        """ Flip src_path (full_path) and trg_path (full_path2) around """
+        if "Trg -> Src" in action:
+            return trg_path, src_path
+        elif "Src -> Trg" in action:
+            return src_path, trg_path
+        else:
+            print('cmp_decipher_arrow(): was passed invalid arrow')
+            return None, None
 
 
 # End of location.py

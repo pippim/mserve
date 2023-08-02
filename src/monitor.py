@@ -67,7 +67,7 @@ import sql                  # SQLite3 functions
 # https://stackoverflow.com/a/67352300/6929343
 # logging.getLogger('PIL').setLevel(logging.WARNING)
 # noinspection SpellCheckingInspection
-#logging.basicConfig(format='%(asctime)s %(levelname)s %(message)s',
+#logging.basicConfig(format='%(asctime)s %(level name)s %(message)s',
 #                    level=logging.DEBUG,
 #                    stream=sys.stdout)
 # inspection SpellCheckingInspection
@@ -154,13 +154,13 @@ def get_gtk_window():
     from gi.repository import Gdk, Gtk
 
     # Replace w with the GtkWindow of your application
-    w = Gtk.Window()
+    #w = Gtk.Window()
     # Get the screen from the GtkWindow
-    s = w.get_screen()
+    #s = w.get_screen()
     # Using the screen of the Window, the monitor it's on can be identified
-    m = s.get_monitor_at_window(s.get_active_window())
+    #m = s.get_monitor_at_window(s.get_active_window())
     # Then get the geometry of that monitor
-    monitor = s.get_monitor_geometry(m)
+    #monitor = s.get_monitor_geometry(m)
     # This is an example output
     #print("Height: %s, Width: %s, X: %s, Y: %s" %
     #      (monitor.height, monitor.width, monitor.x, monitor.y))
@@ -334,8 +334,8 @@ class Monitors:
             # https://lazka.github.io/pgi-docs/Wnck-3.0/classes/Window.html#Wnck.Window.get_screen
 
         # clean up Wnck (saves resources, check documentation)
-        window = None  # Although pycharm flags as error,
-        screen = None  # these are important else crash!!
+        #window = None  # Although pycharm flags as error,
+        #screen = None  # these are important else crash!!
         Wnck.shutdown()
         return self.windows_list
     
@@ -798,7 +798,7 @@ def get_window_geom(name):
         return default_geom
 
 
-def check_window_geom(geom):
+def check_window_geom(_geom):
     """
         When switching from multi-head system to laptop ony windows may be
         off visible desktop. Also if xrandr resets same problem.
@@ -812,10 +812,10 @@ def check_window_geom(geom):
 
         NOTE: Gnome (or X11) already moves new window fully onto monitor.
 
-    :param geom: Geometry (width & height plus coordinates: "WxH+X+Y")
+    :param _geom: Geometry (width & height plus coordinates: "WxH+X+Y")
     :return: Valid geometry to use
     """
-    ms = Monitors()
+    #ms = Monitors()
     #print("\nDebugging monitor.check_window_geom(" + geom + "):\n")
     #for m in ms.monitors_list:
     #print("m:", m)
@@ -838,7 +838,7 @@ class Monitors:
         return self.monitor_count
     def get_active_window(self):
         self.found_window = Window(x_id, window_name, geom.xp, geom.yp,
-                                   geom.widthp, geom.heightp)
+                                   geom.width p, geom.height p)
     def get_all_windows(self):
         Wnck.shutdown()
         return self.windows_list

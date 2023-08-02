@@ -609,7 +609,12 @@ SLEEP_NO_PLAY = 33          # play_top closed, refresh_lib_top() running
 
 
 def make_sorted_list(start_dir, toplevel=None, idle=None, check_only=False):
-    """ Build list of songs on storage device beginning at 'start_dir'
+    """ 
+
+        PROBLEM: Working with remote host first 10 seconds no delayed text
+                 box. It shows up for last second.
+
+        Build list of songs on storage device beginning at 'start_dir'
         Insert '/<No Artist>' and or '/<No Album>' subdirectory names
         Called at startup and by refresh_acc_times()
         Use DelayedTextBox for status updates on long-running processes
@@ -785,13 +790,13 @@ def make_sorted_list(start_dir, toplevel=None, idle=None, check_only=False):
 
 # ==============================================================================
 #
-#       MusicLocationTree class - Define lib (library of music)
+#       Music Location Tree class - Define lib (library of music)
 #
 # ==============================================================================
 
 class PlayCommonSelf:
     """ Class Variables used by play_selected_list().
-        Must appear before MusicLocationTree() class
+        Must appear before Music Location Tree() class
         
         TODO: Move suitable variables to FileControl().FileControlCommonSelf
 
@@ -801,6 +806,7 @@ class PlayCommonSelf:
         #def __init__(self, toplevel, song_list, sbar_width=12, **kwargs):
 
         self.killer = ext.GracefulKiller()  # Class to shut down
+        self.close_sleepers_in_progress = False  # Prevent multiple calls
 
         self.play_top = None                # Music player selected songs
         self.play_on_top = None             # Is play frame overtop library?
@@ -1462,6 +1468,7 @@ class MusicLocationTree(PlayCommonSelf):
         self.banner_btn = tk.Button(self.banner_frm, height=0, bg="SkyBlue3",
                                     fg="black", command=lambda: self.info.view())
         self.banner_btn.place(height=7, width=7000)  # ...height of 7 override
+        ''' July 31, 2023 tooltip disappears '''
         text = "▼ ▲ ▼ ▲  Expanding/Collapsing Information Centre  ▲ ▼ ▲ ▼ \n\n" +\
             "Click this ruler line and it expands to a large frame.\n\n" +\
             "Actions are displayed with the most recent at the top.\n\n" +\
@@ -1584,11 +1591,13 @@ class MusicLocationTree(PlayCommonSelf):
         self.edit_menu.add_command(label="OLD Compare Location", font=(None, MED_FONT),
                                    command=lambda: self.loc_compare(
                                    caller='Drop', mode='Compare'))
-        self.edit_menu.add_command(label="Delete Location", font=(None, MED_FONT),
-                                   command=lcs.delete, state=tk.DISABLED)
+        self.edit_menu.add_command(label="Synchronize Location", font=(None, MED_FONT),
+                                   command=lcs.synchronize, state=tk.DISABLED)
         self.edit_menu.add_command(label="OLD Forget Location", font=(None, MED_FONT),
                                    command=lambda: self.loc_forget(
                                    caller='Drop', mode='Forget'))
+        self.edit_menu.add_command(label="Delete Location", font=(None, MED_FONT),
+                                   command=lcs.delete, state=tk.DISABLED)
         self.edit_menu.add_separator()
         # Volume for Hocker Commercials state will be enabled by get_hockey_state()
         self.edit_menu.add_command(label="TV Volume for Hockey Commercials",
@@ -1645,12 +1654,14 @@ class MusicLocationTree(PlayCommonSelf):
             self.file_menu.entryconfig("New Location", state=tk.DISABLED)
             self.edit_menu.entryconfig("Edit Location", state=tk.DISABLED)
             self.edit_menu.entryconfig("Delete Location", state=tk.DISABLED)
+            self.edit_menu.entryconfig("Synchronize Location", state=tk.DISABLED)
             self.view_menu.entryconfig("View Locations", state=tk.DISABLED)
         else:
             self.file_menu.entryconfig("Open Location and Play", state=tk.NORMAL)
             self.file_menu.entryconfig("New Location", state=tk.NORMAL)
             self.edit_menu.entryconfig("Edit Location", state=tk.NORMAL)
             self.edit_menu.entryconfig("Delete Location", state=tk.NORMAL)
+            self.edit_menu.entryconfig("Synchronize Location", state=tk.NORMAL)
             self.view_menu.entryconfig("View Locations", state=tk.NORMAL)
 
         self.disable_playlist_menu()
@@ -1659,7 +1670,7 @@ class MusicLocationTree(PlayCommonSelf):
 
         if self.playlists.name is not None:
             # Can close even if pending counts but there will be confirmation inside
-            #self.file_menu.entryconfig("Save Playlist As…", state=tk.NORMAL)
+            #self.file_menu.entry config("Save Playlist As…", state=tk.NORMAL)
             self.file_menu.entryconfig("Close Playlist (Use Favorites)", state=tk.NORMAL)
 
         if self.get_pending_cnt_total() == 0:
@@ -1824,6 +1835,12 @@ class MusicLocationTree(PlayCommonSelf):
             print('\nmserve.py refresh_lib_top() closed by SIGTERM')
             self.close()
             return False  # Not required because this point never reached.
+
+        ''' Host down? (sshfs-fuse cannot be accessed anymore) '''
+        if lcs.host_down:
+            print('\nmserve.py refresh_lib_top() closed by host down.')
+            self.close()
+            return False
 
         ''' Synchronizing lyrics to time index controls music 
             Original code yanked July 7, 2023. Currently refresh_play_top()
@@ -2243,7 +2260,10 @@ class MusicLocationTree(PlayCommonSelf):
         DPRINT_ON = False  # Turn off debug printing
 
     def get_refresh_thread(self):
-        """ For functions / methods waiting for user input """
+        """ Refresh thread is used by functions that are waiting.
+            The function is waiting for user input or long running process. 
+            Loop and call thread to allow other functions to keep running. 
+        """
         if self.play_top_is_active:
             thread = self.refresh_play_top
         elif self.lib_top_is_active:
@@ -2632,7 +2652,7 @@ class MusicLocationTree(PlayCommonSelf):
 
     # ==============================================================================
     #
-    #       MusicLocationTree Processing - Location and Dropdown Menu options
+    #       Music Location Tree Processing - Location and Dropdown Menu options
     #
     # ==============================================================================
 
@@ -2649,12 +2669,27 @@ class MusicLocationTree(PlayCommonSelf):
         root.update()
         root.after(50)  # Give time for treeview to close
         self.loc_top.destroy()  # Close the treeview window
+        self.loc_top = None  # Extra Insurance
 
     def loc_keep_awake(self):
         """ Every x minutes issue keep awake command for server. For example:
             'ssh dell "touch /tmp/mserve"' works for ssh-activity bash script.
 
             Recursive call to self
+
+            Host debug:
+                ssh-activity -d | tee ssh-activity.log
+
+            Client debug in new terminal window (SINGLE LINE):
+while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-activity.log ; sleep 60 ; done
+
+            Client results:
+                ==========  ssh-activity.log Mon Jul 31 09:16:24 MDT 2023  ==========
+                /tmp/mserve Modified Seconds: 285
+                IdleSeconds: 240 LowestSeconds: 285
+                     'wall' broadcast: shutdown in: 15 minute(s).
+                /tmp/mserve Modified Seconds: 345
+                IdleSeconds: 300 LowestSeconds: 345
 
         """
 
@@ -2663,19 +2698,64 @@ class MusicLocationTree(PlayCommonSelf):
 
         self.awake_last_time_check = time.time()
         if self.awake_last_time_check > self.next_active_cmd_time:
-            # Test if still awake before sending active command
-            # NOTE: Use LODICT[] because user can change lc.DICT[] values
-            test_passed = lc.test_host_up(LODICT['host'])
+            ''' Test if Host still connected before sending touch command ''' 
             test_passed = lcs.test_host_up()  # Quick & dirty nc test
-            if self.loc_keep_awake_is_active is False:
+            if not self.loc_keep_awake_is_active:
                 return  # Shutting down now
             if test_passed is False:
-                print('Host:', LODICT['host'], 'is off-line. Restarting...')
-                self.restart(host_down=True)  # Temporary - only start device
+                title = "Remote Host Disconnected!"
+                text = lcs.open_name + "is off-line. Shutting down...\n\n"
+                text += "sshfs will leave drive mounted for 15 minute timeout.\n"
+                mount_point = lcs.open_mountcmd
+                mount_point = mount_point.split()[-1]  # last part after space
+                text += "Try: 'fusermount -u " + mount_point + "\n\n"
+                text += "You can also try 'sshfs -o reconnect' option.\n\n"
+                text += "OR... reboot, or do 15 minutes of other other work."
+                text += "\n15 minute sshfs-fuse bug reported fixed Oct 27 2017:"
+                text += "\nhttps://bugs.launchpad.net/ubuntu/+source/sshfs-fuse/+bug/912153"
+
+                ''' Cannot show message because other threads keep closing? '''
+                print(title + "\n" + text)
+                lcs.out_cast_show_print(title, text, 'error')  # CRASHES
+                #   File "/home/rick/python/location.py", line 1847, in out_cast_show_print
+                #     thread=self.get_thread_func())
+                #   File "/home/rick/python/message.py", line 392, in __init__
+                #     simpledialog.Dialog.__init__(self, parent, title=title)
+                #   File "/usr/lib/python2.7/lib-tk/tkSimpleDialog.py", line 53, in __init__
+                #     if parent.winfo_viewable():
+                # AttributeError: 'NoneType' object has no attribute 'winfo_viewable'
+                #print(title + "\n\n" + text)
+                
+                #lcs.sshfs_close()  # Can't access /mnt/music - it will stall
+                #self.restart()  # Temporary - only start device
+                # July 30, 2023, restarting will access /mnt/music and stall
+                # If host suspends when mserve running, use 'ssh-activity -d'.
+                lcs.host_down = True  # Don't close files on frozen sshfs-fuse
+                self.loc_keep_awake_is_active = False
+                self.close()
+                # Above closes play_top but not lib_top or lcs.main_top
                 if test_passed is False:    # Dummy test always true
                     return                  # Code below is not developed
 
-                # TODO:
+                """ 
+
+                USING RECONNECT AFTER DROP MAKES EMPTY MOUNT BELOW:
+                https://serverfault.com/a/639735
+                
+                Use -o reconnect,ServerAliveInterval=15,ServerAliveCountMax=3
+                
+                https://serverfault.com/a/924787
+
+                Can receive broadcast message when system going down:
+                    you can use nc for example in receiving host type:
+                    nc -l port_number and in sending host type:
+                    nc ip port_number like:
+                        nc -l 3106
+                    in receiving host and
+                        nc 192.168.32.98 3106
+                    in sending host
+                """
+
                 '''
                   When resuming after long system suspend:
 
@@ -2702,18 +2782,22 @@ class MusicLocationTree(PlayCommonSelf):
                     must poll connection before issuing os.walk(). Also why
                     does it wake up before loc_keep_awake? Can it test
                     loc_keep_awake()'s last time?
-
-                    
                 '''
 
-            result = os.popen(LODICT['activecmd']).read().strip()
+            #result = os.popen(LODICT['activecmd']).read().strip()
             result = os.popen(lcs.open_touchcmd).read().strip()
+            lcs.save_touch_time()  # SQL history 'location' 'last' w/timestamp
             if len(result) > 4:
                 print('loc_keep_awake() result:', result)
             self.awake_last_time_check = time.time()
             self.next_active_cmd_time = self.awake_last_time_check + (60 * LODICT['activemin'])
             self.next_active_cmd_time = self.awake_last_time_check + (60 * lcs.open_touchmin)
 
+            title = "Keeping Remote Host awake."
+            text = "Running: " + lcs.open_touchcmd + "\n"
+            text += "  | This time: " + ext.t(self.awake_last_time_check)
+            text += "  | Next time: " + ext.t(self.next_active_cmd_time)
+            lcs.out_cast_print(title, text, 'info')
             # noinspection SpellCheckingInspection
             '''
             now2 = datetime.datetime.now()
@@ -3647,9 +3731,10 @@ class MusicLocationTree(PlayCommonSelf):
             return  # We are already closed
         self.cmp_top_is_active = False
         self.tt.close(self.cmp_top)  # Close tooltips under top level
-        root.update()
-        root.after(50)  # Give time for treeview to close
+        #root.update()
+        #root.after(50)  # Give time for treeview to close
         self.cmp_top.destroy()  # Close the treeview window
+        self.cmp_top = None  # Extra Insurance
 
         return True
 
@@ -3995,55 +4080,55 @@ class MusicLocationTree(PlayCommonSelf):
 
         ''' Set object for warning messages below. '''
         if self.lib_tree.tag_has("Artist", item):
-            parent = "Artist"
+            line_type = "Artist"
         elif self.lib_tree.tag_has("Album", item):
-            parent = "Album"
+            line_type = "Album"
         else:
-            parent = None
+            line_type = None
 
         ''' Warning if status is tri-state, all will be selected. '''
         if self.lib_tree.tag_has("tristate", item):
             dialog = message.AskQuestion(
                 self.lib_top, thread=self.get_refresh_thread(),
                 title="Discard custom unchecked?",
-                text="All songs under " + parent + " will be checked.\n" +
+                text="All songs under " + line_type + " will be checked.\n" +
                      "Some Songs are unchecked and will be checked.")
             if dialog.result != 'yes':
                 return
 
-        ''' Warning if unchecking parent all children will be unchecked. '''
-        if self.lib_tree.tag_has("checked", item) and parent is not None:
+        ''' Warning if unchecking line_type all children will be unchecked. '''
+        if self.lib_tree.tag_has("checked", item) and line_type is not None:
             dialog = message.AskQuestion(
-                parent=self.lib_top, thread=self.get_refresh_thread(),
+                line_type=self.lib_top, thread=self.get_refresh_thread(),
                 title="Uncheck all songs below?",
-                text="All songs under " + parent + " will be unchecked.")
+                text="All songs under " + line_type + " will be unchecked.")
             if dialog.result != 'yes':
                 return
 
-        ''' Warning if checking parent all children will be checked. '''
-        if self.lib_tree.tag_has("unchecked", item) and parent is not None:
+        ''' Warning if checking line_type all children will be checked. '''
+        if self.lib_tree.tag_has("unchecked", item) and line_type is not None:
             dialog = message.AskQuestion(
-                parent=self.lib_top, thread=self.get_refresh_thread(),
+                line_type=self.lib_top, thread=self.get_refresh_thread(),
                 title="Check all songs below?",
-                text="All songs under " + parent + " will be checked.")
+                text="All songs under " + line_type + " will be checked.")
             if dialog.result != 'yes':
                 return
 
-        ''' ERROR if checking parent with <No Artist> or <No Album>  
+        ''' ERROR if checking line_type with <No Artist> or <No Album>  
             Note design allows unchecking because previous to June 7, 2023 some
             may have been checked or tri-state.
             
-            WIP: still need to read up to parents of song, or Artist of Album.
+            WIP: still need to read up to line_types of song, or Artist of Album.
         '''
-        if self.lib_tree.tag_has("unchecked", item) and parent is not None\
+        if self.lib_tree.tag_has("unchecked", item) and line_type is not None\
                 and (NO_ARTIST_STR in self.lib_tree.item(item, 'text') or
                      NO_ARTIST_STR in self.lib_tree.item(item, 'text')):
             message.ShowInfo(
-                parent=self.lib_top, thread=self.get_refresh_thread(),
+                line_type=self.lib_top, thread=self.get_refresh_thread(),
                 title="Song(s) invalid for playlist when " + NO_ARTIST_STR +
                 "\nor " + NO_ALBUM_STR + " exists.", icon='error',
-                text="Song(s) under " + parent + " cannot be included in playlist.")
-            return  # TODO lookup upwards from Song to parents for same message.
+                text="Song(s) under " + line_type + " cannot be included in playlist.")
+            return  # TODO lookup upwards from Song to line_types for same message.
 
         # Call CheckboxTreeview function check (select/unselect) item.
         # May 29, 2023 - Review calling _box_click, can it call us instead?
@@ -4238,7 +4323,7 @@ class MusicLocationTree(PlayCommonSelf):
             return  # clicked on whitespace (no row)
 
         # Still relative to screen. Not relative to treeview as expected?
-        test_xy = self.lib_tree.winfo_pointerxy()
+        #test_xy = self.lib_tree.winfo_pointerxy()  # same as event.x_root()
         # print ('popup Id:', Id)
         self.mouse_x, self.mouse_y = event.x_root, event.y_root
         self.kid3_window = ""
@@ -4575,7 +4660,8 @@ class MusicLocationTree(PlayCommonSelf):
 
             if old_playing:
                 title = level + " is being played."
-                text = "The " + level + ":" + old_name + " is in use.\n\n"
+                text = "The " + level + ":" + old_name
+                text += " is in use.\n\n"  # pycharm has problem with this string
                 text += "Cannot rename the " + level
                 text += " current being played.\n"
                 text += "\n\nSwitch music player to a different " + level + "."
@@ -4724,7 +4810,7 @@ class MusicLocationTree(PlayCommonSelf):
         artist = self.lib_tree.parent(album)
         self.toggle_select(Id, album, artist)
 
-    def kid3_open(self, Id, level=None):
+    def kid3_open(self, Id):
         """ Open Kidd3 for Artist, Album or Music File """
         trg_path = self.make_variable_path(Id)
         self.run_and_move_window(trg_path, KID3_COMMAND, KID3_WIN_SIZE)
@@ -4824,7 +4910,7 @@ class MusicLocationTree(PlayCommonSelf):
 
     # ==============================================================================
     #
-    #       MusicLocationTree Processing section - Top level functions
+    #       Music Location Tree Processing section - Top level functions
     #
     # ==============================================================================
 
@@ -4833,26 +4919,103 @@ class MusicLocationTree(PlayCommonSelf):
         self.close(save=False)
 
     # noinspection PyUnusedLocal
-    def close(self, save=True, host_down=False, *args):
+    def close(self, save=True, *args):
         """ save=True is default. False prevents saving data. """
+        # noinspection PyProtectedMember
+        print('close() called by:', sys._getframe(1).f_code.co_name)
         if save:
             if self.playlists.name is not None:
                 # Saving requires reading stats from lib_tree
                 self.write_playlist_to_disk(ShowInfo=False)
             else:
                 self.save_last_selections()  # Last selections for next open
-        self.close_sleepers(host_down)  # Shut down running functions
-        self.tt.close(self.lib_top)  # Close tooltips under top level
+        self.close_sleepers()  # Shut down running functions
+        #self.tt.close(self.lib_top)  # Close tooltips under top level
         root.destroy()
         self.lib_top = None
+        exit()  # Doesn't happen because .close_sleepers() keeps running?
+        # During Host Disconnected call to close() play_to_end()
+        # keeps running even though play_top closed. Force it to stop.
+        # close() called by: loc_keep_awake
+        # close_sleepers() called by: close
+        # ^C
+        # mserve.py play_to_end() closed by SIGTERM
+        # close() called by: play_to_end
+        # close_sleepers() called by: close
 
     # noinspection PyUnusedLocal
-    def restart(self, host_down=False, *args):
+    def restart(self, *args):
         """ July 13 2023 - A couple weeks ago this option was removed from
             dropdown menu because after 100 times it causes lag in TCL/Tk """
-        self.close(host_down)
+        self.close()
         # TODO: Test with `m` passing sys.argv via "parameters" keyword.
         os.execl(sys.executable, sys.executable, *sys.argv)
+
+    def close_sleepers(self):
+        """ COMMON CODE for restart and quit
+            Close loc_keep_awake() first as it has .25-second sleep cycle """
+        # noinspection PyProtectedMember
+        print('close_sleepers() called by:', sys._getframe(1).f_code.co_name)
+
+        if self.close_sleepers_in_progress:
+            print("duplicate call to close_sleepers() !!!")
+            return  # Multiple threads can call close() -> close_sleepers()
+        self.close_sleepers_in_progress = True
+
+        if self.loc_keep_awake_is_active:  # Keeping remote host awake?
+            self.loc_keep_awake_is_active = False  # Has 10 minute wakeup cycle
+
+        self.lib_top_is_active = False      # Tell refresh_acc_times() to bail out
+
+        if self.gone_fishing is not None:
+            self.gone_fishing.close()       # Shark eating man animation
+            self.gone_fishing = None
+
+        if self.cmp_top_is_active:          # Comparing Locations?
+            self.cmp_close()                # Extreme lags when running 'diff'
+        #if self.sync_top_is_active:          # Synchronizing lyrics time indices
+        #    self.sync_close()
+        if self.fine_tune and self.fine_tune.top_is_active:
+            self.fine_tune.close()  # Synchronizing lyrics time indices
+        if self.play_top_is_active:         # Is music playing?
+            self.play_close()
+        if self.ltp_top_is_active:          # Sampling middle 10 seconds?
+            self.lib_tree_play_close()
+        if self.loc_top_is_active:          # Editing Locations?
+            self.loc_close()
+        if self.mus_top_is_active:          # Viewing SQL Music Table?
+            self.mus_close()
+        if self.his_top_is_active:          # Viewing SQL History Table?
+            self.his_close()
+        if self.lcs_top_is_active:  # Viewing SQL Location Table? NOT lcs.top !!!
+            self.lcs_close()  # Different than lcs.close() !!!
+        if self.tv_vol and self.tv_vol.top:
+            self.tv_vol.close()             # Adjusting Volume during TV commercials?
+        if self.playlists.top:              # Close Playlists window and tell it
+            self.playlists.reset(shutdown=True)  # NOT to enable lib_top menu options
+        if lcs.test_top:  # Test Host Window is open
+            lcs.test_top.destroy()
+            lcs.test_top = None  # Extra insurance
+        if lcs.main_top:  # Locations Maintenance Window is open
+            lcs.reset(shutdown=True)
+        if not lcs.host_down:  # When host down accessing /mnt/music locks 15 min.
+            lcs.sshfs_close()  # It will check if mounted and act accordingly
+        if encoding.RIP_CD_IS_ACTIVE:       # Ripping CD currently active?
+            encoding.RIP_CD_IS_ACTIVE = False  # Force ripping window shutdown.
+
+        # Last known window position for music library, saved to SQL
+        last_library_geom = monitor.get_window_geom_string(
+            self.lib_top, leave_visible=False)
+        monitor.save_window_geom('library', last_library_geom)
+
+        ''' Remove temporary files '''
+        for f in TMP_ALL_NAMES:
+            if os.path.isfile(f):
+                os.remove(f)
+
+        ''' Close SQL databases '''
+        sql.close_db()  # Added July 13, 2023
+        #time.sleep(RESTART_SLEEP)           # Extra insurance sleepers close
 
     def open_and_play_callback(self, code, topdir):
         """ Open location by calling lcs.test() first to check success.
@@ -4904,63 +5067,6 @@ class MusicLocationTree(PlayCommonSelf):
             sys.argv.append(self.parm)
         os.execl(sys.executable, sys.executable, *sys.argv)
 
-    def close_sleepers(self, host_down=False):
-        """ COMMON CODE for restart and quit
-            Close loc_keep_awake() first as it has .25-second sleep cycle """
-        if self.loc_keep_awake_is_active:  # Keeping remote host awake?
-            self.loc_keep_awake_is_active = False
-
-        self.lib_top_is_active = False      # Tell refresh_acc_times() to bail out
-
-        if self.gone_fishing is not None:
-            self.gone_fishing.close()       # Shark eating man animation
-            self.gone_fishing = None
-
-        if self.cmp_top_is_active:          # Comparing Locations?
-            self.cmp_close()                # Extreme lags when running 'diff'
-        #if self.sync_top_is_active:          # Synchronizing lyrics time indices
-        #    self.sync_close()
-        if self.fine_tune and self.fine_tune.top_is_active:
-            self.fine_tune.close(host_down)  # Synchronizing lyrics time indices
-        if self.play_top_is_active:         # Is music playing?
-            self.play_close(host_down)
-        if self.ltp_top_is_active:          # Sampling middle 10 seconds?
-            self.lib_tree_play_close(host_down)
-        if self.loc_top_is_active:          # Editing Locations?
-            self.loc_close()
-        if self.mus_top_is_active:          # Viewing SQL Music Table?
-            self.mus_close()
-        if self.his_top_is_active:          # Viewing SQL History Table?
-            self.his_close()
-        if self.lcs_top_is_active:          # Viewing SQL Location Table?
-            self.lcs_close()  # Different than lcs.close() !!!
-        if self.tv_vol and self.tv_vol.top:
-            self.tv_vol.close()             # Adjusting Volume during TV commercials?
-        if self.playlists.top:              # Close Playlists window and tell it
-            self.playlists.reset(shutdown=True)  # NOT to enable lib_top menu options
-        if lcs.test_top:  # Test Host Window is open
-            lcs.test_top.destroy()
-        if lcs.main_top:  # Locations Maintenance Window is open
-            lcs.reset(shutdown=True)
-        lcs.sshfs_close()  # It will check if mounted and act accordingly
-
-        if encoding.RIP_CD_IS_ACTIVE:       # Ripping CD currently active?
-            encoding.RIP_CD_IS_ACTIVE = False  # Force ripping window shutdown.
-
-        # Last known window position for music library, saved to SQL
-        last_library_geom = monitor.get_window_geom_string(
-            self.lib_top, leave_visible=False)
-        monitor.save_window_geom('library', last_library_geom)
-
-        ''' Remove temporary files '''
-        for f in TMP_ALL_NAMES:
-            if os.path.isfile(f):
-                os.remove(f)
-
-        ''' Close SQL databases '''
-        sql.close_db()  # Added July 13, 2023
-        time.sleep(RESTART_SLEEP)           # Extra insurance sleepers close
-
     def clear_buttons(self):
         """ When new windows open, disable TreeView buttons """
         self.lib_tree_play_btn["text"] = "🎵  Show library"  # Play button
@@ -4969,6 +5075,8 @@ class MusicLocationTree(PlayCommonSelf):
 
     def restore_lib_buttons(self):
         """ When playing window closes, restore TreeView buttons """
+        if not self.lib_top_is_active:
+            return
         self.lib_tree_play_btn["text"] = self.play_text
         self.tt.set_text(self.lib_tree_play_btn, "Play favorite songs.")
 
@@ -5052,7 +5160,7 @@ class MusicLocationTree(PlayCommonSelf):
 
     # ==============================================================================
     #
-    #       MusicLocationTree Processing - Refresh Library
+    #       Music Location Tree Processing - Refresh Library
     #
     # ==============================================================================
 
@@ -5211,6 +5319,13 @@ class MusicLocationTree(PlayCommonSelf):
 
         print("\nAll Windows (Wnck) - mon.get_all_windows():")
         print("=============================================\n")
+        """
+        /home/rick/python/mserve.py:5336: Warning: invalid unclassed pointer in cast to 'WnckWindow'
+  for i, window in enumerate(mon.get_all_windows()):
+
+(m:16537): Wnck-CRITICAL **: _wnck_window_destroy: assertion 'WNCK_IS_WINDOW (window)' failed
+
+        
         for i, window in enumerate(mon.get_all_windows()):
             ''' Testing desktop - should check each monitor individually '''
             if window.x > mon.screen_width or window.y > mon.screen_height:
@@ -5245,7 +5360,7 @@ class MusicLocationTree(PlayCommonSelf):
                 #       Currently instantly appears at lower right -500x-500
             else:
                 print(window)
-
+        """
         print("\nCURRENT SONG and COMMON VARIABLES")
         print("=============================================\n")
 
@@ -5442,7 +5557,7 @@ class MusicLocationTree(PlayCommonSelf):
 
     # ==============================================================================
     #
-    #       MusicLocationTree Processing - Top menu: SQL Music & SLQ History
+    #       Music Location Tree Processing - Top menu: SQL Music & SLQ History
     #
     # ==============================================================================
 
@@ -5801,6 +5916,7 @@ class MusicLocationTree(PlayCommonSelf):
         self.tt.close(self.mus_top)  # Close tooltips under top level
         self.mus_top_is_active = False
         self.mus_top.destroy()
+        self.mus_top = None  # Extra Insurance
         self.mus_search = None
         self.meta_scan = None
         self.missing_artwork_dtb = None
@@ -5999,6 +6115,7 @@ class MusicLocationTree(PlayCommonSelf):
         self.tt.close(self.his_top)  # Close tooltips under top level
         self.his_top_is_active = False
         self.his_top.destroy()
+        self.his_top = None  # Extra Insurance
         self.his_search = None
 
 
@@ -6138,6 +6255,7 @@ class MusicLocationTree(PlayCommonSelf):
         self.tt.close(self.lcs_top)  # Close tooltips under top level
         self.lcs_top_is_active = False
         self.lcs_top.destroy()
+        self.lcs_top = None  # Extra Insurance
         self.lcs_search = None
 
 
@@ -6557,7 +6675,7 @@ class MusicLocationTree(PlayCommonSelf):
         self.hdr_top.destroy()
         self.hdr_top = None
 
-        ''' Music Location Tree option view_metadata() doesn't use self.view '''
+        ''' MusicLocationTree option view_metadata() doesn't use self.view '''
         # self.view_iid will also be None when clicked on heading not treeview row
         if self.view and self.view.tree and self.view_iid:
             # Reset color to normal in treeview line
@@ -6682,11 +6800,15 @@ class MusicLocationTree(PlayCommonSelf):
             pickle.dump(self.lib_tree_open_states, f)  # Save open states
 
         ''' Save last opened location iid '''
+        if not lcs.host_down:
+            # TEMPORARY patch. When host_down below crashes because SQL closed
+            # ProgrammingError: Cannot operate on a closed database.
+            if lcs.open_code:  # Is there a location open?
+                lcs.save_mserve_location(lcs.open_code)  # TODO: ditch parameter
         # noinspection PyBroadException
         try:
             iid = LODICT['iid']
             lc.save_mserve_location(iid)
-            lcs.save_mserve_location(iid)
         except:
             # Occurs when manually started with directory not in locations
             # Occurs when there are no locations defined whatsoever
@@ -7035,7 +7157,7 @@ class MusicLocationTree(PlayCommonSelf):
 
     # ==============================================================================
     #
-    #       MusicLocationTree Processing - Play All Songs forever
+    #       Music Location Tree Processing - Play All Songs forever
     #
     # ==============================================================================
 
@@ -7128,6 +7250,8 @@ class MusicLocationTree(PlayCommonSelf):
         self.play_top.title(self.play_top_title)
         self.play_top.configure(background="Gray")
         self.play_top.columnconfigure(0, weight=1)
+        self.play_top.columnconfigure(3, weight=0)  # VU Meter Left
+        self.play_top.columnconfigure(4, weight=0)  # VU Meter Right
         self.play_top.rowconfigure(0, weight=1)
 
         ''' Set program icon in taskbar '''
@@ -7164,6 +7288,7 @@ class MusicLocationTree(PlayCommonSelf):
 
         ''' Current song number '''
         PAD_X = 5
+        VU_PAD_X = 8
         self.current_song_number = tk.StringVar()
         # New Short form with 'config_all_labels()' doesn't need variables
         # Apply color codes to buttons - See set_artwork_colors()
@@ -7216,14 +7341,14 @@ class MusicLocationTree(PlayCommonSelf):
         self.vu_meter_left = tk.Canvas(self.play_frm, width=self.vu_width,
                                        relief=tk.FLAT,  # Trying to override tk.RIDGE :(
                                        height=self.vu_height, bg='black')
-        self.vu_meter_left.grid(row=0, rowspan=r, column=3, padx=PAD_X)
+        self.vu_meter_left.grid(row=0, rowspan=r, column=3, padx=VU_PAD_X)
         self.vu_meter_left_rectangle = self.vu_meter_left.create_rectangle(
             0, self.vu_height, 0, self.vu_height)
 
         self.vu_meter_right = tk.Canvas(self.play_frm, width=self.vu_width,
                                         relief=tk.FLAT,  # Trying to override tk.RIDGE :(
                                         height=self.vu_height, bg='black')
-        self.vu_meter_right.grid(row=0, rowspan=r, column=4, padx=PAD_X)
+        self.vu_meter_right.grid(row=0, rowspan=r, column=4, padx=VU_PAD_X)
         self.vu_meter_right_rectangle = self.vu_meter_right.create_rectangle(
             0, self.vu_height, 0, self.vu_height)
 
@@ -7464,6 +7589,7 @@ class MusicLocationTree(PlayCommonSelf):
         self.tt.close(self.play_btn_frm)  # Remove old tooltip buttons in play_btn frame
         self.play_btn_frm.grid_forget()
         self.play_btn_frm.destroy()
+        self.play_btn_frm = None  # Extra insurance
         self.build_play_btn_frm()
         ''' Lift play_top to see new button frame '''
         self.play_top.lift()
@@ -7582,9 +7708,16 @@ class MusicLocationTree(PlayCommonSelf):
                 self.chron_button.grid(row=0, column=col, padx=2, sticky=tk.W)
         
                 # TODO: DRY - This text is duplicated in show/hide function
+                ''' July 31, 2023 - disappearing tooltip 
+                    self.tt.set_text(self.chron_button, text2) the cause?
+                '''
                 text = "Hide the scrollable playlist below and\n" + \
                        "double the size of spinning artwork."
                 self.tt.add_tip(self.chron_button, text, anchor="se")
+                # Problem this is classified as a piggy back in error
+                d = self.tt.check(self.chron_button)
+                if d:
+                    print("self.chron_button 'name':", d['name'])
             else:
                 print("mserve.py build_play_btn_frm() Bad button name:", name)
 
@@ -7627,15 +7760,12 @@ class MusicLocationTree(PlayCommonSelf):
         ''' Height of META_DISPLAY_ROWS used for VU meter height '''
         r = META_DISPLAY_ROWS - 1  # July 18, 2023
         _x, _y, _width, height = self.play_frm.grid_bbox(1, 0, 1, r)
-        #print("height:", height, "_width:", _width)
-        #print("self.art_height:", self.art_height)
         self.vu_height = height - 12  # Create some padding at top & bottom of vu meters
         if self.vu_height < 1:
             self.vu_height = 1
 
         self.vu_meter_left.config(height=self.vu_height)
         self.vu_meter_right.config(height=self.vu_height)
-        # When stretching bar higher, the bottom will be black
         self.play_vu_meter_blank()          # Fill with self.theme_bg
 
     def move_lyrics_right(self):
@@ -7900,7 +8030,7 @@ class MusicLocationTree(PlayCommonSelf):
                          title="Failed to get Pulse Audio Sink - mserve")
         self.info.fact(quote, 'error', 'open')
 
-        return False  # self.play_ctl.close() called after we return.
+        return False
 
     def song_set_ndx(self, seq):
         """ Set index to previous song, next song or restart song at start.
@@ -8054,7 +8184,7 @@ class MusicLocationTree(PlayCommonSelf):
             if ext.check_pid_running(self.lyrics_scrape_pid):
                 ext.kill_pid_running(self.lyrics_scrape_pid)
             self.lyrics_scrape_pid = 0
-
+        
         # Kill song (if running) and update last access time
         self.play_ctl.close()  # calls .end() which update last access
 
@@ -8183,8 +8313,8 @@ class MusicLocationTree(PlayCommonSelf):
 
         :param resume: When True, use self.resume_state and self.resume_song_secs
             from SQL history record Type: 'resume' Action: 'L00x' or 'P00000x'
-        :param chron_state: Set to "show" or "hide" to force change. Used at
-            startup / playlist change reading SQL history record 'chron_state'
+        :param chron_state: Pass to "Show" (default) or "Hide" to force change.
+            Used at startup 'chron_state' history, or Playlist load.
         """
 
         ''' Call:
@@ -8197,6 +8327,9 @@ class MusicLocationTree(PlayCommonSelf):
                play_to_end()  # play song until end
                 check ends  # even refresh_play_top() checks ending
                  '''
+
+        if not self.play_top_is_active:
+            return False  # play_top window closed.
 
         ''' Get our song_list index number from user treeview selections '''
         if self.ndx > len(self.saved_selections) - 1:
@@ -8217,7 +8350,7 @@ class MusicLocationTree(PlayCommonSelf):
         '''   F A S T   C L I C K I N G   '''
         if self.last_started != self.ndx:  # Fast clicking Next button?
             pav.poll_fades()
-            return True  # self.play_ctl.close() called after we return.
+            return True
 
         ''' Build full song path from song_list[] '''
         #list_index = int(iid)  # list_index variable reused couple pages down
@@ -8234,8 +8367,9 @@ class MusicLocationTree(PlayCommonSelf):
         '''   F A S T   C L I C K I N G   '''
         self.play_top.update_idletasks()
         pav.poll_fades()
-        if self.last_started != self.ndx:  # Fast clicking Next button?
-            return True  # self.play_ctl.close() called after we return.
+        if self.last_started != self.ndx:  
+            # Fast clicking Next button?
+            return True
 
         opened = self.lib_tree.item(album, 'open')
         if opened is not True:
@@ -8248,7 +8382,7 @@ class MusicLocationTree(PlayCommonSelf):
         self.play_top.update_idletasks()
         pav.poll_fades()
         if self.last_started != self.ndx:  # Fast clicking Next button?
-            return True  # self.play_ctl.close() called after we return.
+            return True
 
         toolkit.tv_tag_add(self.lib_tree, iid, "play_sel")
         # May 16 2023 - New compact code
@@ -8262,7 +8396,7 @@ class MusicLocationTree(PlayCommonSelf):
         root.update()  # Do both lib_top & play_top updates
         pav.poll_fades()
         if self.last_started != self.ndx:  # Fast clicking Next button?
-            return True  # self.play_ctl.close() called after we return.
+            return True
 
         ''' Set current song # of: total song count '''
         self.current_song_number.set(str(self.ndx + 1) + " of: " +
@@ -8272,7 +8406,7 @@ class MusicLocationTree(PlayCommonSelf):
         self.play_top.update_idletasks()
         pav.poll_fades()
         if self.last_started != self.ndx:  # Fast clicking Next button?
-            return True  # self.play_ctl.close() called after we return.
+            return True
 
         ''' Verify it's a real song - May want to do this after .see() '''
         if self.current_song_path is None or self.current_song_path is "":
@@ -8313,14 +8447,14 @@ class MusicLocationTree(PlayCommonSelf):
         pav.poll_fades()
         if self.last_started != self.ndx:  # Fast clicking Next button?
             self.play_ctl.close()
-            return True  # self.play_ctl.close() called after we return.
+            return True
 
         ''' Get artwork from metadata with ffmpeg '''
         ext.t_init("set_artwork_colors()")
         self.set_artwork_colors()
         pav.poll_fades()
         if not self.play_top_is_active:
-            return False  # self.play_ctl.close() called after we return.
+            return False
         ext.t_end('no_print')
 
         '''   F A S T   C L I C K I N G   '''
@@ -8329,7 +8463,7 @@ class MusicLocationTree(PlayCommonSelf):
         if self.last_started != self.ndx:  # Fast clicking Next button?
             # NOTE: Parent Artist/Album opened above is closed after return.
             self.play_ctl.close()
-            return True  # self.play_ctl.close() called after we return.
+            return True
 
         ''' Gather song lyrics to fill text box '''
         self.play_init_lyrics()
@@ -8340,27 +8474,28 @@ class MusicLocationTree(PlayCommonSelf):
         if self.last_started != self.ndx:  # Fast clicking Next button?
             # NOTE: Parent Artist/Album opened above is closed after return.
             self.play_ctl.close()
-            return True  # self.play_ctl.close() called after we return.
+            return True
 
         ''' Update playlist chronology (Frame 4) with short line = False '''
         self.play_chron_highlight(self.ndx, False)  # True = use short line
         if not self.play_top_is_active:
-            return False  # self.play_ctl.close() called after we return.
+            return False
 
         '''   F A S T   C L I C K I N G   '''
         self.play_top.update_idletasks()
         pav.poll_fades()
         if self.last_started != self.ndx:  # Fast clicking Next button?
             self.play_ctl.close()
-            return True  # self.play_ctl.close() called after we return.
+            return True
 
         self.current_song_secs = 0  # How much time played
-        self.secs_before_pause = 0  # How much before paused
+        self.secs_before_pause = 0  # How much played before pause
 
         ''' Hide chronology (playlist) to match last setting for location '''
         if chron_state and chron_state == "Hide":
-            self.chron_is_hidden = False  # Fake hidden now then toggle to show
-            self.chron_toggle()  # Toggle chronology between hidden and show
+            ''' resume process wants to hide chronology. '''
+            self.chron_is_hidden = False  # Fake "Show" now then toggle to show
+            self.chron_toggle()  # Toggle chronology between Show and Hide
 
         ''' Start song with ffplay & Update tree view's last played time
             If resume is passed we are starting up or changing location 
@@ -8382,7 +8517,7 @@ class MusicLocationTree(PlayCommonSelf):
         pav.poll_fades()
         if self.last_started != self.ndx:  # Fast clicking Next button?
             self.play_ctl.close()
-            return True  # self.play_ctl.close() called after we return.
+            return True
 
         ''' Start ffplay, get Linux PID and Pulseaudio Input Sink # '''
         self.play_ctl.start(start_secs, 0, 1, 0, TMP_CURR_SONG, dead_mode)
@@ -8423,9 +8558,10 @@ class MusicLocationTree(PlayCommonSelf):
         self.check_speech_dispatcher()
 
         ''' Play song to end, queue next song and close play_ctl '''
-        self.play_to_end()  # Play entire song unless next/prev, etc.
+        if not self.play_to_end():  # Play entire song unless next/prev, etc.
+            return False  # Shutdown
         self.queue_next_song()  # Save Lyrics Index & set next song
-        self.play_ctl.close()  # Set or reset last access time for song
+        self.play_ctl.close()
         return True
 
     def queue_next_song(self):
@@ -8441,14 +8577,18 @@ class MusicLocationTree(PlayCommonSelf):
 
         ''' Reset switch set earlier, or just now with self.song_set_ndx() '''
         self.song_set_ndx_just_run = False
-        if self.ndx + 1 >= len(self.playlist_paths):
+        #if self.ndx + 1 >= len(self.playlist_paths):
+        if self.ndx >= len(self.playlist_paths):  # Refine July 30, 2023
             print("Ooops playlist was changed and self.ndx not changed.")
             self.ndx = 0
         else:
             self.current_song_path = self.playlist_paths[self.ndx]
 
     def check_speech_dispatcher(self):
-        """ Four annoying speech dispatchers appear in Ubuntu """
+        """ Four annoying speech dispatchers appear in Ubuntu 
+            TODO: clone to new function that resets Firefox volume from 89%
+                  to 100%
+        """
         global DELETE_SPEECH
         if not DELETE_SPEECH:
             return  # Already done or don't want to kill pids
@@ -8521,23 +8661,6 @@ class MusicLocationTree(PlayCommonSelf):
 
         """
         while True:
-            if self.killer.kill_now:
-                # SIGTERM to shut down / reboot was received
-                print('\nmserve.py play_to_end() closed by SIGTERM')
-                self.close()
-                return  # Not required because this point never reached.
-
-            if not self.play_top_is_active:
-                return  # Play window closing
-
-            if self.last_started != self.ndx:  # Different song requested
-                return  # self.song_set_ndx() used prev/next/restart
-
-            if not self.play_ctl.check_pid():
-                return  # Song ended naturally
-
-            self.refresh_play_top()  # Rotate art, refresh vu meter
-
             ''' Call:
              m.main()
               mserve.main()
@@ -8548,6 +8671,24 @@ class MusicLocationTree(PlayCommonSelf):
                    play_to_end()  # play song until end
                     check ends  # even refresh_play_top() checks ending
                      '''
+            if self.killer.kill_now:
+                # SIGTERM to shut down / reboot was received
+                print('\nmserve.py play_to_end() closed by SIGTERM')
+                self.play_close()  # July 31, was closing everything.
+                return False  # Not required because this point never reached.
+
+            if not self.play_top_is_active:
+                return False  # Play window closing - Not working when host disconnects
+
+            if self.last_started != self.ndx:  # Different song requested
+                return True # self.song_set_ndx() used prev/next/restart
+
+            if not self.play_ctl.check_pid():
+                return True # Song ended naturally
+
+            self.refresh_play_top()  # Rotate art, refresh vu meter
+
+        return True
 
 
     def refresh_play_top(self):
@@ -8567,6 +8708,10 @@ class MusicLocationTree(PlayCommonSelf):
             print('\nmserve.py refresh_play_top() closed by SIGTERM')
             self.close()
             return False  # Not required because this point never reached.
+
+        ''' Host down? (sshfs-fuse cannot be accessed anymore) '''
+        if lcs.host_down:
+            return False
 
         ''' Always give time slice to tooltips '''
         now = time.time()
@@ -8630,6 +8775,8 @@ class MusicLocationTree(PlayCommonSelf):
             sleep = SLEEP_PAUSED - int(now - self.last_sleep_time)
             sleep = sleep if sleep > 0 else 1  # Sleep minimum 1 millisecond
             self.last_sleep_time = now
+            if not self.play_top_is_active:
+                return False  # Next line caused error July 31, 2023
             self.play_top.after(sleep)          # Wait until playing
             return True  # June 20, 2023 this was False. Don't know effect.
 
@@ -8914,7 +9061,7 @@ class MusicLocationTree(PlayCommonSelf):
 
     # ==============================================================================
     #
-    #       MusicLocationTree Processing - VU Meter
+    #       Music Location Tree Processing - VU Meter
     #
     # ==============================================================================
 
@@ -9124,7 +9271,7 @@ class MusicLocationTree(PlayCommonSelf):
 
     # ==============================================================================
     #
-    #       MusicLocationTree Processing - Lyrics Score
+    #       Music Location Tree Processing - Lyrics Score
     #
     # ==============================================================================
 
@@ -9630,7 +9777,7 @@ class MusicLocationTree(PlayCommonSelf):
 
     # ==============================================================================
     #
-    #       MusicLocationTree Processing - Basic time index
+    #       Music Location Tree Processing - Basic time index
     #
     # ==============================================================================
 
@@ -10110,7 +10257,7 @@ mark set markName index"
 
     # ==============================================================================
     #
-    #       MusicLocationTree class - Lyrics Right click menu - Edit, Scrape options
+    #       Music Location Tree class - Lyrics Right click menu - Edit, Scrape options
     #
     # ==============================================================================
 
@@ -10402,7 +10549,7 @@ mark set markName index"
 
     # ==============================================================================
     #
-    #       MusicLocationTree Processing - Edit lyrics
+    #       Music Location Tree Processing - Edit lyrics
     #
     # ==============================================================================
 
@@ -10630,7 +10777,7 @@ mark set markName index"
 
     # ==============================================================================
     #
-    #       MusicLocationTree class - Smaller sized functions
+    #       Music Location Tree class - Smaller sized functions
     #
     # ==============================================================================
 
@@ -10865,7 +11012,8 @@ mark set markName index"
             self.populate_chron_tree()  # Rebuild with new song
 
     # noinspection PyUnusedLocal
-    def play_close(self, host_down=False, *args):
+    def play_close(self, *args):
+        """ Close music player (Playlist) """
         # TODO: last_selections aren't being saved. When clicking play again
         #       shuffle order and last song index are lost.
 
@@ -10874,14 +11022,13 @@ mark set markName index"
 
         ''' Should not be able to call if self.fine_tune is active. '''
         if self.fine_tune and self.fine_tune.top_is_active:
-            self.fine_tune.close(shut_down)  # Prevents tons of exceptions.
+            self.fine_tune.close()  # Prevents tons of exceptions.
 
         self.tt.close(self.play_top)  # Close tooltips under top level
         ''' July 9, 2023 - Doesn't matter if volume left turned down '''
         #if self.play_ctl.sink is not "":
         #    pav.set_volume(self.play_ctl.sink, 100)
-        if not host_down:  # If the host is down, touching file stalls mserve.
-            self.play_ctl.close()  # If playing song update last access time
+        self.play_ctl.close()  # If playing song update last access time
 
         # Reverse filters so proper song index is saved
         if self.chron_filter is not None:
@@ -10907,13 +11054,15 @@ mark set markName index"
 
         # Save song playing seconds and paused/playing state to SQL
 
-        root.update()
-        root.after(50)  # Give events time to close down
+        #root.update()
+        #root.after(50)  # Give events time to close down
         self.wrapup_song()  # kill song and collapse parent chevrons
         #        os.remove(TMP_CURR_SONG)           # Clean up /tmp directory
-        self.restore_lib_buttons()  # Restore Library buttons to default
+        if self.lib_top_is_active:
+            self.restore_lib_buttons()  # Restore Library buttons to default
 
         self.play_top.destroy()
+        self.play_top = None  # Extra Insurance
         self.pp_state = None
 
     def get_resume(self):
@@ -11195,7 +11344,7 @@ mark set markName index"
             return False
 
     # noinspection PyUnusedLocal
-    def lib_tree_play_close(self, normal=False, host_down=False, *args):  # *args required when lambda used
+    def lib_tree_play_close(self, normal=False, *args):  # *args required when lambda used
         """ Close self.ltp_top - Sample random song
             Can come here twice. Once normally and again with close button.
         """
@@ -11224,15 +11373,15 @@ mark set markName index"
                     break
             pav.fade_in_aliens(1)  # Turn back non-ffplay volumes to original
 
-        if not host_down:  # If the host is down, touching file stalls mserve.
-            self.ltp_ctl.close()  # Close FileControl(), reset ATIME
+        self.ltp_ctl.close()  # Close FileControl(), reset ATIME
         self.tt.close(self.ltp_top)  # Close tooltips under top level
         self.ltp_top_is_active = False
 
         if os.path.isfile(TMP_CURR_SAMPLE):
             os.remove(TMP_CURR_SAMPLE)  # Clean up /tmp directory
 
-        self.ltp_top.destroy()  # Close the window
+        self.ltp_top.destroy()  # Close the window NOT self.lib_top !!!
+        self.ltp_top = None  # Extra insurance
         self.wrapup_lib_popup()  # Set color tags and counts
 
     def lib_tree_play_lift(self):
@@ -11776,10 +11925,10 @@ mark set markName index"
             When shown Lyrics scroll box moved to right of VU meters.
 
         """
-        if self.chron_is_hidden:  # Is playlist currently hidden?
+        if self.chron_is_hidden:  # Is playlist chronology currently hidden?
             self.F4.grid()  # Restore hidden grid
             self.move_lyrics_right()  # Lyrics score right of VU meters
-            self.chron_is_hidden = False
+            self.chron_is_hidden = False  # Chronology no longer hidden
             text = "🖸 Hide Chronology"
             text2 = "Hide the scrollable playlist below\n" +\
                     "double the size of spinning artwork."
@@ -11787,13 +11936,13 @@ mark set markName index"
         else:  # Hide chronology (playlist)
             self.F4.grid_remove()  # Hide grid but remember options
             self.move_lyrics_bottom()  # Lyrics score under VU meters
-            self.chron_is_hidden = True
+            self.chron_is_hidden = True  # Chronology is now hidden
             text = "🖸 Show Chronology"
             text2 = "Show last three songs played,\n" +\
-                    "current song, and next six\n" +\
+                    "current song, and future six\n" +\
                     "songs in playlist."
 
-        self.set_vu_meter_height()  # It is double or half previous height
+        self.set_vu_meter_height()  # Height will be double or half of previous
 
         self.chron_button['text'] = text
         self.tt.set_text(self.chron_button, text2)
@@ -11812,7 +11961,6 @@ mark set markName index"
         self.tt.toggle_position(self.chron_button)
 
         self.play_chron_highlight(self.ndx, True)  # Required after shuffle songs
-        #root.update()
         self.F4.update_idletasks()
 
 
@@ -12125,6 +12273,7 @@ class FineTune:
         self.tt.close(self.btn_bar_frm)  # Remove old tooltip buttons in play_btn frame
         self.btn_bar_frm.grid_forget()
         self.btn_bar_frm.destroy()
+        self.btn_bar_frm = None  # Extra insurance
         self.top.unbind("<Escape>")
         # Unbinds for all functions? https://bugs.python.org/issue31485
 
@@ -12699,14 +12848,15 @@ class FineTune:
         return first_checked, last_checked
 
     def check_range_of_boxes(self, first_checked, last_checked):
+        """ Mark all checkboxes between first and last. """
         for line in range(first_checked, last_checked):
             # Next 5 lines can be made into global function called:
             # tree_tag_replace(tree, old, new). Return true if found.
-            tags = self.tree.item(line)['tags']
+            tags = self.tree.item(str(line))['tags']  # str() for pycharm
             if "unchecked" in tags:
                 tags.remove("unchecked")
                 tags.append("checked")
-                self.tree.item(line, tags=tags)
+                self.tree.item(str(line), tags=tags)
 
     def delete_all(self):
         """ Time Indices hopelessly out of sync so Delete them.
@@ -12819,7 +12969,7 @@ class FineTune:
                 self.curr_line_no += 1
                 if self.curr_line_no > len(self.new_time_list):
                     break  # Last line has been played
-                self.tree.see(self.curr_line_no)
+                self.tree.see(str(self.curr_line_no))  # str() for pycharm
                 self.sample_restart(self.curr_line_no)  # kill & new PID
 
             self.set_highlight(elapsed)  # Change highlight if necessary
@@ -13108,6 +13258,7 @@ class FineTune:
         self.close()  # Close window & exit
 
     def top_lift(self):
+        """ Bring to top of window stack. """
         self.top.focus_force()  # Grab back window focus
         # below is blocking other apps from getting focus
         #self.top.lift()  # Raise stacking order
@@ -13156,7 +13307,7 @@ class FineTune:
         return False
 
     # noinspection PyUnusedLocal
-    def close(self, host_down=False, *args):  # *args required for lambda
+    def close(self, *args):  # *args required for lambda
         """ Close Synchronize Time Index to Lyrics window
             Modeled after lib_tree_play_close() but with confirmation if changes made.
         """
@@ -13196,11 +13347,11 @@ class FineTune:
             pav.fade_in_aliens(1)  # Doesn't take any time
 
         ''' With so much time spent synchronizing set last access to now '''
-        if not host_down:  # If the host is down, touching file stalls mserve.
-            if self.time_ctl and self.time_ctl.state != 'end':
-                self.time_ctl.close()  # Resets last access time to original
+        if self.time_ctl and self.time_ctl.state != 'end':
+            self.time_ctl.close()  # Resets last access time to original
 
         self.top.destroy()  # Close the window
+        self.top = None  # Extra insurance
         if os.path.isfile(TMP_CURR_SYNC):
             os.remove(TMP_CURR_SYNC)  # Clean up /tmp directory
 
@@ -13365,7 +13516,7 @@ class tvVolume:
         try:
             xy = (self.parent.winfo_x() + PANEL_HGT * 3,
                   self.parent.winfo_y() + PANEL_HGT * 3)
-        except AttributeError:  # MusicLocationTree instance has no attribute 'winfo_x'
+        except AttributeError:  # Music Location Tree instance has no attribute 'winfo_x'
             print("self.parent failed to get winfo_x")
             xy = (100, 100)
 
@@ -13595,6 +13746,7 @@ class tvVolume:
 
     # noinspection PyUnusedLocal
     def apply(self, *args):
+        """ Save volume setting """
         if self.save_vol():  # calls self.save_callback() which calls get_hockey_state()
             self.close()
 
@@ -13715,6 +13867,10 @@ class FileControl(FileControlCommonSelf):
             pass
         self.new_WIP = True  # Signal no new requests will be accepted.
 
+        ''' Is host down? '''
+        if lcs.host_down:
+            return
+
         ''' Is last song file still open (path not none)? '''
         if self.path is not None:
             if self.silent:  # In silent mode, normal broadcasts become facts
@@ -13797,6 +13953,10 @@ class FileControl(FileControlCommonSelf):
             Check the music file type in FileControl.check_metadata() method.
         """
         self.metadata = OrderedDict()
+
+        ''' Is host down? '''
+        if lcs.host_down:
+            return
 
         ext.t_init("FileControl.get_metadata() - ffprobe")
         cmd = 'ffprobe ' + '"' + self.last_path + '"' + ' 2>' + TMP_FFPROBE
@@ -14065,6 +14225,10 @@ class FileControl(FileControlCommonSelf):
             # Song has no artwork that ffmpeg can identify.
             return None, None, None
 
+        ''' Is host down? '''
+        if lcs.host_down:
+            return None, None, None
+
         # Don't reuse last artwork
         if os.path.isfile(TMP_FFMPEG):
             os.remove(TMP_FFMPEG)
@@ -14193,6 +14357,10 @@ class FileControl(FileControlCommonSelf):
         self.info.cast(text)  # For debugging
         #print(text)  # For debugging
         '''
+
+        ''' Is host down? '''
+        if lcs.host_down:
+            return
 
         '''   B I G   T I C K E T   E V E N T   '''
         self.pid, self.sink = start_ffplay(self.path, self.ff_name,
@@ -14361,6 +14529,10 @@ class FileControl(FileControlCommonSelf):
             if self.log_level == 'all' or self.log_level == 'info':
                 self.info.cast(text, 'info', 'update', patterns)
 
+        ''' Is host down? '''
+        if lcs.host_down:
+            return
+
         '''   B I G   T I C K E T   E V E N T   '''
         if self.percent_played < float(ATIME_THRESHOLD):
             ''' Didn't play long enough. Restore original access time '''
@@ -14413,6 +14585,10 @@ class FileControl(FileControlCommonSelf):
         :param new_stat: Optional stat.st_time to force, otherwise current time.
         :return old_time, new_time:
         """
+
+        ''' Is host down? '''
+        if lcs.host_down:
+            return None, None
 
         '''' During a crash for other reasons, following popped up too '''
         #     old_atime = old_stat.st_atime
@@ -14495,6 +14671,11 @@ class FileControl(FileControlCommonSelf):
 
         if self.state and self.state is 'end':
             # Fast clicking next/prev, atime is never done and we call end twice
+            FileControlCommonSelf.__init__(self)  # clear all from .new() down
+            return
+
+        ''' Is host down? '''
+        if lcs.host_down:
             FileControlCommonSelf.__init__(self)  # clear all from .new() down
             return
 
@@ -15340,7 +15521,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         sql.con.commit()
 
     def reset(self, shutdown=False):
-        """
+        """ Close Playlists Maintenance Window
         Named "reset" instead of "close" because, "close()" is used by
         callers to "close" playlist and use Default Favorites instead.
 
@@ -15353,6 +15534,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             geom = monitor.get_window_geom_string(self.top, leave_visible=False)
             monitor.save_window_geom('playlists', geom)
             self.top.destroy()
+            self.top = None  # Extra insurance
         # print("self.top after .destroy()", self.top)
         self.top = None  # Indicate Playlist Maintenance is closed
         ''' After top destroyed, enable File Dropdown Menu options for playlists '''
@@ -15802,6 +15984,7 @@ class InfoCentre:
         if self.zoom_is_active:
             self._close_cb()
             self.tt.poll_tips()
+            #self.zoom_is_active = False  # Added Aug 1/23 BAD IDEA
 
         time_stamp = self.new_dict('cast', text, severity, action, patterns)
         self.list.insert(0, self.dict)  # self.dict stays in memory untouched
@@ -15841,6 +16024,7 @@ class InfoCentre:
         """
 
         ''' If zoom active and being spammed by .view() '''
+        # Aug 1/23 comment out next 3 lines - BAD IDEA
         if self.zoom_is_active:
             self._close_cb()  # Pretend ToolTips() told us to close
             self.tt.poll_tips()
@@ -15872,8 +16056,6 @@ class InfoCentre:
             self._close_cb()  # Pretend ToolTips() told us to close
             return
 
-
-
         ''' Get current lib_top coordinates and current playing song '''
         # During init there was no size for window
         self.height = int(self.lib_top.winfo_height() / 3)
@@ -15893,8 +16075,14 @@ class InfoCentre:
         self.last_delta_time = self.start_time  # To calculate ms between calls
 
         ''' Destroy banner button in Tooltips() and banner button '''
-        self.tt.close(self.banner_btn)
-        self.banner_btn.destroy()  # Real Estate commandeered for zoom frame
+        if self.banner_btn:
+            # July 31, 2023 recent change making 'None' caused error on destroy
+            self.tt.close(self.banner_btn)
+            self.tt.poll_tips()
+            self.banner_btn.destroy()  # Real Estate commandeered for zoom frame
+            self.banner_btn = None  # Extra insurance
+        else:
+            print("InfoCentre.zoom() self.banner_btn is type <None>")
 
         ''' Build tk.Frame and tk.Text widgets. Optional tk.Button to close frame '''
         self.frame = tk.Frame(self.banner_frm, bg="black", height=7)
@@ -15960,6 +16148,7 @@ class InfoCentre:
             anchor = "sc"
 
         ''' Add CustomScrolledText widget to Tooltips() as 'piggy_back' '''
+        print("len(self.tt.tips_list) BEFORE Add:", len(self.tt.tips_list))
         self.tt.add_tip(
             self.widget, text=text, anchor=anchor, tool_type="piggy_back",
             pb_alpha=self._alpha_cb, pb_leave=self._leave_cb, 
@@ -15968,6 +16157,7 @@ class InfoCentre:
             fade_in_span=300, visible_delay=201, fade_out_span=200
             # Limitation: 'visible_delay' must be greater than 'fade_out_span'
         )
+        print("len(self.tt.tips_list) AFTER Add:", len(self.tt.tips_list))
 
         #tt_dict = self.tt.get_dict(self.widget)
         #print('\nInfoCentre.zoom() tooltips self.widget dictionary BEFORE:')
@@ -16015,8 +16205,13 @@ class InfoCentre:
         self.last_delta_time = self.start_time  # To calculate ms between calls
 
         ''' Destroy banner button in Tooltips() '''
-        self.tt.close(self.banner_btn)
-        self.banner_btn.destroy()  # Destroy banner button. Real Estate commandeered
+        if self.banner_btn:
+            self.tt.close(self.banner_btn)
+            #self.tt.poll_tips()  # Added Aug 1/23 to fix missing tooltip
+            self.banner_btn.destroy()  # Destroy banner button. Real Estate commandeered
+            self.banner_btn = None  # Extra insurance
+        else:
+            print("self.banner_btn is 'None' in test_tt()")
 
         ''' Build new frame and Text widget. Add to Tooltips() '''
         self.frame = tk.Frame(self.banner_frm, bg="black", height=7)
@@ -16198,14 +16393,18 @@ FADE_OUT_SPAN = 400     # 1/5 second to fade out
         if self.frame:
             self.frame.config(height=7)  # Last height can be 0 - 30px
             self.lib_top.update()  # Update before destroy or last stays
-            self.frame.destroy()  # Nuke the frame used for info message
             self.tt.close(self.widget)  # Remove 'piggy_back' tooltip
+            # self.widget = self.text  OR  self.widget = self.close_button
+            self.frame.destroy()  # Nuke the frame used for info message
             self.frame = None
 
-        self.tt.close(self.banner_frm)  # July 22, 2023 - btn was staying in tt
+        if self.tt.check(self.banner_btn):  # Aug 1/23 was destroying frm
+            self.tt.close(self.banner_btn)  # July 22, 2023 - btn was staying in tt
 
         ''' Rebuild banner button '''
+        print("len(self.tt.tips_list) BEFORE Add:", len(self.tt.tips_list))
         self.build_banner_btn()
+        print("len(self.tt.tips_list) AFTER  Add:", len(self.tt.tips_list))
         self.test = False
 
         ''' Ugly patch to show that zoom has finished '''
@@ -16273,7 +16472,7 @@ def convert_seconds(s):
     return sum(n * sec for n, sec in zip(seg[::-1], (1, 60, 3600)))
 
 
-def ffplay_extra_opt(start=None, fade_in=3, fade_out=0.0, duration_secs=0.0):
+def ffplay_extra_opt(start=None, fade_in=3.0, fade_out=0.0, duration_secs=0.0):
     """ Format extra_opt string to start playing song at x seconds
         :param start: whole number string or int to start playing song
         :param fade_in: Start volume at 0% and go to 100% over fade_in
@@ -16519,7 +16718,7 @@ def load_last_location():
     START_DIR = LODICT['topdir']  # Music Top directory
     # Display keep awake values
     if LODICT['activecmd'] is not "":
-        print('Keep awake command:', LODICT['activecmd'],
+        print('OLD Keep awake command:', LODICT['activecmd'],
               'every', LODICT['activemin'], 'minutes.')
 
     ''' See if last location path and see if it is mounted '''
@@ -16664,8 +16863,8 @@ def open_files(old_cwd, prg_path, parameters, toplevel=None):
             START_DIR = lcs.open_topdir
             if not START_DIR.endswith(os.sep):
                 START_DIR += os.sep
-            print(who + "lcs.load_last_location() success")
-            print("Use START_DIR:", START_DIR)
+            #print(who + "lcs.load_last_location() success")
+            #print("Use START_DIR:", START_DIR)
 
         title = who + "Error retrieving Location to play"  # Default for any errors
         text2 = "Proceeding to use music_dir: " + str(music_dir)

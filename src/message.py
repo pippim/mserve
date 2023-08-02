@@ -181,16 +181,23 @@ class DelayedTextBox:
         self.line_cnt = 0  # Message lines encountered so far
         self.display_cnt = 0  # Message lines displayed so far
         self.msg_top = None  # Assigned by common_code()
+        #print("=" * 80)
+        #print("\nDelayedTextBox.__init__()")
+        #print("Initialize TDB:", ext.t(time.time()), "delay:",
+        #      ext.t(self.mount_time))
 
     def update(self, msg_line):
         """ Update delayed text box with message line if delay has expired.
             Window remains unpacked until first line encountered after delay.
-            If mounting window this time, include lines suppressed earlier.
+            When mounting does happen, include lines suppressed earlier.
             Typically 1 second delay before creating text box window.
             Use common_code() function shared with message.Open()
         
             If frame passed, text box created within it for message lines.
             A separate top-level is not used and common_code() is not called.
+
+            Not all lines are displayed. Only line at 30 fps interval. Otherwise
+            system will lag while textbox updates.
 
         :param msg_line: Text for display
         :return: 
@@ -203,6 +210,9 @@ class DelayedTextBox:
                 self.msg_top, self.textbox = common_code(
                     self.title, self.toplevel, self.width, self.height)
                 self.textbox.pack()         # Make textbox visible now
+                #print("=" * 80)
+                #print("Mount DTB:", ext.t(time.time()))
+                #print("=" * 80)
                 self.mounted = True         # Signal that Textbox is mounted
                 
                 # turn on text box for editing, user can change too for period
@@ -239,8 +249,12 @@ class DelayedTextBox:
     def close(self):
         """ Close Delayed Text Box """
         # print('DelayedTextBox lines in:',self.line_cnt,'out:',self.display_cnt)
+        #print("Close DTB:", ext.t(time.time()), "line_cnt:", self.line_cnt,
+        #      "display_cnt:", self.display_cnt, "old lines:", len(self.old_lines))
+        #print("=" * 80)
         if self.mounted:                    # Is textbox mounted yet?
             self.msg_top.destroy()
+            self.msg_top = None  # Extra insurance
             self.mounted = False
 
 
@@ -1620,9 +1634,9 @@ class CreateToolTip(object):
         self.pool = pool
         self.tool_type = tool_type
         try:
-            self.name = self.widget['text']         # For display during debugging
+            self.name = self.widget['text']  # For display during debugging
         except tk.TclError:
-            self.name = self.tool_type              # 'canvas_button' or 'menu' type
+            self.name = self.tool_type  # 'canvas_button' or 'menu' type
         # For canvas rounded rectangle buttons we need extra variables
         self.button_press_time = None
         self.button_release_time = None
