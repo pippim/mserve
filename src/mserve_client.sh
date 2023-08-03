@@ -33,7 +33,8 @@ SSC_Result=""  # Screen Saver Command return value
 # Global debug and Last Seconds variables
 fOneTime=false  # for displaying debugging information one time only
 fDebug=false  # When debug is on issue progress messages
-IdleSeconds=0  # xprintidle last activity time. On startup it's just now.
+HostIdle=0  # The REAL xprintidle last activity time. On startup it's just now.
+FakeIdle=0  # xprintidle last activity time caused by Fake Simulated Activity.
 LastWish="$DECADE"  # Lowest seconds since remote user activity
 LastClient="$DECADE"  # Seconds since /tmp/mserve file modified
 
@@ -63,11 +64,11 @@ ParseParameters () {
                 shift # past argument
                 ;;
             -n|--no-blank-lock)
-                fNoBlankLock=true  # Aug 2/23 ignored.
+                #fNoBlankLock=true  # Aug 2/23 ignored.
                 shift # past argument
                 ;;
             -i|--ignore-idle)
-                fIgnoreIdle=true  # Aug 2/23 ignored.
+                #fIgnoreIdle=true  # Aug 2/23 ignored.
                 shift # past argument
                 ;;
             *)  # unknown option
@@ -123,8 +124,8 @@ GsInit () {
 
 GetWish () {
     # Get time of last commands received from client
-    # 'w' command '-ish' arguments (--ip-adddr, --short, --no-header) returns:
-    #       rick     pts/21   192.168.0.12      4.00s sshd: rick [priv]
+    # 'w' command '-ish' arguments (--ip-add dr, --short, --no-header) returns:
+    #       rick     pts/21   192.168.0.12      4.00s sshd: rick [pri v]
     local ThisCheckSeconds ArrEntCnt ArrCols=5 ArrRows CheckSum i
     ThisCheckSeconds="$DECADE"  # Assume no results from 'w -ish' command.
     WishArr=( $(w -ish | grep "$REMOTE" | tr -s " " | \
@@ -159,11 +160,11 @@ GetWish () {
 $ w -ish
 
 rick     tty7     :0                2days /sbin/upstart --user
-rick     pts/21   192.168.0.12      4.00s sshd: rick [priv] 
+rick     pts/21   192.168.0.12      4.00s sshd: rick [pri v]
 AND THEN LATER ON....
-rick     pts/21   192.168.0.12     44.00s sshd: rick [priv]
-rick     pts/21   192.168.0.12      1:24  sshd: rick [priv]
-rick     pts/21   192.168.0.12      2:04  sshd: rick [priv]
+rick     pts/21   192.168.0.12     44.00s sshd: rick [pri v]
+rick     pts/21   192.168.0.12      1:24  sshd: rick [pri v]
+rick     pts/21   192.168.0.12      2:04  sshd: rick [pri v]
 
 From: https://serverfault.com/questions/302455/
       how-to-read-the-idle-column-in-the-output-of-the-linux-w-command/
@@ -208,8 +209,9 @@ WishSeconds () {
 
 GetClient () {
     # Get file modify time of /tmp/mserve_client.time and set delta in $LastClient
-    ModifySeconds=$(date -r "$TIME_FN" '+%s')
-    if [[ $? -eq 0 ]]; then
+    #ModifySeconds=$(date -r "$TIME_FN" '+%s')
+    #if [[ $? -eq 0 ]]; then
+    if ModifySeconds=$(date -r "$TIME_FN" '+%s') ; then
         CurrentSeconds=$(date +%s)
         LastClient=$(( CurrentSeconds - ModifySeconds ))
     else
@@ -217,20 +219,20 @@ GetClient () {
     fi
 } # GetClient ()
 
-HostShutDownMessage () {
+CheckHostSuspend () {
     # Send wall message 60, 30, 15, 10, 5, 3, 2 and 1 minute(s) before shutdown
     [[ $GsSuspendDelay == 0 ]] && return  # System never shuts down
-    MinutesLeft=$(( ( GsSuspendDelay / 60 ) - ( IdleSeconds / 60 ) ))
+    MinutesLeft=$(( ( GsSuspendDelay / 60 ) - ( FakeIdle / 60 ) ))
 
     case $MinutesLeft in
         60|30|15|10|5|3|2|1)
-            m "     'wall' broadcast: shutdown in: $MinutesLeft minute(s)."
-            wall "If no activity, shutdown in: $MinutesLeft minute(s)." ;;
+            m "     'wall' broadcast: suspending in: $MinutesLeft minute(s)."
+            wall "If no activity, suspending in: $MinutesLeft minute(s)." ;;
         0)
-            m "Host system shutdown at: $(date)"
-            wall "HOST SYSTEM SHUTDOWN at: $(date)" ;;
+            m "Host system suspended at: $(date)"
+            wall "HOST SYSTEM SUSPENDED at: $(date)" ;;
     esac
-} # HostShutDownMessage ()
+} # CheckHostSuspend ()
 
 ScreenSaverCommand () {
     # Send dbus method to screen saver
@@ -243,19 +245,11 @@ ScreenSaverCommand () {
     m "Screen Saver Command: $Parm1 $Parm2 Result: $SSC_Result"
 } # ScreenSaverCommand ()
 
-SimulateUserActivity () {
-  # Give illusion user typed something
-    ScreenSaverCommand "SimulateUserActivity"
-    NewIdle="$(xprintidle)" # NewIdle to verify simulation worked.
-    [[ $NewIdle -gt 1000 ]] && echo "ERROR: Idle time not reset: $NewIdle"
-    CheckToBlankOrLock
-} # SimulateUserActivity ()
-
 CheckToBlankOrLock () {
   # Check if screen saver needs to be activated after simulating activity
     ScreenSaverCommand "GetActive"  # Get screen saver active status
     if [[ $SSC_Result == *"false"* ]] ; then  # If screen saver turned off
-        if [[ $IdleSeconds -gt $GsBlankDelay ]] ; then  # If it should be on
+        if [[ $HostIdle -gt $GsBlankDelay ]] ; then  # If it should be on
             m "FORCING SCREEN BLANK (Set screen saver active)"
             ScreenSaverCommand "SetActive" true
         fi
@@ -265,33 +259,39 @@ CheckToBlankOrLock () {
 main () {
   # Parse parameters and then loop forever (until <Control>+C)
     ParseParameters "$@"  # Set -d (--debug) options on commandline
-    local LowestSeconds
+    local IdleSeconds LowestSeconds
 
     while : ; do  # Loop forever until <Control>+C
       # Initialize variables with last seconds
         mInit  # Initialize new debug group output
         GsInit  # Get Gnome Settings (Gsettings / Gs)
-        GetWish  # Get remote user activity times using 'w -ish'
-        GetClient  # Get /tmp/mserve_client.time modification time
+        GetWish  # Get remote/terminal activity using 'w -ish'
+        GetClient  # Get '/tmp/mserve_client.time' modification time
+      # Get current idle seconds using xprintidle
+        IdleSeconds=$(( $(xprintidle) / 1000 ))  # xprintidle uses milliseconds
+        [[ "$IdleSeconds" -lt "$FakeIdle" ]] && HostIdle="$IdleSeconds"
       # Set lowest last seconds out of the group of tests
-        LowestSeconds="$DECADE"  # lowest seconds between terminal and client
+        LowestSeconds="$DECADE"
         [[ "$LastWish" -lt "$LowestSeconds" ]] && LowestSeconds="$LastWish"
         [[ "$LastClient" -lt "$LowestSeconds" ]] && LowestSeconds="$LastClient"
-        IdleSeconds=$(( $(xprintidle) / 1000 ))  # xprintidle uses milliseconds
+      # Simulate user activity if test results < last xprintidle reset
+        if [[ "$LowestSeconds" -lt "$FakeIdle" ]] ; then
+            ScreenSaverCommand "SimulateUserActivity"
+            CheckToBlankOrLock  # Blank screen based on $HostIdle seconds
+            FakeIdle=0
+        else
+            CheckHostSuspend  # Check to send shutdown message
+        fi
       # Format and print debug line if requested with -d (--debug) parameter
-        line="xIdle: $IdleSeconds  | Lowest test: $LowestSeconds"
+        line="Host Idle: $HostIdle  | Fake Idle: $FakeIdle"
         [[ "$LastWish" -lt "$DECADE" ]] && line="$line  | LastWish: $LastWish"
         [[ "$LastClient" -lt "$DECADE" ]] && line="$line  | LastClient: $LastClient"
         m "$line"  # Display debug results when -d switch used.
-      # Simulate user activity if test results < last xprintidle reset
-        if [[ $LowestSeconds -lt "$IdleSeconds" ]] ; then
-            SimulateUserActivity  # Fake user activity for new $IdleSeconds
-        else
-            HostShutDownMessage  # Check to send shutdown message
-        fi
-      # Sleep then increment last W-ish seconds
+      # Sleep then increment last W-ish seconds and idle seconds
         sleep "$SLEEP_SECS"
         [[ "$LastWish" -ne "$DECADE" ]] && LastWish=$(( LastWish + SLEEP_SECS ))
+        HostIdle=$(( HostIdle + SLEEP_SECS ))
+        FakeIdle=$(( FakeIdle + SLEEP_SECS ))
     done  # Continue looping forever until <Control>+C
 } # main ()
 

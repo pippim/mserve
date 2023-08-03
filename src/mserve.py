@@ -1808,9 +1808,6 @@ class MusicLocationTree(PlayCommonSelf):
             self.fine_tune.top.focus_force()  # Uncomment July 25, 2023
             #self.fine_tune.top.lift()
             self.fine_tune_lift()
-        #if self.sync_top_is_active:
-        #    # Although launched by play_top this probably won't hurt
-        #    self.fine_tune.top_lift()  # Raise window focus to top
 
         ''' Sampling random song in lib_tree '''
         if self.ltp_top_is_active:
@@ -4909,8 +4906,6 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
     # noinspection PyUnusedLocal
     def close(self, save=True, *args):
         """ save=True is default. False prevents saving data. """
-        # noinspection PyProtectedMember
-        print('close() called by:', sys._getframe(1).f_code.co_name)
         if save:
             if self.playlists.name is not None:
                 # Saving requires reading stats from lib_tree
@@ -4922,14 +4917,6 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
         root.destroy()
         self.lib_top = None
         exit()  # Doesn't happen because .close_sleepers() keeps running?
-        # During Host Disconnected call to close() play_to_end()
-        # keeps running even though play_top closed. Force it to stop.
-        # close() called by: loc_keep_awake
-        # close_sleepers() called by: close
-        # ^C
-        # mserve.py play_to_end() closed by SIGTERM
-        # close() called by: play_to_end
-        # close_sleepers() called by: close
 
     # noinspection PyUnusedLocal
     def restart(self, *args):
@@ -4942,9 +4929,6 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
     def close_sleepers(self):
         """ COMMON CODE for restart and quit
             Close loc_keep_awake() first as it has .25-second sleep cycle """
-        # noinspection PyProtectedMember
-        print('close_sleepers() called by:', sys._getframe(1).f_code.co_name)
-
         if self.close_sleepers_in_progress:
             print("duplicate call to close_sleepers() !!!")
             return  # Multiple threads can call close() -> close_sleepers()
@@ -7237,10 +7221,10 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
         self.play_top_title = "Playing " + self.title_suffix + " - mserve"
         self.play_top.title(self.play_top_title)
         self.play_top.configure(background="Gray")
-        self.play_top.columnconfigure(0, weight=1)
-        self.play_top.columnconfigure(3, weight=0)  # VU Meter Left
-        self.play_top.columnconfigure(4, weight=0)  # VU Meter Right
-        self.play_top.rowconfigure(0, weight=1)
+        self.play_top.columnconfigure(0, weight=1)  # Artwork stretches
+        self.play_top.columnconfigure(3, weight=0)  # VU Meter Left no stretch
+        self.play_top.columnconfigure(4, weight=0)  # VU Meter Right no stretch
+        self.play_top.rowconfigure(0, weight=1)  # Artwork stretches (NEEDED)
 
         ''' Set program icon in taskbar '''
         img.taskbar_icon(self.play_top, 64, 'white', 'lightskyblue', 'black')
@@ -7248,24 +7232,21 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
         ''' Create master frame '''
         self.play_frm = tk.Frame(self.play_top, borderwidth=BTN_BRD_WID,
                                  relief=tk.RIDGE)
-        #        self.play_frm.grid(sticky=tk.NSEW)
-        #        tk.Grid.rowconfigure(self.play_frm, 0, weight=1)
-        #        tk.Grid.columnconfigure(self.play_frm, 0, weight=0)
-        #        tk.Grid.columnconfigure(self.play_frm, 0, weight=1)
         self.play_frm.grid(column=0, row=0, sticky=tk.NSEW)
         # 5 rows of text labels and string variables auto adjust with weight 1
-        for i in range(5):
+        r = META_DISPLAY_ROWS  # July 18, 2023
+        for i in range(r):
             self.play_frm.grid_rowconfigure(i, weight=1)
         self.play_frm.grid_columnconfigure(2, minsize=50)
         ms_font = (None, MON_FONTSIZE)
 
         ''' Artwork image spanning 5 rows '''
-        self.art_width = 200
-        self.art_height = 200
+        self.art_width = 100  # Will be overriden by actual width
+        self.art_height = 100  # ... and actual height
         self.play_no_art()  # Temporary starting image
         self.art_label = tk.Label(self.play_frm, borderwidth=0,
                                   image=self.play_current_song_art, font=ms_font)
-        self.art_label.grid(row=0, rowspan=6, column=0, sticky=tk.W)
+        self.art_label.grid(row=0, rowspan=r+1, column=0, sticky=tk.W)
         self.art_label.bind("<Button-1>", self.pp_toggle)  # click artwork to pause/play
         # Leave empty row #5 for F3 frame (was row span=5)
 
@@ -7322,12 +7303,11 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
                  font=ms_font).grid(row=4, column=2, sticky=tk.W)
 
         ''' VU Meter canvas object spanning META_DISPLAY_ROWS '''
-        r = META_DISPLAY_ROWS  # July 18, 2023
         self.vu_width = 30
-        self.vu_height = 200
+        self.vu_height = 100  # Will be overriden
 
         self.vu_meter_left = tk.Canvas(self.play_frm, width=self.vu_width,
-                                       relief=tk.FLAT,  # Trying to override tk.RIDGE :(
+                                       relief=tk.FLAT,  # Override tk.RIDGE
                                        height=self.vu_height, bg='black')
         self.vu_meter_left.grid(row=0, rowspan=r, column=3, padx=VU_PAD_X)
         self.vu_meter_left_rectangle = self.vu_meter_left.create_rectangle(
@@ -7479,13 +7459,8 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
         if self.play_from_start:  # Caller can set starting index
             self.ndx = 0  # Control for current song 0 = 1st
 
-        ''' Remove splash screen if we were called with it. '''
+        ''' When getting focus, see if overrides prevent buttons. '''
         self.play_top.bind("<FocusIn>", self.handle_play_top_focus)
-
-        #if self.splash_toplevel:
-        #    self.splash_toplevel.withdraw()  # Remove splash screen
-        #root.update()  # Remove June 21, 2023 - Not needed
-        #root.after(1000)  # Remove May 9, 2023. Why was a WHOLE SECOND here???
 
         ''' Retrieve location's last playing/paused status, song progress seconds '''
         resume = self.get_resume()
@@ -7711,23 +7686,18 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
     def on_resize(self, event):
         """ Resize image and VU Meters when frame size changes """
         # images use ratio of original width/height to new width/height
-        # OLD WAY: w_scale = float(event.width) / self.start_w
         h_scale = float(event.height) / self.start_h
         w_scale = h_scale  # It's a square!
         self.art_width = int(w_scale) - 6  # Border width, this is awkward
         self.art_height = int(h_scale) - 6  # play_spin_art
-
-        # Quick fix for error:  ValueError: bad image size
-        if self.art_width < 1:
-            self.art_width = 1
-        if self.art_height < 1:
-            self.art_height = 1
-
-        self.set_vu_meter_height()
-
+        # Fix error:  ValueError: bad image size
+        self.art_width = 1 if self.art_width < 1 else self.art_width
+        self.art_height = 1 if self.art_height < 1 else self.art_height
         self.play_resized_art = self.play_original_art.resize(
             (self.art_width, self.art_height), Image.ANTIALIAS)
         self.play_current_song_art = ImageTk.PhotoImage(self.play_resized_art)
+
+        self.set_vu_meter_height()  # VU Meter height dependant on art height
 
         # Sometimes 'pp_state' variable isn't defined yet, e.g. during init
         if hasattr(self, 'pp_state'):
@@ -7737,27 +7707,38 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
 
     def set_vu_meter_height(self):
         """ Set height of VU meter after play_top resized. """
-        # May 9, 2023 - self.art_height no longer suitable. Use five song info rows
         self.vu_meter_left.config(height=100)  # So title, progress, etc. get fresh start
         self.vu_meter_right.config(height=100)
         self.play_frm.update_idletasks()  # Artwork resize
+        self.play_frm.update()  # Artwork resize
         ''' Height of META_DISPLAY_ROWS used for VU meter height '''
         r = META_DISPLAY_ROWS - 1  # July 18, 2023
         _x, _y, _width, height = self.play_frm.grid_bbox(1, 0, 1, r)
-        self.vu_height = height - 12  # Create some padding at top & bottom of vu meters
-        if self.vu_height < 1:
-            self.vu_height = 1
 
+        ''' Aug 2/23 - Warning evil lurks below :( '''
+        print("play_frm bbox height:", height)  # start = 456, then 483
+        print("self.play_frm.winfo_height():", self.play_frm.winfo_height())
+        print("self.art_height:", self.art_height)
+        # Horrendous patch below :(
+        if self.art_height != height and self.art_height - height <= 27:
+            self.vu_height = self.art_height + 15
+            print("self.vu_height:", self.vu_height)
+        else:
+            self.vu_height = height - 12
+            print("self.vu_height:", self.vu_height)
+
+        self.vu_height = height - 12  # Padding split over top & bottom vu meters
+        self.vu_height = 1 if self.vu_height < 1 else self.vu_height
         self.vu_meter_left.config(height=self.vu_height)
         self.vu_meter_right.config(height=self.vu_height)
-        self.play_vu_meter_blank()          # Fill with self.theme_bg
+        self.play_vu_meter_blank()  # Fill with self.theme_bg
 
     def move_lyrics_right(self):
         """ Chronology (playlist) tree visible. Move lyrics score right. """
         r = META_DISPLAY_ROWS  # July 18, 2023
         self.play_frm.grid_rowconfigure(r, weight=0)  # Lyrics Row will be gone now
         # May 9, 2023 - Reset for row 1, column 6 (1's based)
-        self.play_frm.grid_columnconfigure(4, weight=1)
+        self.play_frm.grid_columnconfigure(5, weight=1)  # Lyrics in column 5
         self.play_frame3.grid(row=0, rowspan=r, column=5, sticky=tk.NSEW)
         self.play_frm.grid_rowconfigure(r, weight=0)  # Lyrics gone now
         # Define title frame top of play_F3
@@ -7771,7 +7752,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
         """ The chronology (playlist) tree is hidden. Move lyrics score down. """
         # May 9, 2023 - Reset for row 6, column 2 (1's based)
         r = META_DISPLAY_ROWS  # July 18, 2023
-        self.play_frm.grid_columnconfigure(r, weight=0)
+        self.play_frm.grid_columnconfigure(5, weight=0)  # Column 5 gone
         self.play_frame3.grid(row=r, rowspan=1, column=1, columnspan=4, sticky=tk.NSEW)
         self.play_frm.grid_rowconfigure(r, weight=5)  # Lyrics get more space
         # Define title frame top of play_F3
@@ -8363,7 +8344,10 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
             self.play_opened_album = False  # Album was already open
 
         '''   F A S T   C L I C K I N G   '''
-        self.play_top.update_idletasks()
+        if self.play_top:  # Test added Aug 2/23 after 'NoneType' error
+            self.play_top.update_idletasks()
+        else:
+            return True  # Parent should check play_top_is_active
         pav.poll_fades()
         if self.last_started != self.ndx:  # Fast clicking Next button?
             return True
@@ -8523,6 +8507,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
 
             self.resume_state = None  # Make sure code doesn't run again
             self.resume_song_secs = None
+
         elif self.play_ctl.sink is not None:
             pav.set_volume(self.play_ctl.sink, 100.0)
 
@@ -8533,9 +8518,6 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
         if self.splash_toplevel:
             self.splash_toplevel.withdraw()  # Remove splash screen
             self.splash_toplevel = None
-
-        #root.configure(background="#797979")  # Has no effect
-        self.lib_top.configure(background="#a9a9a9")  # Has no effect
 
         ''' Pulse Audio self.sinks_now is freshly updated by now.
             Check if speech-dispatcher is polluting sound input sinks. '''
@@ -8796,7 +8778,8 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
         sleep = SLEEP_PAUSED - int(now - self.last_sleep_time)
         sleep = sleep if sleep > 0 else 1  # Sleep minimum 1 millisecond
         self.last_sleep_time = now
-        self.play_top.after(sleep)              # Sleep until next 30 fps time
+        if self.play_top:  # Aug 2/23 - exiting
+            self.play_top.after(sleep)  # Sleep until next 30 fps time
         return True
 
     def play_update_progress(self, start_secs=None):
@@ -11927,8 +11910,6 @@ mark set markName index"
             text2 = "Show last three songs played,\n" +\
                     "current song, and future six\n" +\
                     "songs in playlist."
-
-        self.set_vu_meter_height()  # Height will be double or half of previous
 
         self.chron_button['text'] = text
         self.tt.set_text(self.chron_button, text2)

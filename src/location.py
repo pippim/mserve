@@ -2450,7 +2450,7 @@ class Locations(LocationsCommonSelf):
             '''
             text = "Skipping 'nc' now - cutoff_time: "
             text += '{0:.1f}'.format(time.time() - cutoff_time)
-            self.out_fact_print(title, text, 'warning')
+            self.out_fact(title, text, 'warning')  # Early boot still prints
             return self.test_common(toplevel)
         else:
             ''' Return False when not a host and parent will test for topdir '''
