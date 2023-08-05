@@ -855,16 +855,19 @@ class LocationsCommonSelf:
         self.cmp_sshfs_used = False  # Assume host wasn't asleep
 
         ''' Compare locations variables '''
-        self.cmp_top_is_active = False
-        self.cmp_top = None                 # Compare Locations toplevel - NEW?
-        self.cmp_target_dir = None          # OS directory comparing to
-        self.cmp_tree = None                # Treeview
-        self.cmp_close_btn = None           # Doesn't need to be instanced
-        self.update_differences_btn = None
-        self.src_mt = None                  # Source modification time
-        self.trg_mt = None                  # Target modification time
-        self.cmp_msg_box = None             # message.Open()
-
+        self.cmp_top = None  # Compare Locations toplevel window
+        self.cmp_top_is_active = False  # mserve.py uses False, not None
+        self.cmp_target_dir = None  # OS directory comparing to
+        self.cmp_tree = None  # Treeview w/difference between src and trg
+        self.cmp_close_btn = None  # Button to close Compare Locations window
+        self.update_differences_btn = None  # Click button to synchronize
+        self.src_mt = None  # Source modification time using ModTime() class
+        self.trg_mt = None  # Target modification time using ModTime() class
+        self.src_fc = None  # Source FileControl() instance
+        self.trg_fc = None  # Target FileControl() instance
+        self.cmp_trg_missing = []  # Source files not found in target location
+        self.cmp_msg_box = None  # message.Open()
+        
 
 class Locations(LocationsCommonSelf):
     """ Usage:
@@ -876,21 +879,24 @@ class Locations(LocationsCommonSelf):
 
             lcs.register_parent(root / self.lib_top)
             lcs.register_tt(self.tt)
+            lcs.register_FileControl(fc)
             lcs.register_thread(self.get_refresh_thread)
             lcs.register_info(self.info)
             lcs.register_menu(self.enable_lib_menu)
+            lcs.register.fake_paths(self.fake_paths)
             lcs.register_pending(self.get_pending_cnt_total)
             lcs.register_NEW(NEW_LOCATION)
             lcs.register_oap_cb(self.open_and_play_callback)
 
-        Major Functions:
+        Major Tier 1 Methods:
     
             - view() - Show existing Locations in treeview
             - new() - Prompt for Location variables and add to database
             - open() - Pick existing Location and play music
             - edit() - Edit existing location and update database
             - delete() - Delete existing location and update database
-            - load_last_location() - Reopen location last used
+            - compare() - Compare open location to target location & synchronize
+            - load_last_location() - Reopen location from last mserve session
 
     """
 
@@ -909,10 +915,12 @@ class Locations(LocationsCommonSelf):
         self.text = None  # Text replacing treeview when no locations on file
         self.get_pending = None  # What is pending in parent? - Could be favorites
         self.open_and_play_callback = None
-        self.info = None  # InfoCentre()
-        self.enable_lib_menu = None
+        self.info = None  # InfoCentre() class instance initialized in mserve.py
+        self.FileControl = None  # FileControl() class RAW. Needed to reset atime.
+        self.enable_lib_menu = None  # Set Locations options on/off in Dropdown
         self.tt = None  # Tooltips pool for buttons
         self.get_thread_func = None  # E.G. self.get_refresh_thread()
+        self.fake_paths = None  # SORTED_LIST for mserve.py open location
 
         ''' Opened Location SQL variables - DON'T TOUCH !!! '''
         self.open_code = None  # Replacement for 'iid'
@@ -963,24 +971,29 @@ class Locations(LocationsCommonSelf):
         """ Register InfoCentre() after it's declared in mserve.py """
         self.info = info  # InfoCentre()
 
+    def register_FileControl(self, fc):
+        """ Register InfoCentre() after it's declared in mserve.py """
+        self.FileControl = fc  # InfoCentre()
+
     def register_get_thread(self, get_thread):
         """ Register get_refresh_thread after it's declared in mserve.py """
         self.get_thread_func = get_thread  # E.G. self.get_refresh_thread()
 
     def register_menu(self, enable_menu_func):
-        """ Register get_refresh_thread after it's declared in mserve.py """
-        self.enable_lib_menu = enable_menu_func  # E.G. self.get_refresh_thread()
+        """ Register Dropdown Menu off/on after it's declared in mserve.py """
+        self.enable_lib_menu = enable_menu_func  # E.G. self.enable_lib_menu()
+
+    def register_fake_paths(self, fake_paths):
+        """ Register self.fake_paths after make_sorted_list() in mserve.py """
+        self.fake_paths = fake_paths
 
     def register_pending(self, get_pending):
         """ Register get_pending_cnt_total after it's declared in mserve.py """
-        self.get_pending = get_pending  # E.G. self.get_refresh_thread()
+        self.get_pending = get_pending
 
     def register_oap_cb(self, open_and_play_callback):
-        """ Register get_pending_cnt_total after it's declared in mserve.py """
-        self.open_and_play_callback = open_and_play_callback  # E.G. self.get_refresh_thread()
-
-    def register_out(self, toplevel, thread):
-        """ Register get_pending_cnt_total after it's declared in mserve.py """
+        """ Register open_and_play_callback() function from mserve.py """
+        self.open_and_play_callback = open_and_play_callback
         self.open_and_play_callback = open_and_play_callback  # E.G. self.get_refresh_thread()
 
     # ==============================================================================
@@ -1892,6 +1905,7 @@ class Locations(LocationsCommonSelf):
         if self.get_thread_func:
             top = self.out_get_parent()
             if top:
+                # Aug 4/23 ShowInfo() revised to accept get_thread_func w/o ()
                 message.ShowInfo(top, title, text, icon=icon,
                                  thread=self.get_thread_func)
                 return True
@@ -1899,17 +1913,22 @@ class Locations(LocationsCommonSelf):
 
     def out_get_parent(self):
         """ Return self.main_top, self.parent or None """
-        if self.main_top:
-            top = self.main_top
+        if self.cmp_top:
+            top = self.cmp_top  # Compare locations
+        elif self.test_top:  # Aug 5/23 - added but not tested.
+            # 'root' is used as very toplevel to self.test_top...
+            top = self.test_top  # Test if Host is Awake
+        elif self.main_top:
+            top = self.main_top  # Locations Maintenance Window
         elif self.parent:
-            top = self.parent
+            top = self.parent  # mserve.py lib_top, play_top, etc.
         else:
             top = None
         return top
         
     # ==============================================================================
     #
-    #       Locations() Processing - mserve.py Dropdown Menus
+    #       Locations() Processing - methods called from mserve.py Dropdown Menus
     #
     # ==============================================================================
 
@@ -1945,7 +1964,7 @@ class Locations(LocationsCommonSelf):
         self.display_main_window("Open Location and Play")
 
     def edit(self):
-        """Called by lib_top File Menubar "Edit Location"
+        """ Called by lib_top File Menubar "Edit Location"
             If new songs are pending, do not allow location to open """
         if self.get_pending:  # 'None' = MusicLocationTree not called yet.
             ''' Music Location Tree checkboxes pending to apply? '''
@@ -1991,6 +2010,8 @@ class Locations(LocationsCommonSelf):
         self.state = 'close'
         sql.save_config('location', 'last', self.open_code, self.open_name,
                         self.open_topdir, Comments="Last location opened.")
+        if self.cmp_top_is_active:
+            self.cmp_close()  # Close Compare Locations window
 
     # ==============================================================================
     #
@@ -2190,9 +2211,7 @@ class Locations(LocationsCommonSelf):
                "storage or cancelled.\n\n" + \
                "You must save changes or cancel before working with a\n" + \
                "different location."
-        self.info.cast(title + "\n\n" + text)
-        thr = self.get_thread_func()
-        message.ShowInfo(self.parent, title, text, thread=thr)
+        self.out_cast_show(title, text, 'error')
 
         return True  # We are all done. No window, no processing, nada
 
@@ -2233,30 +2252,21 @@ class Locations(LocationsCommonSelf):
         if not new_name:
             title = "Location Name cannot be blank!"
             text = "Enter a unique name for the location."
-            self.info.cast(title + "\n\n" + text, 'error')
-            thr = self.get_thread_func()
-            message.ShowInfo(self.main_top, title, text, icon='error', thread=thr)
-            return False
+            return self.out_fact_show(title, text, 'error')
 
         ''' A location music top directory always required '''
         if not new_topdir:
             title = "Music Top Directory required!"
             text = "Select a Music Top Directory.\n"
             text += "If network location, ensure it is active first."
-            self.info.cast(title + "\n\n" + text, 'error')
-            thr = self.get_thread_func()
-            message.ShowInfo(self.main_top, title, text, icon='error', thread=thr)
-            return False
+            return self.out_fact_show(title, text, 'error')
 
         ''' Same name cannot exist in this location '''
         if new_name in self.all_names and \
                 new_name != self.act_name:
             title = "Name must be unique!"
             text = "Location name has already been used."
-            self.info.cast(title + "\n\n" + text, 'error')
-            thr = self.get_thread_func()
-            message.ShowInfo(self.main_top, title, text, icon='error', thread=thr)
-            return False
+            return self.out_fact_show(title, text, 'error')
 
         ''' -o debug causes lockup '''
         if self.fld_mountcmd:  # Is sshfs installed?
@@ -2265,10 +2275,7 @@ class Locations(LocationsCommonSelf):
             if bad_apple in new_mountcmd:
                 title = bad_apple + " not allowed!"
                 text = bad_apple + " option hijacks processing and causes mserve to freeze."
-                self.info.cast(title + "\n\n" + text, 'error')
-                thr = self.get_thread_func()
-                message.ShowInfo(self.main_top, title, text, icon='error', thread=thr)
-                return False
+                return self.out_fact_show(title, text, 'error')
 
         ''' Creating a new location? Use next available location code '''
         if self.state == 'new':
@@ -2917,6 +2924,9 @@ class Locations(LocationsCommonSelf):
             monitor.save_window_geom('locations', geom)
             self.main_top.destroy()
             self.main_top = None  # Destroying doesn't set to 'None' for testing
+        ''' Temporary close compare locations window '''
+        if self.cmp_top_is_active:
+            self.cmp_close()
         LocationsCommonSelf.__init__(self)  # Reset self. variables
         ''' Enable File, Edit & View Dropdown Menus for locations '''
         if isinstance(shutdown, tk.Event):
@@ -2926,7 +2936,7 @@ class Locations(LocationsCommonSelf):
 
     # noinspection PyUnusedLocal
     def apply(self, *args):
-        """ Validate, Analyze mode (state), update database appropriately. 
+        """ Validate, Analyze mode (state), update database appropriately.
             Only called within Locations() class, never by mserve.py.
         """
         if not self.validate_location():
@@ -2947,87 +2957,19 @@ class Locations(LocationsCommonSelf):
             # Inside above function it's using old act_code and old act_topdir
             self.open_and_play_callback(self.act_code, self.act_topdir)
             # Above restarts mserve (assuming no errors) so never come back here
+        elif self.state == 'synchronize':
+            self.info.cast("Synchronize location: " + self.act_name, action="open")
+            self.cmp_build_toplevel(self.act_code, sbar_width=16)
+            # Problem: We don't want to do reset below, cmp must close itself
         else:
             toolkit.print_trace()
             print("Unknown Locations.apply() self.state:", self.state)
 
         self.reset()  # Destroy window & reset self. variables
 
-
-# ==============================================================================
-#
-#       Compare() class.  Copied from mserve.py
-#
-# ==============================================================================
-
-class CompareCommonSelf:
-    """ Class Variables used by Compare() class """
-
-    def __init__(self):
-        """ Called on mserve.py startup and for Playlists maintenance """
-
-        ''' Compare locations variables '''
-        self.cmp_top_is_active = False
-        self.cmp_top = None                 # Compare Locations toplevel - NEW?
-        self.cmp_target_dir = None          # OS directory comparing to
-        self.cmp_tree = None                # Treeview
-        self.cmp_close_btn = None           # Doesn't need to be instanced
-        self.update_differences_btn = None
-        self.src_mt = None                  # Source modification time
-        self.trg_mt = None                  # Target modification time
-        self.cmp_msg_box = None             # message.Open()
-
-
-class Compare(CompareCommonSelf):
-    """ Usage:
-            Parent needs to register self.fake_paths -> lcs.register_paths()
-    """
-
-    def __init__(self):
-        """
-
-        """
-        CompareCommonSelf.__init__(self)  # Define self. variables
-        ''' self-ize parameter list '''
-
-        ''' Variables registered by mserve.py when available '''
-
-
-    def loc_compare(self, mode=""):
-        """ Compare songs to other location
-            Called from File menu and from within self.loc_create_tree()
-            Caller:
-                'Drop' called from top bar dropdown menu
-                    We create treeview and return
-                'Tree' called from treeview button
-                    We do the pre-processing for Submit button to take over
-        """
-
-        if mode != "":
-            pass    # Pycharm error, should probably get rid of parameter...
-
-        if self.cmp_top_is_active:
-            ''' Should not happen because menu options disabled '''
-            self.cmp_top.focus_force()  # Get focus
-            self.cmp_top.lift()  # Raise in stacking order
-            self.cmp_top.update_idletasks()
-            return
-
-        # Test target location to make sure it's online
-        # loc_button_click() will need to test target location, just as it does
-        # for open and play, etc.
-        if not test(iid, self.loc_top):  # How to see other class methods?
-            # Location doesn't exist or is off-line
-            messagebox.showinfo(title="Location Error",
-                                message="Top directory doesn't exist or is off-line.",
-                                parent=self.loc_top)
-            return False
-
-        return True
-
     # ==============================================================================
     #
-    #       Music Location Tree Processing - Compare locations and update file differences
+    #       Locations() - Compare locations and update file differences
     #
     # ==============================================================================
 
@@ -3058,22 +3000,29 @@ class Compare(CompareCommonSelf):
         """
 
         # print('cmp_build_toplevel() get trg_dict',t(time.time()))
-        trg_dict = lc.item(trg_dict_iid)  # get dictionary for iid
-        self.cmp_target_dir = trg_dict['topdir']
+        #trg_dict = lc.item(trg_dict_iid)  # get dictionary for iid
+        #self.cmp_target_dir = trg_dict['topdir']
+        if not self.read_location(trg_dict_iid):
+            print("if not self.read_location(trg_dict_iid):", trg_dict_iid)
+            return
+        self.cmp_target_dir = self.act_topdir  # Can just use this all the time.
 
+        ''' Aug 5/23 - can no longer append slash '''
         # If no optional `/` at end, add it for equal comparisons
-        if not self.cmp_target_dir.endswith(os.sep):
-            self.cmp_target_dir += os.sep
+        #if not self.cmp_target_dir.endswith(os.sep):
+        #    self.cmp_target_dir += os.sep
 
         self.cmp_top = tk.Toplevel()
         self.cmp_top.minsize(g.WIN_MIN_WIDTH, g.WIN_MIN_HEIGHT)
         self.cmp_top_is_active = True
 
-        xy = (self.loc_top.winfo_x() + PANEL_HGT,
-              self.loc_top.winfo_y() + PANEL_HGT)
-        self.cmp_top.minsize(width=BTN_WID * 10, height=PANEL_HGT * 4)
+        ''' cmp_top should be retrieved from SQL History '''
+        xy = (self.main_top.winfo_x() + g.PANEL_HGT,
+              self.main_top.winfo_y() + g.PANEL_HGT)
+
+        self.cmp_top.minsize(width=g.BTN_WID * 10, height=g.PANEL_HGT * 4)
         self.cmp_top.geometry('%dx%d+%d+%d' % (1800, 500, xy[0], xy[1]))  # 500 pix high
-        title = "Compare Locations - SOURCE: " + PRUNED_DIR + \
+        title = "Compare Locations - SOURCE: " + self.open_topdir + \
                 " - TARGET: " + self.cmp_target_dir
         self.cmp_top.title(title)
         self.cmp_top.columnconfigure(0, weight=1)
@@ -3131,47 +3080,48 @@ class Compare(CompareCommonSelf):
         self.cmp_tree.configure(xscrollcommand=h_scroll.set)
         ''' Frame3 for Treeview Buttons '''
         frame3 = tk.Frame(master_frame, bg="Blue", bd=2, relief=tk.GROOVE,
-                          borderwidth=BTN_BRD_WID)
+                          borderwidth=g.BTN_BRD_WID)
         frame3.grid_rowconfigure(0, weight=1)
         frame3.grid_columnconfigure(0, weight=0)
         frame3.grid(row=1, column=0, sticky=tk.NW)
+
         ''' ✘ Close Button '''
         # TODO: we aren't keeping remote location awake only home location!
         self.cmp_top.bind("<Escape>", self.cmp_close)
         self.cmp_top.protocol("WM_DELETE_WINDOW", self.cmp_close)
         self.cmp_close_btn = tk.Button(frame3, text="✘ Close",
-                                       width=BTN_WID - 4, command=self.cmp_close)
+                                       width=g.BTN_WID - 4, command=self.cmp_close)
         self.cmp_close_btn.grid(row=0, column=0, padx=2)
-        ''' Create Treeview using source (START_DIR) as driver '''
-        if not self.cmp_populate_tree(trg_dict_iid):  # populate_
+        ''' Create Treeview. If no differences give message and return '''
+        #ret = self.cmp_populate_tree()
+        #print("self.cmp_populate_tree() return value:", ret)  # True (it's working)
+        if not self.cmp_populate_tree():
             self.cmp_close()  # Files are identical
             return
         ''' 🗘  Update differences Button u1f5d8 🗘'''
-        self.update_differences_btn = tk.Button(frame3, width=BTN_WID + 4,
+        self.update_differences_btn = tk.Button(frame3, width=g.BTN_WID + 4,
                                                 text="🗘  Update differences",
                                                 command=self.cmp_update_files)
         self.update_differences_btn.grid(row=0, column=1, padx=2)
 
         if self.cmp_top_is_active is False:
-            return  # We are already closed
+            return
         self.cmp_tree.update_idletasks()
 
-    # noinspection PyUnusedLocal
+    # noinspection PyUnusedLocal Required for *args when binding <Escape>
     def cmp_close(self, *args):
         """ Close Compare location treeview """
-        if self.cmp_top_is_active is False:
-            return  # We are already closed
+        if not self.cmp_top_is_active:
+            return  # Already closed
         self.cmp_top_is_active = False
         if self.tt and self.cmp_top:
-            self.tt.close(self.cmp_top)  # Close tooltips under top level
-        #root.update()  # Comment out July 30, 2023
-        #root.after(50)  # Give time for treeview to close
+            if self.tt.check(self.cmp_top):  # Were tooltips created?
+                self.tt.close(self.cmp_top)  # Close tooltips under top level
         self.cmp_top.destroy()  # Close the treeview window
-        self.cmp_top = None  # Extra insurance
-
+        self.cmp_top = None
         return True
 
-    def cmp_populate_tree(self, trg_dict_iid):
+    def cmp_populate_tree(self):
 
         """ Add Artist, Album and Song to treeview self.cmp_tree.
             Similar to add_items() in Music Location Tree
@@ -3186,14 +3136,17 @@ class Compare(CompareCommonSelf):
 
             -o auto_cache,reconnect,defer_permissions
             -o Ciphers=aes128-ctr -o Compression=no
-
-
+        :returns True: When locations are different
         """
         # How many path separators '/' are there in source and target?
-        start_dir_sep = START_DIR.count(os.sep) - 1
+        start_dir_sep = self.open_topdir.count(os.sep)
         #target_dir_sep = self.cmp_target_dir.count(os.sep) - 1
-        self.src_mt = lc.ModTime(LODICT['iid'])
-        self.trg_mt = lc.ModTime(trg_dict_iid)
+        self.src_mt = ModTime(self.open_code)
+        self.trg_mt = ModTime(self.act_code)
+        self.src_fc = self.FileControl(self.cmp_top, self.info, 
+                                       get_thread=self.get_thread_func)
+        self.trg_fc = self.FileControl(self.cmp_top, self.info, 
+                                       get_thread=self.get_thread_func)
 
         LastArtist = ""
         LastAlbum = ""
@@ -3202,13 +3155,6 @@ class Compare(CompareCommonSelf):
 
         for i, os_name in enumerate(self.fake_paths):
             self.cmp_top.update()  # Allow close button to abort right away
-
-            # Experimental doesn't work! Solution is to make this function
-            # a new python module launched in background. Or use new
-            # tool.thread called every 1000 reads for SSD, less for phone.
-            if self.play_top_is_active:  # Play window open?
-                root.update_idletasks()
-                self.play_top.update()  # Update spinner & text
 
             # split song /mnt/music/Artist/Album/Song.m4a into variable names
             groups = os_name.split(os.sep)
@@ -3228,9 +3174,9 @@ class Compare(CompareCommonSelf):
                 LastAlbum = Album
 
             if self.cmp_top_is_active is False:
-                return  # We are closing down
+                return False  # Closing down, False indicates no differences
 
-            ''' Build full song path from song_list[] '''
+            ''' Build full song path from self.fake_paths '''
             src_path = os_name
             src_path = src_path.replace(os.sep + g.NO_ARTIST_STR, '')
             src_path = src_path.replace(os.sep + g.NO_ALBUM_STR, '')
@@ -3241,9 +3187,11 @@ class Compare(CompareCommonSelf):
             src_mtime = float(src_stat.st_mtime)
 
             # Get target list's size and mtime
-            trg_path = src_path.replace(START_DIR, self.cmp_target_dir)
+            trg_path = src_path.replace(self.open_topdir, self.cmp_target_dir)
             if not os.path.isfile(trg_path):
                 self.cmp_tree.see(CurrAlbumId)
+                ''' TODO: build lists of '''
+                self.cmp_trg_missing.append(trg_path)
                 continue  # Source song doesn't exist on target
 
             trg_stat = os.stat(trg_path)
@@ -3286,7 +3234,7 @@ class Compare(CompareCommonSelf):
                            '"' + trg_path + '" 1>/dev/null'):
 
                 if self.cmp_top_is_active is False:
-                    return  # We are closing down
+                    return False  # Closing down, False indicates no differences
                 # Files have different contents even though size the same
                 # Copy newer file to older
                 if src_mtime < trg_mtime:
@@ -3323,7 +3271,7 @@ class Compare(CompareCommonSelf):
             # Sept 23 2020 - Treeview doesn't scroll after update button added?
             # After clicking update differences can you click it again?
             if self.cmp_top_is_active is False:
-                return  # We are already closed
+                return False  # Closing down, False indicates no differences
             self.cmp_tree.update_idletasks()
 
             # do_debug_steps += 1
@@ -3334,7 +3282,7 @@ class Compare(CompareCommonSelf):
             album_count = 0
             for album in self.cmp_tree.get_children(artist):
                 if self.cmp_top_is_active is False:
-                    return  # We are closing down
+                    return False  # Closing down, False indicates no differences
                 #song_count = 0
                 #for song in self.cmp_tree.get_children(album):
                 #    song_count += 1  # Signal not to delete album
@@ -3349,11 +3297,17 @@ class Compare(CompareCommonSelf):
 
         ''' Message if files are same (no treeview children) '''
         if self.cmp_tree.get_children():
+            print("self.cmp_top_is_active:", self.cmp_top_is_active)
+            print("self.main_top:", self.main_top)
+            print("self.parent:", self.parent)
+            title = "File differences found"
+            text = "This message only shown to figure out why windows closing."
+            self.out_cast_show(title, text)
             return True
         else:
-            messagebox.showinfo(title="Files identical",
-                                message="Files common to both locations are identical.",
-                                parent=self.cmp_top)
+            title = "Files identical"
+            text = "Files common to both locations are identical."
+            self.out_fact_show(title, text)
             return False
 
     def cmp_update_files(self):
@@ -3370,7 +3324,7 @@ class Compare(CompareCommonSelf):
                 for song in self.cmp_tree.get_children(album):
                     # Update file and display in message box.
                     return_code = self.cmp_run_command(song)
-                    root.update_idletasks()
+                    self.cmp_top.update_idletasks()
                     if self.cmp_top_is_active is False:
                         # TODO: Move duplicated code into common ...close()
                         self.src_mt.close()  # Save modification_time to disk
@@ -3398,7 +3352,7 @@ class Compare(CompareCommonSelf):
                 cp -p source_path target_path
                 touch -m -r source_path target_path
 
-            NOTE: START_DIR may become target_path and target_dir may become
+            NOTE: self.open_topdir may become target_path and target_dir may become
                   source_path after deciphering arrow
         """
 
@@ -3409,7 +3363,7 @@ class Compare(CompareCommonSelf):
         # Extract real source path from treeview display e.g. strip <No Album>
         src_path = self.real_path(int(iid))
         # replace source topdir with target topdir for target full path
-        trg_path = src_path.replace(START_DIR, self.cmp_target_dir)
+        trg_path = src_path.replace(self.open_topdir, self.cmp_target_dir)
 
         # Build command line list for subprocess
         command_line_list = []
@@ -3482,6 +3436,7 @@ class Compare(CompareCommonSelf):
 
         """
         print(self.top)
+
 
 
 # End of location.py

@@ -485,10 +485,10 @@ LARGE_FONT = 14             # Font size not used
 MED_FONT = 10               # Medium Font size
 BTN_WID = 12                # Width for buttons on main window
 BTN_WID2 = 12               # Width for buttons on play window
-BTN_BRD_WID = 3             # Width for button border
+g.BTN_BRD_WID = 3             # Width for button border
 FRM_BRD_WID = 2             # Width for frame border
-# TODO: Calculate PANEL_HGT (height)
-PANEL_HGT = 24              # Height of Unity panel
+# TODO: Calculate g.PANEL_HGT (height)
+#g.PANEL_HGT = 24              # Height of Unity panel
 
 '''
 TODO:
@@ -1216,12 +1216,14 @@ class MusicLocationTree(PlayCommonSelf):
         lcs.register_menu(self.enable_lib_menu)
         lcs.register_pending(self.get_pending_cnt_total)
         lcs.register_oap_cb(self.open_and_play_callback)
+        lcs.register_FileControl(FileControl)
 
         dtb = message.DelayedTextBox(title="Building music view",
                                      toplevel=None, width=1000)
         self.ndx = 0  # Start song index
         self.play_from_start = True  # We start as normal
         self.fake_paths = song_list  # May contain /<No Artist>/<No Album>
+        lcs.register_fake_paths(self.fake_paths)
         self.real_paths = []  # stripped out <No Artist> and <No Album>
         # self.fake_paths = song_list = SORTED_LIST = make_sorted_list(START_DIR)
 
@@ -1236,7 +1238,7 @@ class MusicLocationTree(PlayCommonSelf):
         img.taskbar_icon(self.lib_top, 64, 'white', 'lightskyblue', 'black')
 
         ''' Mount window at previously used location '''
-        self.lib_top.minsize(width=BTN_WID * 10, height=PANEL_HGT * 4)
+        self.lib_top.minsize(width=BTN_WID * 10, height=g.PANEL_HGT * 4)
         ext.t_init("monitor.get_window_geom('library')")
         geom = monitor.get_window_geom('library')
         self.lib_top.geometry(geom)
@@ -1424,7 +1426,7 @@ class MusicLocationTree(PlayCommonSelf):
 
         ''' Treeview Buttons '''
         frame3 = tk.Frame(master_frame, bg="Blue", bd=2, relief=tk.GROOVE,
-                          borderwidth=BTN_BRD_WID)
+                          borderwidth=g.BTN_BRD_WID)
         frame3.grid_rowconfigure(0, weight=1)
         frame3.grid_columnconfigure(0, weight=0)
         frame3.grid(row=3, column=0, sticky=tk.NW)  # May 28, 2023 was row=2
@@ -1873,7 +1875,7 @@ class MusicLocationTree(PlayCommonSelf):
         """ Define apply pending frame used when lib_tree boxes are checked """
         text = "Pending Playlist Updates from Checkbox Actions"
         self.pending_frame = tk.LabelFrame(
-            master_frame, borderwidth=BTN_BRD_WID, text=text,
+            master_frame, borderwidth=g.BTN_BRD_WID, text=text,
             relief=tk.GROOVE, font=('calibre', 13, 'bold'))
         self.pending_frame.grid(row=2, column=0, sticky=tk.NSEW)
         self.pending_frame.grid_columnconfigure(3, weight=5)  # Song name extra wide
@@ -2829,10 +2831,10 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
         self.loc_top.minsize(g.WIN_MIN_WIDTH, g.WIN_MIN_HEIGHT)
         self.loc_top_is_active = True
 
-        ''' Place Window top-left of parent window with PANEL_HGT padding '''
-        xy = (self.lib_top.winfo_x() + PANEL_HGT,
-              self.lib_top.winfo_y() + PANEL_HGT)
-        self.loc_top.minsize(width=BTN_WID * 10, height=PANEL_HGT * 4)
+        ''' Place Window top-left of parent window with g.PANEL_HGT padding '''
+        xy = (self.lib_top.winfo_x() + g.PANEL_HGT,
+              self.lib_top.winfo_y() + g.PANEL_HGT)
+        self.loc_top.minsize(width=BTN_WID * 10, height=g.PANEL_HGT * 4)
         self.loc_top.geometry('+%d+%d' % (xy[0], xy[1]))
 
         title = "Music Locations - Select location to " + mode
@@ -2844,7 +2846,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
         img.taskbar_icon(self.loc_top, 64, 'white', 'lightskyblue', 'black')
 
         ''' Create master frame '''
-        master_frame = tk.Frame(self.loc_top, borderwidth=BTN_BRD_WID,
+        master_frame = tk.Frame(self.loc_top, borderwidth=g.BTN_BRD_WID,
                                 relief=tk.RIDGE)
         master_frame.grid(sticky=tk.NSEW)
 
@@ -2892,7 +2894,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
 
         ''' Treeview Buttons '''
         frame3 = tk.Frame(master_frame, bg="Blue", bd=2, relief=tk.GROOVE,
-                          borderwidth=BTN_BRD_WID)
+                          borderwidth=g.BTN_BRD_WID)
         frame3.grid_rowconfigure(0, weight=1)
         frame3.grid_columnconfigure(0, weight=0)
         frame3.grid(row=1, column=0, sticky=tk.NW)
@@ -2965,7 +2967,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
             self.loc_tree_btn7.grid(row=0, column=7, padx=2)
 
         ''' Frame for Location Data Entry '''
-        self.loc_F4 = tk.LabelFrame(self.loc_top, borderwidth=BTN_BRD_WID,
+        self.loc_F4 = tk.LabelFrame(self.loc_top, borderwidth=g.BTN_BRD_WID,
                                     text=self.location_text, padx=10, pady=10,
                                     relief=tk.GROOVE, font=('calibre', 13, 'bold'))
         self.loc_F4.grid(row=3, column=0, sticky=tk.NSEW)
@@ -3612,9 +3614,9 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
         self.cmp_top.minsize(g.WIN_MIN_WIDTH, g.WIN_MIN_HEIGHT)
         self.cmp_top_is_active = True
 
-        xy = (self.loc_top.winfo_x() + PANEL_HGT,
-              self.loc_top.winfo_y() + PANEL_HGT)
-        self.cmp_top.minsize(width=BTN_WID * 10, height=PANEL_HGT * 4)
+        xy = (self.loc_top.winfo_x() + g.PANEL_HGT,
+              self.loc_top.winfo_y() + g.PANEL_HGT)
+        self.cmp_top.minsize(width=BTN_WID * 10, height=g.PANEL_HGT * 4)
         self.cmp_top.geometry('%dx%d+%d+%d' % (1800, 500, xy[0], xy[1]))  # 500 pix high
         title = "Compare Locations - SOURCE: " + PRUNED_DIR + \
                 " - TARGET: " + self.cmp_target_dir
@@ -3678,7 +3680,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
 
         ''' Treeview Buttons '''
         frame3 = tk.Frame(master_frame, bg="Blue", bd=2, relief=tk.GROOVE,
-                          borderwidth=BTN_BRD_WID)
+                          borderwidth=g.BTN_BRD_WID)
         frame3.grid_rowconfigure(0, weight=1)
         frame3.grid_columnconfigure(0, weight=0)
         frame3.grid(row=1, column=0, sticky=tk.NW)
@@ -4438,7 +4440,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
         """
         music_id = self.get_music_id_for_lib_tree_id(Id)
         pretty = sql.PrettyMusic(str(music_id))
-        """ Create new window top-left of parent window with PANEL_HGT padding
+        """ Create new window top-left of parent window with g.PANEL_HGT padding
 
             Before calling:
                 Create pretty data dictionary using tree column data dictionary
@@ -4930,8 +4932,10 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
             self.gone_fishing.close()       # Shark eating man animation
             self.gone_fishing = None
 
-        if self.cmp_top_is_active:          # Comparing Locations?
-            self.cmp_close()                # Extreme lags when running 'diff'
+        #if self.cmp_top_is_active:          # Comparing Locations?
+        #    self.cmp_close()                # Extreme lags when running 'diff'
+        if lcs.cmp_top_is_active:
+            lcs.cmp_close()  # Close Compare Locations window
         #if self.sync_top_is_active:          # Synchronizing lyrics time indices
         #    self.sync_close()
         if self.fine_tune and self.fine_tune.top_is_active:
@@ -5191,6 +5195,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
 
         SORTED_LIST = SortedList2
         self.fake_paths = SORTED_LIST
+        lcs.register_fake_paths(self.fake_paths)
         self.lib_tree.delete(*self.lib_tree.get_children())
         # Copied from __init__
         dtb = message.DelayedTextBox(title="Building music view",
@@ -6354,7 +6359,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
         else:
             pretty = sql.PrettyMusic(sql_row_id)
 
-        ''' Place Window top-left of parent window with PANEL_HGT padding
+        ''' Place Window top-left of parent window with g.PANEL_HGT padding
             Lifted from: ~/mserve/encoding.py
         '''
         # Drop down menu to select headers, message body, daily backup
@@ -6498,7 +6503,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
             print("mserve.py view_library() No match in Music Location:", music_id)
 
     def create_window(self, title, width, height, top=None):
-        """ Create new window top-left of parent window with PANEL_HGT padding
+        """ Create new window top-left of parent window with g.PANEL_HGT padding
 
             Before calling:
                 Create pretty data dictionary using tree column data dictionary
@@ -7190,11 +7195,11 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
         self.vu_meter_pid = \
             ext.launch_command(ext_name, toplevel=self.play_top)
 
-        ''' Place Window top-left of parent window with PANEL_HGT padding '''
+        ''' Place Window top-left of parent window with g.PANEL_HGT padding '''
         # TODO: "Using Playlist: Big List"
-        #xy = (self.lib_top.winfo_x() + PANEL_HGT,
-        #      self.lib_top.winfo_y() + PANEL_HGT)
-        self.play_top.minsize(width=BTN_WID * 10, height=PANEL_HGT * 10)
+        #xy = (self.lib_top.winfo_x() + g.PANEL_HGT,
+        #      self.lib_top.winfo_y() + g.PANEL_HGT)
+        self.play_top.minsize(width=BTN_WID * 10, height=g.PANEL_HGT * 10)
         #self.play_top.geometry('+%d+%d' % (xy[0], xy[1]))
         # June 1, 2021 new sql history
         geom = monitor.get_window_geom('playlist')
@@ -7212,7 +7217,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
         img.taskbar_icon(self.play_top, 64, 'white', 'lightskyblue', 'black')
 
         ''' Create master frame '''
-        self.play_frm = tk.Frame(self.play_top, borderwidth=BTN_BRD_WID,
+        self.play_frm = tk.Frame(self.play_top, borderwidth=g.BTN_BRD_WID,
                                  relief=tk.RIDGE)
         self.play_frm.grid(column=0, row=0, sticky=tk.NSEW)
         # 5 rows of text labels and string variables auto adjust with weight 1
@@ -7341,7 +7346,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
 
         # Extra padding around label so RoundedRectangle has enough space
         self.lyrics_panel_label = tk.Label(
-            self.lyrics_frm, borderwidth=BTN_BRD_WID, padx=7, pady=7,
+            self.lyrics_frm, borderwidth=g.BTN_BRD_WID, padx=7, pady=7,
             text=self.lyrics_panel_text, font=g.FONT)
         #self.lyrics_panel_label.grid(row=0, column=2, sticky=tk.NSEW)
         #self.lyrics_panel_label.grid_rowconfigure(0, weight=0)
@@ -7396,7 +7401,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
         self.build_play_btn_frm()  # Placement varies if Hockey enabled
 
         ''' F4 Frame for Playlist (Chronology) '''
-        self.chron_frm = tk.Frame(self.play_top, borderwidth=BTN_BRD_WID,
+        self.chron_frm = tk.Frame(self.play_top, borderwidth=g.BTN_BRD_WID,
                                   relief=tk.GROOVE)
         #self.chron_frm.configure(background="Black")  # No effect
         self.chron_frm.grid(row=8, column=0, sticky=tk.NSEW)
@@ -7534,7 +7539,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
 
         ''' Frame for Buttons '''
         self.play_btn_frm = tk.Frame(self.play_top, bg="Olive",
-                                     borderwidth=BTN_BRD_WID, relief=tk.GROOVE)
+                                     borderwidth=g.BTN_BRD_WID, relief=tk.GROOVE)
         self.play_btn_frm.grid(row=3, column=0, sticky=tk.NSEW)
         # Leave empty row #2 for F3 frame (was row=2)
         self.play_btn_frm.grid_rowconfigure(0, weight=1)
@@ -11175,10 +11180,10 @@ mark set markName index"
 
         pav.fade_out_aliens(1)  # Turn down non-ffplay volumes to 0
 
-        ''' Place Window top-left of parent window with PANEL_HGT padding '''
-        xy = (self.lib_top.winfo_x() + PANEL_HGT,
-              self.lib_top.winfo_y() + PANEL_HGT)
-        self.ltp_top.minsize(width=BTN_WID * 10, height=PANEL_HGT * 4)
+        ''' Place Window top-left of parent window with g.PANEL_HGT padding '''
+        xy = (self.lib_top.winfo_x() + g.PANEL_HGT,
+              self.lib_top.winfo_y() + g.PANEL_HGT)
+        self.ltp_top.minsize(width=BTN_WID * 10, height=g.PANEL_HGT * 4)
         self.ltp_top.geometry('+%d+%d' % (xy[0], xy[1]))
         if sample == 'middle':
             self.ltp_top.title("Play middle 10 seconds - mserve")
@@ -11189,7 +11194,7 @@ mark set markName index"
         self.ltp_top.rowconfigure(0, weight=1)
 
         ''' Create master frame for artwork, song info and button '''
-        sam_frm = tk.Frame(self.ltp_top, borderwidth=BTN_BRD_WID, relief=tk.RIDGE)
+        sam_frm = tk.Frame(self.ltp_top, borderwidth=g.BTN_BRD_WID, relief=tk.RIDGE)
         sam_frm.grid(sticky=tk.NSEW)
 
         ''' Artwork image spanning 7 rows '''
@@ -12040,7 +12045,7 @@ class FineTune:
 
         ''' frame2 - Treeview Listbox'''
         frame2 = tk.Frame(self.top, background=self.theme_bg,
-                          borderwidth=BTN_BRD_WID, relief=tk.RIDGE)
+                          borderwidth=g.BTN_BRD_WID, relief=tk.RIDGE)
         tk.Grid.rowconfigure(frame2, 1, weight=1)
         tk.Grid.columnconfigure(frame2, 0, weight=1)
         frame2.grid_columnconfigure(0, weight=1)
@@ -12115,7 +12120,7 @@ class FineTune:
 
         '''   B U T T O N   B A R   F R A M E   '''
         self.btn_bar_frm = tk.Frame(self.top, relief=tk.GROOVE,
-                                    background=self.theme_bg, borderwidth=BTN_BRD_WID)
+                                    background=self.theme_bg, borderwidth=g.BTN_BRD_WID)
         self.btn_bar_frm.grid(row=2, column=0, padx=2, pady=2, sticky=tk.W)
         self.build_btn_bar_frm()  # Defaults to 'top' for top main window
 
@@ -12196,7 +12201,7 @@ class FineTune:
 
         ''' Frame for Buttons '''
         self.btn_bar_frm = tk.Frame(self.top, bg="Olive",
-                                    borderwidth=BTN_BRD_WID, relief=tk.GROOVE)
+                                    borderwidth=g.BTN_BRD_WID, relief=tk.GROOVE)
         self.btn_bar_frm.grid(row=3, column=0, sticky=tk.NSEW)
 
         ''' Define three different button bars '''
@@ -13432,13 +13437,13 @@ class tvVolume:
         ''' Regular geometry is no good. Linked to lib_top is better '''
         self.top = tk.Toplevel()
         try:
-            xy = (self.parent.winfo_x() + PANEL_HGT * 3,
-                  self.parent.winfo_y() + PANEL_HGT * 3)
+            xy = (self.parent.winfo_x() + g.PANEL_HGT * 3,
+                  self.parent.winfo_y() + g.PANEL_HGT * 3)
         except AttributeError:  # Music Location Tree instance has no attribute 'winfo_x'
             print("self.parent failed to get winfo_x")
             xy = (100, 100)
 
-        self.top.minsize(width=BTN_WID * 10, height=PANEL_HGT * 10)
+        self.top.minsize(width=BTN_WID * 10, height=g.PANEL_HGT * 10)
         self.top.geometry('+%d+%d' % (xy[0], xy[1]))
         self.top.title("TV Volume during Commercials - mserve")
         self.top.configure(background="Gray")
@@ -13449,7 +13454,7 @@ class tvVolume:
         img.taskbar_icon(self.top, 64, 'white', 'lightskyblue', 'black')
 
         ''' Create master frame '''
-        self.vol_frm = tk.Frame(self.top, borderwidth=BTN_BRD_WID,
+        self.vol_frm = tk.Frame(self.top, borderwidth=g.BTN_BRD_WID,
                                 relief=tk.RIDGE)
         self.vol_frm.grid(column=0, row=0, sticky=tk.NSEW)
         self.vol_frm.columnconfigure(0, weight=1)
@@ -14873,7 +14878,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         self.top = tk.Toplevel()  # Playlists top level
         geom = monitor.get_window_geom('playlists')
         self.top.geometry(geom)
-        self.top.minsize(width=BTN_WID * 10, height=PANEL_HGT * 10)
+        self.top.minsize(width=BTN_WID * 10, height=g.PANEL_HGT * 10)
         name = name if name is not None else "Playlists"
         self.top.title(name + " - mserve")
         self.top.configure(background="Gray")
@@ -14884,7 +14889,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         ''' Set program icon in taskbar '''
         img.taskbar_icon(self.top, 64, 'white', 'lightskyblue', 'black')
         ''' Create master frame '''
-        self.frame = tk.Frame(self.top, borderwidth=BTN_BRD_WID,
+        self.frame = tk.Frame(self.top, borderwidth=g.BTN_BRD_WID,
                               relief=tk.RIDGE)
         self.frame.grid(sticky=tk.NSEW)
         self.frame.columnconfigure(0, weight=1)

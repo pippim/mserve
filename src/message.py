@@ -300,7 +300,6 @@ class AskCommonSelf:
             print("message.py, AskCommonSelf, invalid thread= passed:", thread)
             toolkit.print_trace()
             self.thread = None
-        self.loop_no = 1            # Loop counter (not used yet)
         self.text = text            # data (text lines) for text box
         self.textbox = None         # Textbox widget
         self.icon = icon            # Warning, Error, Info, Question icons
@@ -316,11 +315,6 @@ class AskCommonSelf:
         else:
             self.string_width = 28  # Size of string .Entry variable
         self.result = None          # Defined in simpledialog already
-        # g.MON_FONTSIZE may not be defined globally
-        try:
-            self.font = (None, g.MON_FONTSIZE)
-        except NameError:
-            self.font = (None, 10)
 
         # Shared functions
         self.wait_window = wait_window_func
@@ -545,7 +539,7 @@ def body_func(self):
         self.icon = tk.Label(self, image=icon_image)
         self.icon.pack(fill="both", padx=5, pady=15)
 
-    self.textbox = tk.Text(self, width=width, font=self.font)
+    self.textbox = tk.Text(self, width=width, font=g.FONT)
     self.textbox.pack(fill="both", expand=True)
     # self.textbox.pack(side=tk.LEFT, fill="both", expand=True)
 
@@ -559,7 +553,6 @@ class AskQuestion(simpledialog.Dialog, AskCommonSelf):
         Appends "\n\nAre you sure?\n" to text passed.
         Allows text to be highlighted and copied to clipboard with CTRL+C.
         Blocks other windows from getting focus
-        g.MON_FONTSIZE is temporary font size until configuration file set up.
 
         BUGS:
         April 24, 2023 - When 'no' click was returning: 139944643864048.139944641065544
@@ -660,7 +653,6 @@ class AskString(simpledialog.Dialog, AskCommonSelf):
         Appends Entry field after "Input:"
         Allows text to be highlighted and copied to clipboard with CTRL+C.
         Blocks other windows from stealing focus
-        g.MON_FONTSIZE is temporary font size until configuration file set up.
     """
 
     def __init__(self, parent, title=None, text=None, confirm='no',
@@ -699,7 +691,7 @@ class AskString(simpledialog.Dialog, AskCommonSelf):
             self.icon = tk.Label(self, image=icon_image)
             self.icon.pack(fill="both", padx=5, pady=15)
 
-        self.textbox = tk.Text(self, width=width, font=self.font)
+        self.textbox = tk.Text(self, width=width, font=g.FONT)
         self.textbox.pack(fill="both", padx=5, expand=True)
         #self.textbox.pack(side=tk.LEFT, fill="both", expand=True)
 
@@ -708,8 +700,8 @@ class AskString(simpledialog.Dialog, AskCommonSelf):
 
         # Append our label and entry field.
         tk.Label(self, text="Input or Paste below:",
-                 font=self.font).pack(fill="none", padx=5)
-        self.entry = tk.Entry(self, font=self.font, insertbackground="white",
+                 font=g.FONT).pack(fill="none", padx=5)
+        self.entry = tk.Entry(self, font=g.FONT, insertbackground="white",
                               bg="#282B2B", fg="white", width=self.string_width)
         self.entry.insert(tk.END, self.string)
         self.entry.pack(fill="none", padx=5, expand=True)

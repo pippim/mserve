@@ -67,6 +67,7 @@ BTN_WID = 17            # Width for buttons on main window
 BTN_WID2 = 15           # Width for buttons on play window
 BTN_BRD_WID = 3         # Width for button border
 FRM_BRD_WID = 2         # Width for frame border
+# TODO: Calculate PANEL_HGT (height)
 PANEL_HGT = 24          # Height of Unity panel
 
 NO_ARTIST_STR = "<No Artist>"  # Substitute null subdirectory with string
