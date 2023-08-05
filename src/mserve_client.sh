@@ -20,7 +20,7 @@ export LANG=C  # Force english names for sed & grep searches
 SLEEP_SECS=60  # Seconds to sleep between 'w -ish' command usage
 OUTPUT_FN=/tmp/mserve_client.log
 TIME_FN=/tmp/mserve_client.time
-DECADE=315360000
+DECADE=315360000  # In case you were counting, 315 million seconds in a decade
 REMOTE="192.168.0"  # What to 'grep' for in 'w -ish' output
 
 # Global gsettings set by GsInit () function need to control screen & suspending
@@ -63,16 +63,7 @@ ParseParameters () {
                 echo "Debug Mode = $fDebug"
                 shift # past argument
                 ;;
-            -n|--no-blank-lock)
-                #fNoBlankLock=true  # Aug 2/23 ignored.
-                shift # past argument
-                ;;
-            -i|--ignore-idle)
-                #fIgnoreIdle=true  # Aug 2/23 ignored.
-                shift # past argument
-                ;;
             *)  # unknown option
-                #echo "Usage: mserve_client.sh -d (--debug) -n (--no-blank-lock) -i (--ignore-idle)"
                 echo "Usage: mserve_client.sh -d (--debug)"
                 exit
             ;;
@@ -81,14 +72,14 @@ ParseParameters () {
 } # ParseParameters
 
 mInit () {
-    # If DEBUG turned on, create output file message header.
+    # If DEBUG turned on, empty output file and append message header to file.
     [[ $fDebug == false ]] && return 0
     echo "" >| "$OUTPUT_FN"  # Empty last output file.  ">|" = allow clobber.
     echo "-----   $OUTPUT_FN   ---   $(date)   -----" >> "$OUTPUT_FN"
 } # mInit ()
 
 m () {
-    # If DEBUG turned on, echo messages to screen and file.
+    # If DEBUG turned on, print messages to screen and append to file.
     [[ $fDebug == false ]] && return 0
     echo "$1"  # Print to console same as output file
     echo "$1" >> "$OUTPUT_FN"
@@ -123,7 +114,7 @@ GsInit () {
 } # Init ()
 
 GetWish () {
-    # Get time of last commands received from client
+    # Get time of last activity from remotely signed on terminals
     # 'w' command '-ish' arguments (--ip-add dr, --short, --no-header) returns:
     #       rick     pts/21   192.168.0.12      4.00s sshd: rick [pri v]
     local ThisCheckSeconds ArrEntCnt ArrCols=5 ArrRows CheckSum i
@@ -209,8 +200,6 @@ WishSeconds () {
 
 GetClient () {
     # Get file modify time of /tmp/mserve_client.time and set delta in $LastClient
-    #ModifySeconds=$(date -r "$TIME_FN" '+%s')
-    #if [[ $? -eq 0 ]]; then
     if ModifySeconds=$(date -r "$TIME_FN" '+%s') ; then
         CurrentSeconds=$(date +%s)
         LastClient=$(( CurrentSeconds - ModifySeconds ))
@@ -223,14 +212,14 @@ CheckHostSuspend () {
     # Send wall message 60, 30, 15, 10, 5, 3, 2 and 1 minute(s) before shutdown
     [[ $GsSuspendDelay == 0 ]] && return  # System never shuts down
     MinutesLeft=$(( ( GsSuspendDelay / 60 ) - ( FakeIdle / 60 ) ))
-
+    (( MinutesLeft-- ))  # Assume system suspended before 0 minutes are reached
     case $MinutesLeft in
         60|30|15|10|5|3|2|1)
-            m "     'wall' broadcast: suspending in: $MinutesLeft minute(s)."
-            wall "If no activity, suspending in: $MinutesLeft minute(s)." ;;
+            m "     'wall' broadcast: suspending Host in: $MinutesLeft minute(s)."
+            wall "If no activity, suspending Host in: $MinutesLeft minute(s)." ;;
         0)
-            m "Host system suspended at: $(date)"
-            wall "HOST SYSTEM SUSPENDED at: $(date)" ;;
+            m "Host suspended at: $(date)"
+            wall "HOST SUSPENDED at: $(date)" ;;
     esac
 } # CheckHostSuspend ()
 
@@ -296,3 +285,5 @@ main () {
 } # main ()
 
 main "$@"
+
+# End of mserve_client.sh

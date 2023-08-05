@@ -948,6 +948,105 @@ drwxr-xr-x   2 root root   4096 Mar 10  2019 zope.interface-4.1.3.egg-info/
     return
 
 
+class Versions:
+    """
+        Get installed version numbers. Can be called by CLI or GUI.
+    """
+
+    def __init__(self):
+
+        self.inst_list = []                 # List of dictionaries
+        self.inst_dict = {}                 # Dictionary of single program keys:
+        # prg_name, prg_ver, pkg_name, pkg_ver, prg_cmd, get_ver_parm,
+        # comments (E.G. special notes, version date/time, etc)
+
+        # History Time: [file modification time], MusicId: 0, User: [pkg_name],
+        #   Type: 'version', Action: 'program', SourceMaster: [name]
+        #   SourceDetail: [version installed], Target: [/usr/bin/blahBlah],
+        #   Size: [file size], Count: [line count if script], Seconds: 0.0
+        #   Comments: "Used in mserve.py"
+
+        # History Time: [file modification time], MusicId: 0, User: [package_name],
+        #   Type: 'version', Action: 'program', SourceMaster: 'prg_get_ver'
+        #   SourceDetail: [parsing method], Target: [command to get version],
+        #   Size: [major_ver], Count: [minor_ver], Seconds: [sub_minor.sub_sub_minor]
+        #   Comments: "Used by encoding.py"
+
+        # History Time: [file modification time], MusicId: 0, User: [package_name],
+        #   Type: 'version', Action: 'program', SourceMaster: 'package_get_version'
+        #   SourceDetail: [parsing method], Target: [command to get version],
+        #   Size: [major_version], Count: [minor_version], Seconds: [sub_minor.sub_sub_minor]
+        #   Comments: "Used by disc_get.py"
+        """
+            con.execute("create table IF NOT EXISTS History(Id INTEGER PRIMARY KEY, \
+                Time FLOAT, MusicId INTEGER, User TEXT, Type TEXT, \
+                Action TEXT, SourceMaster TEXT, SourceDetail TEXT, \
+                Target TEXT, Size INT, Count INT, Seconds FLOAT, \
+                Comments TEXT)")
+
+        """
+
+    def build_apt_list(self, update=False):
+        """ Samples
+        
+Hand-holding user through the 'apt install' process is tedious.
+
+Simply verify package or module is installed and don't teach how to do it.
+        
+            $ gst-launch-1.0 --gst-version
+            GStreamer Core Library version 1.8.3
+
+            $ apt list | grep python-tk
+            python-tk/xenial-updates,now 2.7.12-1~16.04 amd64 [installed]
+            python-tkcalendar/xenial,xenial,now 1.5.0-1 all [installed]
+
+            $ wc mserve.py
+             10826  46134 492518 mserve.py
+
+TO GET installed packages
+$ time apt list | grep "[installed" > apt_list_installed.txt
+real	0m1.454s
+user	0m1.395s
+sys	    0m0.095s
+
+$ ll *.txt
+-rw-rw-r-- 1 rick rick 3377347 May 18 15:18 apt_list_full.txt
+-rw-rw-r-- 1 rick rick  185301 May 18 15:19 apt_list_installed.txt
+
+$ head apt_list_installed.txt
+a11y-profile-manager-indicator/xenial,now 0.1.10-0ubuntu3 amd64 [installed]
+abi word/xenial-updates,now 3.0.1-6ubuntu0.16.04.1 amd64 [installed]
+abi word-common/xenial-updates,xenial-updates,now 3.0.1-6ubuntu0.16.04.1 all [installed,automatic]
+abi word-plugin-grammar/xenial-updates,now 3.0.1-6ubuntu0.16.04.1 amd64 [installed,automatic]
+account-plugin-facebook/xenial,xenial,now 0.12+16.04.20160126-0ubuntu1 all [installed]
+account-plugin-flickr/xenial,xenial,now 0.12+16.04.20160126-0ubuntu1 all [installed]
+account-plugin-google/xenial,xenial,now 0.12+16.04.20160126-0ubuntu1 all [installed]
+accounts service/xenial-updates,xenial-security,now 0.6.40-2ubuntu11.6 amd64 [installed]
+acl/xenial,now 2.2.52-3 amd64 [installed]
+acpi/xenial,now 1.7-1 amd64 [installed]
+
+        """
+        pass
+
+
+def verify_chain():
+    """ Verify that program is called by 'mserve.py' """
+    ''' If not called by 'mserve.py' do nothing '''
+    try:
+        filename = inspect.stack()[1][1]  # If there is a parent it is 'm'
+        #grand_file = inspect.stack()[1][1]  # If there is a parent it is 'm'
+        # (<frame object>, './m', 50, '<module>', ['import mserve\n'], 0)
+        parent = os.path.basename(filename)
+        if parent != "mserve.py":
+            print("sql.py must be called by 'mserve.py' but is called by:",
+                  parent)
+            exit()
+    except IndexError:  # list index out of range
+        ''' Called from the command line '''
+        print("sql.py cannot be called from command line. Aborting...")
+        exit()
+
+
 def main(caller=None):
     """
     Load saved configuration if it exists. Otherwise create new configuration.
@@ -962,7 +1061,7 @@ def main(caller=None):
     deleted and the process repeats.
 
     """
-    print("mserve_config.py startup called from:", caller)
+    #print("mserve_config.py startup called from:", caller)
     make_default_cfg()  # Create default configuration
 
     ''' 
@@ -1097,6 +1196,6 @@ TypeError: unsupported operand type(s) for +: 'NoneType' and 'str'
 
 
 if __name__ == "__main__":
-    main(module=None)
+    main(caller=None)
 
 # End of mserve_configy.py

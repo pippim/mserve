@@ -15,6 +15,7 @@ from __future__ import with_statement  # Error handling for file opens
 #
 #       May. 19 2023 - appdirs for universal application & storage directories
 #       July 10 2023 - Begin mserve_config.py development (check dependencies)
+#       Aug. 04 2023 - Add FONT, NO_ARTIST_STR and NO_ALBUM_STR constants
 #
 # ==============================================================================
 
@@ -60,13 +61,20 @@ MON_FONTSIZE = 12       # Font size for monitor name
 WIN_FONTSIZE = 11       # Font size for Window name
 MED_FONT = 10           # Medium Font size
 
+FONT = (None, MON_FONTSIZE)  # Current font setting for mserve
+
 BTN_WID = 17            # Width for buttons on main window
 BTN_WID2 = 15           # Width for buttons on play window
 BTN_BRD_WID = 3         # Width for button border
 FRM_BRD_WID = 2         # Width for frame border
 PANEL_HGT = 24          # Height of Unity panel
-MAX_DEPTH = 3           # Sanity check if starting at c:\ or /
-# If MAX_DEPTH changes you must update 'depth_count = [ 0, 0, 0 ]' below.
+
+NO_ARTIST_STR = "<No Artist>"  # Substitute null subdirectory with string
+NO_ALBUM_STR = "<No Album>"  # Used in mserve.py and location.py
+CFG_DECIMAL_PLACES = 0   # 0 decimal place, eg "38 MB"
+CFG_DIVISOR_AMT = 1000000  # Divide by million
+CFG_DIVISOR_UOM = "MB"  # Unit of Measure becomes Megabyte
+
 
 HELP_URL = "https://www.pippim.com/programs/mserve.html#"
 

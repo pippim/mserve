@@ -406,57 +406,6 @@ class GracefulKiller:
         self.kill_now = True
 
 
-class SoundControl:
-    """ "FF" for "fast forward", so ffmpeg stands for
-        "Fast Forward Moving Picture Experts Group".
-
-        Controller for ffmpeg, ffprobe and ffplay
-
-        USAGE:
-            sc_main = SoundControl()  # main playlist object
-            sc_sync = SoundControl()  # synchronize (fine-tune time index)
-            sc_sample = SoundControl()  # sample song object
-    """
-
-    # Initialization parameters
-    pid = 0
-    sink = ""
-    start_sec = 0
-    duration_secs = 0
-    fade_in_secs = 0
-    duet_sinks = []  # list of opposing sinks to turn up/down
-
-    steps = 10  # How many steps between volume start and end?
-    step_time = .05  # Time between steps
-
-    # Metadata fields
-    artist = None
-    album = None
-    title = None
-    release_date = None
-    original_date = None
-    play_count = None
-    genre = None
-    rating = None
-
-    # OS song information
-    path = None
-    access_time = None
-    modification_time = None
-    creation_time = None
-    state = "Playing"  # Other option is "Paused" (STOP)
-    current_secs = None
-
-
-    def __init__(self, path):
-        self.path = path
-
-    # noinspection PyUnusedLocal
-    def launch(self, *args):
-        """ WIP will probably just delete this someday """
-        pass
-
-
 # noinspection SpellCheckingInspection
 """
 https://trac.ffmpeg.org/wiki/AudioVolume

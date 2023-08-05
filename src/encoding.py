@@ -1,14 +1,17 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-Author: Pippim
-License: GNU GPLv3
+Author: pippim.com
+License: GNU GPLv3. (c) 2020 - 2023
 Source: This repository
-Description: mserve - Music Server - Encode (Rip) CD's
+Description: mserve - Music Server - Encode (Rip) CD to music files
 """
 
 from __future__ import print_function  # Must be first import
 from __future__ import with_statement  # Error handling for file opens
+# from __future__ import unicode_literals  # Not needed.
+import warnings  # 'warnings' advises which commands aren't supported
+warnings.simplefilter('default')  # in future Python versions.
 
 # ==============================================================================
 #
@@ -106,6 +109,22 @@ def set_description(filename, description):
     tags.save(filename)
 
 '''
+
+''' If not called by 'mserve.py' do nothing '''
+import inspect
+import os
+try:
+    filename = inspect.stack()[1][1]  # parent filename s/b "mserve.py"
+    #(<frame object>, './m', 50, '<module>', ['import mserve\n'], 0)
+    parent = os.path.basename(filename)
+    if parent != "mserve.py":
+        print("encoding.py must be called by 'mserve.py' but is called by:", 
+              parent)
+        exit()
+except IndexError:  # list index out of range
+    ''' Called from the command line '''
+    print("encoding.py cannot be called from command line. Aborting...")
+    exit()
 
 try:  # Python 3
     import tkinter as tk

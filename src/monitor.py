@@ -293,16 +293,16 @@ class Monitors:
         x_id = None
         for window in screen.get_windows():
             if window.is_active() is True:
-                geom = window.get_geometry()        # Includes decorations
+                geom = window.get_geometry()  # Includes decorations
                 window_name = window.get_name()
                 x_id = window.get_xid()
                 # A lot more attributes are available see:
                 # https://lazka.github.io/pgi-docs/Wnck-3.0/classes/Window.html#Wnck.Window.get_screen
                 break
                 
-        # clean up Wnck (saves resources, check documentation)
-        window = None                       # Although pycharm flags as error,
-        screen = None                       # these are important else crash!!
+        # clean up Wnck (saves resources, see the documentation)
+        window = None  # Although pycharm flags as error,
+        screen = None  # these are important else crash!!
         Wnck.shutdown()
         Window = namedtuple('Window', 'number, name, x, y, width, height')
         # noinspection PyArgumentList
@@ -333,9 +333,9 @@ class Monitors:
             # A lot more attributes are available see:
             # https://lazka.github.io/pgi-docs/Wnck-3.0/classes/Window.html#Wnck.Window.get_screen
 
-        # clean up Wnck (saves resources, check documentation)
-        #window = None  # Although pycharm flags as error,
-        #screen = None  # these are important else crash!!
+        # clean up Wnck (saves resources, see the documentation)
+        window = None  # Although pycharm flags as error,
+        screen = None  # these are important else crash!!
         Wnck.shutdown()
         return self.windows_list
     

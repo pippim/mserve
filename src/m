@@ -27,8 +27,8 @@ caller = "m"
 if not cfg.main(caller):
     print("mserve not fully installed. Aborting...")
     exit()
-else:
-    print(caller, "finished call to mserve_config.py with SUCCESS!")
+#else:
+#    print(caller, "finished call to mserve_config.py with SUCCESS!")
 
 try:
     import tkinter as tk
@@ -42,7 +42,7 @@ import os               # To get current directory
 
 import global_variables as g
 if g.USER is None:
-    print('"m" was forced to run g.init()')
+    #print('"m" was forced to run g.init()')
     g.init()
 
 import image as img     # Pippim functions for image management

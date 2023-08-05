@@ -20,6 +20,7 @@ from __future__ import with_statement  # Error handling for file opens
 #
 #==============================================================================
 #import stat
+import Tkinter
 
 """
 
@@ -835,7 +836,34 @@ class LocationsCommonSelf:
         self.test_sshfs_used = False  # Assume host wasn't asleep
         self.curr_row = None  # Variable Location Detail Rows depending on ssh, etc.
         self.curr_frame = None  # Either self.main_frame or self.test_frame
-        self.font = (None, g.MON_FONTSIZE)
+
+        ''' Compare (Synchronize) Window and fields '''
+        self.cmp_top = None  # tk.Toplevel to Test Host from mserve.py
+        self.cmp_frame = None  # tk.Frame holding self.cmp_scroll_frame & details
+        self.cmp_scroll_frame = None  # tk.Frame holding CustomScrolledText
+        self.cmp_box = None  # CustomScrolledText with compare results
+        self.cmp_dtb = None  # Delayed Text Box
+        self.cmp_close_button = None  # Close the compare window
+        self.cmp_help_button = None  # Help in the compare window
+        self.cmp_host_is_mounted = True  # Assume local storage by default
+
+        ''' Need to keep host awake using touch command every 10 minutes.
+            Source (self.open_host) and target (self.act_host) could both
+            require keeping awake.
+        '''
+        self.cmp_host_was_asleep = False  # Assume host wasn't asleep
+        self.cmp_sshfs_used = False  # Assume host wasn't asleep
+
+        ''' Compare locations variables '''
+        self.cmp_top_is_active = False
+        self.cmp_top = None                 # Compare Locations toplevel - NEW?
+        self.cmp_target_dir = None          # OS directory comparing to
+        self.cmp_tree = None                # Treeview
+        self.cmp_close_btn = None           # Doesn't need to be instanced
+        self.update_differences_btn = None
+        self.src_mt = None                  # Source modification time
+        self.trg_mt = None                  # Target modification time
+        self.cmp_msg_box = None             # message.Open()
 
 
 class Locations(LocationsCommonSelf):
@@ -871,6 +899,7 @@ class Locations(LocationsCommonSelf):
         :param make_sorted_list(): Function to verify TopDir is valid.
         """
         LocationsCommonSelf.__init__(self)  # Define self. variables
+
         ''' self-ize parameter list '''
         self.make_sorted_list = make_sorted_list  # Check if music files exist
 
@@ -884,9 +913,8 @@ class Locations(LocationsCommonSelf):
         self.enable_lib_menu = None
         self.tt = None  # Tooltips pool for buttons
         self.get_thread_func = None  # E.G. self.get_refresh_thread()
-        self.display_lib_title = None  # Rebuild lib_top menubar
 
-        ''' Opened Location variables - DON'T TOUCH !!! '''
+        ''' Opened Location SQL variables - DON'T TOUCH !!! '''
         self.open_code = None  # Replacement for 'iid'
         self.open_name = None
         self.open_modify_time = None  # New
@@ -901,13 +929,13 @@ class Locations(LocationsCommonSelf):
         self.open_touchcmd = None  # Replaces activecmd
         self.open_touchmin = None  # Replaces activemin
         self.open_comments = None
-        self.open_row_id = None
+        self.open_row_id = None  # SQL Location Table Primary ID (int)
 
-        ''' Additional Open Location variables not stored on disk '''
+        ''' Additional Open Location variables not in SQL '''
         self.host_down = False  # For emergency shutdown
         self.open_sshfs_used = False
 
-        ''' Installed External Command Flags '''
+        ''' External Commands Installed? Flags '''
         self.nmap_installed = False  # Set in display_main_window()
         self.nmap_installed = False
         self.ssh_installed = False
@@ -951,6 +979,10 @@ class Locations(LocationsCommonSelf):
         """ Register get_pending_cnt_total after it's declared in mserve.py """
         self.open_and_play_callback = open_and_play_callback  # E.G. self.get_refresh_thread()
 
+    def register_out(self, toplevel, thread):
+        """ Register get_pending_cnt_total after it's declared in mserve.py """
+        self.open_and_play_callback = open_and_play_callback  # E.G. self.get_refresh_thread()
+
     # ==============================================================================
     #
     #       Locations() Processing - tkinter Window Methods
@@ -966,6 +998,7 @@ class Locations(LocationsCommonSelf):
 
         ''' Get saved geometry for Locations() '''
         self.main_top = tk.Toplevel()  # Locations top level
+        self.enable_lib_menu()  # disable all Menu options for locations
         geom = monitor.get_window_geom('locations')
         self.main_top.geometry(geom)
         self.main_top.minsize(width=g.BTN_WID * 10, height=g.PANEL_HGT * 10)
@@ -974,7 +1007,6 @@ class Locations(LocationsCommonSelf):
 
         ''' Common Top configuration, icon and main_top master frame '''
         self.main_frame = self.make_display_frame(self.main_top)
-        self.enable_lib_menu()  # disable all Menu options for locations
 
         ''' Instructions when no locations have been created yet. '''
         if not self.text:  # If text wasn't passed as a parameter use default
@@ -987,7 +1019,7 @@ class Locations(LocationsCommonSelf):
 
         if len(self.all_codes) == 0:  # No locations have been created yet
             self.no_locations_label = tk.Label(self.main_frame, text=self.text, 
-                                               justify="left", font=self.font)
+                                               justify="left", font=g.FONT)
             self.no_locations_label.grid(row=0, column=0, columnspan=4, 
                                          sticky=tk.W, padx=5)
         else:  # Treeview of existing locations in first frame
@@ -1017,7 +1049,7 @@ class Locations(LocationsCommonSelf):
 
         ''' Close Button - NOTE: This calls reset() function !!! '''
         self.main_close_button = tk.Button(
-            self.main_frame, text="✘ Close", font=self.font,
+            self.main_frame, text="✘ Close", font=g.FONT,
             width=g.BTN_WID2 - 4, command=self.reset)
         self.main_close_button.grid(row=14, column=0, padx=5, pady=5, sticky=tk.W)
         if self.tt:
@@ -1037,7 +1069,7 @@ class Locations(LocationsCommonSelf):
         help_text += "https://www.pippim.com/programs/mserve.html#\n"
 
         self.main_help_button = tk.Button(
-            self.main_frame, text="🔗 Help", font=self.font,
+            self.main_frame, text="🔗 Help", font=g.FONT,
             width=g.BTN_WID2 - 4, command=lambda: g.web_help("HelpLocations"))
         self.main_help_button.grid(row=14, column=1, padx=5, pady=5, sticky=tk.W)
         if self.tt:
@@ -1088,7 +1120,7 @@ class Locations(LocationsCommonSelf):
         ''' Custom Scrolled Text Box '''
         text = "Beginning test of Host: " + self.act_host + "\n"
         self.test_box = toolkit.CustomScrolledText(
-            self.test_scroll_frame, state="normal", font=self.font,
+            self.test_scroll_frame, state="normal", font=g.FONT,
             borderwidth=15, relief=tk.FLAT)
         self.test_box.configure(background="Black", foreground="Green")
         self.test_box.grid(row=0, column=0, padx=5, pady=5, sticky=tk.NSEW)
@@ -1108,7 +1140,7 @@ class Locations(LocationsCommonSelf):
         """ Can be called for new test_top or to replace existing main_top """
         ''' Close Button - calls test_close_window() to wrap up '''
         self.test_close_button = tk.Button(
-            frame, text="✘ Close Test Results", font=self.font,
+            frame, text="✘ Close Test Results", font=g.FONT,
             width=g.BTN_WID2 + 6, command=self.test_close_window)
         self.test_close_button.grid(row=14, column=0, padx=5, pady=5, sticky=tk.W)
         if not self.called_from_main_top:  # no main_top, so escape closes test_top
@@ -1126,7 +1158,7 @@ class Locations(LocationsCommonSelf):
         help_text += "videos and explanations on using this screen.\n"
         help_text += "https://www.pippim.com/programs/mserve.html#\n"
         self.test_help_button = tk.Button(
-            frame, text="🔗 Help", font=self.font,
+            frame, text="🔗 Help", font=g.FONT,
             width=g.BTN_WID2 - 4, command=lambda: g.web_help("HelpTestHost"))
         self.test_help_button.grid(row=14, column=1, padx=5, pady=5, sticky=tk.W)
         if self.tt:  # During early boot toolkit.Tooltips() is still 'None'
@@ -1197,8 +1229,8 @@ class Locations(LocationsCommonSelf):
         else:  # When no mode passed, the window is for testing host.
             ''' When testing host, there are no Treeview rows above '''
             text = "🡅 🡅  Slide scrollbar above to see Test Host results  🡅 🡅"
-        self.fld_intro = tk.Label(frame, text=text, font=self.font)
-        self.fld_intro.grid(row=1, column=1, columnspan=3, stick=tk.W)
+        self.fld_intro = tk.Label(frame, text=text, font=g.FONT)
+        self.fld_intro.grid(row=1, column=1, columnspan=3, stick=tk.EW)
 
         ''' one_loc_var() wrapper for creating all screen input variables '''
         self.curr_row = 2  # Current row number for self.one_loc_var to incr
@@ -1262,10 +1294,10 @@ class Locations(LocationsCommonSelf):
         col = 1 if self.curr_row < 5 else 0  # Column number for text
         span = 1 if self.curr_row < 5 else 2  # Column span for text
 
-        tk.Label(self.curr_frame, text=text, font=self.font).\
+        tk.Label(self.curr_frame, text=text, font=g.FONT).\
             grid(row=self.curr_row, column=col, columnspan=span, sticky=tk.W)
         fld = tk.Entry(self.curr_frame, textvariable=scr_name,
-                       state='readonly', font=self.font)
+                       state='readonly', font=g.FONT)
         fld.grid(row=self.curr_row, column=2, columnspan=2, sticky=tk.EW,
                  padx=5, pady=5)
         scr_name.set(scr_value)  # Assign clearing value
@@ -1288,7 +1320,7 @@ class Locations(LocationsCommonSelf):
                 return  # Button already created
             # print("self.scr_wakecmd.get():", self.scr_wakecmd.get())
             self.test_host_button = tk.Button(
-                self.main_frame, text="🔍 Test Host Wakeup", font=self.font,
+                self.main_frame, text="🔍 Test Host Wakeup", font=g.FONT,
                 width=g.BTN_WID2 + 4, command=lambda: self.test_common(self.main_top))
             self.test_host_button.grid(row=14, column=2, padx=5, pady=5, sticky=tk.W)
             if self.tt:
@@ -1374,9 +1406,7 @@ class Locations(LocationsCommonSelf):
             title = "Existing locations for reference only!"
             text = "Cannot pick existing location when a new location name " + \
                    "is required.\n\nEnter a Unique Name for the new Location."
-            self.info.cast(title + "\n\n" + text, 'error')
-            thr = self.get_thread_func()
-            message.ShowInfo(self.main_top, title, text, icon='error', thread=thr)
+            self.out_fact_show(title, text, 'error')
             return
 
         title = "Location is currently open!"
@@ -1390,13 +1420,6 @@ class Locations(LocationsCommonSelf):
                 text = "Cannot compare currently opened location to itself."
             if text:  # When no text there is no error.
                 return self.out_fact_show(title, text, 'error')
-
-        #if self.state == 'open' and tree_code == self.open_code:
-        #    text = "Cannot reopen currently opened location."
-        #    self.info.cast(title + "\n\n" + text, 'error')
-        #    thr = self.get_thread_func()
-        #    message.ShowInfo(self.main_top, title, text, icon='error', thread=thr)
-        #    return
 
         ''' Highlight row clicked '''
         toolkit.tv_tag_remove_all(self.loc_view.tree, 'loc_sel')
@@ -1522,48 +1545,39 @@ class Locations(LocationsCommonSelf):
             text = "Changes to Music Top Directory disabled when editing " + \
                    "currently opened location.\n\nYou can start mserve with a " + \
                    "random Artist as parameter 1 if you need to change.\n\n" + \
-                   "You can also open a different location and then " + \
-                   "'Edit' this location again."
-            self.info.cast(title + "\n\n" + text, 'warning')
-            thr = self.get_thread_func()
-            message.ShowInfo(self.main_top, title, text, icon='warning', thread=thr)
+                   "You can also 'Open and Play' a different location and then " + \
+                   "'Edit' this current location."
+            self.out_fact_show(title, text, 'warning')
 
-        text = ""  # Default = all commands installed
+        text = ""  # If text stays blank, then all commands are installed
         if self.fld_host:  # nmap and nc installed?
             self.fld_host['state'] = 'normal'
         else:
             text += "- 'nmap' and/or 'nc' commands were not found.\n"
-
         if self.fld_wakecmd:  # Is wakeonlan installed?
             self.fld_wakecmd['state'] = 'normal'
         else:
             text += "- 'wakeonlan' command was not found.\n"
-
         if self.fld_testcmd:  # Is ssh installed?
             self.fld_testcmd['state'] = 'normal'
             self.fld_testrep['state'] = 'normal'
         else:
             text += "- 'ssh' command was not found.\n"
-
         if self.fld_mountcmd:  # Is sshfs installed?
             self.fld_mountcmd['state'] = 'normal'
         else:
             text += "= 'sshfs' command was not found.\n"
-
         if self.fld_touchcmd:  # Is ssh installed?
             self.fld_touchcmd['state'] = 'normal'  # Replaces activecmd
             self.fld_touchmin['state'] = 'normal'  # Replaces activemin
             # No need for more text as 'ssh' is covered above in fld_testcmd
-
         if text and self.do_tell_commands:
             title = "Some features are hidden!"
             text = "The following command(s) not found:\n\n" + text
             text += "\nClick the 'Help' button to go to the pippim.com website."
             text += "\nYou can review what the commands do and if you need them."
-            self.info.cast(title + "\n\n" + text)
-            thr = self.get_thread_func()
-            message.ShowInfo(self.main_top, title, text, thread=thr)
-            self.do_tell_commands = False
+            self.out_fact_show(title, text)
+            self.do_tell_commands = False  # Only show msg once per session.
 
         self.fld_comments['state'] = 'normal'
         self.fld_image_path['state'] = 'normal'
@@ -1593,7 +1607,7 @@ class Locations(LocationsCommonSelf):
             text = "Missing!"
 
         self.apply_button = tk.Button(
-            self.main_frame, text="✔ " + text, font=self.font,
+            self.main_frame, text="✔ " + text, font=g.FONT,
             width=g.BTN_WID2 - 2, command=self.apply)
         self.apply_button.grid(row=14, column=3, padx=5, pady=5, sticky=tk.W)
         self.main_top.bind("<Return>", self.apply)
@@ -1610,36 +1624,32 @@ class Locations(LocationsCommonSelf):
         
         # text line to build for row 1 of main_frame or test_frame
         text = "Code: " + self.act_code
+        ''' Bail out early if off-line remote host '''
+        if self.act_host and self.act_host != self.open_host:
+            text += "  | Last modified time and free space not available."
+            self.fld_intro['text'] = text
+            return
+
         self.act_modify_time = 0.0  # Assume worse-case scenario
         self.total_bytes = 0
         self.free_bytes = 0
         # noinspection PyBroadException
         try:
-            ''' Validate Music Top Directory has modify_time '''
-
-            # If host_down below freezes.
-            # But Ctrl+C from command line allows exit
-            # Start below changes but still not good enough because
-            # validate_host should be run and that requires passing parameter
-            # for self.act_host instead of self.open_host.  Also there can be
-            # more than one mount for multiple hosts?
-            if not self.act_host or self.act_host == self.open_host:
-                ''' Top Directory last modified time '''
-                file_stat = os.stat(self.act_topdir)
-                self.act_modify_time = file_stat.st_mtime
-                ''' Total space and free space '''
-                statvfs = os.statvfs(self.act_topdir)
-                self.total_bytes = statvfs.f_frsize * statvfs.f_blocks  # Size of filesystem in bytes
-                self.free_bytes = statvfs.f_frsize * statvfs.f_bavail  # Number of free bytes that ordinary users
+            ''' Top Directory last modified time '''
+            file_stat = os.stat(self.act_topdir)
+            self.act_modify_time = file_stat.st_mtime
+            ''' Total space and free space '''
+            statvfs = os.statvfs(self.act_topdir)
+            self.total_bytes = statvfs.f_frsize * statvfs.f_blocks  # Size of filesystem in bytes
+            self.free_bytes = statvfs.f_frsize * statvfs.f_bavail  # Number of free bytes that ordinary users
         except:
             pass
-
-        text += "  | Last modified: "
-        text += tmf.ago(self.act_modify_time)
-        if not self.total_bytes == 0:
+        if self.act_modify_time != 0.0:
+            text += "  | Last modified: "
+            text += tmf.ago(self.act_modify_time)
+        if self.total_bytes != 0:
             text += "  | Free: " + toolkit.human_bytes(self.free_bytes)
             text += " of: " + toolkit.human_bytes(self.total_bytes)
-
         self.fld_intro['text'] = text
 
     # noinspection PyUnusedLocal
@@ -1693,10 +1703,7 @@ class Locations(LocationsCommonSelf):
             text += "\n\nNote you can start mserve and pass a directory name to play."
             text += "\nIn this case a location is not required. For example, at the:"
             text += "\ncommand line you can type: 'm /home/me/Music/Compilations'"
-
-            self.info.cast(title + "\n\n" + text, 'error')
-            thread = self.get_thread_func()
-            message.ShowInfo(self.main_top, title, text, icon='error', thread=thread)
+            self.out_cast_show(title, text, 'error')  # Splash instructions
 
         else:
             self.act_topdir = new_topdir
@@ -1800,19 +1807,14 @@ class Locations(LocationsCommonSelf):
         text += "Only '.png' and '.jpg' files should be used.\n\n"
         text += "Image will be scaled to 150 pixels high, so\n"
         text += "larger images only waste storage space."
-        self.info.cast(title + "\n\n" + text, 'error')
-        thread = self.get_thread_func()
-        message.ShowInfo(self.main_top, title, text,
-                         icon='error', thread=thread)
+        self.out_fact_show(title, text, 'error')
         return False
 
     def highlight_callback(self, tree_code):
-        """
-        As lines are highlighted in treeview, this function is called.
+        """ Called as lines are highlighted in treeview.
         :param tree_code: Location number used as iid inside treeview
-        :return: None
-        """
-        # print("tree_code:", tree_code)
+        :return: None """
+        # Future function to instantly show location details highlighted
         pass
 
     def build_locations(self):
@@ -1821,6 +1823,10 @@ class Locations(LocationsCommonSelf):
         self.all_names = []  # Names matching all_codes
         self.all_topdir = []  # Descriptions matching all_codes
         self.loc_list = []  # List of dictionaries inserted into Treeview
+        global LIST  # Temporary
+        #LIST = []  # Temporary "   ☰ " + self.lib_top_playlist_name + " - mserve")
+        #_tkinter.TclError: character U+1f3b5 is above the range (U+0000-U+FFFF) allowed by Tcl
+        # SQL is unicode but old LODICT is <type str>
         ''' Read all locations from SQL Location Table into work lists '''
         for row in sql.loc_cursor.execute("SELECT * FROM Location"):
             d = dict(row)
@@ -1830,70 +1836,66 @@ class Locations(LocationsCommonSelf):
             self.all_codes.append(self.act_code)  # must match all_topdir order
             self.all_names.append(self.act_name)  # use to verify unique names
             self.all_topdir.append(self.act_topdir)  # must match all_codes order
+            #LIST.append(self.make_ver1_dict_from_sql_dict(d))  # Temporary
 
     def out_cast_show_print(self, title, text, icon='info'):
-        """ Check availability of output streams and send to channels
-            This version generally only used during startup.
-            Returns True if icon is 'info', else returns False.
-        """
+        """ Send self.info.cast(), message.ShowInfo() and print(). """
         if self.info:
             self.info.cast(title + "\n\n" + text, icon)
-        if self.get_thread_func:  # self.top
-            top = self.out_get_parent()
-            if top:
-                message.ShowInfo(top, title, text, icon=icon,
-                                 thread=self.get_thread_func())
+        self.out_show(title, text, icon)
         print("\n" + title + "\n\n" + text + "\n")
         return icon == 'info'  # Return value has little importance.
 
+    def out_cast_show(self, title, text, icon='info'):
+        """ Send self.info.cast() and message.ShowInfo() with print() backup. """
+        if self.info:
+            self.info.cast(title + "\n\n" + text, icon)
+        if not self.out_show(title, text, icon):
+            # Give them something in console because message.ShowInfo() broken
+            print("\n" + title + "\n\n" + text + "\n")
+        return icon == 'info'  # Return value has little importance.
+
     def out_cast_print(self, title, text, icon='info'):
-        """ Check availability of output streams and send to channels
-            This version generally only used during startup.
-            Returns True if icon is 'info', else returns False.
-        """
+        """ Send self.info.cast() and print(). """
         if self.info:
             self.info.cast(title + "\n\n" + text, icon)
         print("\n" + title + "\n\n" + text + "\n")
         return icon == 'info'  # Return value has little importance.
 
     def out_fact_print(self, title, text, icon='info'):
-        """ Check availability of output streams and send to channels
-            This version generally only used during startup.
-            Returns True if icon is 'info', else returns False.
-        """
+        """ Send self.info.fact() and print(). """
         if self.info:
             self.info.fact(title + "\n\n" + text, icon)
         print("\n" + title + "\n\n" + text + "\n")
         return icon == 'info'  # Return value has little importance.
     
     def out_fact_show(self, title, text, icon='info'):
-        """ Check availability of output streams and send to channels
-            This version generally used during data entry.
-            Returns True if icon is 'info', else returns False.
-        """
+        """ Send self.info.fact() and message.ShowInfo() with print() backup. """
         if self.info:
             self.info.fact(title + "\n\n" + text, icon)
-        if self.get_thread_func:
-            top = self.out_get_parent()
-            if top:
-                message.ShowInfo(top, title, text, icon=icon,
-                                 thread=self.get_thread_func())
+        if not self.out_show(title, text, icon):
+            # Give them something in console because message.ShowInfo() broken
+            print("\n" + title + "\n\n" + text + "\n")
+        return icon == 'info'  # Return value has little importance.
+
+    def out_fact(self, title, text, icon='info'):
+        """ send self.info.fact() with print() backup. """
+        if self.info:
+            self.info.fact(title + "\n\n" + text, icon)
         else:
             # Give them something in console because self.info not defined
             print("\n" + title + "\n\n" + text + "\n")
         return icon == 'info'  # Return value has little importance.
 
-    def out_fact(self, title, text, icon='info'):
-        """ Check availability of output streams and send to channels
-            This version generally only used during startup.
-            Returns True if icon is 'info', else returns False.
-        """
-        if self.info:
-            self.info.fact(title + "\n\n" + text, icon)
-        else:
-            # Give them something in console because self.info not defined
-            print("\n" + title + "\n\n" + text + "\n")
-        return icon == 'info'  # Return value has little importance.
+    def out_show(self, title, text, icon='info'):
+        """ Called above to save 5 lines of code. """
+        if self.get_thread_func:
+            top = self.out_get_parent()
+            if top:
+                message.ShowInfo(top, title, text, icon=icon,
+                                 thread=self.get_thread_func)
+                return True
+        return False
 
     def out_get_parent(self):
         """ Return self.main_top, self.parent or None """
@@ -2071,7 +2073,7 @@ class Locations(LocationsCommonSelf):
 
     def save_touch_time(self):
         """ Called by mserve to keep track of last touch time.
-            Note using SELF.OPEN_XXX variables and not self.act_xxx
+            Uses self.open_xxx variables !
         """
         if self.main_top:
             return  # Don't want to wipe out current data entry buffer
@@ -2090,7 +2092,7 @@ class Locations(LocationsCommonSelf):
     def delete_location(self):
         """ Delete Location  when 'Delete' button applied. """
         sql.loc_cursor.execute("DELETE FROM Location WHERE Id=?", [self.act_row_id])
-        sql.con.commit()
+        sql.con.commit()  # con.commit() must follow cursor.execute()
 
     def make_act_from_empty_dict(self):
         """ July 27, 2023 - Currently only used when lcs.new() is called. """
@@ -2356,6 +2358,13 @@ class Locations(LocationsCommonSelf):
             Called my mserve.py call to self.load_last_location()
             Always use self.open_xxx and never self.act_xxx fields which
             can be changed in Maintenance.
+
+# NOTE: For Debugging, run the following commands on the host and client:
+#       HOST (Open a terminal enter command to run forever):
+#           mserve_client.sh -d
+#       CLIENT (Copy to terminal and replace "<HOST>" with Host name):
+#           while : ; do ssh <HOST> "cat /tmp/mserve_client.log" ; sleep 60 ; done
+
         """
         #print("location.py Locations.validate_host(toplevel):", toplevel)
         title = "location.py Locations.validate_host()"
@@ -2898,7 +2907,9 @@ class Locations(LocationsCommonSelf):
             self.open_sshfs_used = False
 
     def reset(self, shutdown=False):
-        """ Named "reset" because used by shutdown as well. """
+        """ Named "reset" because used by shutdown as well.
+            When called with self.main_top.protocol("WM_DELETE_WINDOW", self.reset)
+            shutdown will contain <Tkinter.Event instance at 0x7f4ebb968ef0> """
         if self.tt and self.main_top:  # toolkit.Tooltips() won't exist during early startup
             self.tt.close(self.main_top)
         if self.main_top:
@@ -2907,9 +2918,11 @@ class Locations(LocationsCommonSelf):
             self.main_top.destroy()
             self.main_top = None  # Destroying doesn't set to 'None' for testing
         LocationsCommonSelf.__init__(self)  # Reset self. variables
-        ''' After top destroyed, enable all File Menu options for locations '''
-        if not shutdown:  # When shutting down lib_top may not exist.
-            self.enable_lib_menu()
+        ''' Enable File, Edit & View Dropdown Menus for locations '''
+        if isinstance(shutdown, tk.Event):
+            self.enable_lib_menu()  # <Escape> bind
+        elif not shutdown:  # When shutting down lib_top may not exist.
+            self.enable_lib_menu()  # Restore deactivated options
 
     # noinspection PyUnusedLocal
     def apply(self, *args):
@@ -2963,8 +2976,6 @@ class CompareCommonSelf:
         self.src_mt = None                  # Source modification time
         self.trg_mt = None                  # Target modification time
         self.cmp_msg_box = None             # message.Open()
-
-        self.font = (None, g.MON_FONTSIZE)
 
 
 class Compare(CompareCommonSelf):
@@ -3098,10 +3109,10 @@ class Compare(CompareCommonSelf):
         self.cmp_tree.heading("TrgModified", text="Target Modified")
         self.cmp_tree.column("SrcSize", width=140, anchor=tk.E,
                              stretch=tk.YES)
-        self.cmp_tree.heading("SrcSize", text="Source " + CFG_DIVISOR_UOM)
+        self.cmp_tree.heading("SrcSize", text="Source " + g.CFG_DIVISOR_UOM)
         self.cmp_tree.column("TrgSize", width=140, anchor=tk.E,
                              stretch=tk.YES)
-        self.cmp_tree.heading("TrgSize", text="Target " + CFG_DIVISOR_UOM)
+        self.cmp_tree.heading("TrgSize", text="Target " + g.CFG_DIVISOR_UOM)
         self.cmp_tree.column("Action", width=280, stretch=tk.YES)
         self.cmp_tree.heading("Action", text="Action")
         self.cmp_tree.column("src_mtime")  # Hidden modification time
@@ -3109,26 +3120,21 @@ class Compare(CompareCommonSelf):
         self.cmp_tree.grid(row=0, column=0, sticky=tk.NSEW)
         self.cmp_tree["displaycolumns"] = ("SrcModified", "TrgModified",
                                            "SrcSize", "TrgSize", "Action")
-        ''' Treeview Scrollbars '''
-        # Create a vertical scrollbar linked to the frame.
+        ''' Treeview Scrollbars - Vertical & Horizontal '''
         v_scroll = tk.Scrollbar(frame2, orient=tk.VERTICAL, width=sbar_width,
                                 command=self.cmp_tree.yview)
         v_scroll.grid(row=0, column=1, sticky=tk.NS)
         self.cmp_tree.configure(yscrollcommand=v_scroll.set)
-
-        # Create a horizontal scrollbar linked to the frame.
         h_scroll = tk.Scrollbar(frame2, orient=tk.HORIZONTAL, width=sbar_width,
                                 command=self.cmp_tree.xview)
         h_scroll.grid(row=1, column=0, sticky=tk.EW)
         self.cmp_tree.configure(xscrollcommand=h_scroll.set)
-
-        ''' Treeview Buttons '''
+        ''' Frame3 for Treeview Buttons '''
         frame3 = tk.Frame(master_frame, bg="Blue", bd=2, relief=tk.GROOVE,
                           borderwidth=BTN_BRD_WID)
         frame3.grid_rowconfigure(0, weight=1)
         frame3.grid_columnconfigure(0, weight=0)
         frame3.grid(row=1, column=0, sticky=tk.NW)
-
         ''' ✘ Close Button '''
         # TODO: we aren't keeping remote location awake only home location!
         self.cmp_top.bind("<Escape>", self.cmp_close)
@@ -3136,12 +3142,10 @@ class Compare(CompareCommonSelf):
         self.cmp_close_btn = tk.Button(frame3, text="✘ Close",
                                        width=BTN_WID - 4, command=self.cmp_close)
         self.cmp_close_btn.grid(row=0, column=0, padx=2)
-
         ''' Create Treeview using source (START_DIR) as driver '''
         if not self.cmp_populate_tree(trg_dict_iid):  # populate_
             self.cmp_close()  # Files are identical
             return
-
         ''' 🗘  Update differences Button u1f5d8 🗘'''
         self.update_differences_btn = tk.Button(frame3, width=BTN_WID + 4,
                                                 text="🗘  Update differences",
@@ -3191,14 +3195,10 @@ class Compare(CompareCommonSelf):
         self.src_mt = lc.ModTime(LODICT['iid'])
         self.trg_mt = lc.ModTime(trg_dict_iid)
 
-        #first_artist = True
         LastArtist = ""
         LastAlbum = ""
-        #first_album = True
         CurrAlbumId = ""  # When there are no albums?
         CurrArtistId = ""
-        # do_debug_steps = 0 # DEBUGGING
-        last_i = 0
 
         for i, os_name in enumerate(self.fake_paths):
             self.cmp_top.update()  # Allow close button to abort right away
@@ -3232,8 +3232,8 @@ class Compare(CompareCommonSelf):
 
             ''' Build full song path from song_list[] '''
             src_path = os_name
-            src_path = src_path.replace(os.sep + NO_ARTIST_STR, '')
-            src_path = src_path.replace(os.sep + NO_ALBUM_STR, '')
+            src_path = src_path.replace(os.sep + g.NO_ARTIST_STR, '')
+            src_path = src_path.replace(os.sep + g.NO_ALBUM_STR, '')
 
             # os.stat gives us all of file's attributes
             src_stat = os.stat(src_path)
@@ -3304,25 +3304,16 @@ class Compare(CompareCommonSelf):
                     # Impossible situation
                     action = "OOPS same time?"
 
-            # fsize = '{:n}'.format(size)     # Format size with locale separators
-            converted = float(src_size) / float(CFG_DIVISOR_AMT)
-            src_fsize = str(round(converted, CFG_DECIMAL_PLACES + 2))
-            converted = float(trg_size) / float(CFG_DIVISOR_AMT)
-            trg_fsize = str(round(converted, CFG_DECIMAL_PLACES + 2))
-            #                 '{:n}'.format(Size))) # 9,999,999 format
+            converted = float(src_size) / float(g.CFG_DIVISOR_AMT)
+            # Aug 4/23 - DEC_PLACE used to be 1 now it's 0
+            src_fsize = '{:n}'.format(round(converted, g.CFG_DECIMAL_PLACES + 2))
+            converted = float(trg_size) / float(g.CFG_DIVISOR_AMT)
+            trg_fsize = '{:n}'.format(round(converted, g.CFG_DECIMAL_PLACES + 2))
             # Format date as "Abbreviation - 99 Xxx Ago"
             src_ftime = tmf.ago(float(src_stat.st_mtime))
             trg_ftime = tmf.ago(float(trg_stat.st_mtime))
 
-            # Catch programmer's bug
-            if i == last_i:
-                print('same song ID twice in a row:', i)
-                continue
-            last_i = i
-
-            ''' Add the song '''
-            # NOTE: Numeric 0 allowed for index except for 0 which is converted
-            #       to a parent ID, EG I003. Convert to string to fix bug.
+            ''' Insert song into comparison treeview and show on screen '''
             self.cmp_tree.insert(CurrAlbumId, "end", iid=str(i), text=Song,
                                  values=(src_ftime, trg_ftime, src_fsize, trg_fsize, action,
                                          float(src_stat.st_mtime), float(trg_stat.st_mtime)),
@@ -3481,6 +3472,16 @@ class Compare(CompareCommonSelf):
         else:
             print('cmp_decipher_arrow(): was passed invalid arrow')
             return None, None
+
+    def sneaky_sleep(self):
+        """ Sneaky_sleep sleeps as little as possible.
+            The objective is to allow 30 fps response time for music player.
+            Start by sleeping if refresh_thread takes 10 ms then 20 ms of
+            work can be done between calls. If refresh_thread only takes 2 ms
+            then 28 ms of work can be done.
+
+        """
+        print(self.top)
 
 
 # End of location.py

@@ -484,26 +484,23 @@ def textbox(box, text, align, lines):
     box.configure(state="disabled")
 
 
-#def wait_window_func(self, *args):
 def wait_window_func(self):
     """ Even with no thread passed, this allows other windows to remain
         updating graphic animations at 30 fps
     """
-    #print('wait_window() has started. self.thread is:', self.thread)
-    #print('Sleeping 33ms.  self.top_level is:', self.top_level)
     if not self.thread:
         return
 
     while self.winfo_exists():  # Loop while our window exists
         now = time.time()
-        if self.thread:
-            self.thread()
+        if self.thread:  # Pass control to animations if thread passed
+            result = self.thread()  # This calls thread, or gets the thread name
+            if callable(result):  # The result isn't True/False but rather a thread
+                result()  # Aug 4/23 Call result of get_thread_func that changes
         sleep = 33 - (time.time() - now) * 1000
         if sleep < 1:
             sleep = 1
         self.top_level.after(int(sleep))
-
-    #print('wait_window() has ended')
 
 
 if 'BIG_SPACE' not in locals() and 'BIG_SPACE' not in globals():

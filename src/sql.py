@@ -1,14 +1,17 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-Author: Pippim
-License: GNU GPLv3
+Author: pippim.com
+License: GNU GPLv3. (c) 2020 - 2023
 Source: This repository
 Description: mserve - Music Server - SQLite3 Interface
 """
 
 from __future__ import print_function  # Must be first import
 from __future__ import with_statement  # Error handling for file opens
+# from __future__ import unicode_literals  # Not needed.
+import warnings  # 'warnings' advises which commands aren't supported
+warnings.simplefilter('default')  # in future Python versions.
 
 #==============================================================================
 #
@@ -39,6 +42,33 @@ from __future__ import with_statement  # Error handling for file opens
 #
 #==============================================================================
 
+''' TODO:
+    Create stub to prevent calling from command line:
+
+    $ python encoding.py
+    location.py was forced to run g.init()
+    'from location import FNAME_LIBRARY' FAILED !!!
+    Using hard-coded: /home/rick/.local/share/mserve/library.db
+
+'''
+
+''' If not called by 'mserve.py' do nothing '''
+import inspect
+import os
+try:
+    filename = inspect.stack()[1][1]  # parent filename s/b "mserve.py"
+    #(<frame object>, './m', 50, '<module>', ['import mserve\n'], 0)
+    parent = os.path.basename(filename)
+    if parent != "mserve.py":
+        print("sql.py must be called by 'mserve.py' but is being called " +
+              "by: '" + parent + "'.")
+        #exit()
+        # sql.py must be called by 'mserve.py' but is called by: monitor.py
+except IndexError:  # list index out of range
+    ''' Called from the command line '''
+    print("sql.py cannot be called from command line. Aborting...")
+    exit()
+
 import os
 import re
 import json
@@ -54,13 +84,16 @@ import global_variables as g        # should be self-explanatory
 if g.USER is None:
     print('sql.py was forced to run g.init()')
     g.init()
+import toolkit
 import timefmt as tmf               # Our custom time formatting functions
 import external as ext
 
 try:
+    # Works when mserve.py is called by 'm'
     from location import FNAME_LIBRARY  # SQL database name (SQLite3 format)
     from location import FNAME_LIBRARY_NEW
 except ImportError:
+    # Appears when running mserve.py directly
     print("'from location import FNAME_LIBRARY' FAILED !!!")
     FNAME_LIBRARY = g.USER_DATA_DIR + os.sep + "library.db"
     FNAME_LIBRARY_NEW = g.USER_DATA_DIR + os.sep + "library_new.db"
@@ -99,7 +132,7 @@ azlyrics link, azlyrics download time
 con = cursor = hist_cursor = loc_cursor = None
 new_con = new_cursor = new_hist_cursor = None
 NEW_LOCATION = False
-START_DIR = PRUNED_DIR = LODICT = None
+START_DIR = PRUNED_DIR = lcs = LODICT = None
 
 
 def populate_tables(SortedList, start_dir, pruned_dir, lodict):
@@ -107,15 +140,19 @@ def populate_tables(SortedList, start_dir, pruned_dir, lodict):
     global NEW_LOCATION, START_DIR, PRUNED_DIR, LODICT
     START_DIR = start_dir
     PRUNED_DIR = pruned_dir  # Toplevel directory, EG /mnt/music/
-    LODICT = lodict        # Location dictionary
+    LODICT = lodict  # Location dictionary Aug 3/23 - soon will be <type None>
 
     ''' NOTE from mserve.py:
     LODICT['iid'] = 'new'  # June 6, 2023 - Something new to fit into code
     LODICT['name'] = music_dir  # Name required for title bar
     NEW_LOCATION = True  # Don't use location dictionary (LODICT) fields
     '''
-    if LODICT['iid'] == 'new':
-        NEW_LOCATION = True
+    if LODICT:  # Temporary for conversion away from LODICT
+        if LODICT['iid'] == 'new':
+            NEW_LOCATION = True
+    else:
+        if lcs.open_code == 'new':
+            NEW_LOCATION = True
 
     #open_db()  # July 24, 2023 Note new Locations() class has alredy opened
     open_new_db()  # July 13, 2023
@@ -186,14 +223,17 @@ def populate_tables(SortedList, start_dir, pruned_dir, lodict):
     # June 3, 2023 AFTER : sql.create_tables(): 0.0638458729
 
 
-def open_db():
+def open_db(LCS=None):
     """ Open SQL Tables - Music Table and History Table
         Create Tables and Indices that don't exist
     """
 
     #open_new_db()  # Database 'library_new.db' only used for conversions.
 
-    global con, cursor, hist_cursor, loc_cursor
+    global con, cursor, hist_cursor, loc_cursor, lcs
+    if LCS:
+        lcs = LCS  # Locations class
+
     con = sqlite3.connect(FNAME_LIBRARY)
 
     # MUSIC TABLE
@@ -882,9 +922,11 @@ def update_metadata(key, artist, album, title, genre, tracknumber, date,
 
     Size = stat.st_size                     # File size in bytes
     Time = stat.st_mtime                    # File's current mod time
-    SourceMaster = LODICT['name']
-    SourceDetail = time.asctime(time.localtime(Time))
-    Comments = "Found: " + time.asctime(time.localtime(time.time()))
+    #SourceMaster = lcs.open_name
+    #SourceMaster = LODICT['name']
+    #SourceDetail = time.asctime(time.localtime(Time))
+    #Comments = "Found: " + time.asctime(time.localtime(time.time()))
+    Comments = "Found: " + asc_time()
     if seconds is not None:
         FloatSeconds = float(str(seconds))  # Convert from integer
     else:
@@ -895,18 +937,52 @@ def update_metadata(key, artist, album, title, genre, tracknumber, date,
     # If adding, the file history record may be missing too.
     if action == 'init' and \
        not hist_check(d['Id'], 'file', action):
-        hist_add(Time, d['Id'], g.USER, 'file', action, SourceMaster,
-                 SourceDetail, key, Size, Count, FloatSeconds,
+        hist_add(Time, d['Id'], g.USER, 'file', action, loc_name(),
+                 asc_time(Time), key, Size, Count, FloatSeconds,
                  Comments)
+        #hist_add(Time, d['Id'], g.USER, 'file', action, SourceMaster,
+        #         SourceDetail, key, Size, Count, FloatSeconds,
+        #         Comments)  # OLD METHOD
 
     # Add the meta Found or changed record
-    hist_add(Time, d['Id'], g.USER, 'meta', action, SourceMaster,
-             SourceDetail, key, Size, Count, FloatSeconds,
+    hist_add(Time, d['Id'], g.USER, 'meta', action, loc_name(),
+             asc_time(Time), key, Size, Count, FloatSeconds,
              Comments)
+    #hist_add(Time, d['Id'], g.USER, 'meta', action, SourceMaster,
+    #         SourceDetail, key, Size, Count, FloatSeconds,
+    #         Comments)  # Aug 3/23 conversion
 
     con.commit()
 
     return True  # Metadata was updated in SQL database
+
+
+def loc_code():
+    """ Simple function to return current location code for recording
+        in d['SourceDetail'] SQL History Table column."""
+    if LODICT:  # Temporary for conversion away from LODICT
+        code = LODICT['iid']
+    else:
+        code = lcs.open_code
+    return code
+
+
+def loc_name():
+    """ Simple function to return current location name for recording
+        in d['SourceMaster'] SQL History Table column."""
+    if LODICT:  # Temporary for conversion away from LODICT
+        name = LODICT['name']
+    else:
+        name = lcs.open_name
+    return name
+
+
+def asc_time(Time=None):
+    """ Return Time in "Tue Jun  4 22:58:44 2013" format for recording
+        in d['SourceDetail'] SQL History Table column."""
+    if not Time:
+        Time = time.time()
+    return time.asctime(time.localtime(Time))
 
 
 def update_metadata2(fc, commit=True):
@@ -1088,9 +1164,11 @@ def update_metadata2(fc, commit=True):
 
     Size = stat.st_size                     # File size in bytes
     Time = stat.st_mtime                    # File's current mod time
-    SourceMaster = LODICT['name']
-    SourceDetail = time.asctime(time.localtime(Time))
-    Comments = "Found: " + time.asctime(time.localtime(time.time()))
+    #SourceMaster = lcs.open_name
+    #SourceMaster = LODICT['name']
+    #SourceDetail = time.asctime(time.localtime(Time))
+    #Comments = "Found: " + time.asctime(time.localtime(time.time()))
+    Comments = "Found: " + asc_time()
     if fc.DurationSecs is not None:
         FloatSeconds = float(str(fc.DurationSecs))  # Convert from integer
     else:
@@ -1101,14 +1179,20 @@ def update_metadata2(fc, commit=True):
     # If adding, the file history record may be missing too.
     if action == 'init' and \
        not hist_check(d['Id'], 'file', action):
-        hist_add(Time, d['Id'], g.USER, 'file', action, SourceMaster,
-                 SourceDetail, key, Size, Count, FloatSeconds,
+        hist_add(Time, d['Id'], g.USER, 'file', action, loc_name(),
+                 asc_time(Time), key, Size, Count, FloatSeconds,
                  Comments)
+        #hist_add(Time, d['Id'], g.USER, 'file', action, SourceMaster,
+        #         SourceDetail, key, Size, Count, FloatSeconds,
+        #         Comments)  # Aug 3/23 conversion
 
     # Add the meta Found or changed record
-    hist_add(Time, d['Id'], g.USER, 'meta', action, SourceMaster,
-             SourceDetail, key, Size, Count, FloatSeconds,
+    hist_add(Time, d['Id'], g.USER, 'meta', action, loc_name(),
+             asc_time(Time), key, Size, Count, FloatSeconds,
              Comments)
+    #hist_add(Time, d['Id'], g.USER, 'meta', action, SourceMaster,
+    #         SourceDetail, key, Size, Count, FloatSeconds,
+    #         Comments)  # Aug 3/23 conversion
 
     con.commit()
 
@@ -1222,9 +1306,12 @@ def hist_default_dict(key, time_type='access'):
         print('SQL hist_default_dict() error no music row for:', key)
         return None
 
-    hist = {}                               # History dictionary
-    SourceMaster = LODICT['name']
-    hist['SourceMaster'] = SourceMaster
+    hist = dict()  # History dictionary
+
+    #SourceMaster = lcs.open_name
+    #SourceMaster = LODICT['name']
+    #hist['SourceMaster'] = SourceMaster  # Aug 3/23 - conversion
+    hist['SourceMaster'] = loc_name()
 
     ''' Build full song path '''
     full_path = START_DIR.encode("utf8") + d['OsFileName']
@@ -1247,8 +1334,9 @@ def hist_default_dict(key, time_type='access'):
         print('SQL hist_default_dict(key, time_type) invalid type:', time_type)
         return None
 
-    SourceDetail = time.asctime(time.localtime(Time))
-    hist['SourceDetail'] = SourceDetail
+    #SourceDetail = time.asctime(time.localtime(Time))
+    #hist['SourceDetail'] = SourceDetail
+    hist['SourceDetail'] = asc_time(Time)
     # Aug 10/2021 - Seconds always appears to be None
     if Seconds is not None:
         FloatSeconds = float(str(Seconds))  # Convert from integer
@@ -1320,7 +1408,8 @@ def hist_init_lost_and_found():
     User = g.USER           # From location.py
     Type = 'file'           # This records OS filename into history
     Action = 'init'         # Means we "found" the file or it was renamed
-    SourceMaster = LODICT['name']
+    #SourceMaster = lcs.open_name
+    #SourceMaster = LODICT['name']
     Comments = 'Automatically added by hist_init_lost_and_found()'
 
     ''' Read through all SQL Music Table Rows '''
@@ -1352,7 +1441,7 @@ def hist_init_lost_and_found():
 
         Size = stat.st_size                     # File size in bytes
         Time = stat.st_mtime                    # File's current mod time
-        SourceDetail = time.asctime(time.localtime(Time))
+        #SourceDetail = time.asctime(time.localtime(Time))
         if Seconds is not None:
             FloatSeconds = float(str(Seconds))  # Convert from integer
         else:
@@ -1363,15 +1452,20 @@ def hist_init_lost_and_found():
 
         # Add the Song Found row
         # Aug 8/21 use time.time() instead of job start time.
-        hist_add(time.time(), MusicId, User, Type, Action, SourceMaster, SourceDetail, 
-                 Target, Size, Count, FloatSeconds, Comments)
+        hist_add(time.time(), MusicId, User, Type, Action, loc_name(), 
+                 asc_time(Time), Target, Size, Count, FloatSeconds, Comments)
+        #hist_add(time.time(), MusicId, User, Type, Action, SourceMaster, SourceDetail, 
+        #         Target, Size, Count, FloatSeconds, Comments)  # Aug 3/23 - conversion
         add_count += 1
 
         if Title is not None:
             # Add the Metadata Found row
-            hist_add(time.time(), MusicId, User, 'meta', Action, SourceMaster,
-                     SourceDetail, OsFileName, Size, Count, FloatSeconds, 
+            hist_add(time.time(), MusicId, User, 'meta', Action, loc_name(),
+                     asc_time(Time), OsFileName, Size, Count, FloatSeconds,
                      Comments)
+            #hist_add(time.time(), MusicId, User, 'meta', Action, SourceMaster,
+            #         SourceDetail, OsFileName, Size, Count, FloatSeconds, 
+            #         Comments)  # Aug 3/23 - conversion
             add_meta_count += 1
 
     #print('Songs on disk:', song_count, 'Added count:', add_count, \
@@ -1555,7 +1649,8 @@ def hist_init_lyrics_and_time():
     Type = 'lyrics'
     Action = 'scrape'
     SourceMaster = 'Genius'  # Website lyrics were scraped from
-    Comments = 'Automatically added by hist_init_lyrics_and_time()'
+    Comments = 'Automatically added by hist_init_lyrics_and_time(): '
+    Comments += asc_time()
 
     # Select songs that have lyrics (Python 'not None:' = SQL 'NOT NULL')
     for row in cursor.execute("SELECT Id, OsFileName, LyricsScore, " +
@@ -1582,7 +1677,7 @@ def hist_init_lyrics_and_time():
         # os.stat gives us all of file's attributes
         stat = os.stat(full_path)
         Time = stat.st_atime                    # File's current access time
-        SourceDetail = time.asctime(time.localtime(Time))
+        #SourceDetail = time.asctime(time.localtime(Time))
         Size = len(LyricsScore)        # Can change after user edits
         Count = LyricsScore.count('\n')
         Target = 'https://genius.com/' + OsFileName
@@ -1597,8 +1692,10 @@ def hist_init_lyrics_and_time():
                 print('time count:', time_count, Target)
 
         # Estimate 4 seconds to download lyrics (webscrape)
-        hist_add(Time, MusicId, User, Type, Action, SourceMaster, SourceDetail, 
-                 Target, Size, Count, 4.0, Comments)
+        hist_add(Time, MusicId, User, Type, Action, SourceMaster, 
+                 asc_time(Time), Target, Size, Count, 4.0, Comments)
+        #hist_add(Time, MusicId, User, Type, Action, SourceMaster, SourceDetail, 
+        #         Target, Size, Count, 4.0, Comments)  # Aug 3/23 - conversion
         add_count += 1
 
         if time_count > 0:
@@ -1612,9 +1709,12 @@ def hist_init_lyrics_and_time():
               wakecmd, 'testcmd': testcmd, 'testrep': testrep, 'mountcmd': 
               mountcmd, 'activecmd': activecmd, 'activemin': activemin}
             '''
-            hist_add(Time, MusicId, User, 'time', 'edit', LODICT['name'],
-                     LODICT['iid'], OsFileName, Size, Count, float(Seconds), 
+            hist_add(Time, MusicId, User, 'time', 'edit', loc_name(),
+                     loc_code(), OsFileName, Size, Count, float(Seconds), 
                      Comments)
+            #hist_add(Time, MusicId, User, 'time', 'edit', LODICT['name'],
+            #         LODICT['iid'], OsFileName, Size, Count, float(Seconds), 
+            #         Comments)  # Aug 3/23 - conversion
             add_time_count += 1
 
     #print('Songs with lyrics:', song_count, 'Added count:', add_count, \
@@ -1628,7 +1728,7 @@ def hist_init_lyrics_and_time():
 def loc_add(Code, Name, ModifyTime, ImagePath, MountPoint, TopDir, HostName,
             HostWakeupCmd, HostTestCmd, HostTestRepeat, HostMountCmd,
             HostTouchCmd, HostTouchMinutes, Comments):
-    """ Add Location Row """
+    """ Add SQL Location Table Row """
     sql = "INSERT INTO Location (Code, Name, ModifyTime, ImagePath, \
            MountPoint, TopDir, HostName, HostWakeupCmd, HostTestCmd, \
            HostTestRepeat, HostMountCmd, HostTouchCmd, HostTouchMinutes, \
@@ -1644,7 +1744,7 @@ def loc_add(Code, Name, ModifyTime, ImagePath, MountPoint, TopDir, HostName,
 def loc_update(Code, Name, ModifyTime, ImagePath, MountPoint, TopDir, HostName,
                HostWakeupCmd, HostTestCmd, HostTestRepeat, HostMountCmd,
                HostTouchCmd, HostTouchMinutes, Comments, Id):
-    """ Add Location Row """
+    """ Update SQL Location Table Row """
     sql = "UPDATE Location SET Code=?, Name=?, ModifyTime=?, ImagePath=?, \
            MountPoint=?,  TopDir=?, HostName=?, HostWakeupCmd=?, HostTestCmd=?, \
            HostTestRepeat=?, HostMountCmd=?, HostTouchCmd=?, HostTouchMinutes=?, \
@@ -1658,7 +1758,7 @@ def loc_update(Code, Name, ModifyTime, ImagePath, MountPoint, TopDir, HostName,
 
 
 def loc_read(Code):
-    """ Read Location Row for location code """
+    """ Read SQL Location Table Row for location code """
     loc_cursor.execute("SELECT * FROM Location WHERE Code = ?", [Code])
     try:
         d = dict(loc_cursor.fetchone())
@@ -1918,7 +2018,7 @@ class PrettyMusic:
                            'Metadata (available after song played once)',
                            'Lyrics score (usually after Webscraping)',
                            'History Time - Row Number      ' +
-                           ' | Type - Action - Master - Detail - Comments',
+                           ' | Type | Action | Master | Detail | Target | Comments',
                            'Metadata modified']
         # List of part colors - applied to key names in that part
         self.part_color = ['red',
@@ -1982,19 +2082,21 @@ class PrettyMusic:
         rows = hist_cursor.fetchall()
         for sql_row in rows:
             row = dict(sql_row)
-            #print("TODO: finish populating song history into Pretty Music")
-            #print("Target:", type(row['Target']), row['Target'])
-            #print("Comments:", type(row['Comments']), row['Comments'])
+            ''' SQL is in Unicode, to concatenate convert to string '''
+            #key = sql_format_date(row['Time']) + " - " + str(row['Id'])
+            ''' SQL is in Unicode, concatenate with unicode strings '''
+            #d = toolkit.uni_str(" | ")
+            #value = row['Type'] + d + row['Action'] + d + row['SourceMaster'] + d
+            #value += row['SourceDetail'] + d + row['Target'] + d + row['Comments']
+            #value += row['SourceDetail'] + d + row['Target'] + d + row['Comments']
+            #self.dict[key] = value
+            ''' SQL is in Unicode, to concatenate "-" convert to strings '''
             self.dict[sql_format_date(row['Time']) + " - " + str(row['Id'])] = \
-                row['Type'] + " - " + row['Action'] + " - " + row['SourceMaster'] + " - " + \
-                row['SourceDetail'] + " - " + row['Target'] + " - " + row['Comments']
-
+                " | " + str(row['Type']) + " | " + str(row['Action']) + " | " + \
+                str(row['SourceMaster']) + " | " + str(row['SourceDetail']) + \
+                " | " + str(row['Target']) + " | " + str(row['Comments'])
         if self.calc is not None:
             self.calc(self.dict)  # Call external function passing our dict
-            # print("self.calc(self.dict)  # Call external function passing our dict")
-
-        # print('\n======================  pretty  =====================\n')
-        # print(json.dumps(self.dict, indent=2))
 
 
 class PrettyHistory:
@@ -2243,6 +2345,8 @@ def tkinter_display(pretty):
                                 pretty.dict[key] + u"\n", u"margin")
 
         pretty.scrollbox.highlight_pattern(key + u':', curr_color)
+        ''' Hoping | isn't used often, highlight in yellow for field separator '''
+        pretty.scrollbox.highlight_pattern(u'|', 'magenta')
         curr_key += 1  # Current key index
 
     if pretty.search is not None:
@@ -3436,148 +3540,6 @@ class FixData:
         else:
             self.past_count += 1
             return False
-
-
-# ==============================  FIX SQL ROWS  ============================
-
-
-class Versions:
-    """
-        Get installed version numbers. Can be called by CLI or GUI.
-    """
-
-    def __init__(self):
-
-        self.inst_list = []                 # List of dictionaries
-        self.inst_dict = {}                 # Dictionary of single program keys:
-        # prg_name, prg_ver, pkg_name, pkg_ver, prg_cmd, get_ver_parm,
-        # comments (E.G. special notes, version date/time, etc)
-
-        # History Time: [file modification time], MusicId: 0, User: [pkg_name],
-        #   Type: 'version', Action: 'program', SourceMaster: [name]
-        #   SourceDetail: [version installed], Target: [/usr/bin/blahBlah],
-        #   Size: [file size], Count: [line count if script], Seconds: 0.0
-        #   Comments: "Used in mserve.py"
-
-        # History Time: [file modification time], MusicId: 0, User: [package_name],
-        #   Type: 'version', Action: 'program', SourceMaster: 'prg_get_ver'
-        #   SourceDetail: [parsing method], Target: [command to get version],
-        #   Size: [major_ver], Count: [minor_ver], Seconds: [sub_minor.sub_sub_minor]
-        #   Comments: "Used by encoding.py"
-
-        # History Time: [file modification time], MusicId: 0, User: [package_name],
-        #   Type: 'version', Action: 'program', SourceMaster: 'package_get_version'
-        #   SourceDetail: [parsing method], Target: [command to get version],
-        #   Size: [major_version], Count: [minor_version], Seconds: [sub_minor.sub_sub_minor]
-        #   Comments: "Used by disc_get.py"
-        """
-            con.execute("create table IF NOT EXISTS History(Id INTEGER PRIMARY KEY, \
-                Time FLOAT, MusicId INTEGER, User TEXT, Type TEXT, \
-                Action TEXT, SourceMaster TEXT, SourceDetail TEXT, \
-                Target TEXT, Size INT, Count INT, Seconds FLOAT, \
-                Comments TEXT)")
-
-        """
-
-    def build_apt_list(self, update=False):
-        """ Samples
-            $ gst-launch-1.0 --gst-version
-            GStreamer Core Library version 1.8.3
-
-            $ apt list | grep python-tk
-            python-tk/xenial-updates,now 2.7.12-1~16.04 amd64 [installed]
-            python-tkcalendar/xenial,xenial,now 1.5.0-1 all [installed]
-
-            $ wc mserve.py
-             10826  46134 492518 mserve.py
-
-TO GET installed packages
-$ time apt list | grep "\[installed" > apt_list_installed.txt
-real	0m1.454s
-user	0m1.395s
-sys	    0m0.095s
-
-$ ll *.txt
--rw-rw-r-- 1 rick rick 3377347 May 18 15:18 apt_list_full.txt
--rw-rw-r-- 1 rick rick  185301 May 18 15:19 apt_list_installed.txt
-
-$ head apt_list_installed.txt
-a11y-profile-manager-indicator/xenial,now 0.1.10-0ubuntu3 amd64 [installed]
-abi word/xenial-updates,now 3.0.1-6ubuntu0.16.04.1 amd64 [installed]
-abi word-common/xenial-updates,xenial-updates,now 3.0.1-6ubuntu0.16.04.1 all [installed,automatic]
-abi word-plugin-grammar/xenial-updates,now 3.0.1-6ubuntu0.16.04.1 amd64 [installed,automatic]
-account-plugin-facebook/xenial,xenial,now 0.12+16.04.20160126-0ubuntu1 all [installed]
-account-plugin-flickr/xenial,xenial,now 0.12+16.04.20160126-0ubuntu1 all [installed]
-account-plugin-google/xenial,xenial,now 0.12+16.04.20160126-0ubuntu1 all [installed]
-accounts service/xenial-updates,xenial-security,now 0.6.40-2ubuntu11.6 amd64 [installed]
-acl/xenial,now 2.2.52-3 amd64 [installed]
-acpi/xenial,now 1.7-1 amd64 [installed]
-
-        """
-        pass
-
-
-# =================================  MISCELLANEOUS  ===========================
-
-
-def alter_table1(cur, table, *args):
-    """ Copied from simple_insert(), Needs more code !!! """
-    query = 'INSERT INTO '+table+' VALUES (' + '?, ' * (len(args)-1) + '?)'
-    cur.execute(query, args)
-
-
-def simple_insert(cur, table, *args):
-    """ Experimental code """
-    query = 'INSERT INTO '+table+' VALUES (' + '?, ' * (len(args)-1) + '?)'
-    cur.execute(query, args)
-
-
-def insert_blank_line(table_name):
-    """ NOT USED...
-        Add underscores to insert_blank_line and table_name for pycharm syntax checking.
-        If pragma breaks then remove underscores.
-    """
-    default_value = {'TEXT': '""', 'INT': '0', 'FLOAT': '0.0', 'BLOB': '""'}
-    cs = con.execute('pragma table_info('+table_name+')').fetchall()  # sqlite column metadata
-    con.execute('insert into '+table_name+' values ('+','.join([default_value[c[2]] for c in cs])+')')
- 
-    #insert into Music(id) values (null);         # Simpler method
-    ''' DELETED Q&A: https://stackoverflow.com/questions/66072570/
-    how-to-initialize-all-columns-of-sqlite3-table?no redirect=1#comment116823421_66072570
-  
-Inserting zeros and empty strings (what you explicitly asked for)
-
-default_value={'TEXT':'""','INT':'0','FLOAT':'0.0','BLOB':'""'}
-def insert_blank_line(table_name):
-  cs = con.execute('pragma table_info(Music)').fetchall() # sqlite column metadata
-  con.execute('insert into '+table_name+' values ('+','.join([default_value[c[2]] for c in cs])+')')
-
-Then you can call this by using: insert_blank_line('Music')
-Insert nulls and use null-aware selects (alternative solution)
-
-Instead of using this blank line function you could just insert a bunch of nulls
-
-insert into Music(id) values (null);
-
-And then upon selection, you treat the null data, in the following example you'll get no artist when it is null:
-
-select if null(OsArtistName,'no artist') from Music;
-
-or
-
-select coalesce(OsArtistName,'no artist') from Music
-
-Final note
-
-Be aware that sqlite types are not enforced in the same way other databases
-enforce. In fact they are not enforced at all. If you insert a string in a 
-sqlite number column or a string to a sqlite number column, the data is 
-inserted as requested not as the data column specifies - each unit of data 
-has its own datatype.
-
-    '''
-
-
 
 
 # End of sql.py
