@@ -177,33 +177,45 @@ def launch_command(ext_name, toplevel=None):
            os.kill(P.pid, signal.SIGCONT)
 
     """
-
+    #t_init("launch_ext_command")
     all_pid = pid_list(ext_name)
     new_pid = all_pid
 
     os.popen(ext_name + ' &')           # Run command in background
     sleep_count = 0
+    #import psutil  # ImportError: No module named psutil
+    #current_process = psutil.Process()
+    #children = current_process.children(recursive=True)
+    #for child in children:
+    #    print('Child pid is {}'.format(child.pid))
     while new_pid == all_pid:
+        #t_init("pid_list")
         new_pid = pid_list(ext_name)
-        if sleep_count > 0:             # Don't sleep first time through loop
+        #pid_list_time = t_end('no_print')
+        if new_pid != all_pid:
+            break  # Skip sleep cycle
+        if sleep_count > 0: # Don't sleep first time through loop
             if toplevel is None:
-                time.sleep(.01)         # sleep 10 milliseconds
+                time.sleep(.01)  # sleep 10 milliseconds
             else:
-                toplevel.after(10)      # Fine tune for sleep count of 2
+                toplevel.after(10)  # Fine tune for sleep count of 2
         sleep_count += 1
-        if sleep_count == 1000:         # 10 second time-out
-            print('launch_ext_command() ERROR: max sleep count reached')
+        if sleep_count == 1000:  # 10 second time-out
+            print('launch_ext_command() ERROR: 10 second timeout reached.')
             print('External command name:', ext_name)
-            return 0
+            return 0  # Return no PID found
 
     #print('launch_ext_command() sleep_count:', sleep_count, all_pid)
     diff_list = list(set(new_pid) - set(all_pid))
 
+    #total_time = t_end('no_print')
+    #print("launch_ext_command(" + ext_name + ") pid_list_time:", pid_list_time,
+    #      "total_time:", total_time)  # pid_list_time: 0.017 total_time: 0.037
     if len(diff_list) == 1:
-        return int(diff_list[0])
+        return int(diff_list[0])  # Return PID number found
 
     print('launch_ext_command() ERROR: A new PID could not be found')
-    return 0
+    return 0  # Return no PID found
 
 
 def pid_list(ext_name):
@@ -215,9 +227,6 @@ def pid_list(ext_name):
     all_lines = os.popen("ps aux | grep -v grep | grep " +
                          "'" + prg_name + "'").read().strip().splitlines
     PID = []
-    #for l in all_lines():              # Aug 13/2021 - Change for pycharm
-    #    l = ' '.join(l.split())         # Compress whitespace to single space
-    #    PID.append(int(l.split(' ', 2)[1]))
     for line in all_lines():
         line = ' '.join(line.split())       # Compress whitespace to single space
         PID.append(int(line.split(' ', 2)[1]))

@@ -192,6 +192,8 @@ def make_mserve_cfg():
     cfg.append(make_dict(m, None, "traceback"))
     # noinspection SpellCheckingInspection
     cfg.append(make_dict(m, None, "webbrowser"))
+    cfg.append(make_dict(m, None, "random"))
+    cfg.append(make_dict(m, None, "string"))
     cfg.append(make_dict(m, "OrderedDict", "collections"))
     cfg.append(make_dict(m, None, "pickle"))
     cfg.append(make_dict(m, "shuffle", "random"))

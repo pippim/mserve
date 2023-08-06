@@ -2862,7 +2862,7 @@ class MetaScan:
         self.get_refresh_thread = get_refresh_thread
 
         self.total_scanned = 0
-        self.missing_file_at_loc = 0  # Tallied by caller?
+        self.missing_file_at_loc = 0  # Tallied by caller
         self.missing_audio = 0  # Tallied by caller
         self.missing_artwork = 0
         self.found_artwork = 0
@@ -2874,15 +2874,25 @@ class MetaScan:
         """ :param meta_dict: Key/Value Pairs of ID tags 
             :returns True if Song File has artwork, False if "Video" not found
         """
+        if self.top_level:
+            self.top_level.update_idletasks()  # Allow X to close window
+        else:
+            return  # Closed window
         if self.get_refresh_thread:
             ''' Call refresh thread for tool tips, etc. '''
             now = time.time()
-            if now - self.last_thread_call > .033:
+            if now - self.last_thread_call > .033:  # Was .033
+                # Calling every 33 ms causes slight animation lag
+                # When current song ends, MetaScan stops?
                 thread = self.get_refresh_thread()  # Can change if play_top closes
-                thread()
+                thread(sleep_after=False)  # Crashes when next song is played
                 self.last_thread_call = now  # Adds 4 seconds but should be less :(
                 # When called: 389 seconds, but no tooltips
+                # Sleep after = False: 483.6583168507
 
+            #thread = self.get_refresh_thread()  # Can change if play_top closes
+            #thread(sleep_after=True)  # Using False causes starves music play
+            # next song causing it to crash Tkinter.
         self.total_scanned += 1
 
         ''' Move to mserve.py missing_artwork_callback() function '''
@@ -2904,6 +2914,8 @@ class MetaScan:
 
     def UpdateChanges(self, flag):
         """ :parameter flag: Can be True, False or None """
+        if not self.top_level:
+            return  # Closed window
         if flag:
             self.meta_data_updated += 1
         else:

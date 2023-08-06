@@ -1177,8 +1177,8 @@ class SearchText:
     """ Search for string in text and highlight it from:
     https://www.geeksforgeeks.org/search-string-in-text-using-python-tkinter/
     """
-    def __init__(self, view, column=None, find_str=None, find_op='in', callback=None,
-                 tt=None):
+    def __init__(self, view, column=None, find_str=None, find_op='in',
+                 callback=None, tt=None, thread=None):
         # root window is the parent window
         self.view = view
         self.toplevel = view.toplevel
@@ -1188,8 +1188,9 @@ class SearchText:
         self.column = column
         self.find_str = find_str
         self.find_op = find_op
-        self.callback = callback
-        self.tt = tt
+        self.callback = callback  # E.G. missing_artwork_callback
+        self.tt = tt  # ToolTIps
+        self.get_thread_func = thread  # myserve.py self.get_refresh_thread
         # print('column:', column, 'find_str:', find_str)
 
         self.frame = None  # frame for input
@@ -1228,13 +1229,11 @@ class SearchText:
             self.tt.add_tip(but2, "Close search bar.", anchor="nw")
 
     def find(self):
-        """ Search treeview for string in all string columns
-        """
+        """ Search treeview for string in all string columns """
         if self.find_str is not None:
             print('toolkit.py.SearchText.find_column() should have been called.')
             self.find_column()
             return
-
         # ext.t_init('reattach')
         self.reattach()         # Put back items excluded on last search
         # ext.t_end('no print')   # For 1200 messages 0.00529 seconds
@@ -1261,27 +1260,80 @@ class SearchText:
 
     def find_callback(self):
         """ Search treeview and use callback function to test """
+        if not self.toplevel:
+            #self.dump_vars()
+            return  # Closed window
         self.reattach()         # Put back items excluded on last search
         for iid in self.tree.get_children():
+            if self.get_thread_func:
+                thread = self.get_thread_func()
+                thread()  # crashes when next song starts up
+            if self.toplevel:
+                self.toplevel.update_idletasks()  # Allow X to close window
+            else:
+                return  # Closed window - Slows down processing considerably
+                # Next line still generates error when window closes. never exited
             # Get all treeview values for testing via callback function
-            values = self.tree.item(iid)['values']
+            try:
+                values = self.tree.item(iid)['values']
+            except tk.TclError:
+                # Window closed
+                # TclError: invalid command name ".140238088693448.140238088494256.140238088601680.140238088601752"
+                return  # No need to dump values anymore. Learned enough
 
             if self.callback(iid, values):
-                # callback says to keep this row
-                continue
+                continue  # callback says to keep this row
 
-            # callback says to drop row
-            self.tree.detach(iid)
-            self.attached[iid] = False
+            try:
+                self.tree.detach(iid)
+                self.attached[iid] = False  # callback says to drop row
+            except tk.TclError:
+                # invalid command name ".140654660774080.140654660879640.140654660880576.140654660880648"
+                #print("toolkit.py SearchText.find_callback() self.tree.detach(iid)",
+                #      iid)
+                #print("Next song selected causing Update Metadata to fail.")
+                #self.dump_vars()
+                return
+
+    def dump_vars(self):
+        """ debugging when view.tree is corrupted when playing next song.
+            Also delayed text box gets corrupted:
+            self.missing_artwork_dtb.close()  # Close delayed text box
+            AttributeError: 'NoneType' object has no attribute 'close' 
+        """
+        print("\nself.view:", self.view,
+              "\nself.toplevel:", self.toplevel,
+              "\nself.tree:", self.tree,
+              #"\nlen(self.tree.get_children()):", len(self.tree.get_children()),
+              #   File "/home/rick/python/toolkit.py", line 1296, in dump_vars
+              #     "\nlen(self.tree.get_children()):", len(self.tree.get_children()),
+              #   File "/usr/lib/python2.7/lib-tk/ttk.py", line 1195, in get_children
+              #     self.tk.call(self._w, "children", item or '') or ())
+              # TclError: invalid command name ".140320456140848.140320057982560.140320064991816.140320064991888"
+              "\nself.dict[0]:", self.dict[0],
+              "\nself.dict[-1]:", self.dict[-1],
+              "\nself.attached['1']:", self.attached['1'],
+              "\nself.attached['2']:", self.attached['2'],
+              "\nself.column:", self.column,
+              "\nself.find_str:", self.find_str,
+              "\nself.find_op:", self.find_op,
+              "\nself.callback:", self.callback,
+              "\nself.tt:", self.tt,
+              "\nself.frame:", self.frame,
+              "\nself.edit:", self.edit)
 
     def find_column(self):
         """ Search treeview for single column of any type (not just strings)
             There is no GUI input for search text.
         """
+        if not self.toplevel:
+            return  # Closed window
         self.reattach()         # Put back items excluded on last search
 
         s = self.find_str
         for iid in self.tree.get_children():
+            if not self.toplevel:
+                return  # Closed window
             # searches for desired string
             values = self.tree.item(iid)['values']
             one_value = self.view.column_value(values, self.column)
@@ -1314,9 +1366,16 @@ class SearchText:
                 print('toolkit.py.SearchText.find_column() invalid find_op:',
                       self.find_op)
 
-            self.tree.detach(iid)  # Remove non-matching treeview item from list
-            self.attached[iid] = False
 
+            try:
+                self.tree.detach(iid)
+                self.attached[iid] = False  # callback says to drop row
+            except tk.TclError:
+                # invalid command name ".140654660774080.140654660879640.140654660880576.140654660880648"
+                print("toolkit.py SearchText.find_callback() self.tree.detach(iid)",
+                      iid)
+                print("Rare event known to happen when song ends. Reason unknown")
+                return
 
     def reattach(self):
         """ Reattach items detached
@@ -1332,7 +1391,11 @@ class SearchText:
                 self.attached[msgId] = True
 
     def close(self):
-        """ Remove find search bar """
+        """ Remove find search bar
+            TODO: No way of stopping find loop when window closed by parent
+        """
+        if not self.toplevel:
+            return  # Closed window
         self.reattach()
         if self.find_str is None:
             self.frame.grid_remove()  # Next pack is faster this way?

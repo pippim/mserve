@@ -586,14 +586,25 @@ class ModTime:
         If not utilize timestamp file to get last modification time.
     """
 
-    def __init__(self, iid):
+    def __init__(self, code):
         self.change_cnt = 0         # Number of songs where new time changed
         self.delete_cnt = 0         # Number of songs deleted because time changed
         self.new_cnt = 0            # Number of songs added with old & new time
-        self.loc_dict = item(iid)   # Keep copy of dictionary
-        self.topdir = self.loc_dict['topdir']
+        ''' Using iid as code need to get topdir without modifying self.act_xxx
+            Split read_location() into two parts w/ get_sql_row(Code) returns d 
+        '''
+        d = sql.loc_read(code)
+        if d is None:
+            print("location.py ModTime.__init__() invalid location code:",
+                  code)
+            self.allows_mtime = True  # Assume best-case scenario
+            return
+        #self.loc_dict = item(iid)   # Keep copy of dictionary
+        #self.topdir = self.loc_dict['topdir']
+        self.topdir = d['TopDir']  # SQL Location Table column name
         self.filename = FNAME_MOD_TIME
-        self.filename = set_one_filename(self.filename, iid)
+        #self.filename = set_one_filename(self.filename, iid)
+        self.filename = set_one_filename(self.filename, code)
         #print('modification_time filename:',self.filename)
 
         # print('Initializing iid:',iid,'dict:',self.loc_dict)
@@ -615,7 +626,7 @@ class ModTime:
         else:
             self.allows_mtime = True
             #print("Top dir allows timestamps:",self.topdir)
-            return                          # No need for shadow filesystem
+            return
 
         # TODO: Temporary list until read/write done
         self.mod_dict = {}
@@ -624,11 +635,10 @@ class ModTime:
             with open(self.filename, 'rb') as filehandle:
                 # read the data as binary data stream
                 self.mod_dict = pickle.load(filehandle)
-
+        return
 
     def get(self, path, mtime):
-        """ Check if modification time has list entry for new time.
-        """
+        """ Check if modification time has list entry for new time. """
         if self.allows_mtime:
             return mtime  # Nothing to do
 
@@ -637,16 +647,9 @@ class ModTime:
         mtime = float(mtime)
         dict_old_time = float(dict_old_time)
         dict_new_time = float(dict_new_time)
-        #print('ModTime.get() dict_old_time:',dict_old_time,
-        #                    'dict_new_time:',dict_new_time,'mtime:',mtime)
-        #print('ModTime.get() dict_old_time:',t(dict_old_time),
-        #                    'dict_new_time:',t(dict_new_time),'mtime:',t(mtime))
         if dict_new_time == mtime:
-            #print ('ModTime.get() no changes')
             return mtime                    # Nothing has changed
-
         if dict_old_time == 0:
-            #print('ModTime.get() New entry for our dictionary')
             return mtime                    # It's a new filename for our dict
         elif dict_new_time == mtime:
             print('The passed mtime matches last dict_new_time already')
@@ -670,10 +673,8 @@ class ModTime:
             self.delete_cnt += 1
             return mtime                    # It's existing filename diff time
 
-
     def update(self, path, old_mtime, new_mtime):
-        """ If new modification time record it in list entry.
-        """
+        """ If new modification time record it in list entry. """
         if self.allows_mtime:
             return        # Nothing to do
 
@@ -707,10 +708,8 @@ class ModTime:
         self.mod_dict[path] = (old_mtime, new_mtime)
         #print('ModTime.update() old_mtime:', t(old_mtime), 'new_mtime:', t(new_mtime))
 
-
     def close(self):
-        """ If new modification time record it in list entry.
-        """
+        """ If new modification time record it in list entry. """
         if self.allows_mtime:
             return        # Nothing to do
         with open(self.filename, "wb") as f:
@@ -2360,6 +2359,8 @@ class Locations(LocationsCommonSelf):
     #
     # ==============================================================================
 
+    # no inspection of out_fact_print(text) for debugging    
+    # noinspection PyUnusedLocal 
     def validate_host(self, toplevel=None):
         """ Check current self.act_host variable to see if it a host 
             Called my mserve.py call to self.load_last_location()
@@ -2806,7 +2807,7 @@ class Locations(LocationsCommonSelf):
         :param text: Text line for self.test_box. "\n" appended
         :return: Nothing
         """
-        last_insert = self.test_box.tag_ranges("last_insert")
+        #last_insert = self.test_box.tag_ranges("last_insert")
         #print("last_insert:", last_insert)
         self.test_box.tag_remove("last_insert", "1.0", "end")
         #if last_insert:
@@ -2958,9 +2959,9 @@ class Locations(LocationsCommonSelf):
             self.open_and_play_callback(self.act_code, self.act_topdir)
             # Above restarts mserve (assuming no errors) so never come back here
         elif self.state == 'synchronize':
-            self.info.cast("Synchronize location: " + self.act_name, action="open")
             self.cmp_build_toplevel(self.act_code, sbar_width=16)
             # Problem: We don't want to do reset below, cmp must close itself
+            return  # cmp_close closes cmp_window and main_top stays open for next
         else:
             toolkit.print_trace()
             print("Unknown Locations.apply() self.state:", self.state)
@@ -3074,10 +3075,13 @@ class Locations(LocationsCommonSelf):
                                 command=self.cmp_tree.yview)
         v_scroll.grid(row=0, column=1, sticky=tk.NS)
         self.cmp_tree.configure(yscrollcommand=v_scroll.set)
+        # noinspection SpellCheckingInspection
+        ''' Aug 5/23 - Horizontal Scrollbar removed for lack of purpose 
         h_scroll = tk.Scrollbar(frame2, orient=tk.HORIZONTAL, width=sbar_width,
                                 command=self.cmp_tree.xview)
         h_scroll.grid(row=1, column=0, sticky=tk.EW)
         self.cmp_tree.configure(xscrollcommand=h_scroll.set)
+        '''
         ''' Frame3 for Treeview Buttons '''
         frame3 = tk.Frame(master_frame, bg="Blue", bd=2, relief=tk.GROOVE,
                           borderwidth=g.BTN_BRD_WID)
@@ -3108,7 +3112,8 @@ class Locations(LocationsCommonSelf):
             return
         self.cmp_tree.update_idletasks()
 
-    # noinspection PyUnusedLocal Required for *args when binding <Escape>
+    # *args reported as unused, but is required for binding <Escape> to cmp_close()
+    # noinspection PyUnusedLocal 
     def cmp_close(self, *args):
         """ Close Compare location treeview """
         if not self.cmp_top_is_active:
@@ -3153,9 +3158,16 @@ class Locations(LocationsCommonSelf):
         CurrAlbumId = ""  # When there are no albums?
         CurrArtistId = ""
 
+        ext.t_init("Build compare target")
         for i, os_name in enumerate(self.fake_paths):
             self.cmp_top.update()  # Allow close button to abort right away
-
+            ''' Have to stop animations while walking
+            thr = self.get_thread_func()
+            if thr:
+                thr(sleep_after=True)  # Save 20 ms or so
+                # When sleep is False, playing next song causes termination
+                # When sleep is True, playing next song causes termination :(
+            '''
             # split song /mnt/music/Artist/Album/Song.m4a into variable names
             groups = os_name.split(os.sep)
             Artist = str(groups[start_dir_sep + 1])
@@ -3201,22 +3213,29 @@ class Locations(LocationsCommonSelf):
             # print('mserve before src:',t(src_mtime),' trg:',t(trg_mtime))
             src_mtime = self.src_mt.get(src_path, src_mtime)
             trg_mtime = self.trg_mt.get(trg_path, trg_mtime)
+            ''' Below is making 1,000 times slower? '''
+            #self.src_fc.new(src_path, action='stat_only')  # Set stat_start
+            #self.trg_fc.new(trg_path, action='stat_only')  # Set stat_start
+
             # print('mserve AFTER  src:',t(src_mtime),' trg:',t(trg_mtime))
 
             # FUDGE because cp --preserve=timestamps doesn't do nanoseconds
             src_mtime = int(src_mtime)
             trg_mtime = int(trg_mtime)
-            # FUDGE if time difference is 1 second. Caused by copy to SD Card
+            # FUDGE if time difference is 1 second. Caused by copy to SD Card lag
             if src_mtime > trg_mtime:
                 diff = src_mtime - trg_mtime
             else:
                 diff = trg_mtime - src_mtime
             if diff == 1:
                 src_mtime = trg_mtime  # override 1-second difference
-            # End of patch FUDGE
+            # End of FUDGE overrides
 
             if src_size == trg_size and src_mtime == trg_mtime:
                 self.cmp_tree.see(CurrAlbumId)
+                ''' Below is making 1,000 times slower? '''
+                #self.src_fc.close(action='stat_only')  # Set stat_start
+                #self.trg_fc.close(action='stat_only')  # Set stat_start
                 continue
 
             if not src_size == trg_size:
@@ -3228,11 +3247,11 @@ class Locations(LocationsCommonSelf):
                 else:
                     action = "Size diff but same time!"
 
-
-
-            elif os.system('diff ' + '"' + src_path + '"' + ' ' +
+            elif os.system('diff -q ' + '"' + src_path + '"' + ' ' +
                            '"' + trg_path + '" 1>/dev/null'):
-
+                ''' Use linux 'diff' command with -q (quick) option.
+                    Don't report differences, just check for first difference
+                    NOTE: Like 'stat', 'diff' doesn't change last access time. '''
                 if self.cmp_top_is_active is False:
                     return False  # Closing down, False indicates no differences
                 # Files have different contents even though size the same
@@ -3254,9 +3273,9 @@ class Locations(LocationsCommonSelf):
 
             converted = float(src_size) / float(g.CFG_DIVISOR_AMT)
             # Aug 4/23 - DEC_PLACE used to be 1 now it's 0
-            src_fsize = '{:n}'.format(round(converted, g.CFG_DECIMAL_PLACES + 2))
+            src_fsize = '{:n}'.format(round(converted, 3))  # 3 decimal places
             converted = float(trg_size) / float(g.CFG_DIVISOR_AMT)
-            trg_fsize = '{:n}'.format(round(converted, g.CFG_DECIMAL_PLACES + 2))
+            trg_fsize = '{:n}'.format(round(converted, 3))
             # Format date as "Abbreviation - 99 Xxx Ago"
             src_ftime = tmf.ago(float(src_stat.st_mtime))
             trg_ftime = tmf.ago(float(trg_stat.st_mtime))
@@ -3277,6 +3296,11 @@ class Locations(LocationsCommonSelf):
             # do_debug_steps += 1
             # if do_debug_steps == 10000: break     # Set to short for testing
 
+        ext.t_end('print')  # No Refresh: Build compare target: 1.2339029312
+        # Refresh thread (33ms after)   : Build compare target: 158.4349091053
+        # Refresh sleep_after=False     : Build compare target: 26.8863759041
+        # Refresh play_top closed       : Build compare target: 2.1595461369
+        # Refresh play_top no out_cast  : Build compare target: 1.5343670845
         ''' Prune tree - Albums with no songs, then artists with no albums '''
         for artist in self.cmp_tree.get_children():
             album_count = 0
@@ -3297,12 +3321,6 @@ class Locations(LocationsCommonSelf):
 
         ''' Message if files are same (no treeview children) '''
         if self.cmp_tree.get_children():
-            print("self.cmp_top_is_active:", self.cmp_top_is_active)
-            print("self.main_top:", self.main_top)
-            print("self.parent:", self.parent)
-            title = "File differences found"
-            text = "This message only shown to figure out why windows closing."
-            self.out_cast_show(title, text)
             return True
         else:
             title = "Files identical"
@@ -3312,7 +3330,7 @@ class Locations(LocationsCommonSelf):
 
     def cmp_update_files(self):
         """ Build list of commands to run with subprocess
-            Called via "Update" button on cmp_top treeview
+            Called via "Update differences" button on cmp_top
         """
         return_code = 0
         title = "Updating files"
@@ -3325,6 +3343,9 @@ class Locations(LocationsCommonSelf):
                     # Update file and display in message box.
                     return_code = self.cmp_run_command(song)
                     self.cmp_top.update_idletasks()
+                    thr = self.get_thread_func()
+                    if thr:
+                        thr()  # This will crash when next song played
                     if self.cmp_top_is_active is False:
                         # TODO: Move duplicated code into common ...close()
                         self.src_mt.close()  # Save modification_time to disk
@@ -3340,10 +3361,12 @@ class Locations(LocationsCommonSelf):
 
         self.src_mt.close()  # Save modification_time to disk
         self.trg_mt.close()  # If no changes then simply exit
-        self.cmp_msg_box.close()
+        self.cmp_msg_box.close()  # Needs modernization
 
-        if not return_code == 0:
-            print('cmp_update_files() received non-zero return_code:', return_code)
+        if not return_code == 0:  # class Location
+            title = "location.py Locations.cmp_update_files()"
+            text = "received non-zero return_code: " + str(return_code)
+            self.out_cast_show_print(title, text, 'error')
         # All done, close treeview as it's no longer relevant
         self.cmp_close()
 
@@ -3351,6 +3374,23 @@ class Locations(LocationsCommonSelf):
         """ Build single commands to run with subprocess
                 cp -p source_path target_path
                 touch -m -r source_path target_path
+
+$ time touch me
+real	0m0.003s
+
+Do NOT run touch in background
+
+:~/Music/Trooper/Hits From 10 Albums$ time cp -p "07 Oh Pretty Lady.flac" test
+real	0m0.089s
+
+Lagging starts when time > 0.033
+
+Time to find if process is still running:
+$ time ps aux > /dev/null
+real	0m0.038s
+
+
+Verify this by looking at notes in external.py
 
             NOTE: self.open_topdir may become target_path and target_dir may become
                   source_path after deciphering arrow
@@ -3390,6 +3430,7 @@ class Locations(LocationsCommonSelf):
 
         command_str = " ".join(command_line_list)  # list to printable string
         self.cmp_msg_box.update(command_str)  # Display status line
+        ''' https://docs.python.org/3/library/subprocess.html#popen-objects '''
         pipe = sp.Popen(command_line_list, stdout=sp.PIPE, stderr=sp.PIPE)
         text, err = pipe.communicate()  # This performs .wait() too
 

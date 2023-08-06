@@ -233,19 +233,6 @@ References:
 #       This will slow down configuration operations over time. Create new index
 #       by History Type + Action. Then for example, get Type-"resume" +
 #       Action-"L004", instead of search through all MusicId=0 records.
-
-# BUGS:
-# -----------------------------------------------------------------------------
-
-#   When 'dell' File Server goes to sleep, there are 4 errors not trapped:
-#       sql.update_metadata(): File below doesn't exist:
-#           OsFileName-The Tea Party/Tangents/03 The Messenger.m4a
-#       Waited > 2.5+ seconds, aborting start_ffplay() get sink
-#       File ".../mserve.py", line 7269, in update_lib_tree_song
-#           OSError: [Err no 2] No such file or directory:
-#               '/mnt/music/The Tea Party/Tangents/03 The Messenger.m4a
-#       The last song stops music but progress seconds go past duration
-#       ALSO NOTE file serve was awake for 3 days after and very, VERY, HOT !!!
 #
 # =============================================================================
 
@@ -347,9 +334,9 @@ import inspect
 import os
 try:
     filename = inspect.stack()[1][1]  # If there is a parent it is 'm'
-    print("inspect.stack()[0]:", inspect.stack()[0])
-    print("inspect.stack()[1]:", inspect.stack()[1])
-    print("inspect.stack()[2]:", inspect.stack()[2])
+    #print("inspect.stack()[0]:", inspect.stack()[0])
+    #print("inspect.stack()[1]:", inspect.stack()[1])
+    #print("inspect.stack()[2]:", inspect.stack()[2])
     #(<frame object>, './m', 50, '<module>', ['import mserve\n'], 0)
     parent = os.path.basename(filename)
     if parent != "m":
@@ -417,8 +404,12 @@ import datetime
 import re
 import traceback  # To display call stack (functions that got us here)
 import webbrowser
-
+import random  # For FileControl() make_temp
+import string  # For FileControl() make_temp
 from collections import OrderedDict
+
+from threading import Lock
+critical_function_lock = Lock()
 
 import pickle
 from random import shuffle
@@ -530,6 +521,8 @@ VU_METER_FNAME = g.TEMP_DIR + "mserve_vu-meter-mono.txt"
 VU_METER_LEFT_FNAME = g.TEMP_DIR + "mserve_vu-meter-left.txt"
 VU_METER_RIGHT_FNAME = g.TEMP_DIR + "mserve_vu-meter-right.txt"
 
+''' Mostly all the names. TMP_FFPROBE & TMP_FFMPEG have unique suffixes '''
+''' VU_METER...FNAME are pipes that can't be removed. '''
 TMP_ALL_NAMES = [TMP_CURR_SONG, TMP_CURR_SAMPLE, TMP_CURR_SYNC,
                  TMP_FFPROBE, TMP_FFMPEG, VU_METER_FNAME,
                  VU_METER_LEFT_FNAME, VU_METER_RIGHT_FNAME]
@@ -1359,7 +1352,11 @@ class MusicLocationTree(PlayCommonSelf):
         self.lib_top_totals = ["", "", "", "", "", 0, 0, 0, 0, 0, 0]
         #                           1       3      5     7     9
         #                           Play    Space  Size  Secs  sCount
-        self.lib_top_totals[0] = LODICT['name']
+        try:
+            self.lib_top_totals[0] = LODICT['name']
+        except:
+            pass
+        self.lib_top_totals[0] = str(lcs.open_name)
         self.lib_top_totals[1] = ""  # Playlist name makes title too long
         self.lib_top_playlist_name = ""  # appended to lib_top.title after totals
 
@@ -1510,7 +1507,10 @@ class MusicLocationTree(PlayCommonSelf):
         if self.playlists.name is not None:
             self.lib_top_playlist_name = self.playlists.name.encode("utf-8")
         else:
-            self.lib_top_playlist_name = LODICT['iid'] + " - Default Favorites"
+            try:
+                self.lib_top_playlist_name = LODICT['iid'] + " - Default Favorites"
+            except:
+                pass
             self.lib_top_playlist_name = str(lcs.open_code) + \
                 ' - Default Favorites'
 
@@ -1815,7 +1815,7 @@ class MusicLocationTree(PlayCommonSelf):
         self.play_on_top = False
         self.set_lib_tree_play_btn()
 
-    def refresh_lib_top(self):
+    def refresh_lib_top(self, sleep_after=True):
         """ Wait until clicks to do something in lib_tree (like play music)
             NOTE: this would be a good opportunity for housekeeping
             TODO: Call refresh_acc_times() every 60 seconds
@@ -1857,6 +1857,10 @@ class MusicLocationTree(PlayCommonSelf):
 
         if not self.lib_top_is_active:  # Second check needed June 2023
             return False  # self.close() has set to None
+
+        ''' Aug 5/23 - Make speedy version for calling in loops '''
+        if not sleep_after:
+            return self.lib_top_is_active
 
         ''' sleep remaining time until 33ms expires '''
         now = time.time()  # June 20, 2023 - Use new self.last_sleep_time
@@ -2012,7 +2016,7 @@ class MusicLocationTree(PlayCommonSelf):
 
         if new_song_count < 2:
             dprint("Playlist needs at least two songs.")
-            message.ShowInfo(self.lib_top, thread=self.get_refresh_thread(),
+            message.ShowInfo(self.lib_top, thread=self.get_refresh_thread,
                              icon='warning', title="Cannot apply changes.",
                              text="Playlist needs at least two songs.")
             return
@@ -2245,7 +2249,7 @@ class MusicLocationTree(PlayCommonSelf):
         self.info.cast(text, action='update')  # it's really 'add' and/or 'delete'
 
         message.ShowInfo(
-            self.lib_top, thread=self.get_refresh_thread(),
+            self.lib_top, thread=self.get_refresh_thread,
             align='left', title="Playlist changes applied.",
             text="Changes to checkboxes in Music Location saved in memory.\n\n" +
                  "Playlist in memory has been updated with:\n" +
@@ -2280,7 +2284,7 @@ class MusicLocationTree(PlayCommonSelf):
         ''' When called from pending_apply(), no message to display '''
         if ShowInfo:
             message.ShowInfo(
-                self.lib_top, thread=self.get_refresh_thread(),
+                self.lib_top, thread=self.get_refresh_thread,
                 align='left', title="Playlist changes cancelled.",
                 text="Changes to checkboxes in Music Location reversed.\n" +
                      "Playlist in memory and storage remains unchanged.")
@@ -2634,17 +2638,9 @@ class MusicLocationTree(PlayCommonSelf):
             self.lib_top_totals[3] += " " + human_selected + ' selected.'
 
         self.build_lib_top_playlist_name()  # More verbose than self.title_suffix
+        s = "   ☰ " + self.lib_top_playlist_name + " - mserve"
         self.lib_top.title(self.lib_top_totals[0] + self.lib_top_totals[1] +
-                           self.lib_top_totals[2] + self.lib_top_totals[3] +
-                           "   ☰ " + self.lib_top_playlist_name + " - mserve")
-        # June 18, 2023 new error:
-        #   File "/home/rick/python/mserve.py", line 2462, in display_lib_title
-        #     self.lib_top.title(self.lib_top_totals[0] + self.lib_top_totals[1] +
-        # AttributeError: 'NoneType' object has no attribute 'title'
-        #self.lib_top.update_idletasks()  # Will this fix shutdown annoying problem?
-        #self.lib_top.update()  # Will this fix shutdown annoying problem?
-        #if self.play_top_is_active:
-        #    self.play_top.update()  # Will this fix shutdown annoying problem?
+                           self.lib_top_totals[2] + self.lib_top_totals[3] + s)
 
     # ==============================================================================
     #
@@ -3333,10 +3329,14 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
                 Rename LODICT('iid') with new number
         """
         global LODICT
-        our_current_iid = LODICT['iid']
+        try:
+            our_current_iid = LODICT['iid']
+        except:
+            pass
+        our_current_iid = lcs.open_code
         if iid == our_current_iid:
             message.ShowInfo(
-                self.loc_top, thread=self.get_refresh_thread(),
+                self.loc_top, thread=self.get_refresh_thread,
                 align='left', icon='warning', title="Location Error",
                 text="You cannot forget the location currently running.")
             return
@@ -3351,7 +3351,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
                 "These actions cannot be undone!\n\n" + \
                 "Song files, lyrics and synchronization are NOT effected."
         answer = message.AskQuestion(
-            self.loc_top, thread=self.get_refresh_thread(), align='left',
+            self.loc_top, thread=self.get_refresh_thread, align='left',
             icon='warning', title="Forget Location Confirmation", text=text)
         if answer.result is not 'yes':
             return
@@ -4064,7 +4064,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
         ''' Warning if status is tri-state, all will be selected. '''
         if self.lib_tree.tag_has("tristate", item):
             dialog = message.AskQuestion(
-                self.lib_top, thread=self.get_refresh_thread(),
+                self.lib_top, thread=self.get_refresh_thread,
                 title="Discard custom unchecked?",
                 text="All songs under " + line_type + " will be checked.\n" +
                      "Some Songs are unchecked and will be checked.")
@@ -4074,7 +4074,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
         ''' Warning if unchecking line_type all children will be unchecked. '''
         if self.lib_tree.tag_has("checked", item) and line_type is not None:
             dialog = message.AskQuestion(
-                line_type=self.lib_top, thread=self.get_refresh_thread(),
+                line_type=self.lib_top, thread=self.get_refresh_thread,
                 title="Uncheck all songs below?",
                 text="All songs under " + line_type + " will be unchecked.")
             if dialog.result != 'yes':
@@ -4083,7 +4083,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
         ''' Warning if checking line_type all children will be checked. '''
         if self.lib_tree.tag_has("unchecked", item) and line_type is not None:
             dialog = message.AskQuestion(
-                line_type=self.lib_top, thread=self.get_refresh_thread(),
+                line_type=self.lib_top, thread=self.get_refresh_thread,
                 title="Check all songs below?",
                 text="All songs under " + line_type + " will be checked.")
             if dialog.result != 'yes':
@@ -4099,7 +4099,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
                 and (g.NO_ARTIST_STR in self.lib_tree.item(item, 'text') or
                      g.NO_ARTIST_STR in self.lib_tree.item(item, 'text')):
             message.ShowInfo(
-                line_type=self.lib_top, thread=self.get_refresh_thread(),
+                line_type=self.lib_top, thread=self.get_refresh_thread,
                 title="Song(s) invalid for playlist when " + g.NO_ARTIST_STR +
                 "\nor " + g.NO_ALBUM_STR + " exists.", icon='error',
                 text="Song(s) under " + line_type + " cannot be included in playlist.")
@@ -4174,7 +4174,8 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
             elapsed = now - last_time  # TODO: make two line function
             if elapsed > 30:  # TODO: make three line function
                 # Refresh takes about 3 ms on average to run
-                thread()  # Call refresh thread
+                thread(sleep_after=True)  # Call refresh thread. Using False
+                # Can cause lock up in play automatic next song
                 last_time = now
 
             ''' Selected column may be "" or "Adding" or "No. 999" '''
@@ -4205,7 +4206,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
         text  = "The song '" + item['text'] + "' has no Artist or Album.\n\n" + \
                 "It can't be added to playlist but can be added to favorites."
         self.info.fact(text, 'error', 'add')
-        message.ShowInfo(self.lib_top, thread=self.get_refresh_thread(), align='left',
+        message.ShowInfo(self.lib_top, thread=self.get_refresh_thread, align='left',
                          icon='error', title="Playlists Error", text=text)
         return False
 
@@ -4484,7 +4485,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
             text = "Cannot rename when CD Ripping is Active."
             self.info.cast(title + "\n\n" + text, 'error')
             message.ShowInfo(self.lib_top, title, text, icon='error',
-                             thread=self.get_refresh_thread())
+                             thread=self.get_refresh_thread)
             self.wrapup_lib_popup()  # Set color tags and counts
             return
 
@@ -4496,7 +4497,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
             text += "\nThe song files should be move to real directories."
             self.info.cast(title + "\n\n" + text, 'error')
             message.ShowInfo(self.lib_top, title, text, icon='error',
-                             thread=self.get_refresh_thread())
+                             thread=self.get_refresh_thread)
             self.wrapup_lib_popup()  # Set color tags and counts
             return
 
@@ -4511,7 +4512,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
             text += "\nthe option 'Exit and CANCEL Pending'.\n"
             self.info.cast(title + "\n\n" + text, 'error')
             message.ShowInfo(self.lib_top, title, text, icon='error',
-                             thread=self.get_refresh_thread())
+                             thread=self.get_refresh_thread)
             self.wrapup_lib_popup()  # Set color tags and counts
             return
 
@@ -4540,7 +4541,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
             string_width = 28 if string_width < 28 else string_width
             string_width = 100 if string_width > 100 else string_width
             answer = message.AskString(
-                self.lib_top, title, text, thread=self.get_refresh_thread(),
+                self.lib_top, title, text, thread=self.get_refresh_thread,
                 string=default_string, string_width=string_width)
 
             if answer.result != "yes":
@@ -4562,7 +4563,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
                 text += legal_string
                 text += "\n\nContinue with legal version?\n"
                 message.AskQuestion(self.lib_top, title, text, 'no', icon='warning',
-                                    thread=self.get_refresh_thread())
+                                    thread=self.get_refresh_thread)
                 self.info.cast(title + "\n\n" + text + "\n\n\t\t" +
                                "Answer was: " + answer.result, 'warning')
                 if answer.result != "yes":
@@ -4574,7 +4575,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
                 text = "New name cannot be blank"
                 self.info.cast(title + "\n\n" + text, 'error')
                 message.ShowInfo(self.lib_top, title, text, icon='error',
-                                 thread=self.get_refresh_thread())
+                                 thread=self.get_refresh_thread)
                 continue
 
             ''' old_name same as new name?'''
@@ -4584,7 +4585,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
                 text += ":\n\n" + legal_string
                 self.info.cast(title + "\n\n" + text, 'error')
                 message.ShowInfo(self.lib_top, title, text, icon='error',
-                                 thread=self.get_refresh_thread())
+                                 thread=self.get_refresh_thread)
                 continue
 
             ''' If new name exists then files will be merged '''
@@ -4605,7 +4606,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
                 text += " name:\n\n" + legal_string + "\n\nAlready exists."
                 self.info.cast(title + "\n\n" + text, 'error')
                 message.ShowInfo(self.lib_top, title, text, icon='error',
-                                 thread=self.get_refresh_thread())
+                                 thread=self.get_refresh_thread)
                 continue
 
             ''' New Artist or Album already exists so merge files 
@@ -4617,7 +4618,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
                 text += ": " + legal_string
                 self.info.cast(title + "\n\n" + text)
                 message.AskQuestion(self.lib_top, title, text, icon='warning',
-                                    thread=self.get_refresh_thread())
+                                    thread=self.get_refresh_thread)
                 if answer.result != "yes":
                     continue  # Enter a new name
 
@@ -4640,7 +4641,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
                 text += "\n\nSwitch music player to a different " + level + "."
                 self.info.cast(title + "\n\n" + text, 'error')
                 message.ShowInfo(self.lib_top, title, text, icon='error',
-                                 thread=self.get_refresh_thread())
+                                 thread=self.get_refresh_thread)
                 continue
             break
 
@@ -4706,7 +4707,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
                 text += "\n\nMoving on to next file."
                 self.info.cast(title + "\n\n" + text, 'error')
                 message.ShowInfo(self.lib_top, title, text, icon='error',
-                                 thread=self.get_refresh_thread())
+                                 thread=self.get_refresh_thread)
                 duplicate_count += 1
                 sql.hist_add(time.time(), music_id, g.USER, 'rename', level,
                              old_name, old_path, "Rename FAILED. Target exists.",
@@ -4751,7 +4752,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
                     " and the new " + level + ".\n"
         self.info.cast(title + "\n\n" + text)
         message.ShowInfo(self.lib_top, title, text,
-                         thread=self.get_refresh_thread())
+                         thread=self.get_refresh_thread)
 
         self.wrapup_lib_popup()  # Set color tags and counts
 
@@ -5004,7 +5005,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
             text = "Top directory doesn't exist or is off-line."
             self.info.cast(title + "\n\n" + text)
             message.ShowInfo(lcs.main_top, title, text,
-                             thread=self.get_refresh_thread())
+                             thread=self.get_refresh_thread)
             return False  # Pops back into lcs.apply() which calls lcs.reset()
 
         ''' Save last opened location code '''
@@ -5134,7 +5135,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
             self.info.cast("Rebuild music library - Only works when Favorites playing",
                            'error', 'open')
             message.ShowInfo(
-                self.lib_top, thread=self.get_refresh_thread(),
+                self.lib_top, thread=self.get_refresh_thread,
                 title="Support for Playlists not finished.",
                 text="The Refresh Library function cannot be run when a\n" +
                      "Playlist is open. Close playlist and use Favorites.\n\n" +
@@ -5153,7 +5154,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
         if SORTED_LIST == SortedList2:
             # print('self.play_top_is_active:', self.play_top_is_active)
             message.ShowInfo(
-                self.lib_top, thread=self.get_refresh_thread(),
+                self.lib_top, thread=self.get_refresh_thread,
                 title="Refresh music library",
                 text="The same " + str(len(SORTED_LIST)) +
                      " songs are in the library.\n\n" +
@@ -5163,7 +5164,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
             additions = list(set(SortedList2).difference(SORTED_LIST))
             deletions = list(set(SORTED_LIST).difference(SortedList2))
             answer = message.AskQuestion(
-                self.lib_top, thread=self.get_refresh_thread(),
+                self.lib_top, thread=self.get_refresh_thread,
                 align='left', icon='warning',
                 title="Refresh music library - EXPERIMENTAL !!!",
                 text="Songs have changed in storage:\n" +
@@ -5221,7 +5222,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
             return
 
         self.tv_vol = tvVolume(top=self.lib_top, tooltips=self.tt,
-                               thread=self.get_refresh_thread(),
+                               thread=self.get_refresh_thread,
                                save_callback=self.get_hockey_state,
                                playlists=self.playlists, info=self.info)
 
@@ -5244,6 +5245,9 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
         print("g.MSERVE_DIR      :", g.MSERVE_DIR)
         print("g.PROGRAM_DIR     :", g.PROGRAM_DIR)
         print("g.TEMP_DIR        :", g.TEMP_DIR)
+
+        print("Process ID (PID)  :", os.getpid())
+        print("Parent's PID      :", os.getppid())  # Python > 3.2 for Windows
 
         print("\nmon = monitor.Monitors()")
         print("=============================================\n")
@@ -5513,7 +5517,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
 
         message.ShowInfo(self.lib_top, "DEBUG - mserve.py",
                          "DEBUG information written to Stdout (Standard Output)",
-                         thread=self.get_refresh_thread())
+                         thread=self.get_refresh_thread)
         self.info.cast("DEBUG information written to Stdout (Standard Output)")
 
     # ==============================================================================
@@ -5741,34 +5745,49 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
             If file does exist grab metadata with FileControl.new()
             Updates file last access time which needs to be reversed.
             Uses mus_ctl() class to verify file exists and read metadata so only
-                one instance of SQL Music Table View can be opened at once.
+                one instance of SQL Music Table View can be opened at a time.
         """
         if self.mus_search:
-            self.mus_search.close()
+            self.mus_search.close()  # Close old search
 
         answer = message.AskQuestion(
-            self.mus_top, thread=self.get_refresh_thread(),
+            self.mus_top, thread=self.get_refresh_thread,
             title="Songs with no Artwork confirmation - mserve", confirm='no',
             text="Every song file will be read taking 1 minute/1,000 files.\n" +
                  "Missing metadata in SQL Music Table will be updated.\n" +
                  "Songs with no artwork will be displayed.\n\n" +
+                 "You cannot play the next song in playlist while this function.\n" +
+                 "is running. It will cause this function to freeze.\n\n" +
                  "Do you want to perform this lengthy process?")
-
         if answer.result != 'yes':
             return
+
+        ''' Pause music if playing '''
+        forced_pause = False
+        if self.play_top_is_active:
+            if self.pp_state == "Playing":
+                self.pp_toggle()
+                forced_pause = True
+                # Need 1 second to fade out music and pause
+                for _i in range(10):
+                    self.refresh_play_top()  # Gently fade volume to 25%
+                    self.play_top.after(33)
 
         ext.t_init("missing_artwork()")
         ''' TODO: Clear title when new button clicked '''
         self.mus_top.title("Music files with missing artwork and " +
                            "missing audio (in Red) - mserve")
+
         self.info.cast("Begin Update Metadata and display missing artwork.")
 
         ''' Initialize reading file control instance '''
         self.mus_ctl = FileControl(self.lib_top, self.info, silent=True,
-                                   log_level='error')  # don't log info facts
+                                   log_level='error',  # don't log info facts
+                                   get_thread=self.get_refresh_thread)
 
         ''' Initialize scan filter / tally instance '''
-        self.meta_scan = encoding.MetaScan(self.mus_top, self.get_refresh_thread)
+        #self.meta_scan = encoding.MetaScan(self.mus_top, self.get_refresh_thread)
+        self.meta_scan = encoding.MetaScan(self.mus_top)  # Turn off refresh
 
         ''' Initialize delayed text box instance for user feed back '''
         self.missing_artwork_dtb = message.DelayedTextBox(
@@ -5776,17 +5795,26 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
 
         ''' Initialize search instance with callback here (below)  '''
         self.mus_search = toolkit.SearchText(  # search all using callback
-            self.mus_view, find_str='callback', callback=self.missing_artwork_callback)
+            self.mus_view, callback=self.missing_artwork_callback,
+            find_str='callback', thread=self.get_refresh_thread)
 
         ''' Perform search for missing artwork & update metadata at same time '''
         self.mus_search.find_callback()  # attach desired to treeview
 
+        ''' Unpause music '''
+        if forced_pause:
+            self.pp_toggle()  # Restore playing song that was paused
+        
         ''' Close delayed text window '''
-        self.missing_artwork_dtb.close()  # Close delayed text box
-        ext.t_end("print")
+        if self.missing_artwork_dtb:
+            self.missing_artwork_dtb.close()  # Close delayed text box
+        ext.t_end("print")  #
 
-        ''' TODO: Add tag for "RED" row when no audio '''
-        # Display summary counts
+        ''' Was window closed? '''
+        if not self.meta_scan:
+            return
+
+        ''' Display summary counts '''
         text = "SQL Music Table rows: " + "{:,}".\
             format(self.meta_scan.total_scanned) + "\n" + \
             "In other locations: " + "{:,}".\
@@ -5803,9 +5831,9 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
             format(self.meta_scan.meta_data_unchanged) + "\n\n" + \
             "Click 'OK' to close and then you can continue working.\n"
 
-        title = "Update Metadata & Metadata Summary"
+        title = "Update Metadata & Missing Artwork Summary"
         message.ShowInfo(self.mus_top, title, text,
-                         thread=self.get_refresh_thread())
+                         thread=self.get_refresh_thread)
         self.info.fact(title + "\n\n" + text)
 
     def missing_artwork_callback(self, Id, values):
@@ -5816,14 +5844,17 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
                 visual feedback is in treeview when file is detached from list.
 
             REMINDER:
-            self.meta_scan = encoding.MetaScan(self.mus_top, self.get_refresh_thread())
+            self.meta_scan = encoding.MetaScan(self.mus_top, self.get_refresh_thread)
 
             am values: mus_view.tree values for current row being processed
+        :param Id: Treeview Id
+        :param values: Treeview column values
         :return: True if artwork exists, False if not or if different location
         """
 
         ''' Reading through filenames in mus_view.tree which also has music ID '''
         os_filename = self.mus_view.column_value(values, 'os_filename')
+        self.lib_top.update_idletasks()
 
         if not self.mus_ctl.new(PRUNED_DIR + os_filename):  # get metadata
             # .new() returns False when file doesn't exist at this location
@@ -5835,12 +5866,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
 
         if self.mus_ctl.invalid_audio:
             # Not a valid music file
-            print("invalid audio:", os_filename)
-            ''' ERRORS:
-                show in Delayed Text Box but Control C disabled.
-
-
-            '''
+            ''' Show in Delayed Text Box but Control+C not working for copy. '''
             self.missing_artwork_dtb.update("1) Not a music file: " +
                                             os_filename)  # Refresh screen with song file name
             self.meta_scan.total_scanned += 1
@@ -5860,7 +5886,6 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
             ''' Will disappear from treeview to give user feedback '''
             return False  # Don't keep this one in treeview
         else:
-            print("missing artwork:", os_filename)
             ''' Stays in treeview so update delayed text box for user feedback '''
             self.missing_artwork_dtb.update("Missing artwork: " +
                                             os_filename)  # Refresh screen with song file name
@@ -5868,7 +5893,9 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
 
     # noinspection PyUnusedLocal
     def mus_close(self, *args):
-        """ Close SQL Music Table View """
+        """ Close SQL Music Table View
+            May be called with 'X' to close window while find callbacks running.
+        """
         self.pretty_close()  # Inadvertently closes his_top or lcs_top pretty too
         last_geometry = monitor.get_window_geom_string(
             self.mus_top, leave_visible=False)
@@ -5876,9 +5903,11 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
         self.tt.close(self.mus_top)  # Close tooltips under top level
         self.mus_top_is_active = False
         self.mus_top.destroy()
-        self.mus_top = None  # Extra Insurance
+        self.mus_top = None  # Checked in toolkit.py SearchText() class
         self.mus_search = None
         self.meta_scan = None
+        if self.missing_artwork_dtb:
+            self.missing_artwork_dtb.close()  # Close delayed text box
         self.missing_artwork_dtb = None
 
 
@@ -6234,15 +6263,15 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
 
             if test is not None:
                 if not test(row):
-                    dd_view.attached[sql_row_id] = None  # Skipped
+                    dd_view.attached[str(sql_row_id)] = None  # Skipped
                     continue
 
             if first_id is None:
                 first_id = sql_row_id  # Display first row when done
 
             # NOTE: dd_view.insert() has different parameters than tree.insert()!
-            dd_view.insert("", dict(row), iid=sql_row_id, tags="unchecked")
-            dd_view.attached[sql_row_id] = True  # row is attached to view
+            dd_view.insert("", dict(row), iid=str(sql_row_id), tags="unchecked")
+            dd_view.attached[str(sql_row_id)] = True  # row is attached to view
 
             ''' Delayed Text Box (dtb_line) displays only if lag experienced  '''
             if 'OsFileName' in row:
@@ -6317,8 +6346,10 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
             column_number = self.view.tree.identify_column(event.x)  # returns '#?'
             if self.common_top == self.mus_top:
                 title = "SQL Music Table"
-            else:
+            elif self.common_top == self.his_top:
                 title = "SQL History Table"
+            else:
+                title = "SQL Location Table"
             self.create_window(title + ': ' + column_number,
                                900, 450)  # width, height - July 27/22 make wider.
             column_name = self.view.columns[int(column_number.replace('#', '')) - 1]
@@ -6430,9 +6461,8 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
         pretty.scrollbox = self.scrollbox
         sql.tkinter_display(pretty)
 
-
     def view_sql_row(self, pretty):
-        """ View SQL - Music Table Row or History Table Row """
+        """ View SQL - Music Table, History Table, or Location Table Row """
         self.create_window("Highlighted SQL Table Row - mserve", 1400, 975)
         pretty.scrollbox = self.scrollbox
         # If we did text search, highlight word(s) in yellow
@@ -6444,16 +6474,14 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
 
     def view_library(self, pretty):
         """ View Library Treeview and open current song into view.
-            TODO: When returning, collapse treeview parents forced to open.
-        """
-
+            TODO: When returning, collapse treeview parents forced to open. """
         music_id = pretty.dict['SQL Music Row Id']  # hist & music have same
         ''' SQL History has music_id with zero '''
         if music_id is 0:
             text = "Music Id 0 is not a real music song.\n" + \
                    "It cannot be opened in the Music Location."
             message.ShowInfo(view.toplevel, "Music Id 0 - mserve", text,
-                             icon='warning', thread=self.get_refresh_thread())
+                             icon='warning', thread=self.get_refresh_thread)
             self.info.fact(text, 'warning', 'open')
             return
 
@@ -6462,7 +6490,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
             text = "Music Id: '" + music_id + "' not found.\n" + \
                    "Reason unknown."
             message.ShowInfo(view.toplevel, "Music Id Not Found - mserve", text,
-                             icon='error', thread=self.get_refresh_thread())
+                             icon='error', thread=self.get_refresh_thread)
             self.info.fact(text, 'error', 'open')
             print("mserve.py view_library() music_id not found:", music_id)
             return
@@ -6498,7 +6526,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
             text = "Music Id: '" + music_id + "' not found.\n" + \
                    "No matching song Artist/Album/Title in Music Location."
             message.ShowInfo(view.toplevel, "No Match in Music Location - mserve", text,
-                             icon='error', thread=self.get_refresh_thread())
+                             icon='error', thread=self.get_refresh_thread)
             self.info.fact(text, 'error', 'open')
             print("mserve.py view_library() No match in Music Location:", music_id)
 
@@ -6621,9 +6649,8 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
 
         text = "Total size:  " + "{:,}".format(total_size) + "\n" + \
                "Row count:  " + "{:,}".format(row_count)
-        #thread = self.get_refresh_thread()
         message.ShowInfo(view.toplevel, title, text,
-                         thread=self.get_refresh_thread())
+                         thread=self.get_refresh_thread)
 
     # noinspection PyUnusedLocal
     def pretty_close(self, *args):
@@ -6715,7 +6742,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
         title = self.title_suffix + " saved."
         if ShowInfo:
             message.ShowInfo(self.lib_top, title, text, 'left',
-                             thread=self.get_refresh_thread())
+                             thread=self.get_refresh_thread)
             self.info.cast(title + "\n\n" + text)
 
     def save_last_selections(self, new_playlist=False):
@@ -6773,7 +6800,8 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
             # Occurs when there are no locations defined whatsoever
             print('Checking to save:', lc.FNAME_LAST_LOCATION)
             print("No 'iid' found in 'LODICT' for:", START_DIR)
-            return  # June 25, 2023 - Added return
+            #return  # June 25, 2023 - Added return
+            # Aug 6/23 remove return because LODICT is disappearing soon.
 
         ''' Two songs needed to save, next startup uses previous save '''
         if len(self.saved_selections) < 2:
@@ -7257,24 +7285,8 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
         self.vu_width = 30  # Always stays this value
         self.vu_height = 100  # Will be overriden
         self.vu_meter_first_time = True  # Patch for VU meter height
-
         self.vu_meter_left, self.vu_meter_left_rect = self.create_vu_meter(r, 3)
         self.vu_meter_right, self.vu_meter_right_rect = self.create_vu_meter(r, 4)
-        '''
-        self.vu_meter_left = tk.Canvas(self.play_frm, width=self.vu_width,
-                                       relief=tk.FLAT,  # Override tk.RIDGE
-                                       height=self.vu_height, bg='black')
-        self.vu_meter_left.grid(row=0, rowspan=r, column=3, padx=8)
-        self.vu_meter_left_rect = self.vu_meter_left.create_rectangle(
-            0, self.vu_height, 0, self.vu_height)
-        self.vu_meter_right = tk.Canvas(self.play_frm, width=self.vu_width,
-                                        relief=tk.FLAT,  # Trying to override tk.RIDGE :(
-                                        height=self.vu_height, bg='black')
-        self.vu_meter_right.grid(row=0, rowspan=r, column=4, padx=8)
-        self.vu_meter_right_rect = self.vu_meter_right.create_rectangle(
-            0, self.vu_height, 0, self.vu_height)
-        '''
-
         self.VU_HIST_SIZE = 6
         self.vu_meter_left_hist = [0.0] * self.VU_HIST_SIZE
         self.vu_meter_right_hist = [0.0] * self.VU_HIST_SIZE
@@ -7507,7 +7519,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
                      "Click the time remaining button and cancel countdown.\n")
             # Even though message appears on lib_top we know play_top has the thread
             message.ShowInfo(self.lib_top, text=quote, align='center',
-                             thread=self.get_refresh_thread(),
+                             thread=self.get_refresh_thread,
                              title="Cannot toggle FF/Rewind Buttons Now - mserve")
             self.info.fact(quote)
             return
@@ -7936,7 +7948,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
                  "Highlight and use <Control>+C to copy name.")
 
         message.ShowInfo(self.lib_top, text=quote, align='center', icon='error',
-                         thread=self.get_refresh_thread(),
+                         thread=self.get_refresh_thread,
                          title="Invalid music file - mserve")
         self.info.fact(quote, 'error', 'open')
 
@@ -7958,7 +7970,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
                  "\n\nPlease check Pulse Audio settings with pavucontrol.")
 
         message.ShowInfo(self.lib_top, text=quote, align='center', icon='error',
-                         thread=self.get_refresh_thread(),
+                         thread=self.get_refresh_thread,
                          title="Failed to get Pulse Audio Sink - mserve")
         self.info.fact(quote, 'error', 'open')
 
@@ -8159,7 +8171,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
         ''' Want to end countdown? - second time button click '''
         if self.play_hockey_active:  # Already counting down?
             answer = message.AskQuestion(
-                self.play_top, thread=self.get_refresh_thread(),
+                self.play_top, thread=self.get_refresh_thread,
                 title="TV break in progress - mserve", confirm='no',
                 text="There are " + sec_min_str(self.play_hockey_remaining) +
                      "\nremaining in commercial/intermission.\n\n" +
@@ -8239,6 +8251,12 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
         """ Play song from start. Called on startup, on playlist change and
             by next/prev/restart buttons.
 
+        ------------------------------------------------------------------------
+        BUG: When play_one_song fires and another treeview function is looping
+             through get_children that loop gets destroyed along with it's tree. 
+        ------------------------------------------------------------------------
+
+
         :param resume: When True, use self.resume_state and self.resume_song_secs
             from SQL history record Type: 'resume' Action: 'L00x' or 'P00000x'
         :param chron_state: Pass to "Show" (default) or "Hide" to force change.
@@ -8315,22 +8333,21 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
             return True
 
         toolkit.tv_tag_add(self.lib_tree, iid, "play_sel")
-        # May 16 2023 - New compact code
-        #tags = self.lib_tree.item(iid)['tags']  # Append 'play_sel' tag
-        #if "play_sel" not in tags:
-        #    tags.append("play_sel")
-        #    self.lib_tree.item(iid, tags=tags)
         self.lib_tree.see(iid)  # Ensure song visible
 
         '''   F A S T   C L I C K I N G   '''
-        root.update()  # Do both lib_top & play_top updates
+        #root.update()  # Do both lib_top & play_top updates
+        # Above also gives time slice back to mus_search and compare locations
+        # and they freeze up def missing_art
+        self.lib_top.update_idletasks()
+        self.play_top.update_idletasks()
         pav.poll_fades()
         if self.last_started != self.ndx:  # Fast clicking Next button?
             return True
 
         ''' Set current song # of: total song count '''
         self.song_number_var.set(str(self.ndx + 1) + " of: " +
-                                     str(len(self.saved_selections)))
+                                 str(len(self.saved_selections)))
 
         '''   F A S T   C L I C K I N G   '''
         self.play_top.update_idletasks()
@@ -8407,7 +8424,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
             return True
 
         ''' Update playlist chronology (Frame 4) with short line = False '''
-        self.play_chron_highlight(self.ndx, False)  # True = use short line
+        self.play_chron_highlight(self.ndx, False)  # False = use metadata
         if not self.play_top_is_active:
             return False
 
@@ -8481,8 +8498,8 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
             self.splash_toplevel.withdraw()  # Remove splash screen
             self.splash_toplevel = None
 
-        ''' Pulse Audio self.sinks_now is freshly updated by now.
-            Check if speech-dispatcher is polluting sound input sinks. '''
+        ''' Pulse Audio self.sinks_now are freshly updated.
+            Check if speech-dispatcher is spamming sound input sinks. '''
         self.check_speech_dispatcher()
 
         ''' Play song to end, queue next song and close play_ctl '''
@@ -8535,7 +8552,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
         text += "Dispatcher have been found.\n\n"
         text += "Do you want to cancel the job(s)?\n"  # centered: \t breaks
         answer = message.AskQuestion(self.play_top, title, text, 'no',
-                                     thread=self.get_refresh_thread())
+                                     thread=self.get_refresh_thread)
         text += "\n\t\tAnswer was: " + answer.result
         self.info.cast(title + "\n\n" + text)
 
@@ -8610,9 +8627,9 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
                 return True  # self.song_set_ndx() used prev/next/restart
             if not self.play_ctl.check_pid():
                 return True  # Song ended naturally
-            self.refresh_play_top()  # Rotate art, refresh vu meter
+            self.refresh_play_top()  # Rotate art, update vu meter after(.033)
 
-    def refresh_play_top(self):
+    def refresh_play_top(self, sleep_after=True):
         """
         Common code for updating graphics that can be called from anywhere
         Use this when stealing processing cycles from self.play_to_end()
@@ -8650,9 +8667,9 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
             # Above steals focus and keyboard from other applications !
             # Above was source of HUGE BUG July 4, 2023
             self.fine_tune.top.update()  # Without this no keyboard/mouse click
-            sleep = 50 - (int(time.time() - now))
+            sleep = SLEEP_PLAYING - (int(time.time() - now))
             sleep = 1 if sleep < 1 else sleep   # Sleep minimum 1 millisecond
-            self.fine_tune.top.after(sleep)           # Wait until lyric sync
+            self.fine_tune.top.after(sleep)  # Wait until lyric sync
             return False  # Looks like True causes animations to freeze
 
         ''' Set previous or restart into button text '''
@@ -8699,7 +8716,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
             if not self.play_top_is_active:
                 return False  # Next line caused error July 31, 2023
             self.play_top.after(sleep)          # Wait until playing
-            return True  # June 20, 2023 this was False. Don't know effect.
+            return self.play_top_is_active
 
         ''' May 23, 2023 - Updating metadata takes 10 minutes for 5,000 songs.
                 Current song would end before completion. Also a song can end
@@ -8728,14 +8745,18 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
             return False                        # Play window closed so shutting down
         self.play_top.update()                  # Update artwork spinner & text
 
+        ''' Aug 5/23 - Optional sleep_after to speed up loops '''
+        if not sleep_after:
+            return self.play_top_is_active
+
         # Jun 20 2023 - Losing 5 ms on average see: self.info.test_tt()
         now = time.time()  # June 20, 2023 - Use new self.last_sleep_time
-        sleep = SLEEP_PAUSED - int(now - self.last_sleep_time)
+        sleep = SLEEP_PLAYING - int(now - self.last_sleep_time)
         sleep = sleep if sleep > 0 else 1  # Sleep minimum 1 millisecond
         self.last_sleep_time = now
         if self.play_top:  # Aug 2/23 - exiting
             self.play_top.after(sleep)  # Sleep until next 30 fps time
-        return True
+        return self.play_top_is_active
 
     def play_update_progress(self, start_secs=None):
         """ Calculate song progress. This is approximate value. Exact value
@@ -8761,39 +8782,44 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
         if True is True:
             # FORMAT IS - hh:mm:ss of: hh:mm:ss
             self.song_progress_var.set(self.current_song_mm_ss_d +
-                                      " of: " + self.saved_DurationMin)
+                                       " of: " + self.saved_DurationMin)
         else:
             # FORMAT IS - 9999.9 seconds of: 9999.9
             self.song_progress_var.set(str('%.1f' % self.current_song_secs) +
-                                      " seconds of: " + str(self.saved_DurationSecs))
+                                       " seconds of: " + str(self.saved_DurationSecs))
 
     @staticmethod
     def update_sql_metadata(file_ctl):
         """ Legacy code crafted to new function June 28, 2023.
-        :param file_ctl: Either self.play_ctl or self.ltp_ctl
+            Multiple file controls can be calling at same time.
+            E.G. Playing Music and self.missing_artwork_callback()
+        :param file_ctl: self.play_ctl, self.ltp_ctl, self.mus_ctl
         """
-        meta_update_succeeded = None
-        if file_ctl.path.startswith(PRUNED_DIR):
-            ''' July 18, 2023 conversion
-            meta_update_succeeded = sql.update_metadata(file_ctl)
-            '''
-            sql_key = file_ctl.path[len(PRUNED_DIR):]
-            # Remove prefix from filename leaving base-path (OsFileName)
-            # returns true if metadata changed and row updated
-            meta_update_succeeded = \
-                sql.update_metadata(
-                    sql_key, file_ctl.Artist, file_ctl.Album, file_ctl.Title,
-                    file_ctl.Genre, file_ctl.Track, file_ctl.Date,
-                    file_ctl.DurationSecs, file_ctl.Duration,
-                    file_ctl.DiscNumber, file_ctl.Composer)
-        else:
-            # July 21, 2023 - SQL created metadata from another location.
-            #   Needs work to merge for the most robust information.
-            print('mserve.py update_sql_metadata() path:', file_ctl.path)
-            print('mserve.py update_sql_metadata() Missing PRUNED_DIR:', PRUNED_DIR)
-            pass
+        ''' Using instance of threading.Lock() '''
+        with critical_function_lock:
+            ''' This should ensure only one thread accesses at a time '''
+            meta_update_succeeded = None
+            if file_ctl.path.startswith(PRUNED_DIR):
+                ''' July 18, 2023 conversion
+                meta_update_succeeded = sql.update_metadata(file_ctl)
+                '''
+                sql_key = file_ctl.path[len(PRUNED_DIR):]
+                # Remove prefix from filename leaving base-path (OsFileName)
+                # returns true if metadata changed and row updated
+                meta_update_succeeded = \
+                    sql.update_metadata(
+                        sql_key, file_ctl.Artist, file_ctl.Album, file_ctl.Title,
+                        file_ctl.Genre, file_ctl.Track, file_ctl.Date,
+                        file_ctl.DurationSecs, file_ctl.Duration,
+                        file_ctl.DiscNumber, file_ctl.Composer)
+            else:
+                # July 21, 2023 - SQL created metadata from another location.
+                #   Needs work to merge for the most robust information.
+                print('mserve.py update_sql_metadata() path:', file_ctl.path)
+                print('mserve.py update_sql_metadata() Missing PRUNED_DIR:', PRUNED_DIR)
+                pass
 
-        return meta_update_succeeded
+            return meta_update_succeeded
 
     def play_spin_art(self):
         """
@@ -9862,7 +9888,7 @@ mark set markName index"
             # If Pause/Play State is currently paused we can not synchronize
             # June 5/2021: change top level from self.play_top
             answer = message.AskQuestion(
-                self.lyrics_score_box, thread=self.get_refresh_thread(),
+                self.lyrics_score_box, thread=self.get_refresh_thread,
                 title="Music is paused - mserve", confirm='no',
                 text="Left clicking synchronizes lyrics\n" +
                      "but only works when music is playing.\n" +
@@ -10397,7 +10423,7 @@ mark set markName index"
         # Give warning box when lyrics exist all will be lost!
         if len(self.lyrics_score) > 10:
             answer = message.AskQuestion(
-                self.play_top, thread=self.get_refresh_thread(),
+                self.play_top, thread=self.get_refresh_thread,
                 title="Lyrics will scraped from web and replaced",
                 text="If you have edited these lyrics all changes will be lost!" +
                 "\n\nTIP: You can edit lyrics to copy and paste groups of lines.")
@@ -10426,7 +10452,7 @@ mark set markName index"
         # Give warning box when lyrics exist all will be lost!
         if len(self.lyrics_score) > 10:
             answer = message.AskQuestion(
-                self.play_top, thread=self.get_refresh_thread(),
+                self.play_top, thread=self.get_refresh_thread,
                 title="Lyrics will pasted from clipboard",
                 text="If you edited these lyrics changes will be lost!\n\n" +
                      "TIP: Edit lyrics can copy and paste groups of lines.")
@@ -10609,7 +10635,7 @@ mark set markName index"
         # Confirm if > 20% of text has been deleted
         if percent < 0.8:
             answer = message.AskQuestion(
-                self.play_top, thread=self.get_refresh_thread(),
+                self.play_top, thread=self.get_refresh_thread,
                 title="More than 20% of text deleted",
                 text="A large amount of text has been deleted!\n\n" +
                      "TIP: Deleting all text will web scrape lyrics again.")
@@ -10793,7 +10819,7 @@ mark set markName index"
         self.set_title_suffix()
 
         dialog = message.AskQuestion(
-            self.play_top, thread=self.get_refresh_thread(),
+            self.play_top, thread=self.get_refresh_thread,
             title="Shuffle song order confirmation",
             text="\nThis will permanently change song order for:\n\n" +
                  " - " + self.title_suffix
@@ -11025,7 +11051,11 @@ mark set markName index"
         if self.playlists.name is not None:
             Action = self.playlists.act_number_str
         else:
-            Action = LODICT['iid']
+            try:
+                Action = LODICT['iid']
+            except:
+                pass
+            Action = lcs.open_code
 
         return sql.get_config(Type, Action)
 
@@ -11040,7 +11070,12 @@ mark set markName index"
         if self.playlists.name is not None:
             Action = self.playlists.act_number_str
         else:
-            Action = LODICT['iid']
+            try:
+                Action = LODICT['iid']
+            except:
+                print("get_config_for_loc() no LODICT")
+                pass
+            Action = lcs.open_code
 
         sql.save_config(
             Type, Action, SourceMaster=SourceMaster, SourceDetail=SourceDetail,
@@ -11296,7 +11331,7 @@ mark set markName index"
             pav.fade_in_aliens(1)  # Turn back non-ffplay volumes to original
 
         self.ltp_ctl.close()  # Close FileControl(), reset ATIME
-        self.tt.close(self.ltp_top)  # Close tooltips under top level
+        # self.tt.close(self.ltp_top)  # No tooltips
         self.ltp_top_is_active = False
 
         if os.path.isfile(TMP_CURR_SAMPLE):
@@ -11354,8 +11389,8 @@ mark set markName index"
         ''' Chronology treeview Colors .tag_configure() '''
         self.chron_tree.tag_configure('normal', background='Black',
                                       foreground='Gold')
-        self.chron_tree.tag_configure('chron_sel', background='grey18',
-                                      foreground='LightYellow')
+        self.chron_tree.tag_configure('chron_sel', background='Gold',
+                                      foreground='Black')
 
         ''' Configure tag for row highlight '''
         self.chron_tree.tag_configure('highlight', background='LightBlue',
@@ -11639,7 +11674,7 @@ mark set markName index"
                      "Try again with different filter criteria.\n\n")
 
             message.ShowInfo(self.play_top, text=quote, align='left',
-                             thread=self.get_refresh_thread(),
+                             thread=self.get_refresh_thread,
                              title="Filter Playlist Failed - mserve")
             self.info.fact(quote)
             return  # TODO: Has this been tested? Use small playlist
@@ -12788,7 +12823,7 @@ class FineTune:
             return  # Already playing?
 
         answer = message.AskQuestion(
-            self.top, thread=self.get_refresh_thread(),
+            self.top, thread=self.get_refresh_thread,
             title="Delete all time indices",
             text="All times will be permanently erased!!!\n\n" +
                  'To cancel time changes, click "Close" button instead.' +
@@ -13000,7 +13035,7 @@ class FineTune:
             return  # Error message already
         if first == last:
             answer = message.AskQuestion(
-                self.top, thread=self.get_refresh_thread(),
+                self.top, thread=self.get_refresh_thread,
                 title="Merge lines together",
                 text="At least two lines must be selected to merge together." +
                      "\n\nThis will merge checked line and the line after it.")
@@ -13134,7 +13169,7 @@ class FineTune:
                 too many lines checked after starting process.
         """
         answer = message.AskQuestion(self.top, text=msg,
-                                     thread=self.get_refresh_thread(),
+                                     thread=self.get_refresh_thread,
                                      title="More than three lines checked")
         return answer.result != 'yes'
 
@@ -13163,7 +13198,7 @@ class FineTune:
         if self.sync_changed_score is False and \
                 self.work_time_list == self.new_time_list:
             answer = message.AskQuestion(
-                self.top, thread=self.get_refresh_thread(),
+                self.top, thread=self.get_refresh_thread,
                 title="Lyrics have NOT been fine-tuned",
                 text="No changes to save. Force save anyway?")
             if answer.result != 'yes':
@@ -13225,7 +13260,7 @@ class FineTune:
                  'NOTE: If lyrics contain errors, fix them before using this function.')
 
         message.ShowInfo(self.play_top, text=quote, align='left',
-                         thread=self.get_refresh_thread(),
+                         thread=self.get_refresh_thread,
                          title="Fine-tune time index instructions - mserve")
         return False
 
@@ -13249,7 +13284,7 @@ class FineTune:
             print('differences:', list(set(self.work_time_list) -
                                        set(self.new_time_list)))
             answer = message.AskQuestion(self.top,
-                                         thread=self.get_refresh_thread(),
+                                         thread=self.get_refresh_thread,
                                          title="Times have been fine-tuned",
                                          text="Changes will be lost!")
             if answer.result != 'yes':
@@ -13395,7 +13430,7 @@ class tvVolume:
     """ Usage by caller:
 
     self.tv_vol = tvVolume(parent, name, title, text, tooltips=self.tt,
-                           thread=self.get_refresh_thread(),
+                           thread=self.get_refresh_thread,
                            save_callback=self.save_callback
                            playlists=self.playlists, info=self.info)
           - Music must be playing (name=ffplay) or at least a song paused.
@@ -13417,7 +13452,7 @@ class tvVolume:
         self.title = title          # E.G. "Set volume for mserve"
         self.text = text            # "Adjust mserve volume to match other apps"
         self.tt = tooltips          # Tooltips pool for buttons
-        self.thread = thread        # E.G. self.get_refresh_thread()
+        self.get_thread_func = thread        # E.G. self.get_refresh_thread
         self.save_callback = save_callback  # Set hockey fields to new values
         self.playlists = playlists
         self.info = info
@@ -13522,7 +13557,7 @@ class tvVolume:
         if not self.read_vol():
             message.ShowInfo(self.parent, "Initialization of mserve in progress.",
                              "Cannot adjust volume until playlist loaded into mserve.",
-                             icon='error', thread=self.thread)
+                             icon='error', thread=self.get_thread_func)
             self.close()
 
         # Adjusting volume with no sound source isn't helpful
@@ -13530,7 +13565,7 @@ class tvVolume:
             title = "No Sound is playing."
             text = "Cannot adjust volume until a song is playing."
             message.ShowInfo(self.parent, title, text,
-                             icon='warning', thread=self.thread)
+                             icon='warning', thread=self.get_thread_func)
             self.info.cast(title + "\n" + text, 'warning')
             self.close()
 
@@ -13602,7 +13637,7 @@ class tvVolume:
         except ValueError:
             message.ShowInfo(self.top, "Invalid Seconds Entered.",
                              "Commercial or Intermission contains non-digit(s).",
-                             icon='error', thread=self.thread)
+                             icon='error', thread=self.get_thread_func)
             return False
 
         d['SourceDetail'] = self.tv_application.get()
@@ -13614,7 +13649,7 @@ class tvVolume:
                    "Ensure your browser has opened a video (it can be paused)."
             self.info.cast(title + "\n\n" + text, 'error')
             message.ShowInfo(self.top, title, text,
-                             icon='error', thread=self.thread)
+                             icon='error', thread=self.get_thread_func)
             return False
 
         self.save_config_for_loc(
@@ -13634,7 +13669,12 @@ class tvVolume:
         if self.playlists.name is not None:
             Action = self.playlists.act_number_str
         else:
-            Action = LODICT['iid']
+            try:
+                Action = LODICT['iid']
+            except:
+                print("get_config_for_loc() no LODICT")
+                pass
+            Action = lcs.open_code
         return sql.get_config(Type, Action)
 
     def save_config_for_loc(self, Type, SourceMaster="", SourceDetail="", Target="",
@@ -13648,7 +13688,12 @@ class tvVolume:
         if self.playlists.name is not None:
             Action = self.playlists.act_number_str
         else:
-            Action = LODICT['iid']
+            try:
+                Action = LODICT['iid']
+            except:
+                print("get_config_for_loc() no LODICT")
+                pass
+            Action = lcs.open_code
 
         sql.save_config(
             Type, Action, SourceMaster=SourceMaster, SourceDetail=SourceDetail,
@@ -13755,15 +13800,28 @@ class FileControlCommonSelf:
         self.ff_name = None         # TMP_CURR_SONG, etc.
         self.dead_start = None      # Start song and pause it immediately
 
+        try:
+            if os.path.isfile(self.TMP_FFPROBE):
+                os.remove(self.TMP_FFPROBE)
+        except AttributeError:
+            # FileControl instance has no attribute 'TMP_FFPROBE'
+            pass
+        try:
+            if os.path.isfile(self.TMP_FFMPEG):
+                os.remove(self.TMP_FFMPEG)
+        except AttributeError:
+            # FileControl instance has no attribute 'TMP_FFMPEG'
+            pass
+
 
 class FileControl(FileControlCommonSelf):
     """ Control Music Files, including play, pause, end """
 
     def __init__(self, tk_top, info, close_callback=None, silent=False,
                  log_level='all', get_thread=None):
-        """
-        """
+        """ FileControlCommonSelf to remove last temporary files. """
         FileControlCommonSelf.__init__(self)
+
         ''' self-ize parameter list '''
         self.tk_top = tk_top        # Tkinter Toplevel window used by parent
         self.info = info            # Parent's InfoCentre() instance
@@ -13774,6 +13832,12 @@ class FileControl(FileControlCommonSelf):
         self.last_path = None       # Use for fast clicking Next
         self.new_WIP = None         # .new() is Work In Progress
         self.close_WIP = None       # .close() is Work In Progress
+
+        ''' Make TMP names unique for multiple FileControls racing at once '''
+        letters = string.ascii_lowercase + string.digits
+        self.temp_suffix = (''.join(random.choice(letters) for i in range(6)))
+        self.TMP_FFPROBE = TMP_FFPROBE + "_" + self.temp_suffix
+        self.TMP_FFMPEG = TMP_FFMPEG + "_" + self.temp_suffix + ".jpg"
 
     def new(self, path, action=None):
         """
@@ -13869,8 +13933,8 @@ class FileControl(FileControlCommonSelf):
         return True  # Needed for mserve.py missing_artwork()
 
     def get_metadata(self):
-        """ Use ffprobe to write metadata to file TMP_FFPROBE
-            Loop through TMP_FFPROBE lines to create dictionary self.metadata
+        """ Use ffprobe to write metadata to file self.TMP_FFPROBE
+            Loop through self.TMP_FFPROBE lines to create dictionary self.metadata
 
             .oga files do not store audio and video in separate streams.
             The TAG section has to be checked to see if they exist.
@@ -13883,7 +13947,7 @@ class FileControl(FileControlCommonSelf):
             return
 
         ext.t_init("FileControl.get_metadata() - ffprobe")
-        cmd = 'ffprobe ' + '"' + self.last_path + '"' + ' 2>' + TMP_FFPROBE
+        cmd = 'ffprobe ' + '"' + self.last_path + '"' + ' 2>' + self.TMP_FFPROBE
         result = os.popen(cmd).read().strip()
         ext.t_end('no_print')
         # ffprobe on good files: 0.0858271122 0.0899128914 0.0877139568
@@ -13922,7 +13986,7 @@ class FileControl(FileControlCommonSelf):
             print('mserve.py FileControl.get_metadata() ffprobe result:', result)
 
         ''' Create self.metadata{} dictionary '''
-        with open(TMP_FFPROBE) as f:
+        with open(self.TMP_FFPROBE) as f:
             for line in f:
                 line = line.rstrip()  # remove \r and \n
                 # print('line:', line)
@@ -14136,8 +14200,8 @@ class FileControl(FileControlCommonSelf):
 
     def get_artwork(self, width, height):
         """
-            Use ffmpeg to get artwork for song into TMP_FFMPEG filename.
-            Messages go to TMP_FFPROBE filename which is ignored for now.
+            Use ffmpeg to get artwork for song into self.TMP_FFMPEG filename.
+            Messages go to self.TMP_FFPROBE filename which is ignored for now.
 
             Called from:
 
@@ -14154,14 +14218,14 @@ class FileControl(FileControlCommonSelf):
             return None, None, None
 
         # Don't reuse last artwork
-        if os.path.isfile(TMP_FFMPEG):
-            os.remove(TMP_FFMPEG)
+        if os.path.isfile(self.TMP_FFMPEG):
+            os.remove(self.TMP_FFMPEG)
 
         # noinspection SpellCheckingInspection
         ext.t_init("'ffmpeg -nostdin -y -vn -an -r 1 -i '")
         # noinspection SpellCheckingInspection
         cmd = 'ffmpeg -nostdin -y -vn -an -r 1 -i ' + '"' + self.path + '" ' + \
-              TMP_FFMPEG + ' 2>' + TMP_FFPROBE
+              self.TMP_FFMPEG + ' 2>' + self.TMP_FFPROBE
         result = os.popen(cmd).read().strip()
         ext.t_end('no_print')  # 0.1054868698 0.1005489826 0.0921740532
 
@@ -14181,22 +14245,24 @@ class FileControl(FileControlCommonSelf):
                            result)
             return None, None, None
 
-        if not os.path.isfile(TMP_FFMPEG):
+        if not os.path.isfile(self.TMP_FFMPEG):
             # Song has no artwork that ffmpeg can identify.
             self.info.cast("FileControl.get_artwork(): Programming Error:\n" +
                            "No artwork for:\n\n" + self.path + "\n\n"
                            "However this error should have been caught above.")
             print("\nError getting artwork:\n")
-            print(TMP_FFPROBE)
+            print(self.TMP_FFPROBE)
             return None, None, None
 
-        original_art = Image.open(TMP_FFMPEG)
+        original_art = Image.open(self.TMP_FFMPEG)
         resized_art = original_art.resize(
             (width, height), Image.ANTIALIAS)
         return ImageTk.PhotoImage(resized_art), resized_art, original_art
 
     def test_middle(self):
-        """ ffplay will fail playing middle of some songs. This test is
+        """ NOT USED
+        
+            ffplay will fail playing middle of some songs. This test is
             used by lib_tree_play() and FineTune() class.
 
             July 3, 2023 - 20 minutes after writing discovered this isn't
@@ -14284,7 +14350,7 @@ class FileControl(FileControlCommonSelf):
 
         ''' Is host down? '''
         if lcs.host_down:
-            return
+            return 0, ""  # No PID, No Sink
 
         '''   B I G   T I C K E T   E V E N T   '''
         self.pid, self.sink = start_ffplay(self.path, self.ff_name,
@@ -14579,7 +14645,7 @@ class FileControl(FileControlCommonSelf):
                 float(self.time_played) * 100 / float(self.DurationSecs)
         ''' TODO: get_resume then reset it to zero when done. '''
 
-    def close(self):
+    def close(self, action=None):
         """
             When > 80 % of song played (Fast Forward resets to 0%), then set
             last access time to now. When < 80% reset to saved settings when
@@ -14723,7 +14789,7 @@ class Playlists(PlaylistsCommonSelf):
     """ Usage:
 
         self.playlists = Playlists(parent, name, title, text, tooltips=self.tt,
-                                   thread=self.get_refresh_thread(),
+                                   thread=self.get_refresh_thread,
                                    get_pending=self.get_pending_cnt_total,
                                    display_lib_title=self.display_lib_title)
               - Geometry in Type-'window', action-'pls_top'.
@@ -14839,7 +14905,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         Usage:
 
         self.playlists = Playlists(parent, name, title, text, tooltips=self.tt,
-                                   thread=self.get_refresh_thread(),
+                                   thread=self.get_refresh_thread,
                                    get_pending=self.get_pending_cnt_total,
                                    display_lib_title=self.display_lib_title)
               - Geometry in Type-'window', action-'pls_top'.
@@ -14857,8 +14923,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         self.play_close = play_close  # Main music playing window to close down
         self.enable_lib_menu = enable_lib_menu
         self.tt = tooltips  # Tooltips pool for buttons
-        self.get_thread_func = thread  # E.G. self.get_refresh_thread()
-        self.thread = self.get_thread_func()  # E.G. self.get_refresh_thread()
+        self.get_thread_func = thread  # E.G. self.get_refresh_thread
         self.display_lib_title = display_lib_title  # Rebuild lib_top menubar
 
         ''' Save between Playlist Maintenance calls '''
@@ -14870,7 +14935,6 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         """ Mount window with Playlist Treeview or placeholder text when none.
             :param name: "New Playlist", "Open Playlist", etc.
         """
-        self.thread = self.get_thread_func()  # E.G. self.get_refresh_thread()
         self.pending_counts = self.get_pending()
         ''' Rebuild playlist changes since last time '''
         self.build_playlists()
@@ -14934,7 +14998,13 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         tk.Entry(self.frame, textvariable=self.scr_location, state='readonly',
                  font=ms_font).grid(row=3, column=1, sticky=tk.W, padx=5,
                                     pady=5)
-        self.scr_location.set(LODICT['iid'] + " - " + LODICT['name'])
+
+        try:
+            self.scr_location.set(LODICT['iid'] + " - " + LODICT['name'])
+        except:
+            print("Playlists.create_window() no LODICT")
+            pass
+        self.scr_location.set(lcs.open_code + " - " + lcs.open_name)
 
         self.input_active = False
 
@@ -15000,9 +15070,13 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             self.all_numbers.append(self.act_number_str)
             self.all_names.append(self.act_name)
             self.names_all_loc.append(self.act_name)
-            if self.act_loc_id == LODICT['iid']:
+            try:
+                if self.act_loc_id == LODICT['iid']:
+                    self.names_for_loc.append(self.act_name)
+            except:
+                pass
+            if self.act_loc_id == lcs.open_code:
                 self.names_for_loc.append(self.act_name)
-
         self.names_all_loc.sort()
         self.names_for_loc.sort()
 
@@ -15052,12 +15126,11 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         """ Left button clicked on Playlist row. """
         number_str = self.his_view.tree.identify_row(event.y)
         if self.state == "new" or self.state == "save_as":
-            self.thread = self.get_thread_func()  # FIX huge problem when play_close()
             # cannot use enable_input because rename needs to pick old name first
             text = "Cannot pick an old playlist when new playlist name required.\n\n" + \
                 "Enter a new Playlist name and description below."
             message.ShowInfo(self.top, "Existing playlists for reference only!",
-                             text, icon='warning', thread=self.thread)
+                             text, icon='warning', thread=self.get_thread_func)
         else:
             ''' Highlight row clicked '''
             toolkit.tv_tag_remove_all(self.his_view.tree, 'play_sel')
@@ -15205,16 +15278,14 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             "storage or cancelled.\n\n" +\
             "You must save changes or cancel before working with a\n" +\
             "different playlist."
-        self.thread = self.get_thread_func()  # FIX huge problem when play_close()
         message.ShowInfo(self.parent, "Songs have not been saved!",
-                         text, icon='error', align='left', thread=self.thread)
+                         text, icon='error', align='left', thread=self.get_thread_func)
 
         return True  # We are all done. No window, no processing, nada
 
     def check_save_as(self):
         """ NOT USED.
             Display message this isn't working yet. Always return false. """
-        self.thread = self.get_thread_func()
         # June 19, 2023 closing playing window when message mounted still causes crash.
         #    Maybe Playlists() should have it's own thread handler?
         # Aug 3/23 - See lcs.out_cast_show_print() to include here
@@ -15232,7 +15303,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             "\t\t\t\t\t\t\t\tEight tabs at once\n\n" + \
             "When there is a need for the function it will be written."
         message.ShowInfo(self.parent, "Save As... doesn't work yet !!!",
-                         text, icon='error', align='left', thread=self.thread)
+                         text, icon='error', align='left', thread=self.get_thread_func)
         return False  # We are all done. No window, no processing, nada
 
     def edit_playlist(self):
@@ -15281,26 +15352,23 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                 text = "Enter a unique name for the playlist."
             else:
                 text = "First click on a playlist entry."
-            self.thread = self.get_thread_func()  # FIX huge problem when play_close()
             message.ShowInfo(self.top, "Name cannot be blank!",
-                             text, icon='error', thread=self.thread)
+                             text, icon='error', thread=self.get_thread_func)
             return False
         ''' A playlist description is recommended for Apple Users '''
         if new_description == "" and self.input_active:
             text = "Enter a playlist description gives more functionality\n" +\
                 "in other Music Players such as iPhone."
-            self.thread = self.get_thread_func()  # FIX huge problem when play_close()
             message.ShowInfo(self.top, "Description is blank?",
-                             text, icon='warning', thread=self.thread)
+                             text, icon='warning', thread=self.get_thread_func)
         ''' Tests when playlist name and description are keyed in '''
         if self.input_active:
             ''' Same name cannot exist in this location '''
             if new_name in self.names_for_loc and \
                     new_name != self.act_name:
                 text = "Playlist name has already been used."
-                self.thread = self.get_thread_func()  # FIX huge problem when play_close()
                 message.ShowInfo(self.top, "Name must be unique!",
-                                 text, icon='error', thread=self.thread)
+                                 text, icon='error', thread=self.get_thread_func)
                 return False
             if new_name in self.names_all_loc and \
                     new_name != self.act_name:
@@ -15321,7 +15389,11 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                 self.act_number_str = "P" + str(val).zfill(6)
             else:
                 self.act_number_str = "P000001"  # Very first playlist
-            self.act_loc_id = LODICT['iid']
+            try:
+                self.act_loc_id = LODICT['iid']
+            except:
+                pass
+            self.act_loc_id = lcs.open_code
             self.act_id_list = []  # Empty list
             self.act_size = 0  # Size of all song files
             self.act_count = 0  # len(self.music_id_list)
@@ -15340,10 +15412,9 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                    " songs in the playlist.\n"
             if self.curr_number_str == self.act_number_str:
                 text += "\nThe playlist is currently playing and will be stopped.\n"
-            self.thread = self.get_thread_func()  # FIX huge problem when play_close()
             dialog = message.AskQuestion(
                 self.top, "Confirm playlist deletion", text, icon='warning',
-                thread=self.thread)
+                thread=self.get_thread_func)
             if dialog.result != 'yes':
                 return False
             return True
@@ -16077,7 +16148,8 @@ FADE_OUT_SPAN = 400     # 1/5 second to fade out
         if self.frame:
             self.frame.config(height=7)  # Last height can be 0 - 30px
             self.lib_top.update()  # Update before destroy or last stays
-            self.tt.close(self.widget)  # Remove 'piggy_back' tooltip
+            if self.tt.check(self.widget):
+                self.tt.close(self.widget)  # Remove 'piggy_back' tooltip
             # self.widget = self.text  OR  self.widget = self.close_button
             self.frame.destroy()  # Nuke the frame used for info message
             self.frame = None
@@ -16360,6 +16432,9 @@ def get_dir(top, title, start):
 
 def load_last_location():
     """ Open last location used. """
+    if True is True:
+        return  # Test with no LODICT in future
+
     global START_DIR, LODICT  # Never change LODICT after startup!
     ''' Check for Last known location iid '''
     if not os.path.isfile(lc.FNAME_LAST_LOCATION):
@@ -16376,7 +16451,7 @@ def load_last_location():
         return False
 
     # Set protected LODICT
-    if LODICT is not None:  # Should be set by lcs Aug 3/23
+    if len(LODICT) == 0:  # Should be set by lcs Aug 3/23
         LODICT = lc.item(iid)  # local permanent copy of loc dictionary
         lc.set_location_filenames(LODICT['iid'])  # insert /L999/ into paths
     START_DIR = LODICT['topdir']  # Music Top directory
@@ -16506,9 +16581,8 @@ def open_files(old_cwd, prg_path, parameters, toplevel=None):
             START_DIR = lcs.open_topdir
             if not START_DIR.endswith(os.sep):
                 START_DIR += os.sep
-            LODICT = lc.DICT  # Set by lcs.load_last_location  UNICODE not STRING
-            #return  # self.lib_top_playlist_name
-            #_tkinter.TclError: character U+1f3b5 is above the range (U+0000-U+FFFF) allowed by Tcl
+            #LODICT = lc.DICT  # Set by lcs.load_last_location  UNICODE not STRING
+            return  # self.lib_top_playlist_name
 
         title = who + "Error retrieving Location to play"  # Error defaults
         text2 = "Proceeding to use music_dir: " + str(music_dir)
@@ -16554,8 +16628,8 @@ def open_files(old_cwd, prg_path, parameters, toplevel=None):
     
     '''
     # print('START_DIR not in location master file:', START_DIR)
-    LODICT['iid'] = 'new'  # June 6, 2023 - Something new to fit into code
-    LODICT['name'] = music_dir  # Name required for title bar
+    #LODICT['iid'] = 'new'  # June 6, 2023 - Something new to fit into code
+    #LODICT['name'] = music_dir  # Name required for title bar
     lcs.open_code = 'new'
     lcs.open_name = music_dir
     NEW_LOCATION = True  # Don't use location dictionary (LODICT) fields

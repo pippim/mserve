@@ -60,10 +60,11 @@ try:
     #(<frame object>, './m', 50, '<module>', ['import mserve\n'], 0)
     parent = os.path.basename(filename)
     if parent != "mserve.py":
-        print("sql.py must be called by 'mserve.py' but is being called " +
-              "by: '" + parent + "'.")
+        #print("sql.py must be called by 'mserve.py' but is being called " +
+        #      "by: '" + parent + "'.")
         #exit()
         # sql.py must be called by 'mserve.py' but is called by: monitor.py
+        pass
 except IndexError:  # list index out of range
     ''' Called from the command line '''
     print("sql.py cannot be called from command line. Aborting...")
@@ -154,8 +155,8 @@ def populate_tables(SortedList, start_dir, pruned_dir, lodict):
         if lcs.open_code == 'new':
             NEW_LOCATION = True
 
-    #open_db()  # July 24, 2023 Note new Locations() class has alredy opened
-    open_new_db()  # July 13, 2023
+    #open_db()  # July 24, 2023 Note new Locations() class has already opened
+    #open_new_db()  # July 13, 2023
 
     LastArtist = ""         # For control breaks
     LastAlbum = ""
@@ -226,6 +227,7 @@ def populate_tables(SortedList, start_dir, pruned_dir, lodict):
 def open_db(LCS=None):
     """ Open SQL Tables - Music Table and History Table
         Create Tables and Indices that don't exist
+    :param LCS: instance of Location() class for lcs.open_code, etc.
     """
 
     #open_new_db()  # Database 'library_new.db' only used for conversions.
@@ -237,11 +239,6 @@ def open_db(LCS=None):
     con = sqlite3.connect(FNAME_LIBRARY)
 
     # MUSIC TABLE
-    # Avoid \t & \n in sqlite_master.
-    #   See: https://stackoverflow.com/questions/76427995/
-    #   how-do-i-clean-up-sqlite-master-format-in-python
-    # Create the table (key must be INTEGER not just INT !
-    #   See https://stackoverflow.com/a/7337945/6929343 for explanation
     con.execute("CREATE TABLE IF NOT EXISTS Music(Id INTEGER PRIMARY KEY, " +
                 "OsFileName TEXT, OsAccessTime FLOAT, OsModifyTime FLOAT, " +
                 "OsChangeTime FLOAT, OsFileSize INT, " +
@@ -286,12 +283,6 @@ def open_db(LCS=None):
     ''' For mserve.py rename_file() function to rename "the" to "The" '''
     con.execute("PRAGMA case_sensitive_like = ON;")
 
-    # Retrieve column names
-    #    cs = con.execute('pragma table_info(Music)').fetchall() # sqlite column metadata
-    #    print('cs:', cs)
-    #    cursor = con.execute('select * from Music')
-    #    names = [description[0] for description in cursor.description]
-    #    print('names:', names)
     con.row_factory = sqlite3.Row
     cursor = con.cursor()
     hist_cursor = con.cursor()
@@ -471,8 +462,7 @@ def populate_new_history(oldMusicId, newMusicId):
 
 
 def open_new_db():
-    """ Open SQL Tables - New Database create from existing database
-    """
+    """ Open SQL Tables - New Database create from existing database """
     global new_con, new_cursor, new_hist_cursor
 
     new_con = sqlite3.connect(FNAME_LIBRARY_NEW)
