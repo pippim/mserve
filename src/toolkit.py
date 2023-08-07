@@ -1265,14 +1265,16 @@ class SearchText:
             return  # Closed window
         self.reattach()         # Put back items excluded on last search
         for iid in self.tree.get_children():
-            if self.get_thread_func:
-                thread = self.get_thread_func()
-                thread()  # crashes when next song starts up
-            if self.toplevel:
-                self.toplevel.update_idletasks()  # Allow X to close window
-            else:
-                return  # Closed window - Slows down processing considerably
-                # Next line still generates error when window closes. never exited
+            # Comment out below which takes History Configuration Rows from
+            # 1 second to 2 minutes.
+            #if self.get_thread_func:
+            #    thread = self.get_thread_func()
+            #    thread()  # crashes when next song starts up
+            #if self.toplevel:
+            #    self.toplevel.update_idletasks()  # Allow X to close window
+            #else:
+            #    return  # Closed window - Slows down processing considerably
+            # Next line still generates error when window closes. never exited
             # Get all treeview values for testing via callback function
             try:
                 values = self.tree.item(iid)['values']
@@ -1281,7 +1283,10 @@ class SearchText:
                 # TclError: invalid command name ".140238088693448.140238088494256.140238088601680.140238088601752"
                 return  # No need to dump values anymore. Learned enough
 
-            if self.callback(iid, values):
+            ret = self.callback(iid, values)
+            if ret is None:
+                return  # Signal that 'X' closed window of long running process
+            elif ret is True:
                 continue  # callback says to keep this row
 
             try:
@@ -1332,8 +1337,6 @@ class SearchText:
 
         s = self.find_str
         for iid in self.tree.get_children():
-            if not self.toplevel:
-                return  # Closed window
             # searches for desired string
             values = self.tree.item(iid)['values']
             one_value = self.view.column_value(values, self.column)

@@ -24,7 +24,6 @@ warnings.simplefilter('default')  # in future Python versions.
 #       July 26 2020 - Copy from mserve-tmplt. Add thousands.
 #       Sept 20 2020 - Start taking out or replacing 63 root.update()
 #       Sept 23 2020 - Make compare button disappear (entire grid 4 remove)
-#       Oct. 24 2020 - CheckboxTreeview() replace "songsel" tag with "checked"
 #       Nov. 02 2020 - Remove old selection processing for new CheckboxTreeview 
 #       Dec. 12 2020 - Chrome os doesn't support .grid_remove(). Comment out 15
 #            self.loc_F4.grid_remove()
@@ -818,7 +817,7 @@ class PlayCommonSelf:
     """
 
     def __init__(self):
-        #def __init__(self, toplevel, song_list, sbar_width=12, **kwargs):
+        #def __init__(self, toplevel, song_list, sbar_width=16, **kwargs):
 
         self.killer = ext.GracefulKiller()  # Class to shut down
         self.close_sleepers_in_progress = False  # Prevent multiple calls
@@ -1021,53 +1020,53 @@ class PlayCommonSelf:
         self.next_active_cmd_time = None
 
         ''' Define tk variables for Location record used with .set() and .get() '''
-        self.iid_var = None                 # L'001', L'002', '003', etc.
-        self.name_var = None                # "Dell fileserver", "Phone", etc.
-        self.topdir_var = None              # "/mnt/music", "~/music", etc.
-        self.host_var = None                # Optional Host name EG "dell"
-        self.wakecmd_var = None             # E.G. "wakeonlan 5c:f9:dd:5c:9c:53 ; sleep 4"
-        self.testcmd_var = None             # Test if awake E.G. `ssh dell "ls /home/rick"`
-        self.testrep_var = None             # Repeat test if awake # times. E.G. "50"
-        self.mountcmd_var = None            # E.G. `sshfs "dell:/mnt/music/Users/Person/
+        #self.iid_var = None                 # L'001', L'002', '003', etc.
+        #self.name_var = None                # "Dell fileserver", "Phone", etc.
+        #self.topdir_var = None              # "/mnt/music", "~/music", etc.
+        #self.host_var = None                # Optional Host name EG "dell"
+        #self.wakecmd_var = None             # E.G. "wakeonlan 5c:f9:dd:5c:9c:53 ; sleep 4"
+        #self.testcmd_var = None             # Test if awake E.G. `ssh dell "ls /home/rick"`
+        #self.testrep_var = None             # Repeat test if awake # times. E.G. "50"
+        #self.mountcmd_var = None            # E.G. `sshfs "dell:/mnt/music/Users/Person/
                                             #   Music/iTunes/iTunes Media/Music/" /mnt/music`
         # NOTE: On 'dell' file server run `sudo mount -t auto -v /dev/sb1 /mnt/music`
         # 'dell' is running `/mnt/e/bin/ssh-activity` to stay awake when mserve running
         # 'Phone' (Mobile) needs to mount sshfs
-        self.activecmd_var = None           # Keep host awake. E.G. `ssh dell "touch /tmp/mserve"`
-        self.activemin_var = None           # Send Keep awake command every x minutes. E.G. "10"
+        #self.activecmd_var = None           # Keep host awake. E.G. `ssh dell "touch /tmp/mserve"`
+        #self.activemin_var = None           # Send Keep awake command every x minutes. E.G. "10"
 
-        self.state = None                   # Tkinter 'normal' or 'readonly'
-        self.name_fld = None                # Location name entry field
-        self.topdir_fld = None              # Music top directory entry field
-        self.host_fld = None                # Optional host name for location
-        self.wakecmd_fld = None             # Command to wake up sleeping host
-        self.testcmd_fld = None             # Command to test if host is awake
-        self.testrep_fld = None             # Repeat test x times .1 seconds
-        self.mountcmd_fld = None            # command to mount host music
-        self.activecmd_fld = None           # SSH command to keep host awake
-        self.activemin_fld = None           # Minutes between keep awake cmd
-        self.sub_btn = None                 # Submit changes button
+        #self.state = None                   # Tkinter 'normal' or 'readonly'
+        #self.name_fld = None                # Location name entry field
+        #self.topdir_fld = None              # Music top directory entry field
+        #self.host_fld = None                # Optional host name for location
+        #self.wakecmd_fld = None             # Command to wake up sleeping host
+        #self.testcmd_fld = None             # Command to test if host is awake
+        #self.testrep_fld = None             # Repeat test x times .1 seconds
+        #self.mountcmd_fld = None            # command to mount host music
+        #self.activecmd_fld = None           # SSH command to keep host awake
+        #self.activemin_fld = None           # Minutes between keep awake cmd
+        #self.sub_btn = None                 # Submit changes button
 
         ''' Compare locations variables '''
-        self.cmp_top = None                 # Compare Locations toplevel - NEW?
-        self.cmp_target_dir = None          # OS directory comparing to
-        self.cmp_tree = None                # Treeview
-        self.cmp_close_btn = None           # Doesn't need to be instanced
-        self.update_differences_btn = None
-        self.src_mt = None                  # Source modification time
-        self.trg_mt = None                  # Target modification time
-        self.cmp_msg_box = None             # message.Open()
+        #self.cmp_top = None                 # Compare Locations toplevel - NEW?
+        #self.cmp_target_dir = None          # OS directory comparing to
+        #self.cmp_tree = None                # Treeview
+        #self.cmp_close_btn = None           # Doesn't need to be instanced
+        #self.update_differences_btn = None
+        #self.src_mt = None                  # Source modification time
+        #self.trg_mt = None                  # Target modification time
+        #self.cmp_msg_box = None             # message.Open()
 
         ''' Refresh items - inotify '''
         self.last_inotify_time = None       # now
         self.next_message_time = None       # now + (60 * 20)
 
 
-        self.loc_mode = None                # Used by loc_submit()
-        self.loc_iid = None                 # location internal ID
-        self.location_text = None           # Mode: show, add, etc.
+        #self.loc_mode = None                # Used by loc_submit()
+        #self.loc_iid = None                 # location internal ID
+        #self.location_text = None           # Mode: show, add, etc.
 
-        ''' Rip CD class (separate module) '''
+        ''' Rip CD class (separate module: encoding.py) '''
         self.rip_cd_class = None
         self.rip_last_disc = None           # For development purposes
 
@@ -1195,10 +1194,10 @@ class MusicLocationTree(PlayCommonSelf):
 
     """
 
-    def __init__(self, toplevel, song_list, sbar_width=12):
+    def __init__(self, toplevel, song_list, sbar_width=16):
 
         PlayCommonSelf.__init__(self)  # Define self. variables
-        ext.t_init('MusicLocationTree() __init__(toplevel, song_list, sbar_width=12)')
+        ext.t_init('MusicLocationTree() __init__(toplevel, song_list, sbar_width=16)')
 
         # If we are started by splash screen get object, else it will be None
         self.splash_toplevel = toplevel
@@ -1502,10 +1501,10 @@ class MusicLocationTree(PlayCommonSelf):
 
     def build_lib_top_playlist_name(self):
         """ name goes into lib_top.title()
-            self.playlists.name is inside Playlists() class
+            self.playlists.open_name is inside Playlists() class
         """
-        if self.playlists.name is not None:
-            self.lib_top_playlist_name = self.playlists.name.encode("utf-8")
+        if self.playlists.open_name:
+            self.lib_top_playlist_name = self.playlists.open_name.encode("utf-8")
         else:
             try:
                 self.lib_top_playlist_name = LODICT['iid'] + " - Default Favorites"
@@ -1516,8 +1515,8 @@ class MusicLocationTree(PlayCommonSelf):
 
     def set_title_suffix(self):
         """ Define variable text depending on playlist or favorites opened. """
-        if self.playlists.name is not None:
-            self.title_suffix = "Playlist: " + self.playlists.name
+        if self.playlists.open_name:
+            self.title_suffix = "Playlist: " + self.playlists.open_name
         else:
             self.title_suffix = "Favorites"  # title_suffix used in two places below
 
@@ -1686,7 +1685,7 @@ class MusicLocationTree(PlayCommonSelf):
         if self.playlists.top:  # If top level is open, everything disabled.
             return
 
-        if self.playlists.name is not None:
+        if self.playlists.open_name:
             # Can close even if pending counts but there will be confirmation inside
             #self.file_menu.entry config("Save Playlist As…", state=tk.NORMAL)
             self.file_menu.entryconfig("Close Playlist (Use Favorites)", state=tk.NORMAL)
@@ -1705,7 +1704,7 @@ class MusicLocationTree(PlayCommonSelf):
             # Do not want save option until pending is applied or cancelled
             return
 
-        if self.playlists.name is not None and self.get_pending_cnt_total() > 0:
+        if self.playlists.open_name is not None and self.get_pending_cnt_total() > 0:
             self.file_menu.entryconfig("Save Playlist", state=tk.NORMAL)
             #self.file_menu.entry config("Save Playlist As…", state=tk.NORMAL)
 
@@ -1723,17 +1722,36 @@ class MusicLocationTree(PlayCommonSelf):
         self.edit_menu.entryconfig("Delete Playlist", state=tk.DISABLED)
         self.view_menu.entryconfig("View Playlists", state=tk.DISABLED)
 
-    def apply_playlists(self):
+    def apply_playlists(self, delete_only=False):
         """ Called from Playlists() class after 'new' or 'open' playlist
-            self.playlists.apply_callback() """
+            with their method self.playlists.apply_callback()
+            Also called when deleting playlist currently playing. """
+        if delete_only:  # Deleted Playlist that was open
+            self.pending_reset(ShowInfo=False)  # Just in case it was open.
+            self.enable_lib_menu()
+            self.load_last_selections()
+            return  # Called by Playlists.delete() function
+
         self.save_last_selections(new_playlist=True)  # special save situation
         self.ndx = 0  # resume will set to last playing song
         self.saved_selections = []  # lib_tree id's in sorted play order
         self.playlist_paths = []  # full path names that need to be pruned
         self.clear_all_checks_and_opened()  # Clear in lib_tree (music library)
+        # Above does lib_top.update_idletasks()
+        self.lib_tree.update()  # If not done song_sel tags still visible
+        # Above first time 0, second time 17
+        self.lib_top.update()  # If not done song_sel tags still visible
+        items = self.lib_tree.tag_has("song_sel")
+        print("len(song_sel) items:", len(items))
+        items = self.lib_tree.tag_has("checked")
+        print("len(checked) items:", len(items))
+        items = self.lib_tree.tag_has("tristate")
+        print("len(tristate) items:", len(items))
+        items = self.lib_tree.tag_has("unchecked")
+        print("len(unchecked) items:", len(items))
 
         # Build playlist_paths using Music Ids
-        for music_id in self.playlists.act_id_list:
+        for music_id in self.playlists.open_id_list:
             d = sql.music_get_row(music_id)
             if d is None:
                 toolkit.print_trace()
@@ -1746,16 +1764,9 @@ class MusicLocationTree(PlayCommonSelf):
             iid = str(ndx)
             self.saved_selections.append(iid)
 
+        ''' Restore previous open states when we first opened grid '''
         self.get_open_states_to_list()
         self.set_all_checks_and_opened()
-
-        ''' Restore previous open states when we first opened grid '''
-        #self.apply_all_open_states(self.lib_tree_open_states)  # Will not work
-
-        if self.playlists.state == 'open':
-            self.info.cast("Opened playlist: " + self.playlists.act_name)
-        elif self.state == 'new':
-            self.info.cast("Created new playlist: " + self.playlists.act_name, action="add")
 
         if len(self.saved_selections) >= 2:
             self.play_from_start = False  # Continue playing where we left off
@@ -1766,7 +1777,6 @@ class MusicLocationTree(PlayCommonSelf):
         if not self.playlists.close():
             ''' If user confirms, playlists.close() proceeds with:
                     self.play_close()  # close main playing window
-                    self.name = None
                     self.display_lib_title()
             '''
             return  # Playlist changes haven't been saved yet
@@ -2050,13 +2060,13 @@ class MusicLocationTree(PlayCommonSelf):
                 continue
 
             ''' Build list of music ids indices to be deleted '''
-            if self.playlists.name is not None:
+            if self.playlists.open_name:
                 music_id = sql.music_id_for_song(delete_path[len(PRUNED_DIR):])
                 if music_id == 0:
                     toolkit.print_trace()
                     print("sql.music_id_for_song(delete_path[len(PRUNED_DIR):])\n")
                 else:
-                    delete_ndx = self.playlists.act_id_list.index(music_id)
+                    delete_ndx = self.playlists.open_id_list.index(music_id)
                     delete_music_ndx_list.append(delete_ndx)
 
             dprint("delete_iid:", delete_iid, "delete_ndx:", delete_ndx)
@@ -2090,19 +2100,19 @@ class MusicLocationTree(PlayCommonSelf):
             del self.saved_selections[index]
             dprint("deleting self.saved_selections[index] in reverse order:", index)
 
-        ''' Delete music ids in reverse order from self.playlists.act_id_list '''
-        if self.playlists.name is not None:
+        ''' Delete music ids in reverse order from self.playlists.open_id_list '''
+        if self.playlists.open_name:
             for index in sorted(delete_music_ndx_list, reverse=True):
-                music_id = self.playlists.act_id_list[index]
-                del self.playlists.act_id_list[index]
+                music_id = self.playlists.open_id_list[index]
+                del self.playlists.open_id_list[index]
                 d = sql.music_get_row(music_id)
                 if d is None:
                     print("ERROR bad song getting deleted (no meta)")
                 else:
-                    self.playlists.act_size -= d['OsFileSize']
-                    self.playlists.act_count -= 1
-                    self.playlists.act_seconds -= d['Seconds']
-                dprint("deleting self.playlists.act_id_list[index]" +
+                    self.playlists.open_size -= d['OsFileSize']
+                    self.playlists.open_count -= 1
+                    self.playlists.open_seconds -= d['Seconds']
+                dprint("deleting self.playlists.open_id_list[index]" +
                        " in reverse order:", index)
 
         if delete_play_ndx_list != delete_ndx_list:
@@ -2126,18 +2136,22 @@ class MusicLocationTree(PlayCommonSelf):
             insert_play_paths.append(insert_path)
             dprint("Building playlist path:", insert_path)
 
-            ''' Build list of Music IDs to insert into self.playlists.act_id_list '''
-            if self.playlists.name is not None:
+            ''' Build list of Music IDs to insert into self.playlists.open_id_list '''
+            if self.playlists.open_name:
                 #music_id = sql.music_id_for_song(insert_path[len(PRUNED_DIR):])
                 d = sql.ofb.Select(insert_path[len(PRUNED_DIR):])
                 if d is None:
                     print("Cannot process song when it hasn't been played (no meta)")
                 else:
                     insert_music_ids.append(d['Id'])
-                    self.playlists.act_size += d['OsFileSize']
-                    self.playlists.act_count += 1
-                    self.playlists.act_seconds += d['Seconds']
-                    dprint("Building Music ID:", d['Id'])
+                    self.playlists.open_size += d['OsFileSize']
+                    self.playlists.open_count += 1
+                    self.playlists.open_seconds += d['Seconds']
+                    dprint("Building Music ID:", d['Id'],
+                           self.playlists.open_loc_id,
+                           self.playlists.open_code,
+                           self.playlists.open_count,
+                           self.playlists.open_seconds)
 
         if len(insert_play_paths) != self.pending_add_cnt:
             dprint("len(insert_play_paths) != self.pending_add_cnt")
@@ -2150,16 +2164,16 @@ class MusicLocationTree(PlayCommonSelf):
         if insert_at >= len(self.saved_selections):
             self.saved_selections.extend(self.pending_additions)
             self.playlist_paths.extend(insert_play_paths)
-            if self.playlists.name is not None:
-                self.playlists.act_id_list.extend(insert_music_ids)
+            if self.playlists.open_name:
+                self.playlists.open_id_list.extend(insert_music_ids)
             dprint("Appending at end:", len(self.saved_selections),
                    "self.pending_additions:", self.pending_additions)
         else:
             self.saved_selections[insert_at:insert_at] = self.pending_additions
             # NEED to insert insert_music_id_list into act_music_id list in Playlists
             self.playlist_paths[insert_at:insert_at] = insert_play_paths
-            if self.playlists.name is not None:
-                self.playlists.act_id_list[insert_at:insert_at] = insert_music_ids
+            if self.playlists.open_name:
+                self.playlists.open_id_list[insert_at:insert_at] = insert_music_ids
             dprint("Inserting at insert_at:", insert_at,
                    " | self.pending_additions:", self.pending_additions)
 
@@ -2211,7 +2225,7 @@ class MusicLocationTree(PlayCommonSelf):
             - Save Playlist As...
             - Close Playlist (use Favorites)
         """
-        if self.playlists.name is not None:
+        if self.playlists.open_name:
             self.enable_lib_menu()
             self.file_menu.entryconfig("Save Playlist", state=tk.NORMAL)
             # Save Playlist As hasn't been written yet.
@@ -2275,7 +2289,7 @@ class MusicLocationTree(PlayCommonSelf):
         """ Pending Music Location Tree checkboxes have been processed. """
         # Rebuild checkboxes, selected totals, song play order numbers
         # Get current open states to reopen after cancel processing
-        # Uncheck all artists, albums, songs and "songsel" tags
+        # Uncheck all artists, albums, songs and "song_sel" tags
         self.clear_all_checks_and_opened()  # Clear in lib_tree music library
         self.set_all_checks_and_opened()  # Rebuild using playlist in memory
         ''' Restore previous open states when we first opened grid '''
@@ -2438,15 +2452,14 @@ class MusicLocationTree(PlayCommonSelf):
         #select_values = slice(7, 10)  # start at index, stop before index
 
         tags = self.lib_tree.item(song)['tags']
-        # Can't Replace "songsel" with "checked" because artist is checked too
-        if "songsel" in tags:
+        if "song_sel" in tags:
             # We will toggle off and subtract from selected parent totals
             old = self.lib_tree.item(song)['values'][2]  # "Selected" column ndx 2
             if old == "Adding":
                 self.lib_tree.set(song, "Selected", "")  # Reset to nothing
             else:
                 self.lib_tree.set(song, "Selected", "Deleting")  # Will be deleted
-            tags.remove("songsel")
+            tags.remove("song_sel")
             self.lib_tree.item(song, tags=tags)
             # noinspection PyProtectedMember
             self.lib_tree._uncheck_ancestor(song)  # in CheckboxTreeview()
@@ -2456,7 +2469,7 @@ class MusicLocationTree(PlayCommonSelf):
             # [total_values] = slice(4,7)
         else:
             # Toggle on and add to selected parent totals
-            tags.append("songsel")
+            tags.append("song_sel")
             try:
                 song_number = self.saved_selections.index(song) + 1
                 number_str = play_padded_number(
@@ -2801,7 +2814,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
             # pass
             return
 
-    def loc_create_tree(self, sbar_width=12, caller="", mode=""):
+    def loc_create_tree(self, sbar_width=16, caller="", mode=""):
         """ Create location treeview listbox
             'caller' are dynamic based on caller:
                 'Drop' called from top bar dropdown menu
@@ -3092,11 +3105,11 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
             return
 
         # Save current selections before LODICT changes
-        if self.playlists.name is not None:
+        if self.playlists.open_name:
             print("mserve.py loc_open_play() did not save playlist:",
-                  self.playlists.name)
+                  self.playlists.open_name)
             self.info.cast("mserve.py loc_open_play() did not save playlist: " +
-                           self.playlists.name)
+                           self.playlists.open_name)
         else:
             self.save_last_selections()
         item = self.loc_tree.selection()[0]
@@ -3573,7 +3586,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
     #
     # ==============================================================================
 
-    def cmp_build_toplevel(self, trg_dict_iid, sbar_width=12):
+    def cmp_build_toplevel(self, trg_dict_iid, sbar_width=16):
         """ Compare target location songs to build treeview of differences.
 
             Source is current LODICT, Target it selected by user here
@@ -4062,7 +4075,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
             line_type = None
 
         ''' Warning if status is tri-state, all will be selected. '''
-        if self.lib_tree.tag_has("tristate", item):
+        if self.lib_tree.tag_has("tristate", item):  # tristate = artist / album
             dialog = message.AskQuestion(
                 self.lib_top, thread=self.get_refresh_thread,
                 title="Discard custom unchecked?",
@@ -4072,18 +4085,18 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
                 return
 
         ''' Warning if unchecking line_type all children will be unchecked. '''
-        if self.lib_tree.tag_has("checked", item) and line_type is not None:
+        if self.lib_tree.tag_has("checked", item) and line_type:
             dialog = message.AskQuestion(
-                line_type=self.lib_top, thread=self.get_refresh_thread,
+                self.lib_top, thread=self.get_refresh_thread,
                 title="Uncheck all songs below?",
                 text="All songs under " + line_type + " will be unchecked.")
             if dialog.result != 'yes':
                 return
 
         ''' Warning if checking line_type all children will be checked. '''
-        if self.lib_tree.tag_has("unchecked", item) and line_type is not None:
+        if self.lib_tree.tag_has("unchecked", item) and line_type:
             dialog = message.AskQuestion(
-                line_type=self.lib_top, thread=self.get_refresh_thread,
+                self.lib_top, thread=self.get_refresh_thread,
                 title="Check all songs below?",
                 text="All songs under " + line_type + " will be checked.")
             if dialog.result != 'yes':
@@ -4099,7 +4112,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
                 and (g.NO_ARTIST_STR in self.lib_tree.item(item, 'text') or
                      g.NO_ARTIST_STR in self.lib_tree.item(item, 'text')):
             message.ShowInfo(
-                line_type=self.lib_top, thread=self.get_refresh_thread,
+                self.lib_top, thread=self.get_refresh_thread,
                 title="Song(s) invalid for playlist when " + g.NO_ARTIST_STR +
                 "\nor " + g.NO_ALBUM_STR + " exists.", icon='error',
                 text="Song(s) under " + line_type + " cannot be included in playlist.")
@@ -4166,24 +4179,11 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
 
     def set_all_songs(self, Id, action, event):
         """ set all songs selected or unselected """
-        last_time = time.time()
-        thread = self.get_refresh_thread()
         for child in self.lib_tree.get_children(Id):
-            ''' Preparing for future. May probe each song for duration '''
-            now = time.time()
-            elapsed = now - last_time  # TODO: make two line function
-            if elapsed > 30:  # TODO: make three line function
-                # Refresh takes about 3 ms on average to run
-                thread(sleep_after=True)  # Call refresh thread. Using False
-                # Can cause lock up in play automatic next song
-                last_time = now
-
             ''' Selected column may be "" or "Adding" or "No. 999" '''
             selected = self.lib_tree.item(child)['values'][2]
-
             if action == "Add" and not self.validate_song_addition(child, event):
                 continue
-
             if (selected == "" and action == "Add") or \
                     (not selected == "" and action == "Del"):
                 self.pending_append(child, action)
@@ -4191,7 +4191,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
 
     def validate_song_addition(self, Id, event):
         """ If playlists, can only add songs that exist in the SQL Music Table """
-        if self.playlists.name is not None:
+        if self.playlists.open_name:
             music_id = self.get_music_id_for_lib_tree_id(Id)
             if music_id > 0:
                 return True  # Song row exists in SQL Music Table
@@ -4262,7 +4262,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
             self.pending_restore_grid()
 
         ''' Playlists being used? Then not operating on favorites '''
-        if self.playlists.name is not None:
+        if self.playlists.open_name:
             self.disable_playlist_menu()  # Using Favorites, no Playlist permitted.
         else:
             # Not necessary because not activated yet anyway.
@@ -4898,7 +4898,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
             which is boolean True. Only 'Exit and CANCEL Changes' passes False.
         """
         if save:
-            if self.playlists.name is not None:
+            if self.playlists.open_name:
                 # Saving requires reading stats from lib_tree
                 self.write_playlist_to_disk(ShowInfo=False)
             else:
@@ -4988,7 +4988,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
             lcs.act_code and lcs.act_topdir are all current because
             lcs.reset() has not been run yet. """
         # Save current selections before restart
-        if self.playlists.name is not None:
+        if self.playlists.open_name:
             ''' Not a problem because lcs.open() checks pending counts '''
             pass
         else:
@@ -5131,7 +5131,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
             to first changed song.
             Called from lib_tree's "🗘 Refresh library" button.
         """
-        if self.playlists.name is not None:
+        if self.playlists.open_name:
             self.info.cast("Rebuild music library - Only works when Favorites playing",
                            'error', 'open')
             message.ShowInfo(
@@ -5526,11 +5526,8 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
     #
     # ==============================================================================
 
-    def show_sql_music(self, sbar_width=12):
-        """
-            Open SQL Music Location treeview.
-        """
-
+    def show_sql_music(self, sbar_width=16):
+        """ Open SQL Music Location treeview. """
         ''' SQL Music Table View already active? '''
         if self.mus_top_is_active is True:
             self.mus_top.lift()
@@ -5555,7 +5552,6 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
         # What if there is no saved geometry?
         geom = monitor.get_window_geom('sql_music')
         self.mus_top.geometry(geom)
-
         self.mus_top.configure(background="Gray")
         self.mus_top.columnconfigure(0, weight=1)
         self.mus_top.rowconfigure(0, weight=1)
@@ -5576,7 +5572,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
                                    row_release=self.mus_button_3_click)
         self.mus_view.tree.bind("<Button-3>", self.mus_button_3_click)
 
-        ''' Create Treeview item list with all songs. '''
+        ''' Populate Treeview item list with all songs. '''
         dtb = message.DelayedTextBox(title="Building SQL Music Table View",
                                      toplevel=self.mus_top, width=1000)
         self.populate_mus_tree(dtb)
@@ -5595,39 +5591,47 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
         self.mus_view_btn1 = tk.Button(frame3, text="✘ Close",
                                        width=g.BTN_WID - 2, command=self.mus_close)
         self.mus_view_btn1.grid(row=0, column=0, padx=2)
-        self.tt.add_tip(self.mus_view_btn1,
-                        "Close backups view but bserve remains open.", anchor="nw")
+        self.tt.add_tip(
+            self.mus_view_btn1, "Close SQL Music Table view.",
+            anchor="nw")
 
         ''' “🗑” U+1F5D1 (trash can) - Missing Metadata '''
         self.mus_view_btn2 = tk.Button(
-            frame3, text="🗑 Missing Metadata", width=g.BTN_WID, command=self.missing_metadata)
+            frame3, text="🗑 Missing Metadata", width=g.BTN_WID,
+            command=self.missing_metadata)
         self.mus_view_btn2.grid(row=0, column=1, padx=2)
-        self.tt.add_tip(self.mus_view_btn2, "Song never played in mserve.", anchor="nw")
+        self.tt.add_tip(
+            self.mus_view_btn2, "No Metadata - Songs never played in mserve.",
+            anchor="nw")
 
         ''' 🗑 Missing Lyrics '''
         self.mus_view_btn3 = tk.Button(
-            frame3, text="🗑 Missing Lyrics", width=g.BTN_WID - 1, command=self.missing_lyrics)
+            frame3, text="🗑 Missing Lyrics", width=g.BTN_WID - 1,
+            command=self.missing_lyrics)
         self.mus_view_btn3.grid(row=0, column=2, padx=2)
         self.tt.add_tip(self.mus_view_btn3,
                         "Lyrics have not be scraped from websites.", anchor="nw")
 
         ''' 🗑 Lyrics UnSynced '''
         self.mus_view_btn4 = tk.Button(
-            frame3, text="🗑 Lyrics UnSynced", width=g.BTN_WID - 1, command=self.unsynchronized)
+            frame3, text="🗑 Lyrics UnSynced", width=g.BTN_WID - 1,
+            command=self.unsynchronized)
         self.mus_view_btn4.grid(row=0, column=3, padx=2)
         self.tt.add_tip(self.mus_view_btn4,
                         "Lyric score not time synchronized.", anchor="ne")
 
         ''' 🔍 Text Search '''
-        self.mus_view_btn5 = tk.Button(frame3, text="🔍  Text Search",
-                                       width=g.BTN_WID - 2, command=self.mus_text_search)
+        self.mus_view_btn5 = tk.Button(
+            frame3, text="🔍  Text Search", width=g.BTN_WID - 2,
+            command=self.mus_text_search)
         self.mus_view_btn5.grid(row=0, column=4, padx=2)
         self.tt.add_tip(self.mus_view_btn5,
-                        "Refresh view, removing any filters", anchor="ne")
+                        "Search for text strings everywhere.", anchor="ne")
 
         '''  🖸 (1f5b8) - Update Metadata '''
-        self.mus_view_btn6 = tk.Button(frame3, text="🖸  Update Metadata",
-                                       width=g.BTN_WID, command=self.missing_artwork)
+        self.mus_view_btn6 = tk.Button(
+            frame3, text="🖸  Update Metadata", width=g.BTN_WID,
+            command=self.missing_artwork)
         self.mus_view_btn6.grid(row=0, column=5, padx=2)
         self.tt.add_tip(self.mus_view_btn6,
                         "Apply metadata & show missing artwork.", anchor="ne")
@@ -5663,26 +5667,26 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
         self.mus_search.find()  # Search the text string in all columns
 
     def missing_metadata(self):
-        """ Uses string search function for title is None """
+        """ Uses string search function for metadata song title is None """
         if self.mus_search:
             self.mus_search.close()
 
         self.mus_search = toolkit.SearchText(
             self.mus_view, column='title', find_str='', find_op='==')
-        self.mus_search.find_column()  # Find title == None
+        self.mus_search.find_column()  # Find song title == None
 
         # Popup row count and total file sizes
         self.tree_summary(self.mus_view, title="Songs not played yet")
 
     def missing_lyrics(self):
-        """ Find Songs that have no lyrics (no webscrape has been done)
-        """
+        """ Find Songs that have no lyrics (no webscrape has been done) """
         if self.mus_search:
             self.mus_search.close()
 
         self.mus_search = toolkit.SearchText(
-            self.mus_view, find_str='callback', callback=self.missing_lyrics_callback)
-        self.mus_search.find_callback()
+            self.mus_view, find_str='callback',
+            callback=self.missing_lyrics_callback)
+        self.mus_search.find_callback()  # Using callback
 
         # Popup row count and total file sizes
         self.tree_summary(self.mus_view, title="Songs with no Lyrics")
@@ -5691,10 +5695,9 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
         """ Find Songs that have no lyrics (no webscrape has been done)
 
             If Treeview value is u'None' for song name so no lyrics anyway
-            and return false.
-        """
+            and return false. """
         title = self.mus_view.column_value(values, 'title')
-        if title == u'None':
+        if title == u'None':  # Skip songs with no metadata, no chance for scrape
             return False  # Treeview value is u'None' for song name so no lyrics
 
         os_filename = self.mus_view.column_value(values, 'os_filename')
@@ -5705,13 +5708,13 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
         return True  # Song with metadata (title) has no lyrics.
 
     def unsynchronized(self):
-        """ Find songs that have no time index (lyric score not synchronized)
-        """
+        """ Find songs that have no time index (lyric score not synchronized) """
         if self.mus_search:
             self.mus_search.close()
 
         self.mus_search = toolkit.SearchText(
-            self.mus_view, find_str='callback', callback=self.unsynchronized_callback)
+            self.mus_view, find_str='callback',
+            callback=self.unsynchronized_callback)
         self.mus_search.find_callback()
 
         # Popup row count and total file sizes
@@ -5720,13 +5723,13 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
     def unsynchronized_callback(self, _Id, values):
         """ Find Songs that have have lyrics but no time_index
 
-            If Treeview value is u'None' for song name so no lyrics just return false.
-            If lyrics is None, then no need to test for time index just return false.
-        """
+            If Treeview value is u'None' for song name or if lyrics is None,
+            skip test. Else test for time index existing. """
         title = self.mus_view.column_value(values, 'title')
         if title == u'None':
             return False  # Treeview value is u'None' for song name so no lyrics
 
+        ''' Get lyrics and time index from SQL Music Table '''
         os_filename = self.mus_view.column_value(values, 'os_filename')
         lyrics, time_index = sql.get_lyrics(os_filename)
 
@@ -5854,7 +5857,9 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
 
         ''' Reading through filenames in mus_view.tree which also has music ID '''
         os_filename = self.mus_view.column_value(values, 'os_filename')
-        self.lib_top.update_idletasks()
+        self.lib_top.update_idletasks()  # Give chance to 'X' the window
+        if not self.mus_top:
+            return
 
         if not self.mus_ctl.new(PRUNED_DIR + os_filename):  # get metadata
             # .new() returns False when file doesn't exist at this location
@@ -5896,7 +5901,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
         """ Close SQL Music Table View
             May be called with 'X' to close window while find callbacks running.
         """
-        self.pretty_close()  # Inadvertently closes his_top or lcs_top pretty too
+        self.pretty_close()  # Will close his_top or lcs_top pretty too
         last_geometry = monitor.get_window_geom_string(
             self.mus_top, leave_visible=False)
         monitor.save_window_geom('sql_music', last_geometry)
@@ -5911,11 +5916,8 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
         self.missing_artwork_dtb = None
 
 
-    def show_sql_hist(self, sbar_width=12):
-        """
-            Open SQL History treeview. Patterned after show_sql_music()
-        """
-
+    def show_sql_hist(self, sbar_width=16):
+        """ Open SQL History treeview. Patterned after show_sql_music() """
         ''' SQL History Table View already active? '''
         if self.his_top_is_active is True:
             self.his_top.lift()
@@ -6009,11 +6011,11 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
                         anchor="nw")
 
         ''' Encode CD Rows '''
-        self.his_view_btn2 = tk.Button(
+        self.his_view_btn3 = tk.Button(
             frame3, text="🔍 Encode CD Rows", width=g.BTN_WID + 2,
             command=self.his_encoding_rows)
-        self.his_view_btn2.grid(row=0, column=2, padx=2)
-        self.tt.add_tip(self.his_view_btn2, "History of CD encoding (Ripping).",
+        self.his_view_btn3.grid(row=0, column=2, padx=2)
+        self.tt.add_tip(self.his_view_btn3, "History of CD encoding (Ripping).",
                         anchor="nw")
 
         ''' 🔍 Text Search '''
@@ -6108,7 +6110,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
         self.his_search = None
 
 
-    def show_sql_location(self, sbar_width=12):
+    def show_sql_location(self, sbar_width=16):
         """
             Open SQL Location treeview. Patterned after show_sql_music()
         """
@@ -6412,6 +6414,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
         # menu is displayed, not when option is chosen.
         menu.add_command(label="View SQL Table Row", font=(None, g.MED_FONT),
                          command=lambda: self.view_sql_row(pretty))
+        ''' view_library will trap Music ID = 0 and give message. '''
         menu.add_command(label="Open in library", font=(None, g.MED_FONT),
                          command=lambda: self.view_library(pretty))
         menu.add_separator()
@@ -6476,11 +6479,11 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
         """ View Library Treeview and open current song into view.
             TODO: When returning, collapse treeview parents forced to open. """
         music_id = pretty.dict['SQL Music Row Id']  # hist & music have same
-        ''' SQL History has music_id with zero '''
-        if music_id is 0:
+        ''' SQL History Table configuration rows have music_id with "0" '''
+        if music_id == "0":
             text = "Music Id 0 is not a real music song.\n" + \
                    "It cannot be opened in the Music Location."
-            message.ShowInfo(view.toplevel, "Music Id 0 - mserve", text,
+            message.ShowInfo(self.view.toplevel, "Music Id 0 - mserve", text,
                              icon='warning', thread=self.get_refresh_thread)
             self.info.fact(text, 'warning', 'open')
             return
@@ -6489,7 +6492,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
         if d is None:
             text = "Music Id: '" + music_id + "' not found.\n" + \
                    "Reason unknown."
-            message.ShowInfo(view.toplevel, "Music Id Not Found - mserve", text,
+            message.ShowInfo(self.view.toplevel, "Music Id Not Found - mserve", text,
                              icon='error', thread=self.get_refresh_thread)
             self.info.fact(text, 'error', 'open')
             print("mserve.py view_library() music_id not found:", music_id)
@@ -6525,7 +6528,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
         if not song_found:
             text = "Music Id: '" + music_id + "' not found.\n" + \
                    "No matching song Artist/Album/Title in Music Location."
-            message.ShowInfo(view.toplevel, "No Match in Music Location - mserve", text,
+            message.ShowInfo(self.view.toplevel, "No Match in Music Location - mserve", text,
                              icon='error', thread=self.get_refresh_thread)
             self.info.fact(text, 'error', 'open')
             print("mserve.py view_library() No match in Music Location:", music_id)
@@ -6697,7 +6700,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
 
     def write_playlist_to_disk(self, ShowInfo=True):
         """ Save Favorites using save_last_selections. Also saves current song ndx.
-            if self.playlists.name used, then write to SQL Playlist Record instead.
+            if self.playlists.open_name used, then write to SQL Playlist Record instead.
 
         :param ShowInfo: Set to False when system is shutting down.
         """
@@ -6714,18 +6717,10 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
                                 icon='error', parent=self.lib_top)
             return
 
-        if self.playlists.name is not None:
-            # June 19, 2023 - Below wasn't working (perhaps clicked before saving?)
-            #   Granular additions are now done in pending_apply() function where
-            #   song duration is calculated.
-            self.playlists.act_count = len(self.playlists.act_id_list)
-            self.playlists.act_size = self.lib_top_totals[8]
-            # TODO: Total Music duration hasn't been calculated yet for
-            #       self.playlists.act_secs.  FIXED June 19, 2023.
+        if self.playlists.open_name:
             self.playlists.save_playlist()  # act_id_list already up to date
-            # June 19, 2023 - interesting previously act_id_list updating live
         else:
-            self.save_last_selections()
+            self.save_last_selections()  # Write location's favorites to disk
 
         self.pending_tot_add_cnt = 0        # Total changes made without being
         self.pending_tot_del_cnt = 0        # written to disk with "Save Favorites"
@@ -6761,9 +6756,9 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
 
         global LODICT, START_DIR
 
-        if self.playlists.name is not None and not new_playlist:
+        if self.playlists.open_name and not new_playlist:
             print("mserve.py save_last_selection() serious ERROR:" +
-                  " playlists.name should be blank:", self.playlists.name)
+                  " playlists.open_name should be blank:", self.playlists.open_name)
             return
 
         ''' If self.saved_selections not populated, grab all checked songs 
@@ -6771,7 +6766,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
         REMOVE OLD CODE: self.saved_selections are updated by pending_apply()
 
         if len(self.saved_selections) == 0:
-            self.saved_selections = self.lib_tree.tag_has("songsel")
+            self.saved_selections = self.lib_tree.tag_has("song_sel")
             # BUG June 25, 2023. Above could be cause:
             # Favorites were resorted into alphabetical order after working
             # in L003 and then opened L004. Had also closed play_top before
@@ -6792,6 +6787,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
             if lcs.open_code:  # Is there a location open?
                 lcs.save_mserve_location(lcs.open_code)  # TODO: ditch parameter
         # noinspection PyBroadException
+        '''
         try:
             iid = LODICT['iid']
             lc.save_mserve_location(iid)
@@ -6802,6 +6798,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
             print("No 'iid' found in 'LODICT' for:", START_DIR)
             #return  # June 25, 2023 - Added return
             # Aug 6/23 remove return because LODICT is disappearing soon.
+        '''
 
         ''' Two songs needed to save, next startup uses previous save '''
         if len(self.saved_selections) < 2:
@@ -6910,7 +6907,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
                 check ends  # even refresh_play_top() checks ending
                  '''
 
-        global LODICT  # Never change LODICT after startup!
+        # global LODICT  # Never change LODICT after startup!
 
         self.saved_selections = []  # Songs selected for playing
         self.filtered_selections = list(self.saved_selections)
@@ -6946,7 +6943,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
 
         ''' Set selections numbers of playlist order in music library '''
         ext.t_init('FNAME_LAST_PLAYLIST')
-        #self.playlist_paths = []  # Song paths with "songsel" tag sorted by playlist order
+        #self.playlist_paths = []  # Song paths with "song_sel" tag sorted by playlist order
         with open(lc.FNAME_LAST_PLAYLIST, 'rb') as f:
             self.playlist_paths = pickle.load(f)
             #print('len(self.playlist_paths):', len(self.playlist_paths))
@@ -7022,7 +7019,8 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
     def clear_all_checks_and_opened(self):
         """ Called from self.pending_reset() and self.playlists.apply_callback()
         """
-        ext.t_init('Apply totals to Artists & Albums + set checkbox')
+        ext.t_init('Clear totals from Artists & Albums & clear checkboxes')
+        self.lib_top.update_idletasks()
         self.lib_tree_open_states = []
         for Artist in self.lib_tree.get_children():  # Read all Artists
             self.clear_item_check_and_open(Artist, force_close=True)
@@ -7032,7 +7030,8 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
                     self.clear_item_check_and_open(Song)
                     ''' Force Play No. blank - erase 'Adding' and 'Deleting' '''
                     self.lib_tree.set(Song, "Selected", "")
-        ext.t_end('no_print')
+        self.lib_top.update_idletasks()
+        ext.t_end('print')  # 0.33 for 1500 selections
 
     def clear_item_check_and_open(self, iid, force_close=False):
         """
@@ -7042,16 +7041,17 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
         :return:
         """
         item = self.lib_tree.item(iid)
-        tags = item["tags"]
-        is_open = False
 
         ''' Songs don't have an opened flag. Only Artists and Albums. '''
         if force_close:
-            is_open = True if item['open'] is True or item['open'] == 1 else False
+            if item['open'] is True or item['open'] == 1:
+                self.lib_tree.item(iid, open=False)
 
+        ''' Update Tags '''
         update = False
-        if "songsel" in tags:
-            tags.remove("songsel")
+        tags = item["tags"]
+        if "song_sel" in tags:
+            tags.remove("song_sel")
             update = True
         if "checked" in tags:
             tags.remove("checked")
@@ -7062,13 +7062,9 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
         if "unchecked" not in tags:
             tags.append("unchecked")
             update = True
-        if is_open:
-            update = True
 
         if update:
             self.lib_tree.item(iid, tags=tags)
-            if is_open:
-                self.lib_tree.item(iid, open=False)
 
     def set_all_checks_and_opened(self, opened=True):
         """ Called from self.pending_reset() and self.load_last_selections()
@@ -7078,7 +7074,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
             June 24, 2023 - Playlists now supported, remove opened=True...
 
             BatchSelect() class for single update to parents' total selected.
-            Before calling all items must be "unchecked" and "songsel" blanked.
+            Before calling all items must be "unchecked" and "song_sel" blanked.
             self.saved_selections and self.lib_tree_open_states must be set.
         """
 
@@ -7131,7 +7127,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
                 ''' Toggle processing with BatchSelect() class '''
                 for Song in self.lib_tree.get_children(Album):  # Read all Albums
                     tags = self.lib_tree.item(Song)["tags"]
-                    if "songsel" in tags:
+                    if "song_sel" in tags:
                         # noinspection PyProtectedMember
                         self.lib_tree._check_ancestor(Song)  # in CheckboxTreeview()
                         break  # Only one Song has to be tested
@@ -7186,7 +7182,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
         ''' Override to play songs checked in lib_top.tree? '''
         if self.play_from_start:
             ''' Get list of items tagged for playing in Artist/Album order '''
-            new_selections = self.lib_tree.tag_has("songsel")  # Alphabetical order
+            new_selections = self.lib_tree.tag_has("song_sel")  # Alphabetical order
             if len(new_selections) != len(self.saved_selections):
                 # Play new selections because old save out of date.
                 self.saved_selections = list(new_selections)
@@ -10837,15 +10833,15 @@ mark set markName index"
         # June 18, 2023 - Review history audit record. Probably overkill?
         #   Should call self.write_playlist_to_disk(override=selections_only)
         sql.hist_add_shuffle('edit', 'shuffle', self.saved_selections)
-        if self.playlists.name is not None:
-            self.playlists.act_id_list = []
+        if self.playlists.open_name:
+            self.playlists.open_id_list = []
             for Id in self.saved_selections:
                 music_id = self.get_music_id_for_lib_tree_id(Id)
                 if music_id == 0:
                     toolkit.print_trace()
                     print("sql.music_id_for_song(insert_path[len(PRUNED_DIR):])")
                 else:
-                    self.playlists.act_id_list.append(music_id)
+                    self.playlists.open_id_list.append(music_id)
             self.playlists.save_playlist()
 
         self.info.cast("Shuffled Playlist: " + self.title_suffix + "with " +
@@ -10979,14 +10975,13 @@ mark set markName index"
         self.play_ctl.close()  # If playing song update last access time
 
         # Reverse filters so proper song index is saved
-        if self.chron_filter is not None:
+        if self.chron_filter:
             self.chron_reverse_filter()
 
         self.save_resume()  # playing/paused and seconds progress into song.
         self.save_chron_state()  # chronology tree state = "Show"/"Hide"
         self.save_hockey_state()  # Hockey buttons OR FF/Rewind buttons?
-        if self.playlists.name is not None:
-            self.save_open_states()
+        self.save_open_states()  # This is saving for favorites & playlists?
 
         if self.play_hockey_active:
             set_tv_sound_levels(25, 100)
@@ -11020,7 +11015,7 @@ mark set markName index"
             return None
 
         if d['SourceDetail'] != str(self.ndx):
-            if self.playlists.name is not None:
+            if self.playlists.open_name:
                 ''' self.ndx not initialized for playlists like last_location. '''
                 self.ndx = int(d['SourceDetail'])
             else:
@@ -11048,13 +11043,9 @@ mark set markName index"
         if NEW_LOCATION:
             return None
 
-        if self.playlists.name is not None:
-            Action = self.playlists.act_number_str
+        if self.playlists.open_name:
+            Action = self.playlists.open_code
         else:
-            try:
-                Action = LODICT['iid']
-            except:
-                pass
             Action = lcs.open_code
 
         return sql.get_config(Type, Action)
@@ -11067,14 +11058,9 @@ mark set markName index"
         if NEW_LOCATION:
             return None
 
-        if self.playlists.name is not None:
-            Action = self.playlists.act_number_str
+        if self.playlists.open_name:
+            Action = self.playlists.open_code
         else:
-            try:
-                Action = LODICT['iid']
-            except:
-                print("get_config_for_loc() no LODICT")
-                pass
             Action = lcs.open_code
 
         sql.save_config(
@@ -11352,7 +11338,7 @@ mark set markName index"
     #
     # ==============================================================================
 
-    def build_chronology(self, _sbar_width=12):
+    def build_chronology(self, _sbar_width=16):
         """ Chronology treeview List Box, Columns and Headings """
 
         ''' Create Chronology Treeview (chron_tree) and style Gold on Black '''
@@ -11615,7 +11601,7 @@ mark set markName index"
                 for song in self.lib_tree.get_children(album):  # Read all songs
                     #if "checked" in self.lib_tree.item(song)['tags']:
                     # May 26, 2023 - "checked" brings up many irrelevant songs
-                    if "songsel" in self.lib_tree.item(song)['tags']:
+                    if "song_sel" in self.lib_tree.item(song)['tags']:
                         values = self.lib_tree.item(song)['values']
                         pretty_no = values[2]  # E.G. "No.__21"
                         num = ""
@@ -13376,7 +13362,7 @@ class BatchSelect:
         # slice(4, 7) = Set slice to grab StatSize, Count, Seconds
 
         tags = self.tree.item(song)['tags']
-        tags.append("songsel")  # Special handling by mserve only
+        tags.append("song_sel")  # Special handling by mserve only
         #tags.append("checked")  # CheckboxTreeview handling
         #tags.remove("unchecked")  # CheckboxTreeview handling
         self.tree.item(song, tags=tags)
@@ -13385,7 +13371,7 @@ class BatchSelect:
 
         self.tree.change_state(song, "checked")  # in CheckboxTreeview()
         # With new design of load_last_selections() "checked" is now needed
-        # in addition to "songsel" tag.
+        # in addition to "song_sel" tag.
 
         # We only need to _check_ancestor(song) after last song on an album
         # is selected
@@ -13666,14 +13652,9 @@ class tvVolume:
         if NEW_LOCATION:
             return None
 
-        if self.playlists.name is not None:
-            Action = self.playlists.act_number_str
+        if self.playlists.open_name:
+            Action = self.playlists.open_code
         else:
-            try:
-                Action = LODICT['iid']
-            except:
-                print("get_config_for_loc() no LODICT")
-                pass
             Action = lcs.open_code
         return sql.get_config(Type, Action)
 
@@ -13685,14 +13666,9 @@ class tvVolume:
         """
         if NEW_LOCATION:
             return None
-        if self.playlists.name is not None:
-            Action = self.playlists.act_number_str
+        if self.playlists.open_name:
+            Action = self.playlists.open_code
         else:
-            try:
-                Action = LODICT['iid']
-            except:
-                print("get_config_for_loc() no LODICT")
-                pass
             Action = lcs.open_code
 
         sql.save_config(
@@ -14108,12 +14084,13 @@ class FileControl(FileControlCommonSelf):
                     audio_pattern,
                     artwork_pattern]
 
+        ''' Aug 6/23 - Too annoying, change all to 'fact' for now '''
         if self.valid_audio or self.silent:
             if self.log_level == 'all' or self.log_level == 'info':
                 self.info.fact(text, 'info', patterns=patterns)
         else:
             if self.log_level == 'all' or self.log_level == 'info':
-                self.info.cast(text, 'error', patterns=patterns)
+                self.info.fact(text, 'error', patterns=patterns)
 
     def log(self, state):
         """
@@ -14191,12 +14168,13 @@ class FileControl(FileControlCommonSelf):
                     ("Group ID:", "Green", "Black"),
                     ("Inode No:", "Green", "Black")]
 
+        ''' Aug 6/23 - Too annoying, change all to 'fact' for now '''
         if self.silent:
             if self.log_level == 'all' or self.log_level == 'info':
                 self.info.fact(text, patterns=patterns)
         else:
             if self.log_level == 'all' or self.log_level == 'info':
-                self.info.cast(text, patterns=patterns)
+                self.info.fact(text, patterns=patterns)
 
     def get_artwork(self, width, height):
         """
@@ -14512,12 +14490,13 @@ class FileControl(FileControlCommonSelf):
                     ("Time stopped:", "Green", "Black"),
                     ("Percent play:", "Green", "Black")]
 
+        ''' Aug 6/23 - Too annoying, change all to 'fact' for now '''
         if self.silent:  # bugs in lib_tree_play()
             if self.log_level == 'all' or self.log_level == 'info':
                 self.info.fact(text, 'info', 'update', patterns)
         else:
             if self.log_level == 'all' or self.log_level == 'info':
-                self.info.cast(text, 'info', 'update', patterns)
+                self.info.fact(text, 'info', 'update', patterns)
 
         ''' Is host down? '''
         if lcs.host_down:
@@ -14529,6 +14508,7 @@ class FileControl(FileControlCommonSelf):
             old_time, new_time = self.touch_it(self.stat_start)
             # touch_it() returns None, None when no song path
             self.final_atime = new_time
+            ''' Aug 6/23 - Too annoying, change all to 'fact' for now '''
             patterns = [("Restoring last access for:", "White", "Black"),
                         ("Current time:", "Green", "Black"),
                         ("Original time:", "Green", "Black")]
@@ -14542,7 +14522,7 @@ class FileControl(FileControlCommonSelf):
                                    patterns=patterns)
             elif old_time is not None:
                 if self.log_level == 'all' or self.log_level == 'info':
-                    self.info.cast("Restoring last access for: \t" + self.Title +
+                    self.info.fact("Restoring last access for: \t" + self.Title +
                                    "\n\tCurrent time:  \t" +
                                    tmf.ago(old_time).strip() +
                                    "\n\tOriginal time: \t" +
@@ -14550,7 +14530,7 @@ class FileControl(FileControlCommonSelf):
                                    patterns=patterns)
             else:
                 if self.log_level == 'all' or self.log_level == 'info':
-                    self.info.cast("Could not restore last access for: \t" +
+                    self.info.fact("Could not restore last access for: \t" +
                                    str(self.Title) +
                                    "\nLikely caused by fast clicking Next/Prev")
 
@@ -14752,7 +14732,7 @@ class PlaylistsCommonSelf:
 
         ''' Current Playlist work fields - History Record format '''
         self.act_row_id = None  # History record number
-        self.act_number_str = None  # E.G. "P000001"
+        self.act_code = None  # E.G. "P000001"
         self.act_loc_id = None  # E.G. "L004"
         self.act_name = None  # E.G. "Oldies"
         self.act_id_list = []  # Sorted in play order
@@ -14926,10 +14906,19 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         self.get_thread_func = thread  # E.G. self.get_refresh_thread
         self.display_lib_title = display_lib_title  # Rebuild lib_top menubar
 
+        ''' Open Playlist fields - History Record format '''
+        self.open_row_id = None  # History record number
+        self.open_code = None  # E.G. "P000001"
+        self.open_loc_id = None  # E.G. "L004"
+        self.open_name = None  # E.G. "Oldies"
+        self.open_id_list = []  # Sorted in play order
+        self.open_size = 0  # Size of all song files
+        self.open_count = 0  # len(self.music_id_list)
+        self.open_seconds = 0.0  # Duration of all songs
+        self.open_description = None  # E.G. "Songs from 60's & 70's
+
         ''' Save between Playlist Maintenance calls '''
         self.name = None  # Playlist name that is being played right now
-        self.last_number_str = None  # Before operation started P00001, etc.
-        self.curr_number_str = None  # After operation completed P00001, etc.
 
     def create_window(self, name=None):
         """ Mount window with Playlist Treeview or placeholder text when none.
@@ -14998,14 +14987,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         tk.Entry(self.frame, textvariable=self.scr_location, state='readonly',
                  font=ms_font).grid(row=3, column=1, sticky=tk.W, padx=5,
                                     pady=5)
-
-        try:
-            self.scr_location.set(LODICT['iid'] + " - " + LODICT['name'])
-        except:
-            print("Playlists.create_window() no LODICT")
-            pass
         self.scr_location.set(lcs.open_code + " - " + lcs.open_name)
-
         self.input_active = False
 
         ''' Artwork '''
@@ -15067,7 +15049,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                 "WHERE Type = 'playlist'"):
             d = dict(row)
             self.make_act_from_hist(d)
-            self.all_numbers.append(self.act_number_str)
+            self.all_numbers.append(self.act_code)
             self.all_names.append(self.act_name)
             self.names_all_loc.append(self.act_name)
             try:
@@ -15152,35 +15134,6 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         :return: None """
         pass
 
-    def active(self):
-        """
-        Returns active curr_number_str or None.
-
-        Important active curr_number_str is to set to None when there is no
-        playlist. Also important curr_number_str is never blank because
-        that is also considered None or False.
-
-        Callers need to know when Favorites are in use. Callers test with:
-
-            if self.playlists.active():
-                ...
-            else:
-                ...
-
-        Internally, Playlists() functions need to know if an existing
-        opened playlist is the same as themselves using test:
-            open_number_str = active()
-            if open_number_str:
-                if open_number_str = self.act_number_str:
-                    ... we are changing ourselves
-                else:
-                    ... close down
-            else:
-                ... brand new instance, nothing to worry about
-
-        """
-        return self.curr_number_str
-
     def new(self):
         """ Called by lib_top File Menubar "New Playlist"
             If new songs are pending, do not allow playlist to open """
@@ -15232,7 +15185,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         self.enable_input()
 
     def close(self):
-        """ Called by close_playlist() that finishes processing.
+        """ Close Playlist (use Favorites) called by def close_playlist()
             Blank out self.name and call display_lib_title()
             which forces Favorites into title bar when self.name is blank. """
         #PlaylistsCommonSelf.__init__(self)  # Define self. variables
@@ -15240,8 +15193,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         if not self.edit_playlist():  # Check if changes pending & confirm
             return False
         self.play_close()  # must be called before name is none
-        self.curr_number_str = None
-        self.name = None
+        self.reset_open_vars()
         self.display_lib_title()
         return True
 
@@ -15256,7 +15208,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
     def make_act_from_hist(self, d):
         """ The History Column: 'Type' will always contains: 'playlist' """
         self.act_row_id = d['Id']  # History record number
-        self.act_number_str = d['Action']  # E.G. "P000001"
+        self.act_code = d['Action']  # E.G. "P000001"
         self.act_loc_id = d['SourceMaster']  # E.G. "L004"
         self.act_name = d['SourceDetail']  # E.G. "Oldies"
         self.act_id_list = json.loads(d['Target'])  # Music Id's in play order
@@ -15264,6 +15216,30 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         self.act_count = d['Count']  # len(self.music_id_list)
         self.act_seconds = d['Seconds']  # Duration of all songs in seconds
         self.act_description = d['Comments']  # E.G. "Songs from 60's & 70's
+
+    def make_open_from_act(self):
+        """ Create open Playlist variables """
+        self.open_row_id = self.act_row_id
+        self.open_code = self.act_code
+        self.open_loc_id = self.act_loc_id
+        self.open_name = self.act_name
+        self.open_id_list = self.act_id_list
+        self.open_size = self.act_size
+        self.open_count = self.act_count
+        self.open_seconds = self.act_seconds
+        self.open_description = self.act_description
+
+    def reset_open_vars(self):
+        """ Create open Playlist variables """
+        self.open_row_id = None
+        self.open_code = None
+        self.open_loc_id = None
+        self.open_name = None
+        self.open_id_list = None
+        self.open_size = None
+        self.open_count = None
+        self.open_seconds = None
+        self.open_description = None
 
     def check_pending(self):
         """ When lib_top_tree has check boxes for adding/deleting songs that
@@ -15325,7 +15301,8 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         ''' Closing Playlist and returning to Favorites? Do this test first
             because other tests are irrelevant. If pending song updates,
             confirm abandoning save to playlist '''
-        if self.state == 'close':
+        if self.state == 'close' or self.state == 'new' or \
+                self.state == 'open' or self.state == 'delete':
             if self.get_pending() > 0:
                 # self.top window hasn't been created so use self.parent instead
                 title = "Playlist has not been saved!"
@@ -15338,7 +15315,8 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                     align='left', thread=self.get_thread_func())
                 if dialog.result != 'yes':
                     return False
-            return True  # close Playlists approved
+            if self.state == 'close':
+                return True  # close Playlists approved
         ''' Retrieve name and description from tkinter variables. '''
         new_name = self.scr_name.get()
         new_description = self.scr_description.get()
@@ -15386,9 +15364,9 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             if len(self.all_numbers) > 0:
                 last_str = self.all_numbers[-1]  # Grab last number
                 val = int(last_str[1:]) + 1  # increment to next available
-                self.act_number_str = "P" + str(val).zfill(6)
+                self.act_code = "P" + str(val).zfill(6)
             else:
-                self.act_number_str = "P000001"  # Very first playlist
+                self.act_code = "P000001"  # Very first playlist
             try:
                 self.act_loc_id = LODICT['iid']
             except:
@@ -15410,7 +15388,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             # self.top window hasn't been created so use self.parent instead
             text = "\nThere are " + '{:n}'.format(self.act_count) + \
                    " songs in the playlist.\n"
-            if self.curr_number_str == self.act_number_str:
+            if self.open_code == self.act_code:
                 text += "\nThe playlist is currently playing and will be stopped.\n"
             dialog = message.AskQuestion(
                 self.top, "Confirm playlist deletion", text, icon='warning',
@@ -15435,10 +15413,17 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                 Target-JSON list of sorted Music IDs, Size=MB, Count=# Songs,
                 Seconds=Total Duration, Comments=Playlist Description """
         ''' Current Playlist work fields - History Record format '''
-        sql.save_config('playlist', self.act_number_str, self.act_loc_id,
-                        self.act_name, json.dumps(self.act_id_list),
-                        self.act_size, self.act_count, self.act_seconds,
-                        self.act_description)
+        if not self.open_code or not self.open_loc_id or not self.open_name:
+            print("Playlists.save_playlist() Error: One of three are blank:")
+            print("self.open_code:", self.open_code,
+                  "  | self.open_loc_id:", self.open_loc_id,
+                  "  | self.open_name:", self.open_name)
+            toolkit.print_trace()
+            return
+        sql.save_config('playlist', self.open_code, self.open_loc_id,
+                        self.open_name, json.dumps(self.open_id_list),
+                        self.open_size, self.open_count, self.open_seconds,
+                        self.open_description)
 
     def delete_playlist(self):
         """ Delete Playlist using History Row ID """
@@ -15453,7 +15438,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             When called with self.top.protocol("WM_DELETE_WINDOW", self.reset)
             shutdown will contain <Tkinter.Event instance at 0x7f4ebb968ef0>
         :param shutdown: True = shutdown so don't update lib_top """
-        if self.tt:
+        if self.tt and self.tt.check(self.top):
             self.tt.close(self.top)
         if self.top:
             geom = monitor.get_window_geom_string(self.top, leave_visible=False)
@@ -15478,71 +15463,51 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         if self.state == 'delete':
             # TODO: Delete resume, chron_state, hockey_state and open_states
             #       Or just set a deleted flag and not physically delete.
-            self.delete_playlist()
             self.info.cast("Deleted playlist: " + self.act_name, action="delete")
-            if self.curr_number_str == self.act_number_str:
-                self.name = None
-                self.last_number_str = self.curr_number_str  # Replaces .name in future
-                self.curr_number_str = None  # Replaces .name in future
+            self.delete_playlist()  # Doesn't use self.open_code
+            if self.open_code == self.act_code:
+                # Just deleted opened playlist
+                print("After Playlists.delete_playlist() Calling def play_close()")
                 self.play_close()  # must be called before name is set
-                self.name = None  # Was deleted, no longer exists.
-                self.curr_number_str = None  # Was deleted, no longer exists.
+                self.reset_open_vars()  # Set all self.open_xxx to None
+                self.reset()  # Close everything down, E.G. destroy window
+                self.display_lib_title()
+                self.apply_callback(delete_only=True)
         elif self.state == 'open':
-            self.name = None
-            self.curr_number_str = None  # Replaces .name in future
-            self.play_close()  # must be called before name is set
-            self.name = self.act_name  # Tell parent name of playlist
-            self.last_number_str = self.curr_number_str  # Replaces .name in future
-            self.curr_number_str = self.act_number_str
-            self.reset()  # Close everything down, E.G. destroy window
-            # June 23, 2023 - info.cast isn't appearing?
             self.info.cast("Opened playlist: " + self.act_name + " with " +
                            str(self.act_count) + " songs.")
-            self.apply_callback()  # Parent will start playing (if > 1 song in list)
-            #self.info.cast("Opened playlist: " + self.act_name)  # doesn't work either
-        elif self.state == 'new':
-            self.save_playlist()  # Save brand new playlist
-            self.name = None
-            self.curr_number_str = None  # Replaces .name in future
             self.play_close()  # must be called before name is set
-            self.name = self.act_name  # Tell parent name of playlist
-            self.last_number_str = self.curr_number_str  # Replaces .name in future
-            self.curr_number_str = self.act_number_str
-            # June 23, 2023 - info.cast isn't appearing?
+            self.make_open_from_act()
+            self.reset()  # Close everything down, E.G. destroy window
+            self.apply_callback()  # Parent will start playing (if > 1 song in list)
+        elif self.state == 'new':
             self.info.cast("Created new playlist: " + self.act_name, action="add")
+            self.play_close()  # must be called before name is set
+            self.make_open_from_act()  #
+            self.save_playlist()  # Save brand new playlist
             self.apply_callback()  # Tell parent to start editing playlist
-            #self.info.cast("Created new playlist: " + self.act_name)  # doesn't work either
-            # apply_callback will end right away after closing lib selections
         elif self.state == 'view':
             print("Playlists.view() should not call apply()")
         elif self.state == 'rename':
-            print("Playlists.view() should not call apply()")
-            # self.name = self.act_name  # In case of 'rename' title updates
-            if self.name:  # If using favorites, don't wipe out titles & options
-                self.name = self.act_name  # In case of 'rename' title updates
-                self.curr_number_str = self.act_number_str
             self.info.cast("Renamed playlist: " + self.act_name + " with " +
                            str(self.act_count) + " songs.", action="update")
-        else:
+            if self.open_code and self.open_code == self.act_code:
+                self.open_name = self.act_name  # 'rename' title
+                self.display_lib_title()
+        elif self.state == 'save':
             ''' Remaining options is Save '''
             self.save_playlist()
-            self.name = self.act_name  # In case of 'rename' title updates
-            self.curr_number_str = self.act_number_str
             self.info.cast("Saved playlist: " + self.act_name + " with " +
                            str(self.act_count) + " songs.", action="update")
+        else:
+            self.info.cast("Playlists.apply() bad state: " + self.state, 
+                           action="update", icon='error')
 
-        # TODO: New design with self.last_number_str and self.curr_number_str
-
+            
         if self.parent:
             # During shutdown we somehow get to this point and below gets error
             # because lib_top no longer exists.
-            self.display_lib_title()  # Important that self.name is ACCURATE
-            # June 19, 2023 TODO: For rename change current playing window title too.
-
-        ''' Sanity check '''
-        if self.curr_number_str == "":
-            toolkit.print_trace()
-            print('self.curr_number_str == ""')
+            self.display_lib_title()  # Important that self.open_name is ACCURATE
 
         self.reset()  # Close everything down, E.G. destroy window
 

@@ -94,7 +94,7 @@ class Open:
         ndx = self.textbox.insert(tk.END, msg_line + '\n')
         try:
             self.textbox.see(tk.END)
-        finally:
+        except:
             print('message.py update() passed blank string?:', ndx, msg_line)
         self.msg_top.update()
         self.line_cnt += 1  # Message lines displayed so far

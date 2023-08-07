@@ -860,6 +860,10 @@ class LocationsCommonSelf:
         self.cmp_tree = None  # Treeview w/difference between src and trg
         self.cmp_close_btn = None  # Button to close Compare Locations window
         self.update_differences_btn = None  # Click button to synchronize
+        self.cmp_real_paths = {}  # Real paths of source without <No Artist>
+        self.command_list = []  # List of tuples: (iid, command_str)
+        self.stdout = None  # Temporary filename with standard output results
+        self.stderr = None  # Temporary filename with error output results
         self.src_mt = None  # Source modification time using ModTime() class
         self.trg_mt = None  # Target modification time using ModTime() class
         self.src_fc = None  # Source FileControl() instance
@@ -1850,19 +1854,19 @@ class Locations(LocationsCommonSelf):
             self.all_topdir.append(self.act_topdir)  # must match all_codes order
             #LIST.append(self.make_ver1_dict_from_sql_dict(d))  # Temporary
 
-    def out_cast_show_print(self, title, text, icon='info'):
+    def out_cast_show_print(self, title, text, icon='info', align="center"):
         """ Send self.info.cast(), message.ShowInfo() and print(). """
         if self.info:
             self.info.cast(title + "\n\n" + text, icon)
-        self.out_show(title, text, icon)
+        self.out_show(title, text, icon, align)
         print("\n" + title + "\n\n" + text + "\n")
         return icon == 'info'  # Return value has little importance.
 
-    def out_cast_show(self, title, text, icon='info'):
+    def out_cast_show(self, title, text, icon='info', align="center"):
         """ Send self.info.cast() and message.ShowInfo() with print() backup. """
         if self.info:
             self.info.cast(title + "\n\n" + text, icon)
-        if not self.out_show(title, text, icon):
+        if not self.out_show(title, text, icon, align):
             # Give them something in console because message.ShowInfo() broken
             print("\n" + title + "\n\n" + text + "\n")
         return icon == 'info'  # Return value has little importance.
@@ -1881,11 +1885,11 @@ class Locations(LocationsCommonSelf):
         print("\n" + title + "\n\n" + text + "\n")
         return icon == 'info'  # Return value has little importance.
     
-    def out_fact_show(self, title, text, icon='info'):
+    def out_fact_show(self, title, text, icon='info', align="center"):
         """ Send self.info.fact() and message.ShowInfo() with print() backup. """
         if self.info:
             self.info.fact(title + "\n\n" + text, icon)
-        if not self.out_show(title, text, icon):
+        if not self.out_show(title, text, icon, align):
             # Give them something in console because message.ShowInfo() broken
             print("\n" + title + "\n\n" + text + "\n")
         return icon == 'info'  # Return value has little importance.
@@ -1899,13 +1903,13 @@ class Locations(LocationsCommonSelf):
             print("\n" + title + "\n\n" + text + "\n")
         return icon == 'info'  # Return value has little importance.
 
-    def out_show(self, title, text, icon='info'):
+    def out_show(self, title, text, icon='info', align="center"):
         """ Called above to save 5 lines of code. """
         if self.get_thread_func:
             top = self.out_get_parent()
             if top:
                 # Aug 4/23 ShowInfo() revised to accept get_thread_func w/o ()
-                message.ShowInfo(top, title, text, icon=icon,
+                message.ShowInfo(top, title, text, icon=icon, align=align,
                                  thread=self.get_thread_func)
                 return True
         return False
@@ -2959,7 +2963,7 @@ class Locations(LocationsCommonSelf):
             self.open_and_play_callback(self.act_code, self.act_topdir)
             # Above restarts mserve (assuming no errors) so never come back here
         elif self.state == 'synchronize':
-            self.cmp_build_toplevel(self.act_code, sbar_width=16)
+            self.cmp_build_toplevel(sbar_width=14)
             # Problem: We don't want to do reset below, cmp must close itself
             return  # cmp_close closes cmp_window and main_top stays open for next
         else:
@@ -2974,7 +2978,7 @@ class Locations(LocationsCommonSelf):
     #
     # ==============================================================================
 
-    def cmp_build_toplevel(self, trg_dict_iid, sbar_width=12):
+    def cmp_build_toplevel(self, sbar_width=14):
         """ Compare target location songs to build treeview of differences.
 
             Source is current LODICT, Target it selected by user here
@@ -2996,16 +3000,7 @@ class Locations(LocationsCommonSelf):
             ScrolledText stating work in progress.
 
             When ps_active is done, text updated with filenames and actions.
-            Button appears to update.
-
-        """
-
-        # print('cmp_build_toplevel() get trg_dict',t(time.time()))
-        #trg_dict = lc.item(trg_dict_iid)  # get dictionary for iid
-        #self.cmp_target_dir = trg_dict['topdir']
-        if not self.read_location(trg_dict_iid):
-            print("if not self.read_location(trg_dict_iid):", trg_dict_iid)
-            return
+            Button appears to update. """
         self.cmp_target_dir = self.act_topdir  # Can just use this all the time.
 
         ''' Aug 5/23 - can no longer append slash '''
@@ -3075,6 +3070,9 @@ class Locations(LocationsCommonSelf):
                                 command=self.cmp_tree.yview)
         v_scroll.grid(row=0, column=1, sticky=tk.NS)
         self.cmp_tree.configure(yscrollcommand=v_scroll.set)
+        self.cmp_tree.tag_configure('cmp_sel', background='ForestGreen',
+                                    foreground="White")
+
         # noinspection SpellCheckingInspection
         ''' Aug 5/23 - Horizontal Scrollbar removed for lack of purpose 
         h_scroll = tk.Scrollbar(frame2, orient=tk.HORIZONTAL, width=sbar_width,
@@ -3159,7 +3157,8 @@ class Locations(LocationsCommonSelf):
         CurrArtistId = ""
 
         ext.t_init("Build compare target")
-        for i, os_name in enumerate(self.fake_paths):
+        ''' Traverse fake_paths created by mserve.py make_sorted_list() '''
+        for i, fake_path in enumerate(self.fake_paths):
             self.cmp_top.update()  # Allow close button to abort right away
             ''' Have to stop animations while walking
             thr = self.get_thread_func()
@@ -3169,7 +3168,7 @@ class Locations(LocationsCommonSelf):
                 # When sleep is True, playing next song causes termination :(
             '''
             # split song /mnt/music/Artist/Album/Song.m4a into variable names
-            groups = os_name.split(os.sep)
+            groups = fake_path.split(os.sep)
             Artist = str(groups[start_dir_sep + 1])
             Album = str(groups[start_dir_sep + 2])
             Song = str(groups[start_dir_sep + 3])
@@ -3188,38 +3187,44 @@ class Locations(LocationsCommonSelf):
             if self.cmp_top_is_active is False:
                 return False  # Closing down, False indicates no differences
 
-            ''' Build full song path from self.fake_paths '''
-            src_path = os_name
+            # TODO after function made:
+            #   trg_path, src_size == trg_size and src_mtime == trg_mtime= self.compare_files(src_path)
+            #       if trg_path is None:
+            #             self.cmp_tree.see(CurrAlbumId)
+            #             ''' TODO: build lists of '''
+            #             self.cmp_trg_missing.append(trg_path)
+            #             continue  # Source song doesn't exist on target
+
+            #   ''' Size and modify times match? Already synchronized. '''
+            #       if src_size == trg_size and src_mtime == trg_mtime:
+            #             self.cmp_tree.see(CurrAlbumId)
+            #             continue
+
+            ''' Build real song path from fake_path and stat '''
+            src_path = fake_path
             src_path = src_path.replace(os.sep + g.NO_ARTIST_STR, '')
             src_path = src_path.replace(os.sep + g.NO_ALBUM_STR, '')
-
-            # os.stat gives us all of file's attributes
-            src_stat = os.stat(src_path)
+            src_stat = os.stat(src_path)  # os.stat provides file attributes
             src_size = src_stat.st_size
             src_mtime = float(src_stat.st_mtime)
 
-            # Get target list's size and mtime
+            ''' Build target path, check if exists and use os.stat '''
             trg_path = src_path.replace(self.open_topdir, self.cmp_target_dir)
             if not os.path.isfile(trg_path):
                 self.cmp_tree.see(CurrAlbumId)
                 ''' TODO: build lists of '''
                 self.cmp_trg_missing.append(trg_path)
                 continue  # Source song doesn't exist on target
-
             trg_stat = os.stat(trg_path)
             trg_size = trg_stat.st_size
             trg_mtime = float(trg_stat.st_mtime)
+
             # Android not updating modification time, keep track ourselves
             # print('mserve before src:',t(src_mtime),' trg:',t(trg_mtime))
             src_mtime = self.src_mt.get(src_path, src_mtime)
             trg_mtime = self.trg_mt.get(trg_path, trg_mtime)
-            ''' Below is making 1,000 times slower? '''
-            #self.src_fc.new(src_path, action='stat_only')  # Set stat_start
-            #self.trg_fc.new(trg_path, action='stat_only')  # Set stat_start
 
-            # print('mserve AFTER  src:',t(src_mtime),' trg:',t(trg_mtime))
-
-            # FUDGE because cp --preserve=timestamps doesn't do nanoseconds
+            # cp --preserve=timestamps doesn't track nanoseconds on some filesystems
             src_mtime = int(src_mtime)
             trg_mtime = int(trg_mtime)
             # FUDGE if time difference is 1 second. Caused by copy to SD Card lag
@@ -3232,10 +3237,7 @@ class Locations(LocationsCommonSelf):
             # End of FUDGE overrides
 
             if src_size == trg_size and src_mtime == trg_mtime:
-                self.cmp_tree.see(CurrAlbumId)
-                ''' Below is making 1,000 times slower? '''
-                #self.src_fc.close(action='stat_only')  # Set stat_start
-                #self.trg_fc.close(action='stat_only')  # Set stat_start
+                self.cmp_tree.see(CurrAlbumId)  # Files identical
                 continue
 
             if not src_size == trg_size:
@@ -3286,6 +3288,9 @@ class Locations(LocationsCommonSelf):
                                          float(src_stat.st_mtime), float(trg_stat.st_mtime)),
                                  tags=("Song",))
             self.cmp_tree.see(str(i))
+            ''' Insert source path into iid dictionary of real paths '''
+            self.cmp_real_paths[str(i)] = src_path
+
 
             # Sept 23 2020 - Treeview doesn't scroll after update button added?
             # After clicking update differences can you click it again?
@@ -3328,40 +3333,181 @@ class Locations(LocationsCommonSelf):
             self.out_fact_show(title, text)
             return False
 
+    def real_from_fake_path(self, fake_path):
+        """ Remove <No Artist> and <No Album> from fake paths """
+        src_path = fake_path.replace(os.sep + g.NO_ARTIST_STR, '')
+        return src_path.replace(os.sep + g.NO_ALBUM_STR, '')
+
+    def compare_song_pair(self, fake_path):
+        """ Called when inserting in treeview and after copy/touch command.
+            Source is open location, target is other location to compare
+            Returns actions:
+                "Missing" - In target/other location
+                "Same" within 2 seconds
+                "Error: Size different, time same" - Cannot copy
+                "OOPS" programming error - Should never happen
+                "Copy Trg -> Src (Size)"
+                "Copy Src -> Trg (Size)"
+
+        """
+
+        ''' Build real song path from fake_path and stat '''
+        src_path = self.real_from_fake_path(fake_path)
+        src_stat = os.stat(src_path)  # os.stat provides file attributes
+        src_size = src_stat.st_size
+        src_mtime = float(src_stat.st_mtime)
+
+        ''' Build target path, check if exists and use os.stat '''
+        trg_path = src_path.replace(self.open_topdir, self.cmp_target_dir)
+        if not os.path.isfile(trg_path):
+            ''' populate_cmp_tree must use below when action == "Missing" '''
+            #self.cmp_trg_missing.append(trg_path)
+            #continue  # Source song doesn't exist on target
+            action = "Missing"
+            return action, src_path, src_size, src_mtime, None, \
+                trg_path, None, None, None
+        trg_stat = os.stat(trg_path)
+        trg_size = trg_stat.st_size
+        trg_mtime = float(trg_stat.st_mtime)
+
+        # Android not updating modification time, keep track ourselves
+        # print('mserve before src:',t(src_mtime),' trg:',t(trg_mtime))
+        src_mtime = self.src_mt.get(src_path, src_mtime)
+        trg_mtime = self.trg_mt.get(trg_path, trg_mtime)
+
+        # cp --preserve=timestamps doesn't track nanoseconds on some filesystems
+        #src_mtime = int(src_mtime)  # Aug 7/23 - Do we really want to do this?
+        #trg_mtime = int(trg_mtime)
+        # FUDGE if time difference is 1 second. Caused by copy to SD Card lag
+        time_diff = abs(src_mtime - trg_mtime)
+
+        ''' Size and modify times match? Already synchronized. '''
+        if src_size == trg_size and time_diff <= 2:
+            ''' populate_cmp_tree must use below when action == "Missing" '''
+            #self.cmp_tree.see(CurrAlbumId)  # Files identical
+            #continue
+            action = "Same"
+            return action, src_path, src_size, src_mtime, None, \
+                trg_path, trg_size, trg_mtime, None
+
+        ''' Size different? '''
+        if src_size != trg_size:
+            # Copy newer file to older file
+            if src_mtime < trg_mtime:
+                action = "Copy Trg -> Src (Size)"
+            elif src_mtime > trg_mtime:
+                action = "Copy Src -> Trg (Size)"
+            else:
+                action = "Error: Size different, time same"
+
+        elif os.system('diff -q ' + '"' + src_path + '"' + ' ' +
+                       '"' + trg_path + '" 1>/dev/null'):
+            ''' Size same. Are contents different? '''
+            ''' Use linux 'diff' command with -q (quick) option.
+                Don't report differences, just check for first difference
+                NOTE: Like 'stat', 'diff' doesn't change last access time. '''
+            # Files have different contents even though size the same
+            # Copy newer file to older
+            if src_mtime < trg_mtime:
+                action = "Copy Trg -> Src (Diff)"
+            else:
+                action = "Copy Src -> Trg (Diff)"
+
+        else:
+            ''' Size and contents the same. Timestamp newest with oldest time '''
+            # File contents same so modification times must be synced
+            if src_mtime > trg_mtime:
+                action = "Timestamp Trg -> Src"
+            elif src_mtime < trg_mtime:
+                action = "Timestamp Src -> Trg"
+            else:
+                # Impossible situation
+                title = "location.py Locations.compare_song_pair()"
+                text = "Programming error. Different pair now look like twins:\n\n"
+                text += "  - action    :  " + action + "\n"
+                text += "  - src_path  :  " + src_path + "\n"
+                text += "  - trg_path  :  " + trg_path + "\n"
+                text += "  - src_size  :  " + src_size + "\n"
+                text += "  - trg_size  :  " + trg_size + "\n"
+                text += "  - src_mtime :  " + src_mtime + "\n"
+                text += "  - trg_mtime :  " + trg_mtime + "\n"
+                text += "  - trg_size  :  " + trg_size + "\n\n"
+                text += "Contact www.pippim.com"
+                self.out_cast_show_print(title, text, 'error', align="left")
+                action = "OOPS"
+                return action, src_path, src_size, src_mtime, None, \
+                    trg_path, trg_size, trg_mtime, None
+
+        converted = float(src_size) / float(g.CFG_DIVISOR_AMT)
+        # Aug 4/23 - DEC_PLACE used to be 1 now it's 0
+        src_fsize = '{:n}'.format(round(converted, 3))  # 3 decimal places
+        converted = float(trg_size) / float(g.CFG_DIVISOR_AMT)
+        trg_fsize = '{:n}'.format(round(converted, 3))
+        # Format date as "Abbreviation - 99 Xxx Ago"
+        src_ftime = tmf.ago(float(src_stat.st_mtime))
+        trg_ftime = tmf.ago(float(trg_stat.st_mtime))
+
+        ''' Return vars for treeview insert or post-copy validation '''
+        self.cmp_tree.insert(CurrAlbumId, "end", iid=str(i), text=Song,
+                             values=(src_ftime, trg_ftime, src_fsize, trg_fsize, action,
+                                     float(src_stat.st_mtime), float(trg_stat.st_mtime)),
+                             tags=("Song",))
+
     def cmp_update_files(self):
         """ Build list of commands to run with subprocess
             Called via "Update differences" button on cmp_top
         """
         return_code = 0
+        self.cmp_command_list = list()
         title = "Updating files"
+        last_sel_iid = None
+        run_count = 0
+        mod_count = 0
+        start_time = time.time()
         self.update_differences_btn.grid_forget()  # Can't click again
-        # Display status messages in window 800 wide x 260 high
-        self.cmp_msg_box = message.Open(title, self.cmp_top, 800, 260)
+        ''' Loop without any delay. Cannot update_idle inside loop (crash) '''
         for artist in self.cmp_tree.get_children():
             for album in self.cmp_tree.get_children(artist):
                 for song in self.cmp_tree.get_children(album):
-                    # Update file and display in message box.
-                    return_code = self.cmp_run_command(song)
-                    self.cmp_top.update_idletasks()
-                    thr = self.get_thread_func()
-                    if thr:
-                        thr()  # This will crash when next song played
-                    if self.cmp_top_is_active is False:
-                        # TODO: Move duplicated code into common ...close()
-                        self.src_mt.close()  # Save modification_time to disk
-                        self.trg_mt.close()  # If no changes then simply exit
-                        self.cmp_msg_box.close()
-                        return  # Closing down
-                    if not return_code == 0:
-                        break
-                if not return_code == 0:
-                    break
-            if not return_code == 0:
-                break
+                    if not self.build_command_list(song):
+                        return  # Programmer error
 
+        self.fast_refresh(sleep_after=True)  # Update play_top animations
+
+        ''' src_to_trg:  True = source -> target.  False = target -> source '''
+        for iid, command, src_to_trg, src_mtime, trg_mtime in \
+                self.cmp_command_list:
+            self.fast_refresh()  # No sleep after should only take few ms
+            ''' 1. Highlight command being run '''
+            self.cmp_tree.see(iid)
+            if last_sel_iid:
+                toolkit.tv_tag_remove(self.cmp_tree, last_sel_iid, 'cmp_sel')
+            toolkit.tv_tag_add(self.cmp_tree, iid, 'cmp_sel')
+            last_sel_iid = iid
+            ''' 2. Run the copy or touch command '''
+            run_count += 1  # Test return for success
+            self.fast_refresh()  # No sleep after
+            ''' 3. Check results from stdout and stderr '''
+            ''' 4. stat locations again to verify size and times '''
+            self.fast_refresh()  # No sleep after
+            # If time didn't update could be cell phone so run ModTime
+            # If size didn't update bail out
+            ''' 5. Run the Modification Times update for Cell Phones '''
+            mod_count += 1  # Test return if modify time forced or natural
+
+        ''' Remove last highlight and close ModTime instances '''
+        toolkit.tv_tag_remove(self.cmp_tree, last_sel_iid, 'cmp_sel')
         self.src_mt.close()  # Save modification_time to disk
         self.trg_mt.close()  # If no changes then simply exit
-        self.cmp_msg_box.close()  # Needs modernization
+
+        ''' Summary message '''
+        elapsed = time.time() - start_time
+        title = "Locations synchronized"
+        text = "Open Location:  " + self.open_name + "\n"
+        text += "Other Location: " + self.act_name + "\n\n"
+        text += "File synchronization count: " + '{:n}'.format(run_count)
+        text += "\n\nTotal time: " + tmf.mm_ss(elapsed)
+        self.out_cast_show_print(title, text, align="left")
 
         if not return_code == 0:  # class Location
             title = "location.py Locations.cmp_update_files()"
@@ -3369,6 +3515,69 @@ class Locations(LocationsCommonSelf):
             self.out_cast_show_print(title, text, 'error')
         # All done, close treeview as it's no longer relevant
         self.cmp_close()
+
+    def fast_refresh(self, sleep_after=False):
+        """ Quickly update animations with no sleep after """
+        thr = self.get_thread_func()
+        thr(sleep_after=sleep_after)
+
+    def build_command_list(self, iid):
+        """ Extract commands from treeview and stick into list """
+        action = self.cmp_tree.item(iid)['values'][4]  # 6th treeview column
+        src_mtime = self.cmp_tree.item(iid)['values'][5]
+        trg_mtime = self.cmp_tree.item(iid)['values'][6]
+        # Extract real source path from treeview display e.g. strip <No Album>
+        src_path = self.cmp_real_paths[iid]
+        # replace source topdir with target topdir for target full path
+        trg_path = src_path.replace(self.open_topdir, self.cmp_target_dir)
+
+        # Build command line list for subprocess
+        command_line_list = []
+        src, trg = self.cmp_decipher_arrow(action, src_path, trg_path)
+        if src is None:
+            return False  # Programmer made error
+        src_to_trg = src == src_path
+
+        if action.startswith("Copy "):  # Is it a copy?
+            command_line_list.append("cp")
+            command_line_list.append("--preserve=timestamps")
+            command_line_list.append("--verbose")
+
+        elif action.startswith("Timestamp "):  # Is it a timestamp?
+            command_line_list.append("touch")
+            command_line_list.append("-m")
+            command_line_list.append("-r")
+
+        else:  # None of above? - ERROR!
+            title = "location.py Locations.build_command_list()"
+            text = "Programming error. 'action' is not 'Copy' or 'Timestamp':\n\n"
+            text += "  - action  :  " + action + "\n\n"
+            text += "Contact www.pippim.com"
+            self.out_cast_show_print(title, text, 'error', align="left")
+            return False
+
+        # Add common arguments for source and target to end
+        command_line_list.append(src)
+        command_line_list.append(trg)
+
+        command_str = " ".join(command_line_list)  # list to printable string
+        self.cmp_command_list.append((iid, command_str, src_to_trg,
+                                      src_mtime, trg_mtime))
+
+        """
+        ''' Update Modification Times if command successful '''
+        if pipe.return_code == 0:  # Using class ModTime
+            if src == src_path:  # Action is from Src -> Trg
+                # Update path from old time to new time
+                self.src_mt.update(src_path, trg_mtime, src_mtime)
+                self.trg_mt.update(trg_path, trg_mtime, src_mtime)
+            elif src == trg_path:  # Action is from Trg -> Src
+                self.src_mt.update(src_path, src_mtime, trg_mtime)
+                self.trg_mt.update(trg_path, src_mtime, trg_mtime)
+            else:
+                print('ERROR: paths do not work')
+        """
+        return True
 
     def cmp_run_command(self, iid):
         """ Build single commands to run with subprocess
@@ -3445,6 +3654,7 @@ Verify this by looking at notes in external.py
             print(err)
             self.cmp_msg_box.update(err)
 
+        ''' Update Modification Times if command successful '''
         if pipe.return_code == 0:
             if src == src_path:  # Action is from Src -> Trg
                 self.src_mt.update(src_path, trg_mtime, src_mtime)
@@ -3465,7 +3675,14 @@ Verify this by looking at notes in external.py
         elif "Src -> Trg" in action:
             return src_path, trg_path
         else:
-            print('cmp_decipher_arrow(): was passed invalid arrow')
+            title = "location.py Locations.build_command_list()"
+            text = "Programming error. Method failed to return results:\n\n"
+            text += "self.cmp_decipher_arrow(action, src_path, trg_path):\n"
+            text += "  - action  :  " + action + "\n"
+            text += "  - src_path:  " + src_path + "\n"
+            text += "  - trg_path:  " + trg_path + "\n\n"
+            text += "Contact www.pippim.com"
+            self.out_cast_show_print(title, text, 'error', align="left")
             return None, None
 
     def sneaky_sleep(self):
