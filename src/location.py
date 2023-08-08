@@ -610,9 +610,7 @@ class ModTime:
         # print('Initializing iid:',iid,'dict:',self.loc_dict)
 
         # Does location support modification timestamping?
-        if not self.topdir.endswith(os.sep):
-            self.topdir += os.sep
-        testfile = self.topdir + "test19630518"
+        testfile = ext.join(self.topdir, "test19630518")
         with open(testfile, "w") as text_file:
             text_file.write("Test Modification Time")
         before_touch = os.stat(testfile).st_mtime
@@ -845,11 +843,16 @@ class LocationsCommonSelf:
         self.cmp_close_button = None  # Close the compare window
         self.cmp_help_button = None  # Help in the compare window
         self.cmp_host_is_mounted = True  # Assume local storage by default
-
+        self.cmp_keep_awake_is_active = False  # Target has 10 minute wakeup cycle
+        self.awake_last_time_check = None  # E.G. 10 minutes ago.
+        self.next_active_cmd_time = None  # E.G. 10 minutes from now.
         ''' Need to keep host awake using touch command every 10 minutes.
             Source (self.open_host) and target (self.act_host) could both
-            require keeping awake.
+            require keeping awake.  When host goes down sshfs-fuse freezes
+            for 10 minutes (< 2017 version) then reports:
+            IOError: [Errno 5] Input/output error: u'/mnt/music/test19630518'
         '''
+        self.cmp_host_down = False  # If host goes down, have to bail immediately
         self.cmp_host_was_asleep = False  # Assume host wasn't asleep
         self.cmp_sshfs_used = False  # Assume host wasn't asleep
 
@@ -860,14 +863,13 @@ class LocationsCommonSelf:
         self.cmp_tree = None  # Treeview w/difference between src and trg
         self.cmp_close_btn = None  # Button to close Compare Locations window
         self.update_differences_btn = None  # Click button to synchronize
-        self.cmp_real_paths = {}  # Real paths of source without <No Artist>
+        self.cmp_found = None  # Number of files goes into differences button
         self.command_list = []  # List of tuples: (iid, command_str)
+        self.cmp_command_list = []  # iid,command_str,src_to_trg,src_time,trg_time
         self.stdout = None  # Temporary filename with standard output results
         self.stderr = None  # Temporary filename with error output results
         self.src_mt = None  # Source modification time using ModTime() class
         self.trg_mt = None  # Target modification time using ModTime() class
-        self.src_fc = None  # Source FileControl() instance
-        self.trg_fc = None  # Target FileControl() instance
         self.cmp_trg_missing = []  # Source files not found in target location
         self.cmp_msg_box = None  # message.Open()
         
@@ -997,7 +999,7 @@ class Locations(LocationsCommonSelf):
     def register_oap_cb(self, open_and_play_callback):
         """ Register open_and_play_callback() function from mserve.py """
         self.open_and_play_callback = open_and_play_callback
-        self.open_and_play_callback = open_and_play_callback  # E.G. self.get_refresh_thread()
+        self.open_and_play_callback = open_and_play_callback
 
     # ==============================================================================
     #
@@ -1659,7 +1661,7 @@ class Locations(LocationsCommonSelf):
             self.total_bytes = statvfs.f_frsize * statvfs.f_blocks  # Size of filesystem in bytes
             self.free_bytes = statvfs.f_frsize * statvfs.f_bavail  # Number of free bytes that ordinary users
         except:
-            pass
+            pass  # TODO: cast error message
         if self.act_modify_time != 0.0:
             text += "  | Last modified: "
             text += tmf.ago(self.act_modify_time)
@@ -2013,8 +2015,11 @@ class Locations(LocationsCommonSelf):
         self.state = 'close'
         sql.save_config('location', 'last', self.open_code, self.open_name,
                         self.open_topdir, Comments="Last location opened.")
+        if self.cmp_keep_awake_is_active:  # Keeping remote host awake?
+            self.cmp_keep_awake_is_active = False  # Has 10 minute wakeup cycle
         if self.cmp_top_is_active:
             self.cmp_close()  # Close Compare Locations window
+            
 
     # ==============================================================================
     #
@@ -2095,15 +2100,16 @@ class Locations(LocationsCommonSelf):
         sql.save_config('location', 'last', self.act_code, self.act_name,
                         self.act_topdir, Comments="Last location opened.")
 
-    def save_touch_time(self):
+    def save_touch_time(self, compare=False):
         """ Called by mserve to keep track of last touch time.
             Uses self.open_xxx variables !
         """
-        if self.main_top:
-            return  # Don't want to wipe out current data entry buffer
-
-        sql.save_config('location', 'last', self.open_code, self.open_name,
-                        self.open_topdir, Comments="Last location opened.")
+        if compare:
+            sql.save_config('location', 'last', self.cmp_code, self.cmp_name,
+                            self.cmp_topdir, Comments="Last location opened.")
+        else:
+            sql.save_config('location', 'last', self.open_code, self.open_name,
+                            self.open_topdir, Comments="Last location opened.")
 
     def save_location(self):
         """ Save Location when 'Save' button applied. """
@@ -2119,7 +2125,7 @@ class Locations(LocationsCommonSelf):
         sql.con.commit()  # con.commit() must follow cursor.execute()
 
     def make_act_from_empty_dict(self):
-        """ July 27, 2023 - Currently only used when lcs.new() is called. """
+        """ July 27, 2023 - Currently only used when mserve calls lcs.new(). """
         self.act_code = ""  # Replacement for 'iid'
         self.act_name = ""
         self.act_modify_time = 0.0
@@ -2222,10 +2228,10 @@ class Locations(LocationsCommonSelf):
     # noinspection PyUnboundLocalVariable
     def validate_location(self):
         """ Validate Location's self.scr_xxx input data entry.
-            Called by lcs.apply().
+            Called when apply() invoked.
         """
         if not self.state == 'new' and not self.state == 'edit':
-            return True  # Only 'edit' or 'new' are validated.
+            return True  # Only 'edit' or 'new' validate input fields.
 
         ''' Retrieve name and description from tkinter scr_ variables. '''
         new_name = self.scr_name.get().strip()
@@ -2853,8 +2859,8 @@ class Locations(LocationsCommonSelf):
 
     def test_success(self):
         """ End test with success """
-        success = "\nHost successfully accessed. Click 'Close' button."
-        self.test_show(success, pattern="'Close'")
+        success = "\nHost successfully accessed. Click 'Close Test Results' button."
+        self.test_show(success, pattern="'Close Test Results'")
         self.test_dtb.close()
         if not self.called_from_main_top:
             ''' This is a live situation. Set self.open_xxx '''
@@ -2981,6 +2987,8 @@ class Locations(LocationsCommonSelf):
     def cmp_build_toplevel(self, sbar_width=14):
         """ Compare target location songs to build treeview of differences.
 
+TODO: Comparing to file server says identical when host is asleep.
+
             Source is current LODICT, Target it selected by user here
 
             After comparison, we can:
@@ -3001,7 +3009,26 @@ class Locations(LocationsCommonSelf):
 
             When ps_active is done, text updated with filenames and actions.
             Button appears to update. """
+
         self.cmp_target_dir = self.act_topdir  # Can just use this all the time.
+        if self.act_host:
+            title = "Synchronize to Remote Host System? "
+            text = self.act_host + " is remote.\n"
+            text += "\n\nContinue with synchronization?\n"
+            answer = message.AskQuestion(
+                self.main_top, title, text, confirm='no', icon='info',
+                thread=self.get_thread_func)
+            self.info.cast(title + "\n\n" + text + "\n\n\t\t" +
+                           "Answer was: " + answer.result, 'warning')
+            if answer.result != "yes":
+                return  # Let sleeping dogs lie
+            ''' test_common calls validate_location - endless loop '''
+            if not self.test_common(self.main_top):
+                return  # Refuses to connect to host
+
+            if self.act_touchcmd:
+                self.cmp_keep_awake_is_active = True
+                self.cmp_keep_awake()
 
         ''' Aug 5/23 - can no longer append slash '''
         # If no optional `/` at end, add it for equal comparisons
@@ -3042,7 +3069,7 @@ class Locations(LocationsCommonSelf):
         ''' Treeview List Box, Columns and Headings '''
         self.cmp_tree = ttk.Treeview(frame2, show=('tree', 'headings'),
                                      columns=("SrcModified", "TrgModified", "SrcSize",
-                                              "TrgSize", "Action", "src_mtime", "trg_mtime"),
+                                              "TrgSize", "Action", "src_time", "trg_time"),
                                      selectmode="none")
         self.cmp_tree.column("#0", width=630, stretch=tk.YES)
         # self.cmp_tree.heading("#0", text = "➕ / ➖   Artist/Album/Song")
@@ -3060,8 +3087,8 @@ class Locations(LocationsCommonSelf):
         self.cmp_tree.heading("TrgSize", text="Target " + g.CFG_DIVISOR_UOM)
         self.cmp_tree.column("Action", width=280, stretch=tk.YES)
         self.cmp_tree.heading("Action", text="Action")
-        self.cmp_tree.column("src_mtime")  # Hidden modification time
-        self.cmp_tree.column("trg_mtime")  # Hidden modification time
+        self.cmp_tree.column("src_time")  # Hidden modification time
+        self.cmp_tree.column("trg_time")  # Hidden modification time
         self.cmp_tree.grid(row=0, column=0, sticky=tk.NSEW)
         self.cmp_tree["displaycolumns"] = ("SrcModified", "TrgModified",
                                            "SrcSize", "TrgSize", "Action")
@@ -3088,32 +3115,122 @@ class Locations(LocationsCommonSelf):
         frame3.grid(row=1, column=0, sticky=tk.NW)
 
         ''' ✘ Close Button '''
-        # TODO: we aren't keeping remote location awake only home location!
         self.cmp_top.bind("<Escape>", self.cmp_close)
         self.cmp_top.protocol("WM_DELETE_WINDOW", self.cmp_close)
         self.cmp_close_btn = tk.Button(frame3, text="✘ Close",
                                        width=g.BTN_WID - 4, command=self.cmp_close)
         self.cmp_close_btn.grid(row=0, column=0, padx=2)
-        ''' Create Treeview. If no differences give message and return '''
-        #ret = self.cmp_populate_tree()
-        #print("self.cmp_populate_tree() return value:", ret)  # True (it's working)
+        ''' Create Treeview. If no differences it gives message '''
         if not self.cmp_populate_tree():
             self.cmp_close()  # Files are identical
             return
-        ''' 🗘  Update differences Button u1f5d8 🗘'''
-        self.update_differences_btn = tk.Button(frame3, width=g.BTN_WID + 4,
-                                                text="🗘  Update differences",
-                                                command=self.cmp_update_files)
+
+        # NOTE: Only appears AFTER tree is built.
+        ''' 🗘  Update differences Button u1f5d8 🗘 extra wide for count '''
+        self.update_differences_btn = tk.Button(
+            frame3, width=g.BTN_WID + 12, command=self.cmp_update_files,
+            text="🗘  Update " + '{:,}'.format(self.cmp_found) + " differences")
         self.update_differences_btn.grid(row=0, column=1, padx=2)
 
         if self.cmp_top_is_active is False:
             return
         self.cmp_tree.update_idletasks()
 
+    def cmp_keep_awake(self):
+        """ Every x minutes issue keep awake command for server. For example:
+            'ssh dell "touch /tmp/mserve"' works for ssh-activity bash script.
+
+            Recursive call to self
+
+            For Debugging, run the following commands on the host and client:
+
+            HOST - Open a terminal and enter command which runs forever:
+              mserve_client.sh -d
+
+            CLIENT - Open a terminal, and paste below, replacing "<HOST>" with Host name:
+              while : ; do ssh <HOST> "cat /tmp/mserve_client.log" ; sleep 60 ; done
+
+        """
+        ''' Copied from mserve.py loc_keep_awake '''
+        if not self.cmp_keep_awake_is_active:
+            return  # Compare Location is closing
+
+        self.awake_last_time_check = time.time()
+        if self.awake_last_time_check > self.next_active_cmd_time:
+            ''' Test if Host still connected before sending touch command '''
+            test_passed = self.test_host_up()  # Quick & dirty nc test
+            if not self.cmp_keep_awake_is_active:
+                return  # Shutting down now
+            if test_passed is False:
+                mount_point = self.act_mountcmd  # Extract '/mnt/music' at end
+                mount_point = mount_point.split()[-1]  # last part after space
+                title = "Remote Host Disconnected!"
+                text = self.act_name + " is off-line. Shutting down...\n\n"
+                text += "'sshfs' MAY leave drive mounted for 15 minute timeout.\n"
+                text += "Try: 'fusermount -u " + mount_point + "\n\n"
+                text += "You can also try 'sshfs -o reconnect' option.\n\n"
+                text += "OR... reboot, or do 15 minutes of other other work."
+                text += "\n15 minute sshfs-fuse bug reportedly fixed Oct 27 2017:"
+                text += "\nhttps://bugs.launchpad.net/ubuntu/+source/sshfs-fuse/+bug/912153"
+
+                ''' Cannot show message because other threads keep closing? '''
+                print(title + "\n" + text)
+                self.out_cast_show_print(title, text, 'error')  # CRASHES
+                # July 30, 2023, restarting will access /mnt/music and stall
+                # If host suspends when mserve running, use 'ssh-activity -d'.
+                self.cmp_host_down = True  # Don't close files on frozen sshfs-fuse
+                self.cmp_close()  # Close compare files windows
+                self.cmp_keep_awake_is_active = False
+                return
+
+            # Host is awake. Set next test time.
+            result = os.popen(self.act_touchcmd).read().strip()
+            ''' 10 minutes from now can be 4 hours from now when laptop is
+                suspended. During that time host may have gone to sleep. So
+                read time (not elapsed CPU time) is required.
+                
+                Below save_touch_time() is for self.OPEN_host not self.act_host
+                which is needed.
+                
+                There can be a signal fired by refresh_thread when system has
+                awoke from sleep. Formula based upon last saved time in memory
+                > x seconds / minutes.
+            '''
+            self.save_touch_time(compare=True)  # Record compare location time
+            if len(result) > 4:  # Did nc -z have error results?
+                title = "location.py Locations.cmp_keep_awake()"
+                text = "Running command: 'nc -z " + self.act_host + " 22'"
+                text += "\n\nReceived unexpected results show below:\n\n"
+                text += result
+                self.out_cast_show_print(title, text, 'error')
+            self.awake_last_time_check = time.time()
+            #self.next_active_cmd_time = self.awake_last_time_check + (60 * LODICT['activemin'])
+            self.next_active_cmd_time = self.awake_last_time_check + (60 * self.act_touchmin)
+
+            title = "Keeping Remote Host awake."
+            text = "Running: " + self.act_touchcmd + "\n"
+            text += "  | This time: " + ext.t(self.awake_last_time_check)
+            text += "  | Next time: " + ext.t(self.next_active_cmd_time)
+            self.out_fact(title, text, 'info')
+
+            if not self.cmp_keep_awake_is_active:
+                return  # Compare Location is closing
+
+        if not self.act_touchmin:
+            # TODO: new variable name and move outside of loop.
+            print("Override self.act_touch_min from 'None' to 10 minutes.")
+            self.act_touchmin = 10
+        self.act_touchmin = 10 if self.act_touchmin < 2 else self.act_touchmin
+        mill = int(self.act_touchmin * 60 * 1000)  # convert to milliseconds
+        print("mill:", mill)
+        self.main_top.after(mill, self.cmp_keep_awake)  # cmp_top may close early
+
     # *args reported as unused, but is required for binding <Escape> to cmp_close()
     # noinspection PyUnusedLocal 
     def cmp_close(self, *args):
         """ Close Compare location treeview """
+        if self.cmp_keep_awake_is_active:  # Keeping remote host awake?
+            self.cmp_keep_awake_is_active = False  # Has 10 minute wakeup cycle
         if not self.cmp_top_is_active:
             return  # Already closed
         self.cmp_top_is_active = False
@@ -3146,15 +3263,11 @@ class Locations(LocationsCommonSelf):
         #target_dir_sep = self.cmp_target_dir.count(os.sep) - 1
         self.src_mt = ModTime(self.open_code)
         self.trg_mt = ModTime(self.act_code)
-        self.src_fc = self.FileControl(self.cmp_top, self.info, 
-                                       get_thread=self.get_thread_func)
-        self.trg_fc = self.FileControl(self.cmp_top, self.info, 
-                                       get_thread=self.get_thread_func)
+        print("self.src_mt.allows_mtime:", self.src_mt.allows_mtime)
+        print("self.trg_mt.allows_mtime:", self.trg_mt.allows_mtime)
 
-        LastArtist = ""
-        LastAlbum = ""
-        CurrAlbumId = ""  # When there are no albums?
-        CurrArtistId = ""
+        LastArtist = LastAlbum = CurrAlbumId = CurrArtistId = ""
+        self.cmp_found = 0
 
         ext.t_init("Build compare target")
         ''' Traverse fake_paths created by mserve.py make_sorted_list() '''
@@ -3187,8 +3300,15 @@ class Locations(LocationsCommonSelf):
             if self.cmp_top_is_active is False:
                 return False  # Closing down, False indicates no differences
 
+            ''' Production version '''
+            action, src_path, src_size, src_time, trg_path, \
+                trg_size, trg_time = self.compare_path_pair(fake_path)
+            ''' Test version '''
+            n_action, n_src_path, n_src_size, n_src_time, n_trg_path, \
+                n_trg_size, n_trg_time = self.compare_path_pair(fake_path)
+
             # TODO after function made:
-            #   trg_path, src_size == trg_size and src_mtime == trg_mtime= self.compare_files(src_path)
+            #   trg_path, src_size == trg_size and src_time == trg_time= self.compare_files(src_path)
             #       if trg_path is None:
             #             self.cmp_tree.see(CurrAlbumId)
             #             ''' TODO: build lists of '''
@@ -3196,7 +3316,7 @@ class Locations(LocationsCommonSelf):
             #             continue  # Source song doesn't exist on target
 
             #   ''' Size and modify times match? Already synchronized. '''
-            #       if src_size == trg_size and src_mtime == trg_mtime:
+            #       if src_size == trg_size and src_time == trg_time:
             #             self.cmp_tree.see(CurrAlbumId)
             #             continue
 
@@ -3206,45 +3326,53 @@ class Locations(LocationsCommonSelf):
             src_path = src_path.replace(os.sep + g.NO_ALBUM_STR, '')
             src_stat = os.stat(src_path)  # os.stat provides file attributes
             src_size = src_stat.st_size
-            src_mtime = float(src_stat.st_mtime)
+            src_time = float(src_stat.st_mtime)
+            self.test_bugs(src_path, n_src_path)
+            self.test_bugs(src_size, n_src_size)
+            self.test_bugs(src_time, n_src_time)
 
             ''' Build target path, check if exists and use os.stat '''
             trg_path = src_path.replace(self.open_topdir, self.cmp_target_dir)
+            self.test_bugs(trg_path, n_trg_path)
             if not os.path.isfile(trg_path):
                 self.cmp_tree.see(CurrAlbumId)
                 ''' TODO: build lists of '''
                 self.cmp_trg_missing.append(trg_path)
+                self.test_bugs("Missing", n_action)
                 continue  # Source song doesn't exist on target
             trg_stat = os.stat(trg_path)
             trg_size = trg_stat.st_size
-            trg_mtime = float(trg_stat.st_mtime)
+            trg_time = float(trg_stat.st_mtime)
+            self.test_bugs(trg_size, n_trg_size)
+            self.test_bugs(trg_time, n_trg_time)
 
             # Android not updating modification time, keep track ourselves
-            # print('mserve before src:',t(src_mtime),' trg:',t(trg_mtime))
-            src_mtime = self.src_mt.get(src_path, src_mtime)
-            trg_mtime = self.trg_mt.get(trg_path, trg_mtime)
+            # print('mserve before src:',t(src_time),' trg:',t(trg_time))
+            src_time = self.src_mt.get(src_path, src_time)
+            trg_time = self.trg_mt.get(trg_path, trg_time)
 
             # cp --preserve=timestamps doesn't track nanoseconds on some filesystems
-            src_mtime = int(src_mtime)
-            trg_mtime = int(trg_mtime)
+            src_time = int(src_time)
+            trg_time = int(trg_time)
             # FUDGE if time difference is 1 second. Caused by copy to SD Card lag
-            if src_mtime > trg_mtime:
-                diff = src_mtime - trg_mtime
+            if src_time > trg_time:
+                diff = src_time - trg_time
             else:
-                diff = trg_mtime - src_mtime
+                diff = trg_time - src_time
             if diff == 1:
-                src_mtime = trg_mtime  # override 1-second difference
+                src_time = trg_time  # override 1-second difference
             # End of FUDGE overrides
 
-            if src_size == trg_size and src_mtime == trg_mtime:
+            if src_size == trg_size and src_time == trg_time:
                 self.cmp_tree.see(CurrAlbumId)  # Files identical
+                self.test_bugs("Same", n_action)
                 continue
 
             if not src_size == trg_size:
                 # Copy newer file to older
-                if src_mtime < trg_mtime:
+                if src_time < trg_time:
                     action = "Copy Trg -> Src (Size)"
-                elif src_mtime > trg_mtime:
+                elif src_time > trg_time:
                     action = "Copy Src -> Trg (Size)"
                 else:
                     action = "Size diff but same time!"
@@ -3252,26 +3380,29 @@ class Locations(LocationsCommonSelf):
             elif os.system('diff -q ' + '"' + src_path + '"' + ' ' +
                            '"' + trg_path + '" 1>/dev/null'):
                 ''' Use linux 'diff' command with -q (quick) option.
+                    'diff' returns 0 when files are the same, 2 if different.
                     Don't report differences, just check for first difference
                     NOTE: Like 'stat', 'diff' doesn't change last access time. '''
                 if self.cmp_top_is_active is False:
                     return False  # Closing down, False indicates no differences
                 # Files have different contents even though size the same
                 # Copy newer file to older
-                if src_mtime < trg_mtime:
+                if src_time < trg_time:
                     action = "Copy Trg -> Src (Diff)"
                 else:
                     action = "Copy Src -> Trg (Diff)"
 
             else:
                 # File contents same so modification times must be synced
-                if src_mtime > trg_mtime:
+                if src_time > trg_time:
                     action = "Timestamp Trg -> Src"
-                elif src_mtime < trg_mtime:
+                elif src_time < trg_time:
                     action = "Timestamp Src -> Trg"
                 else:
                     # Impossible situation
                     action = "OOPS same time?"
+
+            self.test_bugs(action, n_action)
 
             converted = float(src_size) / float(g.CFG_DIVISOR_AMT)
             # Aug 4/23 - DEC_PLACE used to be 1 now it's 0
@@ -3282,21 +3413,20 @@ class Locations(LocationsCommonSelf):
             src_ftime = tmf.ago(float(src_stat.st_mtime))
             trg_ftime = tmf.ago(float(trg_stat.st_mtime))
 
+            if self.cmp_top_is_active is False:
+                return False  # Closing down, False indicates no differences
+
             ''' Insert song into comparison treeview and show on screen '''
             self.cmp_tree.insert(CurrAlbumId, "end", iid=str(i), text=Song,
                                  values=(src_ftime, trg_ftime, src_fsize, trg_fsize, action,
                                          float(src_stat.st_mtime), float(trg_stat.st_mtime)),
                                  tags=("Song",))
             self.cmp_tree.see(str(i))
-            ''' Insert source path into iid dictionary of real paths '''
-            self.cmp_real_paths[str(i)] = src_path
+            self.cmp_found += 1
+            self.cmp_tree.update_idletasks()
 
-
-            # Sept 23 2020 - Treeview doesn't scroll after update button added?
-            # After clicking update differences can you click it again?
             if self.cmp_top_is_active is False:
                 return False  # Closing down, False indicates no differences
-            self.cmp_tree.update_idletasks()
 
             # do_debug_steps += 1
             # if do_debug_steps == 10000: break     # Set to short for testing
@@ -3312,10 +3442,6 @@ class Locations(LocationsCommonSelf):
             for album in self.cmp_tree.get_children(artist):
                 if self.cmp_top_is_active is False:
                     return False  # Closing down, False indicates no differences
-                #song_count = 0
-                #for song in self.cmp_tree.get_children(album):
-                #    song_count += 1  # Signal not to delete album
-                #    break
                 song_count = len(self.cmp_tree.get_children(album))
                 if song_count == 0:
                     self.cmp_tree.delete(album)
@@ -3333,29 +3459,48 @@ class Locations(LocationsCommonSelf):
             self.out_fact_show(title, text)
             return False
 
-    def real_from_fake_path(self, fake_path):
-        """ Remove <No Artist> and <No Album> from fake paths """
-        src_path = fake_path.replace(os.sep + g.NO_ARTIST_STR, '')
-        return src_path.replace(os.sep + g.NO_ALBUM_STR, '')
+    @staticmethod
+    def test_bugs(first, second):
+        """ simple bug test """
+        if first != second:
+            print("test_bugs() first:", first, "  | second:", second)
 
-    def compare_song_pair(self, fake_path):
+    @staticmethod
+    def real_from_fake_path(fake_path):
+        """ Remove <No Artist> and <No Album> from fake paths """
+        real_path = fake_path.replace(os.sep + g.NO_ARTIST_STR, '')
+        return real_path.replace(os.sep + g.NO_ALBUM_STR, '')
+
+    def compare_path_pair(self, fake_path):
         """ Called when inserting in treeview and after copy/touch command.
             Source is open location, target is other location to compare
-            Returns actions:
-                "Missing" - In target/other location
-                "Same" within 2 seconds
-                "Error: Size different, time same" - Cannot copy
-                "OOPS" programming error - Should never happen
-                "Copy Trg -> Src (Size)"
-                "Copy Src -> Trg (Size)"
 
-        """
+            return action, src_path, src_size, src_time, \
+                trg_path, trg_size, trg_time
+            WHERE:
+                src_path = self.open_topdir + real base path
+                trg_path = self.act_topdir + real base path
+                size = integer file size in bytes
+                mtime = modification time to filesystems' nanosecond precision
+
+            Possible return actions (hidden detached from treeview):
+                "Missing" - In target(other) location (hidden from view)
+                "Same" - within 2 seconds so no action required (hidden)
+                "Error: Size different, time same" - Don't know copy direction
+                "Error: contents different, time same" -    "   "   "   "
+                "OOPS" - programming error that should never happen (hidden)
+                "Copy Trg -> Src (Size)" - Based on size difference
+                "Copy Src -> Trg (Size)" - Based on size difference
+                "Copy Trg -> Src (Diff)" - Based on file difference
+                "Copy Src -> Trg (Diff)" - Based on file difference
+                "Timestamp Trg -> Src" - Prevents future checks
+                "Timestamp Src -> Trg" - Prevents future checks """
 
         ''' Build real song path from fake_path and stat '''
         src_path = self.real_from_fake_path(fake_path)
         src_stat = os.stat(src_path)  # os.stat provides file attributes
         src_size = src_stat.st_size
-        src_mtime = float(src_stat.st_mtime)
+        src_time = float(src_stat.st_mtime)
 
         ''' Build target path, check if exists and use os.stat '''
         trg_path = src_path.replace(self.open_topdir, self.cmp_target_dir)
@@ -3364,22 +3509,22 @@ class Locations(LocationsCommonSelf):
             #self.cmp_trg_missing.append(trg_path)
             #continue  # Source song doesn't exist on target
             action = "Missing"
-            return action, src_path, src_size, src_mtime, None, \
-                trg_path, None, None, None
+            return action, src_path, src_size, src_time, \
+                trg_path, None, None
         trg_stat = os.stat(trg_path)
         trg_size = trg_stat.st_size
-        trg_mtime = float(trg_stat.st_mtime)
+        trg_time = float(trg_stat.st_mtime)
 
         # Android not updating modification time, keep track ourselves
-        # print('mserve before src:',t(src_mtime),' trg:',t(trg_mtime))
-        src_mtime = self.src_mt.get(src_path, src_mtime)
-        trg_mtime = self.trg_mt.get(trg_path, trg_mtime)
+        # print('mserve before src:',t(src_time),' trg:',t(trg_time))
+        src_time = self.src_mt.get(src_path, src_time)
+        trg_time = self.trg_mt.get(trg_path, trg_time)
 
         # cp --preserve=timestamps doesn't track nanoseconds on some filesystems
-        #src_mtime = int(src_mtime)  # Aug 7/23 - Do we really want to do this?
-        #trg_mtime = int(trg_mtime)
+        #src_time = int(src_time)  # Aug 7/23 - Do we really want to do this?
+        #trg_time = int(trg_time)
         # FUDGE if time difference is 1 second. Caused by copy to SD Card lag
-        time_diff = abs(src_mtime - trg_mtime)
+        time_diff = abs(src_time - trg_time)
 
         ''' Size and modify times match? Already synchronized. '''
         if src_size == trg_size and time_diff <= 2:
@@ -3387,15 +3532,16 @@ class Locations(LocationsCommonSelf):
             #self.cmp_tree.see(CurrAlbumId)  # Files identical
             #continue
             action = "Same"
-            return action, src_path, src_size, src_mtime, None, \
-                trg_path, trg_size, trg_mtime, None
+            return action, src_path, src_size, src_time, \
+                trg_path, trg_size, trg_time
 
-        ''' Size different? '''
+        ''' Isolate difference based on size or diff command '''
         if src_size != trg_size:
+            ''' Sizes are different '''
             # Copy newer file to older file
-            if src_mtime < trg_mtime:
+            if src_time < trg_time:
                 action = "Copy Trg -> Src (Size)"
-            elif src_mtime > trg_mtime:
+            elif src_time > trg_time:
                 action = "Copy Src -> Trg (Size)"
             else:
                 action = "Error: Size different, time same"
@@ -3408,20 +3554,23 @@ class Locations(LocationsCommonSelf):
                 NOTE: Like 'stat', 'diff' doesn't change last access time. '''
             # Files have different contents even though size the same
             # Copy newer file to older
-            if src_mtime < trg_mtime:
+            if src_time < trg_time:
                 action = "Copy Trg -> Src (Diff)"
-            else:
+            elif src_time > trg_time:
                 action = "Copy Src -> Trg (Diff)"
+            else:
+                action = "Error: contents different, time same"
 
         else:
-            ''' Size and contents the same. Timestamp newest with oldest time '''
+            ''' Size and contents the same. Set timestamp to oldest time '''
             # File contents same so modification times must be synced
-            if src_mtime > trg_mtime:
+            if src_time > trg_time:
                 action = "Timestamp Trg -> Src"
-            elif src_mtime < trg_mtime:
+            elif src_time < trg_time:
                 action = "Timestamp Src -> Trg"
             else:
-                # Impossible situation
+                # Time or Size were different before now same
+                # Another job running perhaps?
                 title = "location.py Locations.compare_song_pair()"
                 text = "Programming error. Different pair now look like twins:\n\n"
                 text += "  - action    :  " + action + "\n"
@@ -3429,15 +3578,16 @@ class Locations(LocationsCommonSelf):
                 text += "  - trg_path  :  " + trg_path + "\n"
                 text += "  - src_size  :  " + src_size + "\n"
                 text += "  - trg_size  :  " + trg_size + "\n"
-                text += "  - src_mtime :  " + src_mtime + "\n"
-                text += "  - trg_mtime :  " + trg_mtime + "\n"
+                text += "  - src_time :  " + src_time + "\n"
+                text += "  - trg_time :  " + trg_time + "\n"
                 text += "  - trg_size  :  " + trg_size + "\n\n"
-                text += "Contact www.pippim.com"
+                text += "Was another job running? Contact www.pippim.com"
                 self.out_cast_show_print(title, text, 'error', align="left")
                 action = "OOPS"
-                return action, src_path, src_size, src_mtime, None, \
-                    trg_path, trg_size, trg_mtime, None
+                return action, src_path, src_size, src_time, \
+                    trg_path, trg_size, trg_time
 
+        ''' populate_cmp_tree must use below:
         converted = float(src_size) / float(g.CFG_DIVISOR_AMT)
         # Aug 4/23 - DEC_PLACE used to be 1 now it's 0
         src_fsize = '{:n}'.format(round(converted, 3))  # 3 decimal places
@@ -3447,16 +3597,20 @@ class Locations(LocationsCommonSelf):
         src_ftime = tmf.ago(float(src_stat.st_mtime))
         trg_ftime = tmf.ago(float(trg_stat.st_mtime))
 
-        ''' Return vars for treeview insert or post-copy validation '''
         self.cmp_tree.insert(CurrAlbumId, "end", iid=str(i), text=Song,
                              values=(src_ftime, trg_ftime, src_fsize, trg_fsize, action,
                                      float(src_stat.st_mtime), float(trg_stat.st_mtime)),
                              tags=("Song",))
+        '''
+
+        return action, src_path, src_size, src_time, \
+            trg_path, trg_size, trg_time
 
     def cmp_update_files(self):
         """ Build list of commands to run with subprocess
             Called via "Update differences" button on cmp_top
         """
+        print("self.update_differences_btn 4:", self.update_differences_btn)
         return_code = 0
         self.cmp_command_list = list()
         title = "Updating files"
@@ -3475,7 +3629,7 @@ class Locations(LocationsCommonSelf):
         self.fast_refresh(sleep_after=True)  # Update play_top animations
 
         ''' src_to_trg:  True = source -> target.  False = target -> source '''
-        for iid, command, src_to_trg, src_mtime, trg_mtime in \
+        for iid, command, src_to_trg, src_time, trg_time in \
                 self.cmp_command_list:
             self.fast_refresh()  # No sleep after should only take few ms
             ''' 1. Highlight command being run '''
@@ -3506,7 +3660,7 @@ class Locations(LocationsCommonSelf):
         text = "Open Location:  " + self.open_name + "\n"
         text += "Other Location: " + self.act_name + "\n\n"
         text += "File synchronization count: " + '{:n}'.format(run_count)
-        text += "\n\nTotal time: " + tmf.mm_ss(elapsed)
+        text += "\n\nTotal time (D.HH:MM:SS): " + tmf.mm_ss(elapsed)
         self.out_cast_show_print(title, text, align="left")
 
         if not return_code == 0:  # class Location
@@ -3524,14 +3678,14 @@ class Locations(LocationsCommonSelf):
     def build_command_list(self, iid):
         """ Extract commands from treeview and stick into list """
         action = self.cmp_tree.item(iid)['values'][4]  # 6th treeview column
-        src_mtime = self.cmp_tree.item(iid)['values'][5]
-        trg_mtime = self.cmp_tree.item(iid)['values'][6]
-        # Extract real source path from treeview display e.g. strip <No Album>
-        src_path = self.cmp_real_paths[iid]
-        # replace source topdir with target topdir for target full path
+        src_time = self.cmp_tree.item(iid)['values'][5]
+        trg_time = self.cmp_tree.item(iid)['values'][6]
+        """ Set REAL paths for source and target """
+        fake_path = self.fake_paths[int(iid)]
+        src_path = self.real_from_fake_path(fake_path)
         trg_path = src_path.replace(self.open_topdir, self.cmp_target_dir)
 
-        # Build command line list for subprocess
+        # Build command line list for subprocess (Not used yet if ever...)
         command_line_list = []
         src, trg = self.cmp_decipher_arrow(action, src_path, trg_path)
         if src is None:
@@ -3562,18 +3716,18 @@ class Locations(LocationsCommonSelf):
 
         command_str = " ".join(command_line_list)  # list to printable string
         self.cmp_command_list.append((iid, command_str, src_to_trg,
-                                      src_mtime, trg_mtime))
+                                      src_time, trg_time))
 
         """
         ''' Update Modification Times if command successful '''
         if pipe.return_code == 0:  # Using class ModTime
             if src == src_path:  # Action is from Src -> Trg
                 # Update path from old time to new time
-                self.src_mt.update(src_path, trg_mtime, src_mtime)
-                self.trg_mt.update(trg_path, trg_mtime, src_mtime)
+                self.src_mt.update(src_path, trg_time, src_time)
+                self.trg_mt.update(trg_path, trg_time, src_time)
             elif src == trg_path:  # Action is from Trg -> Src
-                self.src_mt.update(src_path, src_mtime, trg_mtime)
-                self.trg_mt.update(trg_path, src_mtime, trg_mtime)
+                self.src_mt.update(src_path, src_time, trg_time)
+                self.trg_mt.update(trg_path, src_time, trg_time)
             else:
                 print('ERROR: paths do not work')
         """
@@ -3607,8 +3761,8 @@ Verify this by looking at notes in external.py
 
         # action = 'Copy Trg -> Src (Size)', 'Timestamp Src -> Trg', etc.
         action = self.cmp_tree.item(iid)['values'][4]  # 6th treeview column
-        src_mtime = self.cmp_tree.item(iid)['values'][5]
-        trg_mtime = self.cmp_tree.item(iid)['values'][6]
+        src_time = self.cmp_tree.item(iid)['values'][5]
+        trg_time = self.cmp_tree.item(iid)['values'][6]
         # Extract real source path from treeview display e.g. strip <No Album>
         src_path = self.real_path(int(iid))
         # replace source topdir with target topdir for target full path
@@ -3657,11 +3811,11 @@ Verify this by looking at notes in external.py
         ''' Update Modification Times if command successful '''
         if pipe.return_code == 0:
             if src == src_path:  # Action is from Src -> Trg
-                self.src_mt.update(src_path, trg_mtime, src_mtime)
-                self.trg_mt.update(trg_path, trg_mtime, src_mtime)
+                self.src_mt.update(src_path, trg_time, src_time)
+                self.trg_mt.update(trg_path, trg_time, src_time)
             elif src == trg_path:  # Action is from Trg -> Src
-                self.src_mt.update(src_path, src_mtime, trg_mtime)
-                self.trg_mt.update(trg_path, src_mtime, trg_mtime)
+                self.src_mt.update(src_path, src_time, trg_time)
+                self.trg_mt.update(trg_path, src_time, trg_time)
             else:
                 print('ERROR: paths do not work')
 

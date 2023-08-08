@@ -1030,7 +1030,7 @@ class PlayCommonSelf:
         #self.mountcmd_var = None            # E.G. `sshfs "dell:/mnt/music/Users/Person/
                                             #   Music/iTunes/iTunes Media/Music/" /mnt/music`
         # NOTE: On 'dell' file server run `sudo mount -t auto -v /dev/sb1 /mnt/music`
-        # 'dell' is running `/mnt/e/bin/ssh-activity` to stay awake when mserve running
+        # 'dell' is running `.../mserve_client.sh` to stay awake when mserve running
         # 'Phone' (Mobile) needs to mount sshfs
         #self.activecmd_var = None           # Keep host awake. E.G. `ssh dell "touch /tmp/mserve"`
         #self.activemin_var = None           # Send Keep awake command every x minutes. E.G. "10"
@@ -2678,24 +2678,17 @@ class MusicLocationTree(PlayCommonSelf):
 
     def loc_keep_awake(self):
         """ Every x minutes issue keep awake command for server. For example:
-            'ssh dell "touch /tmp/mserve"' works for ssh-activity bash script.
+            'ssh dell "touch /tmp/mserve_client.time"'
 
             Recursive call to self
 
-            Host debug:
-                ssh-activity -d | tee ssh-activity.log
+            For Debugging, run the following commands on the host and client:
 
-            Client debug in new terminal window (SINGLE LINE):
-while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-activity.log ; sleep 60 ; done
+            HOST - Open a terminal and enter command which runs forever:
+              mserve_client.sh -d
 
-            Client results:
-                ==========  ssh-activity.log Mon Jul 31 09:16:24 MDT 2023  ==========
-                /tmp/mserve Modified Seconds: 285
-                IdleSeconds: 240 LowestSeconds: 285
-                     'wall' broadcast: shutdown in: 15 minute(s).
-                /tmp/mserve Modified Seconds: 345
-                IdleSeconds: 300 LowestSeconds: 345
-
+            CLIENT - Open a terminal, and paste below, replacing "<HOST>" with Host name:
+              while : ; do ssh <HOST> "cat /tmp/mserve_client.log" ; sleep 60 ; done
         """
 
         if not self.loc_keep_awake_is_active:
@@ -2711,12 +2704,12 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
                 mount_point = lcs.open_mountcmd  # Extract '/mnt/music' at end
                 mount_point = mount_point.split()[-1]  # last part after space
                 title = "Remote Host Disconnected!"
-                text = lcs.open_name + "is off-line. Shutting down...\n\n"
+                text = lcs.open_name + " is off-line. Shutting down...\n\n"
                 text += "'sshfs' MAY leave drive mounted for 15 minute timeout.\n"
                 text += "Try: 'fusermount -u " + mount_point + "\n\n"
                 text += "You can also try 'sshfs -o reconnect' option.\n\n"
                 text += "OR... reboot, or do 15 minutes of other other work."
-                text += "\n15 minute sshfs-fuse bug reported fixed Oct 27 2017:"
+                text += "\n15 minute sshfs-fuse bug reportedly fixed Oct 27 2017:"
                 text += "\nhttps://bugs.launchpad.net/ubuntu/+source/sshfs-fuse/+bug/912153"
 
                 ''' Cannot show message because other threads keep closing? '''
@@ -2783,7 +2776,7 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
                 text += result
                 lcs.out_cast_show_print(title, text, 'error')
             self.awake_last_time_check = time.time()
-            self.next_active_cmd_time = self.awake_last_time_check + (60 * LODICT['activemin'])
+            #self.next_active_cmd_time = self.awake_last_time_check + (60 * LODICT['activemin'])
             self.next_active_cmd_time = self.awake_last_time_check + (60 * lcs.open_touchmin)
 
             title = "Keeping Remote Host awake."
@@ -4562,8 +4555,9 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
                 text += "\n\nInvalid characters replaced with '_':\n"
                 text += legal_string
                 text += "\n\nContinue with legal version?\n"
-                message.AskQuestion(self.lib_top, title, text, 'no', icon='warning',
-                                    thread=self.get_refresh_thread)
+                answer = message.AskQuestion(
+                    self.lib_top, title, text, 'no', icon='warning',
+                    thread=self.get_refresh_thread)
                 self.info.cast(title + "\n\n" + text + "\n\n\t\t" +
                                "Answer was: " + answer.result, 'warning')
                 if answer.result != "yes":
@@ -4617,8 +4611,9 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
                 text += old_name + "\nwill be moved under the new " + level
                 text += ": " + legal_string
                 self.info.cast(title + "\n\n" + text)
-                message.AskQuestion(self.lib_top, title, text, icon='warning',
-                                    thread=self.get_refresh_thread)
+                answer = message.AskQuestion(
+                    self.lib_top, title, text, icon='warning',
+                    thread=self.get_refresh_thread)
                 if answer.result != "yes":
                     continue  # Enter a new name
 
@@ -6984,11 +6979,12 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
         ext.t_end('no_print')  # Jun 13, 2023 - checks_and_selects: 0.4508948326
         ext.t_init('Wrap up')
 
-        # Keep host awake if necessary
-        if lcs.open_touchcmd:
-            self.loc_keep_awake_is_active = True
+        # Keep host awake if necessary  - Aug 7/23 - how was this working?
+        #if lcs.open_touchcmd:
+        #    self.loc_keep_awake_is_active = True
 
-        if LODICT.get('activecmd', "") is not "":
+        #if LODICT.get('activecmd', "") is not "":  # Commented Aug 7/23
+        if lcs.open_touchcmd:  # Added Aug 7/23
             self.loc_keep_awake_is_active = True
 
             # May be restarting music player so keep awake immediately
@@ -7010,11 +7006,10 @@ while : ; do echo "==========  ssh-activity.log $(date)  ==========" ; tail ssh-
         if len(self.saved_selections) >= 2:
             # Continue playing where we left off
             self.play_from_start = False  # TODO: Review variable usage, kinda weird!
-            # print('Continue playing with song#:',self.ndx)
+            # print('Continue playing with song#:', self.ndx)
             self.play_selected_list()
         elif self.splash_toplevel:
             self.splash_toplevel.withdraw()  # Remove splash screen
-
 
     def clear_all_checks_and_opened(self):
         """ Called from self.pending_reset() and self.playlists.apply_callback()

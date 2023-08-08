@@ -355,6 +355,12 @@ def remove_existing(filename):
     return False    # File doesn't exist
 
 
+def join(topdir, bottom):
+    """ Based on: https://stackoverflow.com/a/51276165/6929343 """
+    topdir = topdir.rstrip(os.sep)
+    return os.path.join(os.sep, topdir + os.sep, bottom)
+
+
 def legalize_dir_name(name):
     """ '/', ':', and '?' are some of the invalid characters for file and
         directory names that are replaced with "_".

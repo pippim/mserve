@@ -1,20 +1,65 @@
 #!/bin/bash
 # NAME: mserve_client.sh
-# DATE: August 2, 2023.
+# DATE: August 2, 2023.  Modified August 7, 2023
 # DESC: Runs on SSH Host Server and is controlled by SSH client (remote).
 #       Check if /tmp/mserve_client.time has been modified. If so, simulate
-#       as user activity to keep host awake. Also check workstation activity.
+#       user activity to keep host awake. Also check workstation activity.
 #       Use gsettings to get settings for screen saver and AC idle shutdown.
-#       If simulating user activity disables screen saver, turn it back on.
-#       When idle time is long enough, broadcast warning message that
-#       system is going down in 60, 30, 15, 10, 5, 3, 2, 1, 0 minute(s).
-#       Based on ssh-activity created June 21, 2020 and modified July 18, 2020.
-# NOTE: For Debugging, run the following commands on the host and client:
-#       HOST (Open a terminal enter command to run forever):
-#           mserve_client.sh -d
-#       CLIENT (Copy to terminal and replace "<HOST>" with Host name):
-#           while : ; do ssh <HOST> "cat /tmp/mserve_client.log" ; sleep 60 ; done
+#       If simulating user activity disables screen saver, blank the screen.
+#       When idle time long enough, broadcast warning message that the
+#       system is going down in 60, 30, 15, 10, 5, 3, 2, and 1 minute(s).
 
+#       Based on ssh-activity created June 21, 2020 and modified July 18, 2020.
+
+: <<'END'
+/* ------------ NOTES  --------------------------------------------------------
+
+For Debugging, run the following commands on the HOST and CLIENT:
+
+HOST - Open a terminal and enter command which runs forever:
+  mserve_client.sh -d
+
+CLIENT - Open a terminal, and paste below, replacing "<HOST>" with Host name:
+  while : ; do ssh <HOST> "cat /tmp/mserve_client.log" ; sleep 60 ; done
+
+Every ten minutes mserve.py will send command similar to:
+  ssh <HOST> "touch /tmp/mserve_client.time"
+
+You can open a new terminal tab and test the command yourself to see
+the new results appearing in your first client terminal window..
+
+-----   /tmp/mserve_client.log   ---   Mon Aug  7 17:16:41 MDT 2023   -----
+Screen Saver Command: SimulateUserActivity  Result: ()
+Screen Saver Command: GetActive  Result: (false,)
+Host Idle: 239  | Fake Idle: 0  | Last Touch: 38
+
+Host Idle = Idle seconds before screen is blanked to save electricity
+Fake Idle = Idle seconds host thinks have past, which keeps it awake
+Last Touch = Number of seconds since '/tmp/mserve_client.time' was "touched"
+Last Wish = Number of seconds since remote terminal typed something
+Screen Saver Command = Issued Gnome Settings (gsettings) by 'mserve_client.sh'
+
+When you exit mserve and keep the first terminal open, you will eventually see:
+
+-----   /tmp/mserve_client.log   ---   Mon Aug  7 17:20:41 MDT 2023   -----
+     'wall' broadcast: suspending Host in: 15 minute(s).
+Host Idle: 479  | Fake Idle: 240  | LastClient: 278
+
+      (AND THEN 5 minutes later...)
+
+-----   /tmp/mserve_client.log   ---   Mon Aug  7 17:25:41 MDT 2023   -----
+     'wall' broadcast: suspending Host in: 10 minute(s).
+Host Idle: 779  | Fake Idle: 540  | LastClient: 578
+
+The same messages appear at 60, 30, 5, 3, 2 and 1 minute left. Then
+the host system goes to sleep.
+
+If you used the "Test Host" button from the mserve Location Maintenance window
+then mserve only wakes up the host and tests the Music Top Directory. It does
+NOT keep the host awake by "touching" the '/tmp/mserve_client.time' file.
+
+---------------------------------------------------------------------------- */
+END
 # Global CONSTANTS and Variables
 export LANG=C  # Force english names for sed & grep searches
 SLEEP_SECS=60  # Seconds to sleep between 'w -ish' command usage
@@ -75,14 +120,14 @@ mInit () {
     # If DEBUG turned on, empty output file and append message header to file.
     [[ $fDebug == false ]] && return 0
     echo "" >| "$OUTPUT_FN"  # Empty last output file.  ">|" = allow clobber.
-    echo "-----   $OUTPUT_FN   ---   $(date)   -----" >> "$OUTPUT_FN"
+    printf "\n-----   $OUTPUT_FN   ---   $(date)   -----\n" >> "$OUTPUT_FN"
 } # mInit ()
 
 m () {
     # If DEBUG turned on, print messages to screen and append to file.
     [[ $fDebug == false ]] && return 0
     echo "$1"  # Print to console same as output file
-    echo "$1" >> "$OUTPUT_FN"
+    printf "$1\n" >> "$OUTPUT_FN"
 } # m ()
 
 GsInit () {
@@ -273,8 +318,8 @@ main () {
         fi
       # Format and print debug line if requested with -d (--debug) parameter
         line="Host Idle: $HostIdle  | Fake Idle: $FakeIdle"
-        [[ "$LastWish" -lt "$DECADE" ]] && line="$line  | LastWish: $LastWish"
-        [[ "$LastClient" -lt "$DECADE" ]] && line="$line  | LastClient: $LastClient"
+        [[ "$LastWish" -lt "$DECADE" ]] && line="$line  | Last Wish: $LastWish"
+        [[ "$LastClient" -lt "$DECADE" ]] && line="$line  | Last Touch: $LastClient"
         m "$line"  # Display debug results when -d switch used.
       # Sleep then increment last W-ish seconds and idle seconds
         sleep "$SLEEP_SECS"
