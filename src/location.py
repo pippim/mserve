@@ -61,6 +61,8 @@ import shutil
 import pickle
 import time
 import datetime
+import random  # For Locations() make_temp
+import string  # For Locations() make_temp
 from collections import OrderedDict
 
 import global_variables as g
@@ -95,11 +97,15 @@ FNAME_LAST_SELECTIONS  = MSERVE_DIR + "last_selections"      # Shuffled play ord
 FNAME_LAST_PLAYLIST    = MSERVE_DIR + "last_playlist"        # Songs selected for playing
 
 # Files in /tmp/
-FNAME_TEST             = g.TEMP_DIR + "mserve_test"
+FNAME_TEST             = g.TEMP_DIR + "mserve_test"  # Test if host up
 
 # There can be two open at once so unlike other global variables this is never
 # replaced. It is simply used as base for creating new variable.
 FNAME_MOD_TIME        = MSERVE_DIR + "modification_time"
+
+''' Temporary files also defined in mserve.py '''
+TMP_STDOUT = g.TEMP_DIR + "mserve_stdout"  # _g7gh75 appended Defined mserve.py
+TMP_STDERR = g.TEMP_DIR + "mserve_stderr"  # _u4rt5m appended Defined mserve.py
 
 ''' Global variables
 '''
@@ -872,12 +878,18 @@ class LocationsCommonSelf:
         self.trg_mt = None  # Target modification time using ModTime() class
         self.cmp_trg_missing = []  # Source files not found in target location
         self.cmp_msg_box = None  # message.Open()
-        
+
+        ''' Make TMP names unique for multiple FileControls racing at once '''
+        letters = string.ascii_lowercase + string.digits
+        self.temp_suffix = (''.join(random.choice(letters) for i in range(6)))
+        self.TMP_STDOUT = TMP_STDOUT + "_" + self.temp_suffix
+        self.TMP_STDERR = TMP_STDERR + "_" + self.temp_suffix
+
 
 class Locations(LocationsCommonSelf):
     """ Usage:
 
-        lcs = Locations(make_sorted_list)
+        lcs = Locations()
 
         lcs loads first. Most relevant instances aren't ready to be passed.
         They are registered later with:
@@ -911,10 +923,8 @@ class Locations(LocationsCommonSelf):
         """
         LocationsCommonSelf.__init__(self)  # Define self. variables
 
-        ''' self-ize parameter list '''
-        self.make_sorted_list = make_sorted_list  # Check if music files exist
-
         ''' Variables registered by mserve.py when available '''
+        self.make_sorted_list = make_sorted_list  # Check if music files exist
         self.parent = None  # FOR NOW self.parent MUST BE: lib_top
         self.NEW_LOCATION = None  # When it's new location nothing to open
         self.text = None  # Text replacing treeview when no locations on file
@@ -969,7 +979,7 @@ class Locations(LocationsCommonSelf):
         self.NEW_LOCATION = NEW_LOCATION  # mserve.py isn't using a location
 
     def register_tt(self, tt):
-        """ Register Tooltips after it's declared in mserve.py """
+        """ Register Tooltips() after it's declared in mserve.py """
         self.tt = tt  # Tooltips pool for buttons
 
     def register_info(self, info):
@@ -977,7 +987,7 @@ class Locations(LocationsCommonSelf):
         self.info = info  # InfoCentre()
 
     def register_FileControl(self, fc):
-        """ Register InfoCentre() after it's declared in mserve.py """
+        """ Register FileControl() after it's declared in mserve.py """
         self.FileControl = fc  # InfoCentre()
 
     def register_get_thread(self, get_thread):
@@ -990,7 +1000,7 @@ class Locations(LocationsCommonSelf):
 
     def register_fake_paths(self, fake_paths):
         """ Register self.fake_paths after make_sorted_list() in mserve.py """
-        self.fake_paths = fake_paths
+        self.fake_paths = fake_paths  # Called in two places in mserve.py
 
     def register_pending(self, get_pending):
         """ Register get_pending_cnt_total after it's declared in mserve.py """
@@ -998,8 +1008,7 @@ class Locations(LocationsCommonSelf):
 
     def register_oap_cb(self, open_and_play_callback):
         """ Register open_and_play_callback() function from mserve.py """
-        self.open_and_play_callback = open_and_play_callback
-        self.open_and_play_callback = open_and_play_callback
+        self.open_and_play_callback = open_and_play_callback  # Open Loc/play music
 
     # ==============================================================================
     #
@@ -1248,7 +1257,7 @@ class Locations(LocationsCommonSelf):
             ''' When testing host, there are no Treeview rows above '''
             text = "🡅 🡅  Slide scrollbar above to see Test Host results  🡅 🡅"
         self.fld_intro = tk.Label(frame, text=text, font=g.FONT)
-        self.fld_intro.grid(row=1, column=1, columnspan=3, stick=tk.EW)
+        self.fld_intro.grid(row=1, column=1, columnspan=3, pady=5, stick=tk.EW)
 
         ''' one_loc_var() wrapper for creating all screen input variables '''
         self.curr_row = 2  # Current row number for self.one_loc_var to incr
@@ -1556,6 +1565,9 @@ class Locations(LocationsCommonSelf):
         if self.state == 'new':
             self.fld_topdir['state'] = 'normal'  # Always allow when 'new'
 
+        ''' Clicking on scr_topdir is treated like button click '''
+        self.fld_topdir.bind("<Button>", self.get_topdir)
+
         if self.state == 'edit' and not self.open_topdir == self.act_topdir:
             self.fld_topdir['state'] = 'normal'  # Allow input
         elif self.state == 'edit':
@@ -1635,8 +1647,8 @@ class Locations(LocationsCommonSelf):
 
     def format_intro_line(self):
         """ Format introduction line
-            self.act_code will be blank when adding a new location
-        """
+            self.act_code will be blank when adding a new location 
+            In this case line already repurposed with instructions. """
         if not self.act_code:
             return  # There is nothing to format
         
@@ -1682,29 +1694,20 @@ class Locations(LocationsCommonSelf):
             parent=self.main_top, initialdir=self.act_topdir,
             title="Select Music Top Directory")
         ''' New AskDirectory class under development '''
-        #thread = self.get_thread_func()
-        #new_topdir = message.AskDirectory(
-        #    parent=self.main_top, initial dir=self.act_topdir,
-        #    title="Select Music Top Directory", thread=thread)
-        #print("new_topdir.result:", new_topdir.result)
-        # Traceback (most recent call last):
-        #   File "/usr/lib/python2.7/lib-tk/Tkinter.py", line 1540, in __call__
-        #     return self.func(*args)
-        #   File "/home/rick/python/location.py", line 1308, in get_topdir
-        #     if not new_topdir.endswith(os.sep):
-        # AttributeError: AskDirectory instance has no attribute 'endswith'
+        #new_topdir = message.AskDirectory(...thread=self.get_thread_func
+
 
         if new_topdir == self.act_topdir:
             return  # No changes
-
         if not new_topdir:
             return  # Clicked cancel
-
-        if not new_topdir.endswith(os.sep):
-            new_topdir += os.sep
+        #if not new_topdir.endswith(os.sep):
+        #    new_topdir += os.sep  # Commented out Aug 7/23
 
         ''' Validate Music Top Directory has Artists/Albums/Songs '''
-        work_list, depth_count = self.make_sorted_list(new_topdir, self.main_top, check_only=True)
+        work_list, depth_count = self.make_sorted_list(
+            new_topdir, self.main_top, check_only=True)
+        print("depth_count:", depth_count)
         if depth_count[2] < 10:
             title = "Invalid Music Top Directory"
             text = "Invalid Directory: '" + new_topdir + "'\n\n"
@@ -2964,8 +2967,6 @@ class Locations(LocationsCommonSelf):
             self.info.cast("Deleted location: " + self.act_name, action="delete")
         elif self.state == 'open':
             self.info.cast("Open location: " + self.act_name, action="open")
-            #self.open_and_play_callback()  # Should be using self.act_code
-            # Inside above function it's using old act_code and old act_topdir
             self.open_and_play_callback(self.act_code, self.act_topdir)
             # Above restarts mserve (assuming no errors) so never come back here
         elif self.state == 'synchronize':
@@ -3300,118 +3301,28 @@ TODO: Comparing to file server says identical when host is asleep.
             if self.cmp_top_is_active is False:
                 return False  # Closing down, False indicates no differences
 
-            ''' Production version '''
+            ''' Compare two files '''
             action, src_path, src_size, src_time, trg_path, \
                 trg_size, trg_time = self.compare_path_pair(fake_path)
-            ''' Test version '''
-            n_action, n_src_path, n_src_size, n_src_time, n_trg_path, \
-                n_trg_size, n_trg_time = self.compare_path_pair(fake_path)
 
-            # TODO after function made:
-            #   trg_path, src_size == trg_size and src_time == trg_time= self.compare_files(src_path)
-            #       if trg_path is None:
-            #             self.cmp_tree.see(CurrAlbumId)
-            #             ''' TODO: build lists of '''
-            #             self.cmp_trg_missing.append(trg_path)
-            #             continue  # Source song doesn't exist on target
-
-            #   ''' Size and modify times match? Already synchronized. '''
-            #       if src_size == trg_size and src_time == trg_time:
-            #             self.cmp_tree.see(CurrAlbumId)
-            #             continue
-
-            ''' Build real song path from fake_path and stat '''
-            src_path = fake_path
-            src_path = src_path.replace(os.sep + g.NO_ARTIST_STR, '')
-            src_path = src_path.replace(os.sep + g.NO_ALBUM_STR, '')
-            src_stat = os.stat(src_path)  # os.stat provides file attributes
-            src_size = src_stat.st_size
-            src_time = float(src_stat.st_mtime)
-            self.test_bugs(src_path, n_src_path)
-            self.test_bugs(src_size, n_src_size)
-            self.test_bugs(src_time, n_src_time)
-
-            ''' Build target path, check if exists and use os.stat '''
-            trg_path = src_path.replace(self.open_topdir, self.cmp_target_dir)
-            self.test_bugs(trg_path, n_trg_path)
-            if not os.path.isfile(trg_path):
-                self.cmp_tree.see(CurrAlbumId)
-                ''' TODO: build lists of '''
-                self.cmp_trg_missing.append(trg_path)
-                self.test_bugs("Missing", n_action)
-                continue  # Source song doesn't exist on target
-            trg_stat = os.stat(trg_path)
-            trg_size = trg_stat.st_size
-            trg_time = float(trg_stat.st_mtime)
-            self.test_bugs(trg_size, n_trg_size)
-            self.test_bugs(trg_time, n_trg_time)
-
-            # Android not updating modification time, keep track ourselves
-            # print('mserve before src:',t(src_time),' trg:',t(trg_time))
-            src_time = self.src_mt.get(src_path, src_time)
-            trg_time = self.trg_mt.get(trg_path, trg_time)
-
-            # cp --preserve=timestamps doesn't track nanoseconds on some filesystems
-            src_time = int(src_time)
-            trg_time = int(trg_time)
-            # FUDGE if time difference is 1 second. Caused by copy to SD Card lag
-            if src_time > trg_time:
-                diff = src_time - trg_time
-            else:
-                diff = trg_time - src_time
-            if diff == 1:
-                src_time = trg_time  # override 1-second difference
-            # End of FUDGE overrides
-
-            if src_size == trg_size and src_time == trg_time:
+            if action == "Missing":
+                self.cmp_trg_missing.append(trg_path)  # Not used yet
                 self.cmp_tree.see(CurrAlbumId)  # Files identical
-                self.test_bugs("Same", n_action)
+                continue
+            if action == "Same":
+                self.cmp_tree.see(CurrAlbumId)  # Files identical
+                continue
+            if action == "OOPS":
+                self.cmp_tree.see(CurrAlbumId)  # Files identical
                 continue
 
-            if not src_size == trg_size:
-                # Copy newer file to older
-                if src_time < trg_time:
-                    action = "Copy Trg -> Src (Size)"
-                elif src_time > trg_time:
-                    action = "Copy Src -> Trg (Size)"
-                else:
-                    action = "Size diff but same time!"
-
-            elif os.system('diff -q ' + '"' + src_path + '"' + ' ' +
-                           '"' + trg_path + '" 1>/dev/null'):
-                ''' Use linux 'diff' command with -q (quick) option.
-                    'diff' returns 0 when files are the same, 2 if different.
-                    Don't report differences, just check for first difference
-                    NOTE: Like 'stat', 'diff' doesn't change last access time. '''
-                if self.cmp_top_is_active is False:
-                    return False  # Closing down, False indicates no differences
-                # Files have different contents even though size the same
-                # Copy newer file to older
-                if src_time < trg_time:
-                    action = "Copy Trg -> Src (Diff)"
-                else:
-                    action = "Copy Src -> Trg (Diff)"
-
-            else:
-                # File contents same so modification times must be synced
-                if src_time > trg_time:
-                    action = "Timestamp Trg -> Src"
-                elif src_time < trg_time:
-                    action = "Timestamp Src -> Trg"
-                else:
-                    # Impossible situation
-                    action = "OOPS same time?"
-
-            self.test_bugs(action, n_action)
-
             converted = float(src_size) / float(g.CFG_DIVISOR_AMT)
-            # Aug 4/23 - DEC_PLACE used to be 1 now it's 0
             src_fsize = '{:n}'.format(round(converted, 3))  # 3 decimal places
             converted = float(trg_size) / float(g.CFG_DIVISOR_AMT)
             trg_fsize = '{:n}'.format(round(converted, 3))
             # Format date as "Abbreviation - 99 Xxx Ago"
-            src_ftime = tmf.ago(float(src_stat.st_mtime))
-            trg_ftime = tmf.ago(float(trg_stat.st_mtime))
+            src_ftime = tmf.ago(float(src_time))
+            trg_ftime = tmf.ago(float(trg_time))
 
             if self.cmp_top_is_active is False:
                 return False  # Closing down, False indicates no differences
@@ -3419,23 +3330,18 @@ TODO: Comparing to file server says identical when host is asleep.
             ''' Insert song into comparison treeview and show on screen '''
             self.cmp_tree.insert(CurrAlbumId, "end", iid=str(i), text=Song,
                                  values=(src_ftime, trg_ftime, src_fsize, trg_fsize, action,
-                                         float(src_stat.st_mtime), float(trg_stat.st_mtime)),
+                                         float(src_time), float(trg_time)),
                                  tags=("Song",))
             self.cmp_tree.see(str(i))
             self.cmp_found += 1
-            self.cmp_tree.update_idletasks()
 
             if self.cmp_top_is_active is False:
                 return False  # Closing down, False indicates no differences
 
-            # do_debug_steps += 1
-            # if do_debug_steps == 10000: break     # Set to short for testing
-
         ext.t_end('print')  # No Refresh: Build compare target: 1.2339029312
         # Refresh thread (33ms after)   : Build compare target: 158.4349091053
         # Refresh sleep_after=False     : Build compare target: 26.8863759041
-        # Refresh play_top closed       : Build compare target: 2.1595461369
-        # Refresh play_top no out_cast  : Build compare target: 1.5343670845
+
         ''' Prune tree - Albums with no songs, then artists with no albums '''
         for artist in self.cmp_tree.get_children():
             album_count = 0
@@ -3505,40 +3411,28 @@ TODO: Comparing to file server says identical when host is asleep.
         ''' Build target path, check if exists and use os.stat '''
         trg_path = src_path.replace(self.open_topdir, self.cmp_target_dir)
         if not os.path.isfile(trg_path):
-            ''' populate_cmp_tree must use below when action == "Missing" '''
-            #self.cmp_trg_missing.append(trg_path)
-            #continue  # Source song doesn't exist on target
-            action = "Missing"
+            action = "Missing"  # Will not appear in treeview
             return action, src_path, src_size, src_time, \
                 trg_path, None, None
+
         trg_stat = os.stat(trg_path)
         trg_size = trg_stat.st_size
         trg_time = float(trg_stat.st_mtime)
 
         # Android not updating modification time, keep track ourselves
-        # print('mserve before src:',t(src_time),' trg:',t(trg_time))
         src_time = self.src_mt.get(src_path, src_time)
         trg_time = self.trg_mt.get(trg_path, trg_time)
-
-        # cp --preserve=timestamps doesn't track nanoseconds on some filesystems
-        #src_time = int(src_time)  # Aug 7/23 - Do we really want to do this?
-        #trg_time = int(trg_time)
-        # FUDGE if time difference is 1 second. Caused by copy to SD Card lag
         time_diff = abs(src_time - trg_time)
 
         ''' Size and modify times match? Already synchronized. '''
         if src_size == trg_size and time_diff <= 2:
-            ''' populate_cmp_tree must use below when action == "Missing" '''
-            #self.cmp_tree.see(CurrAlbumId)  # Files identical
-            #continue
-            action = "Same"
+            action = "Same"  # Will not appear in treeview
             return action, src_path, src_size, src_time, \
                 trg_path, trg_size, trg_time
 
         ''' Isolate difference based on size or diff command '''
         if src_size != trg_size:
-            ''' Sizes are different '''
-            # Copy newer file to older file
+            ''' Sizes are different - Copy newer file to older file '''
             if src_time < trg_time:
                 action = "Copy Trg -> Src (Size)"
             elif src_time > trg_time:
@@ -3548,12 +3442,7 @@ TODO: Comparing to file server says identical when host is asleep.
 
         elif os.system('diff -q ' + '"' + src_path + '"' + ' ' +
                        '"' + trg_path + '" 1>/dev/null'):
-            ''' Size same. Are contents different? '''
-            ''' Use linux 'diff' command with -q (quick) option.
-                Don't report differences, just check for first difference
-                NOTE: Like 'stat', 'diff' doesn't change last access time. '''
-            # Files have different contents even though size the same
-            # Copy newer file to older
+            ''' Size same but contents different - Copy newer file to older '''
             if src_time < trg_time:
                 action = "Copy Trg -> Src (Diff)"
             elif src_time > trg_time:
@@ -3584,24 +3473,6 @@ TODO: Comparing to file server says identical when host is asleep.
                 text += "Was another job running? Contact www.pippim.com"
                 self.out_cast_show_print(title, text, 'error', align="left")
                 action = "OOPS"
-                return action, src_path, src_size, src_time, \
-                    trg_path, trg_size, trg_time
-
-        ''' populate_cmp_tree must use below:
-        converted = float(src_size) / float(g.CFG_DIVISOR_AMT)
-        # Aug 4/23 - DEC_PLACE used to be 1 now it's 0
-        src_fsize = '{:n}'.format(round(converted, 3))  # 3 decimal places
-        converted = float(trg_size) / float(g.CFG_DIVISOR_AMT)
-        trg_fsize = '{:n}'.format(round(converted, 3))
-        # Format date as "Abbreviation - 99 Xxx Ago"
-        src_ftime = tmf.ago(float(src_stat.st_mtime))
-        trg_ftime = tmf.ago(float(trg_stat.st_mtime))
-
-        self.cmp_tree.insert(CurrAlbumId, "end", iid=str(i), text=Song,
-                             values=(src_ftime, trg_ftime, src_fsize, trg_fsize, action,
-                                     float(src_stat.st_mtime), float(trg_stat.st_mtime)),
-                             tags=("Song",))
-        '''
 
         return action, src_path, src_size, src_time, \
             trg_path, trg_size, trg_time
@@ -3610,7 +3481,6 @@ TODO: Comparing to file server says identical when host is asleep.
         """ Build list of commands to run with subprocess
             Called via "Update differences" button on cmp_top
         """
-        print("self.update_differences_btn 4:", self.update_differences_btn)
         return_code = 0
         self.cmp_command_list = list()
         title = "Updating files"
@@ -3632,16 +3502,21 @@ TODO: Comparing to file server says identical when host is asleep.
         for iid, command, src_to_trg, src_time, trg_time in \
                 self.cmp_command_list:
             self.fast_refresh()  # No sleep after should only take few ms
+
             ''' 1. Highlight command being run '''
             self.cmp_tree.see(iid)
             if last_sel_iid:
                 toolkit.tv_tag_remove(self.cmp_tree, last_sel_iid, 'cmp_sel')
             toolkit.tv_tag_add(self.cmp_tree, iid, 'cmp_sel')
             last_sel_iid = iid
+
             ''' 2. Run the copy or touch command '''
+            self.run_one_command(iid, command, src_to_trg, src_time, trg_time)
             run_count += 1  # Test return for success
             self.fast_refresh()  # No sleep after
+
             ''' 3. Check results from stdout and stderr '''
+
             ''' 4. stat locations again to verify size and times '''
             self.fast_refresh()  # No sleep after
             # If time didn't update could be cell phone so run ModTime
@@ -3675,6 +3550,12 @@ TODO: Comparing to file server says identical when host is asleep.
         thr = self.get_thread_func()
         thr(sleep_after=sleep_after)
 
+    @staticmethod
+    def rm_file(fname):
+        """ Remove file if it exists """
+        if os.path.isfile(fname):
+            os.remove(fname)
+
     def build_command_list(self, iid):
         """ Extract commands from treeview and stick into list """
         action = self.cmp_tree.item(iid)['values'][4]  # 6th treeview column
@@ -3684,37 +3565,30 @@ TODO: Comparing to file server says identical when host is asleep.
         fake_path = self.fake_paths[int(iid)]
         src_path = self.real_from_fake_path(fake_path)
         trg_path = src_path.replace(self.open_topdir, self.cmp_target_dir)
-
-        # Build command line list for subprocess (Not used yet if ever...)
-        command_line_list = []
+        ''' src=from path, trg=to path. Can be flipped src_path/trg_path '''
         src, trg = self.cmp_decipher_arrow(action, src_path, trg_path)
         if src is None:
+            print("Programmer made error - src is None")
             return False  # Programmer made error
-        src_to_trg = src == src_path
+        src_to_trg = src == src_path  # Is src_to_trg same (True) or flipped (False)
 
+        ''' Build command line so far '''
         if action.startswith("Copy "):  # Is it a copy?
-            command_line_list.append("cp")
-            command_line_list.append("--preserve=timestamps")
-            command_line_list.append("--verbose")
-
+            command_str = u"cp --preserve=timestamps --verbose "
         elif action.startswith("Timestamp "):  # Is it a timestamp?
-            command_line_list.append("touch")
-            command_line_list.append("-m")
-            command_line_list.append("-r")
-
+            command_str = u"touch -m -r "
+        elif action.startswith("Error:"):  # Modification time unknown.
+            return True  # True = looks like command built so action displayed
         else:  # None of above? - ERROR!
             title = "location.py Locations.build_command_list()"
             text = "Programming error. 'action' is not 'Copy' or 'Timestamp':\n\n"
             text += "  - action  :  " + action + "\n\n"
             text += "Contact www.pippim.com"
             self.out_cast_show_print(title, text, 'error', align="left")
-            return False
+            return False  # False = action not displayed in treeview
 
-        # Add common arguments for source and target to end
-        command_line_list.append(src)
-        command_line_list.append(trg)
-
-        command_str = " ".join(command_line_list)  # list to printable string
+        ''' Complete command line and add command & control tuple to list '''
+        command_str += u' "' + src + u'" ' + trg + u'"'
         self.cmp_command_list.append((iid, command_str, src_to_trg,
                                       src_time, trg_time))
 
@@ -3732,6 +3606,35 @@ TODO: Comparing to file server says identical when host is asleep.
                 print('ERROR: paths do not work')
         """
         return True
+
+    def run_one_command(self, iid, command, src_to_trg, src_time, trg_time):
+        """ Build single commands to run with subprocess
+                cp -p source_path target_path
+                touch -m -r source_path target_path
+
+$ time touch me
+real	0m0.003s
+
+Do NOT run touch in background
+
+:~/Music/Trooper/Hits From 10 Albums$ time cp -p "07 Oh Pretty Lady.flac" test
+real	0m0.089s
+
+Lagging starts when time > 0.033
+
+Time to find if process is still running:
+$ time ps aux > /dev/null
+real	0m0.038s
+
+
+Verify this by looking at notes in external.py
+
+            NOTE: self.open_topdir may become target_path and target_dir may become
+                  source_path after deciphering arrow
+        """
+
+        self.rm_file(self.TMP_STDOUT)
+        self.rm_file(self.TMP_STDERR)
 
     def cmp_run_command(self, iid):
         """ Build single commands to run with subprocess
@@ -3787,12 +3690,14 @@ Verify this by looking at notes in external.py
             print("cmp_run_command(): action is not 'Copy ' or 'Timestamp '")
             return False
 
+        ''' Build command line so far '''
+        command_str = " ".join(command_line_list)  # list to printable string
+        command_str += ' "' + src + '" ' + trg + '"'
+
         # Add common arguments for source and target to end
-        command_line_list.append(src)
+        command_line_list.append(src)  # Filenames must be double quoted.
         command_line_list.append(trg)
 
-        command_str = " ".join(command_line_list)  # list to printable string
-        self.cmp_msg_box.update(command_str)  # Display status line
         ''' https://docs.python.org/3/library/subprocess.html#popen-objects '''
         pipe = sp.Popen(command_line_list, stdout=sp.PIPE, stderr=sp.PIPE)
         text, err = pipe.communicate()  # This performs .wait() too

@@ -398,6 +398,7 @@ except NameError:  # name 'reload' is not defined
 
 import shutil
 import json  # For List conversions to SQL
+import glob  # For globbing files in /tmp/mserve_ffprobe*
 import time
 import datetime
 import re
@@ -480,38 +481,14 @@ FRM_BRD_WID = 2             # Width for frame border
 # TODO: Calculate g.PANEL_HGT (height)
 #g.PANEL_HGT = 24              # Height of Unity panel
 
-'''
-TODO:
-
-For multiple mserve.py instances running on rig. Need to revise
-encoding.py to accept name of work files.
-
-https://www.educative.io/answers/how-to-generate-a-random-string-in-python
-
-import random
-import string
-
-letters = string.ascii_lowercase + string.digits
-print ( ''.join(random.choice(letters) for i in range(8)) )
-
-multiple mserve instances to run concurrently. However after a crash the
-files will still be there instead of being recycled with next startup.
-
-'''
 # Temporary directory work filenames
-
 TMP_CURR_SONG = g.TEMP_DIR + "mserve_song_playing"
 TMP_CURR_SAMPLE = g.TEMP_DIR  + "mserve_song_sampling"
 TMP_CURR_SYNC = g.TEMP_DIR + "mserve_song_syncing"
-TMP_FFPROBE = g.TEMP_DIR + "mserve_ffprobe"
-TMP_FFMPEG = g.TEMP_DIR + "mserve_ffmpeg.jpg"  # Must end in .jpg for ffmpeg
+TMP_FFPROBE = g.TEMP_DIR + "mserve_ffprobe"  # _a3sd24 appended
+TMP_FFMPEG = g.TEMP_DIR + "mserve_ffmpeg.jpg"  # _2h7s6s.jpg appended
 TMP_MBZ_GET1 = g.TEMP_DIR + "mserve_mbz_get1"
 TMP_MBZ_GET2 = g.TEMP_DIR + "mserve_mbz_get2"
-
-# Abandon process that takes .4 seconds to run. Use ffprobe instead
-# ffmpeg -v error -i "' + song + '" -f null - 2>' + TMP_ERROR
-#TMP_ERROR = g.TEMP_DIR + "mserve.error"
-
 
 ''' Volume Meter IPC filenames. Change in vu_meter.py too '''
 # Mono output
@@ -523,8 +500,11 @@ VU_METER_RIGHT_FNAME = g.TEMP_DIR + "mserve_vu-meter-right.txt"
 ''' Mostly all the names. TMP_FFPROBE & TMP_FFMPEG have unique suffixes '''
 ''' VU_METER...FNAME are pipes that can't be removed. '''
 TMP_ALL_NAMES = [TMP_CURR_SONG, TMP_CURR_SAMPLE, TMP_CURR_SYNC,
-                 TMP_FFPROBE, TMP_FFMPEG, VU_METER_FNAME,
-                 VU_METER_LEFT_FNAME, VU_METER_RIGHT_FNAME]
+                 TMP_FFPROBE+"*", TMP_FFMPEG + "*", VU_METER_FNAME,
+                 VU_METER_LEFT_FNAME, VU_METER_RIGHT_FNAME,
+                 lc.FNAME_TEST, lc.TMP_STDOUT+"*", lc.TMP_STDERR+"*"]
+
+# More names added later after lcs is initialized.
 
 ENCODE_DEV = True  # Development encoding.py last disc ID recycled saving 63 secs
 
@@ -817,7 +797,7 @@ class PlayCommonSelf:
     """
 
     def __init__(self):
-        #def __init__(self, toplevel, song_list, sbar_width=16, **kwargs):
+        #def __init__(self, toplevel, song_list, sbar_width=14, **kwargs):
 
         self.killer = ext.GracefulKiller()  # Class to shut down
         self.close_sleepers_in_progress = False  # Prevent multiple calls
@@ -1019,52 +999,9 @@ class PlayCommonSelf:
         self.awake_last_time_check = None
         self.next_active_cmd_time = None
 
-        ''' Define tk variables for Location record used with .set() and .get() '''
-        #self.iid_var = None                 # L'001', L'002', '003', etc.
-        #self.name_var = None                # "Dell fileserver", "Phone", etc.
-        #self.topdir_var = None              # "/mnt/music", "~/music", etc.
-        #self.host_var = None                # Optional Host name EG "dell"
-        #self.wakecmd_var = None             # E.G. "wakeonlan 5c:f9:dd:5c:9c:53 ; sleep 4"
-        #self.testcmd_var = None             # Test if awake E.G. `ssh dell "ls /home/rick"`
-        #self.testrep_var = None             # Repeat test if awake # times. E.G. "50"
-        #self.mountcmd_var = None            # E.G. `sshfs "dell:/mnt/music/Users/Person/
-                                            #   Music/iTunes/iTunes Media/Music/" /mnt/music`
-        # NOTE: On 'dell' file server run `sudo mount -t auto -v /dev/sb1 /mnt/music`
-        # 'dell' is running `.../mserve_client.sh` to stay awake when mserve running
-        # 'Phone' (Mobile) needs to mount sshfs
-        #self.activecmd_var = None           # Keep host awake. E.G. `ssh dell "touch /tmp/mserve"`
-        #self.activemin_var = None           # Send Keep awake command every x minutes. E.G. "10"
-
-        #self.state = None                   # Tkinter 'normal' or 'readonly'
-        #self.name_fld = None                # Location name entry field
-        #self.topdir_fld = None              # Music top directory entry field
-        #self.host_fld = None                # Optional host name for location
-        #self.wakecmd_fld = None             # Command to wake up sleeping host
-        #self.testcmd_fld = None             # Command to test if host is awake
-        #self.testrep_fld = None             # Repeat test x times .1 seconds
-        #self.mountcmd_fld = None            # command to mount host music
-        #self.activecmd_fld = None           # SSH command to keep host awake
-        #self.activemin_fld = None           # Minutes between keep awake cmd
-        #self.sub_btn = None                 # Submit changes button
-
-        ''' Compare locations variables '''
-        #self.cmp_top = None                 # Compare Locations toplevel - NEW?
-        #self.cmp_target_dir = None          # OS directory comparing to
-        #self.cmp_tree = None                # Treeview
-        #self.cmp_close_btn = None           # Doesn't need to be instanced
-        #self.update_differences_btn = None
-        #self.src_mt = None                  # Source modification time
-        #self.trg_mt = None                  # Target modification time
-        #self.cmp_msg_box = None             # message.Open()
-
         ''' Refresh items - inotify '''
         self.last_inotify_time = None       # now
         self.next_message_time = None       # now + (60 * 20)
-
-
-        #self.loc_mode = None                # Used by loc_submit()
-        #self.loc_iid = None                 # location internal ID
-        #self.location_text = None           # Mode: show, add, etc.
 
         ''' Rip CD class (separate module: encoding.py) '''
         self.rip_cd_class = None
@@ -1194,10 +1131,10 @@ class MusicLocationTree(PlayCommonSelf):
 
     """
 
-    def __init__(self, toplevel, song_list, sbar_width=16):
+    def __init__(self, toplevel, song_list, sbar_width=14):
 
         PlayCommonSelf.__init__(self)  # Define self. variables
-        ext.t_init('MusicLocationTree() __init__(toplevel, song_list, sbar_width=16)')
+        ext.t_init('MusicLocationTree() __init__(toplevel, song_list, sbar_width=14)')
 
         # If we are started by splash screen get object, else it will be None
         self.splash_toplevel = toplevel
@@ -1208,7 +1145,7 @@ class MusicLocationTree(PlayCommonSelf):
         lcs.register_menu(self.enable_lib_menu)
         lcs.register_pending(self.get_pending_cnt_total)
         lcs.register_oap_cb(self.open_and_play_callback)
-        lcs.register_FileControl(FileControl)
+        lcs.register_FileControl(FileControl)  # Not used on Aug 7/23
 
         dtb = message.DelayedTextBox(title="Building music view",
                                      toplevel=None, width=1000)
@@ -1221,7 +1158,6 @@ class MusicLocationTree(PlayCommonSelf):
 
         self.lib_top = tk.Toplevel()
         self.lib_top_is_active = True
-        self.ltp_top_is_active = False
         self.lib_top.minsize(g.WIN_MIN_WIDTH, g.WIN_MIN_HEIGHT)
 
         lcs.register_parent(self.lib_top)  # Assign in Locations() class
@@ -1506,10 +1442,6 @@ class MusicLocationTree(PlayCommonSelf):
         if self.playlists.open_name:
             self.lib_top_playlist_name = self.playlists.open_name.encode("utf-8")
         else:
-            try:
-                self.lib_top_playlist_name = LODICT['iid'] + " - Default Favorites"
-            except:
-                pass
             self.lib_top_playlist_name = str(lcs.open_code) + \
                 ' - Default Favorites'
 
@@ -1545,16 +1477,11 @@ class MusicLocationTree(PlayCommonSelf):
         #self.lib_top['menu'] = mb  # Also takes a full second to run
         ext.t_end('no_print')
 
+        # File Dropdown Menu
         ext.t_init('self.file_menu = tk.Menu(mb)')
         self.file_menu = tk.Menu(mb, tearoff=0)
-        #self.file_menu.add_command(label="OLD New Location", font=(None, MED_FONT),
-        #                           command=lambda: self.loc_add_new(caller='Drop',
-        #                                                            mode='Add'))
-        # "Edit Location"
         self.file_menu.add_command(label="New Location", font=(None, MED_FONT),
                                    command=lcs.new, state=tk.DISABLED)
-        #self.file_menu.add_command(label="OLD Open Location & Play", font=(None, MED_FONT),
-        #                           command=lambda: self.loc_open_play(caller='Drop'))
         self.file_menu.add_command(label="Open Location and Play", font=(None, MED_FONT),
                                    command=lcs.open, state=tk.DISABLED)
         self.file_menu.add_separator()
@@ -1590,22 +1517,13 @@ class MusicLocationTree(PlayCommonSelf):
         mb.add_cascade(label="File", menu=self.file_menu, font=(None, MED_FONT))
         ext.t_end('no_print')  # 0.0009999275
 
-        # Edit Menu - Edit Location
+        # Edit Dropdown Menu
         ext.t_init('self.edit_menu = tk.Menu(mb)')
         self.edit_menu = tk.Menu(mb, tearoff=0)
-        #self.edit_menu.add_command(label="OLD Edit Location", font=(None, MED_FONT),
-        #                           command=lambda: self.loc_edit(
-        #                           caller='Drop', mode='Edit'))
         self.edit_menu.add_command(label="Edit Location", font=(None, MED_FONT),
                                    command=lcs.edit, state=tk.DISABLED)
-        #self.edit_menu.add_command(label="OLD Compare Location", font=(None, MED_FONT),
-        #                           command=lambda: self.loc_compare(
-        #                           caller='Drop', mode='Compare'))
         self.edit_menu.add_command(label="Synchronize Location", font=(None, MED_FONT),
                                    command=lcs.synchronize, state=tk.DISABLED)
-        #self.edit_menu.add_command(label="OLD Forget Location", font=(None, MED_FONT),
-        #                           command=lambda: self.loc_forget(
-        #                           caller='Drop', mode='Forget'))
         self.edit_menu.add_command(label="Delete Location", font=(None, MED_FONT),
                                    command=lcs.delete, state=tk.DISABLED)
         self.edit_menu.add_separator()
@@ -1623,13 +1541,11 @@ class MusicLocationTree(PlayCommonSelf):
         ext.t_end('no_print')  # 0.0004191399
 
         ext.t_init('self.view_menu = tk.Menu(mb)')
-        # View menu - Show locations and SQL library  #command=lambda: self.info.test_tt("Hello")
+
+        # View Dropdown Menu
         self.view_menu = tk.Menu(mb, tearoff=0)
         self.view_menu.add_command(label="Information Centre", font=(None, MED_FONT),
                                    command=self.info.view)
-        #self.view_menu.add_command(label="OLD Show Location", font=(None, MED_FONT),
-        #                           command=lambda: self.show_location(
-        #                           caller='Drop', mode='Show'))
         self.view_menu.add_command(label="View Locations", font=(None, MED_FONT),
                                    command=lcs.view, state=tk.DISABLED)
         self.view_menu.add_command(label="View Playlists", font=(None, MED_FONT),
@@ -1659,13 +1575,10 @@ class MusicLocationTree(PlayCommonSelf):
         self.enable_lib_menu()
 
     def enable_lib_menu(self):
-        """
-        Called from build_lib_menu() and passed to self.playlists to manually
-        set options.  Also passed with lcs.register_menu(self.enable_lib_menu)
-        :return: None
-        """
-
-        ''' Quick and dirty solution for now '''
+        """ Called from build_lib_menu() and passed to self.playlists to call.
+            Also passed with lcs.register_menu(self.enable_lib_menu)
+        :return: None """
+        ''' Quick and dirty solution for Locations Maintenance Window '''
         if lcs.main_top:
             self.file_menu.entryconfig("Open Location and Play", state=tk.DISABLED)
             self.file_menu.entryconfig("New Location", state=tk.DISABLED)
@@ -1698,13 +1611,12 @@ class MusicLocationTree(PlayCommonSelf):
             self.edit_menu.entryconfig("Delete Playlist", state=tk.NORMAL)
             self.view_menu.entryconfig("View Playlists", state=tk.NORMAL)
 
-        # What do do when Favorites are pending?
-
+        ''' Favorites are pending? '''
         if self.pending_add_cnt != 0 or self.pending_del_cnt != 0:
             # Do not want save option until pending is applied or cancelled
             return
 
-        if self.playlists.open_name is not None and self.get_pending_cnt_total() > 0:
+        if self.playlists.open_name and self.get_pending_cnt_total() > 0:
             self.file_menu.entryconfig("Save Playlist", state=tk.NORMAL)
             #self.file_menu.entry config("Save Playlist As…", state=tk.NORMAL)
 
@@ -2655,26 +2567,6 @@ class MusicLocationTree(PlayCommonSelf):
         self.lib_top.title(self.lib_top_totals[0] + self.lib_top_totals[1] +
                            self.lib_top_totals[2] + self.lib_top_totals[3] + s)
 
-    # ==============================================================================
-    #
-    #       Music Location Tree Processing - Location and Dropdown Menu options
-    #
-    # ==============================================================================
-
-
-    def loc_close(self):
-        #def loc_close(self, *args):  # June 19, 2023-found other places unnecessary
-        """ Close location treeview """
-        if self.loc_top_is_active is False:
-            return  # Already closed
-        self.loc_top_is_active = False
-        if self.cmp_top_is_active:
-            self.cmp_close()  # Close Compare location treeview
-        self.tt.close(self.loc_top)  # Close tooltips under top level
-        root.update()
-        root.after(50)  # Give time for treeview to close
-        self.loc_top.destroy()  # Close the treeview window
-        self.loc_top = None  # Extra Insurance
 
     def loc_keep_awake(self):
         """ Every x minutes issue keep awake command for server. For example:
@@ -2807,1240 +2699,12 @@ class MusicLocationTree(PlayCommonSelf):
             # pass
             return
 
-    def loc_create_tree(self, sbar_width=16, caller="", mode=""):
-        """ Create location treeview listbox
-            'caller' are dynamic based on caller:
-                'Drop' called from top bar dropdown menu
-                'Tree' called from within our own Treeview buttons
-            'mode' tells us which buttons to paint:
-                'Open', 'Add', 'Edit', 'Show', 'Forget', 'Compare'
-
-            The 'Close' and 'Test' buttons are always shown
-        """
-        if caller != "":
-            pass    # Pycharm error, should probably get rid of parameter...
-
-        if self.loc_top_is_active:  # Already processing locations?
-            self.loc_top.focus_force()  # Get focus
-            self.loc_top.lift()  # Raise in stacking order
-            messagebox.showinfo(title="Location processing active",
-                                message="An instance of location processing is " +
-                                        "already active.", parent=self.loc_top)
-            root.update()
-            return  # Don't want two windows opened
-
-        self.loc_top = tk.Toplevel()
-        self.loc_top.minsize(g.WIN_MIN_WIDTH, g.WIN_MIN_HEIGHT)
-        self.loc_top_is_active = True
-
-        ''' Place Window top-left of parent window with g.PANEL_HGT padding '''
-        xy = (self.lib_top.winfo_x() + g.PANEL_HGT,
-              self.lib_top.winfo_y() + g.PANEL_HGT)
-        self.loc_top.minsize(width=BTN_WID * 10, height=g.PANEL_HGT * 4)
-        self.loc_top.geometry('+%d+%d' % (xy[0], xy[1]))
-
-        title = "Music Locations - Select location to " + mode
-        self.loc_top.title(title)
-        self.loc_top.columnconfigure(0, weight=1)
-        self.loc_top.rowconfigure(0, weight=1)
-
-        ''' Set program icon in taskbar '''
-        img.taskbar_icon(self.loc_top, 64, 'white', 'lightskyblue', 'black')
-
-        ''' Create master frame '''
-        master_frame = tk.Frame(self.loc_top, borderwidth=g.BTN_BRD_WID,
-                                relief=tk.RIDGE)
-        master_frame.grid(sticky=tk.NSEW)
-
-        # Create a frame for the treeview and scrollbar(s).
-        frame2 = tk.Frame(master_frame)
-        tk.Grid.rowconfigure(frame2, 0, weight=1)
-        tk.Grid.columnconfigure(frame2, 0, weight=1)
-        frame2.grid(row=0, column=0, sticky=tk.NSEW)
-
-        ''' Treeview List Box, Columns and Headings '''
-        self.loc_tree = ttk.Treeview(frame2, columns=("ID", "Path"), height=7,
-                                     selectmode="browse", show=('tree', 'headings'))
-        self.loc_tree.column("#0", width=500, stretch=tk.YES)
-        self.loc_tree.heading("#0", text="Location Name")
-        self.loc_tree.column("ID", width=100, stretch=tk.NO)
-        self.loc_tree.heading("ID", text="ID (Dir)")
-        self.loc_tree.column("Path", width=800, stretch=tk.YES)
-        self.loc_tree.heading("Path", text="Top Directory for Music " +
-                                           "(Any device, drive or path)")
-
-        ''' This moves focus to window but doesn't lift it '''
-        # self.loc_tree.tk_focusFollowsMouse()
-        self.loc_tree.grid(row=0, column=0, sticky=tk.NSEW)
-
-        ''' Create Treeview item listbox '''
-        self.loc_tree.delete(*self.loc_tree.get_children())
-        for iid in lc.get_children():
-            # NOTE: Never use LODICT which is our starting dictionary
-            loc_item = lc.item(iid)
-            self.loc_tree.insert('', "end", iid=iid, text=loc_item["name"],
-                                 values=(loc_item["iid"], loc_item["topdir"]))
-
-        ''' Treeview Scrollbars '''
-        # Create a vertical scrollbar linked to the frame.
-        v_scroll = tk.Scrollbar(frame2, orient=tk.VERTICAL, width=sbar_width,
-                                command=self.loc_tree.yview)
-        v_scroll.grid(row=0, column=1, sticky=tk.NS)
-        self.loc_tree.configure(yscrollcommand=v_scroll.set)
-
-        # Create a horizontal scrollbar linked to the frame.
-        h_scroll = tk.Scrollbar(frame2, orient=tk.HORIZONTAL, width=sbar_width,
-                                command=self.loc_tree.xview)
-        h_scroll.grid(row=1, column=0, sticky=tk.EW)
-        self.loc_tree.configure(xscrollcommand=h_scroll.set)
-
-        ''' Treeview Buttons '''
-        frame3 = tk.Frame(master_frame, bg="Blue", bd=2, relief=tk.GROOVE,
-                          borderwidth=g.BTN_BRD_WID)
-        frame3.grid_rowconfigure(0, weight=1)
-        frame3.grid_columnconfigure(0, weight=0)
-        frame3.grid(row=1, column=0, sticky=tk.NW)
-        self.location_text = "Show Location"  # Default
-
-        ''' ✘ Close Button - Always visible '''
-        self.loc_top.bind("<Escape>", self.loc_close)
-        self.loc_top.protocol("WM_DELETE_WINDOW", self.loc_close)
-        self.loc_tree_btn1 = tk.Button(frame3, text="✘ Close",
-                                       width=BTN_WID, command=self.loc_close)
-        self.loc_tree_btn1.grid(row=0, column=0, padx=2)
-
-        ''' ▶  Test Button - Always visible '''
-        self.loc_tree_btn2 = tk.Button(
-            frame3, text="▶  Test", width=BTN_WID,
-            command=lambda: self.loc_test(caller='Tree', mode='Test'))
-        self.loc_tree_btn2.grid(row=0, column=1, padx=2)
-
-        ''' ▶  Open Location Button '''
-        if mode == 'Open':
-            self.location_text = "Open Location"
-            self.loc_tree_btn2 = tk.Button(
-                frame3, text="▶  Open & play", width=BTN_WID,
-                command=lambda: self.loc_open_play(caller='Tree'))
-            self.loc_tree_btn2.grid(row=0, column=2, padx=2)
-            # NOTE: If column 2 is missing, the other buttons shift left OK
-
-        ''' Show button - Always visible '''
-        # Magnifying glass “🔍” U+1F50D
-        self.loc_tree_btn3 = tk.Button(
-            frame3, text="🔍  Show location", width=BTN_WID,
-            command=lambda: self.show_location(caller='Tree', mode='Show'))
-        self.loc_tree_btn3.grid(row=0, column=3, padx=2)
-
-        # Following buttons will only appear when those functions are callers
-        ''' Add button '''
-        if mode == 'Add':
-            # File folder “🗀” U+1F5C0
-            self.loc_tree_btn4 = tk.Button(
-                frame3, text="🗀   Add location", width=BTN_WID,
-                command=lambda: self.loc_add_new(caller='Tree', mode='Add'))
-            self.location_text = "Add Location"
-            self.loc_tree_btn4.grid(row=0, column=4, padx=2)
-
-        ''' Edit button u  1f5c0 🗀 '''
-        if mode == 'Edit':
-            # File folder “🗀” U+1F5C0
-            self.loc_tree_btn5 = tk.Button(
-                frame3, text="🗀   Edit location", width=BTN_WID,
-                command=lambda: self.loc_edit(caller='Tree', mode='Edit'))
-            self.location_text = "Edit Location"
-            self.loc_tree_btn5.grid(row=0, column=5, padx=2)
-
-        ''' Forget Button u  1f5c0 🗀 '''
-        if mode == 'Forget':
-            # File folder “🗀” U+1F5C0
-            self.loc_tree_btn6 = tk.Button(
-                frame3, text="🗀   Forget location", width=BTN_WID,
-                command=lambda: self.loc_forget(caller='Tree', mode='Forget'))
-            self.location_text = "Forget Location"
-            self.loc_tree_btn6.grid(row=0, column=6, padx=2)
-
-        ''' Compare Button  “🔍” U+1F50D '''
-        if mode == 'Compare':
-            # Magnifying glass “🔍” U+1F50D
-            self.loc_tree_btn7 = tk.Button(
-                frame3, text="🔍  Compare", width=BTN_WID,
-                command=lambda: self.loc_compare(caller='Tree', mode='Compare'))
-            self.location_text = "Compare Location"
-            self.loc_tree_btn7.grid(row=0, column=7, padx=2)
-
-        ''' Frame for Location Data Entry '''
-        self.loc_F4 = tk.LabelFrame(self.loc_top, borderwidth=g.BTN_BRD_WID,
-                                    text=self.location_text, padx=10, pady=10,
-                                    relief=tk.GROOVE, font=('calibre', 13, 'bold'))
-        self.loc_F4.grid(row=3, column=0, sticky=tk.NSEW)
-        self.loc_F4.grid_rowconfigure(0, weight=1)
-        self.loc_F4.grid_columnconfigure(1, weight=2)  # Note weight to stretch
-
-        ''' Define tk variables used with .set() and .get() '''
-        self.iid_var = tk.StringVar()
-        self.name_var = tk.StringVar()
-        self.topdir_var = tk.StringVar()
-        self.host_var = tk.StringVar()
-        self.wakecmd_var = tk.StringVar()
-        self.testcmd_var = tk.StringVar()
-        # self.testrep_var=tk.IntVar()           # int() crash if ./letter/space
-        self.testrep_var = tk.StringVar()
-        self.testrep_var.set("0")
-        self.mountcmd_var = tk.StringVar()
-        self.activecmd_var = tk.StringVar()
-        self.activemin_var = tk.StringVar()
-        self.activemin_var.set("0")
-
-        #fontB = ('calibre', 13, 'bold')  # Old Field name font BOLD
-        #font1 = ('calibre', 13, 'normal')  # Field name font
-        #font2 = ('calibre', 12, 'normal')  # Date entry font
-        self.state = 'normal'  # data entry is not 'readonly'
-        ms_font1 = (None, MON_FONTSIZE)  # Temporary for error message
-        ms_font2 = (None, MON_FONTSIZE)  # Temporary for error message
-        tk.Label(self.loc_F4, text='Name:',
-                 font=ms_font1).grid(row=0, column=0, sticky=tk.E, padx=10)
-        self.name_fld = tk.Entry(self.loc_F4, font=ms_font2,
-                                 state=self.state, textvariable=self.name_var)
-        self.name_fld.grid(row=0, column=1, sticky=tk.EW)
-        self.name_fld.focus_force()  # First data entry field
-
-        tk.Label(self.loc_F4, text='Top Directory for Music:',
-                 font=ms_font1).grid(row=1, column=0, sticky=tk.E, padx=10)
-        self.topdir_fld = tk.Entry(self.loc_F4, font=ms_font2,
-                                   state=self.state, textvariable=self.topdir_var)
-        self.topdir_fld.grid(row=1, column=1, sticky=tk.EW)
-
-        tk.Label(self.loc_F4, text='Optional Host Name:',
-                 font=ms_font1).grid(row=2, column=0, sticky=tk.E, padx=10)
-        self.host_fld = tk.Entry(self.loc_F4, font=ms_font2,
-                                 state=self.state, textvariable=self.host_var)
-        self.host_fld.grid(row=2, column=1, sticky=tk.EW)
-
-        tk.Label(self.loc_F4, text='Local command to wakeup sleeping host:',
-                 font=ms_font1).grid(row=3, column=0, sticky=tk.E, padx=10)
-        self.wakecmd_fld = tk.Entry(self.loc_F4, font=ms_font2,
-                                    state=self.state, textvariable=self.wakecmd_var)
-        self.wakecmd_fld.grid(row=3, column=1, sticky=tk.EW)
-
-        tk.Label(self.loc_F4, text='SSH command to test if host awake:',
-                 font=ms_font1).grid(row=4, column=0, sticky=tk.E, padx=10)
-        self.testcmd_fld = tk.Entry(self.loc_F4, font=ms_font2,
-                                    state=self.state, textvariable=self.testcmd_var)
-        self.testcmd_fld.grid(row=4, column=1, sticky=tk.EW)
-
-        tk.Label(self.loc_F4, text='Maximum test commands every .1 second:',
-                 font=ms_font1).grid(row=5, column=0, sticky=tk.E, padx=10)
-        self.testrep_fld = tk.Entry(self.loc_F4, font=ms_font2,
-                                    state=self.state, textvariable=self.testrep_var)
-        self.testrep_fld.grid(row=5, column=1, sticky=tk.EW)
-
-        tk.Label(self.loc_F4, text='SSHFS locally mount music from host:',
-                 font=ms_font1).grid(row=6, column=0, sticky=tk.E, padx=10)
-        self.mountcmd_fld = tk.Entry(self.loc_F4, font=ms_font2,
-                                     state=self.state, textvariable=self.mountcmd_var)
-        self.mountcmd_fld.grid(row=6, column=1, sticky=tk.EW)
-
-        tk.Label(self.loc_F4, text='SSH command to keep host awake:',
-                 font=ms_font1).grid(row=7, column=0, sticky=tk.E, padx=10)
-        self.activecmd_fld = tk.Entry(self.loc_F4, font=ms_font2,
-                                      state=self.state, textvariable=self.activecmd_var)
-        self.activecmd_fld.grid(row=7, column=1, sticky=tk.EW)
-
-        tk.Label(self.loc_F4, text='Minutes between keeping host awake:',
-                 font=ms_font1).grid(row=8, column=0, sticky=tk.E, padx=10)
-        self.activemin_fld = tk.Entry(self.loc_F4, font=ms_font2, state=self.state,
-                                      textvariable=self.activemin_var)
-        self.activemin_fld.grid(row=8, column=1, sticky=tk.EW)
-
-        # Button that will call the submit function
-        self.sub_btn = tk.Button(self.loc_F4, text='Nothing Yet',
-                                 command=self.loc_submit, font=ms_font1)
-        self.sub_btn.grid(row=9, column=1, sticky=tk.W)
-
-        # Button that will abandon changes, or close entry fields
-        tk.Button(self.loc_F4, text='Close', command=self.loc_abandon,
-                  font=ms_font1).grid(row=9, column=1, sticky=tk.E)
-
-        # Make location input fields invisible until appropriate time
-        # self.loc_F4.grid_remove()  # Makes window too small on chrome os
-        self.loc_hide_fields()
-        self.loc_top.update_idletasks()
-
-    def loc_hide_fields(self):
-        """ .grid_remove() Doesn't work with ChromeOS in 2020 """
-        if GRID_REMOVE_SUPPORTED:
-            self.loc_F4.grid_remove()
-
-    def loc_show_fields(self):
-        """ .grid_remove() Doesn't work with ChromeOS in 2020 """
-        if GRID_REMOVE_SUPPORTED:
-            self.loc_F4.grid()
-
-    def loc_open_play(self, caller=""):
-        """ Open location by calling loc_test() first to check success
-            Called from File menu and from within self.loc_create_tree()
-            Buttons are dynamic based on caller:
-                'Drop' called from top bar dropdown menu
-                'Tree' called from treeview button
-        """
-        global LODICT
-
-        if caller == 'Drop':  # Called from dropdown Edit menu?
-            self.loc_create_tree(caller='Tree', mode='Open')
-            # Make location input fields invisible until appropriate time
-            #            self.loc_F4.grid_remove()      # Dec. 12 2020
-            self.loc_hide_fields()
-            root.update()
-            return
-
-        if not caller == 'Tree':
-            print("ERROR: 'caller' is neither 'Drop' nor 'Tree'.")
-            return
-
-        # Save current selections before LODICT changes
-        if self.playlists.open_name:
-            print("mserve.py loc_open_play() did not save playlist:",
-                  self.playlists.open_name)
-            self.info.cast("mserve.py loc_open_play() did not save playlist: " +
-                           self.playlists.open_name)
-        else:
-            self.save_last_selections()
-        item = self.loc_tree.selection()[0]
-        if lc.test(item, self.loc_top):
-            pass  # Host and Top Directory tests passed
-        else:
-            # Location doesn't exist
-            messagebox.showinfo(title="Location Error",
-                                message="Top directory doesn't exist or is off-line.",
-                                parent=self.loc_top)
-            return False
-
-        next_iid = lc.item(item)['iid']
-        # print('next_iid:',next_iid)
-
-        ''' Save last opened location iid with next iid to load '''
-        lc.save_mserve_location(next_iid)
-        lcs.save_mserve_location(next_iid)
-
-        ''' Next top directory to startup '''
-        next_topdir = lc.item(item)['topdir']
-        # print('next_topdir:',next_topdir)
-        self.parm = next_topdir
-        # print ('topdir:', self.parm)        # Forces in manual call
-        self.restart_new_parameters(self)
-
-    def loc_test(self, caller="", mode=""):
-        """ Test location - host name, on-line and directory exists
-            Called from File menu and from within self.loc_create_tree()
-            Buttons are dynamic based on caller:
-                'Drop' called from top bar dropdown menu
-                'Tree' called from treeview button
-        """
-
-        if mode != "":
-            pass    # Pycharm error, should probably get rid of parameter...
-
-        if caller == 'Drop':  # Called from dropdown Edit menu?
-            self.loc_create_tree(caller='Tree', mode='Test')
-            # Make location input fields invisible until appropriate time
-            #            self.loc_F4.grid_remove()      # Dec. 12 2020
-            self.loc_hide_fields()
-            self.loc_top.update_idletasks()
-            return
-
-        if not caller == 'Tree':
-            print("ERROR: 'caller' is neither 'Drop' nor 'Tree'.")
-            return
-
-        if len(self.loc_tree.selection()) == 0:
-            messagebox.showinfo(title="Location Error",
-                                message="You must select a location to test.",
-                                parent=self.loc_top)
-            return False
-
-        # 'browse' option is used so only one item will be selected all times.
-        item = self.loc_tree.selection()[0]
-        if lc.test(item, self.loc_top):
-            messagebox.showinfo(title="Location valid",
-                                message="Top directory exists. Good to go!",
-                                parent=self.loc_top)
-            return True
-        else:
-            # Location doesn't exist
-            messagebox.showinfo(title="Location Error",
-                                message="Top directory doesn't exist or is off-line.",
-                                parent=self.loc_top)
-            return False
-
-    def loc_add_new(self, caller="", mode=""):
-        """ Get new location name, directory and ssh flags / options
-            Called from File menu and from within self.loc_create_tree()
-            Buttons are dynamic based on caller:
-                'File' called from top bar dropdown menu
-        """
-
-        if mode != "":
-            pass    # Pycharm error, should probably get rid of parameter...
-
-        if caller == 'Drop':  # Called from dropdown File menu?
-            self.loc_create_tree(caller='Tree', mode='Add')
-            self.loc_top.update_idletasks()
-
-        elif not caller == 'Tree':
-            print("ERROR: 'caller' is neither 'Drop' nor 'Tree'.")
-            return
-
-        self.loc_entry_state('Add', 'New')  # Create a mew entry
-        #        self.loc_F4.grid()                  # Make entry grid visible
-        self.loc_show_fields()
-        self.loc_top.update_idletasks()
-
-    def loc_edit(self, caller="", mode=""):
-        """ Edit location name, directory and ssh flags / options
-            Called from File menu and from within self.loc_create_tree()
-            Buttons are dynamic based on caller:
-                'Drop' called from top bar dropdown menu
-                'Tree' called from treeview button
-        """
-
-        if mode != "":
-            pass    # Pycharm error, should probably get rid of parameter...
-
-        if caller == 'Drop':  # Called from dropdown Edit menu?
-            self.loc_create_tree(caller='Tree', mode='Edit')
-            # Make location input fields invisible until appropriate time
-            #            self.loc_F4.grid_remove()      # Dec. 12 2020
-            self.loc_hide_fields()
-            self.loc_top.update_idletasks()
-            return
-
-        elif not caller == 'Tree':
-            print("ERROR: 'caller' is neither 'Drop' nor 'Tree'.")
-            return
-        #        self.loc_create_tree(caller='Edit', mode='Edit')
-
-        if len(self.loc_tree.selection()) == 0:
-            messagebox.showinfo(title="Location Error",
-                                message="You must select a location to edit.",
-                                parent=self.loc_top)
-            return False
-
-        item = self.loc_tree.selection()[0]
-        #        loc_dict = lc.item(item)
-
-        self.loc_entry_state('Edit', item)  # Edit existing entry
-        #        self.loc_F4.grid()                  # Make entry grid visible
-        self.loc_show_fields()
-        self.loc_top.update_idletasks()
-
-        self.loc_populate_screen(item)  # Paint screen with lc.DICT{}
-
-    def loc_populate_screen(self, item):
-        """ Called by 'Edit', 'Show' and 'Forget' """
-        loc_dict = lc.item(item)
-        self.iid_var.set(loc_dict['iid'])
-        self.name_var.set(loc_dict['name'])
-        self.topdir_var.set(loc_dict['topdir'])
-        self.host_var.set(loc_dict['host'])
-        self.wakecmd_var.set(loc_dict['wakecmd'])
-        self.testcmd_var.set(loc_dict['testcmd'])
-        self.testrep_var.set(loc_dict['testrep'])
-        self.mountcmd_var.set(loc_dict['mountcmd'])
-        self.activecmd_var.set(loc_dict['activecmd'])
-        self.activemin_var.set(loc_dict['activemin'])
-        self.loc_top.update_idletasks()
-
-    def show_location(self, caller="", mode=""):
-        """ Show location name, directory and ssh flags / options
-            Called from File menu and from within self.loc_create_tree()
-            Buttons are dynamic based on caller:
-                'Drop' called from top bar dropdown menu
-                'Tree' called from treeview button
-        """
-
-        if mode != "":
-            pass    # Pycharm error, should probably get rid of parameter...
-
-        if caller == 'Drop':  # Called from dropdown Edit menu?
-            self.loc_create_tree(caller='Show', mode='Show')
-            # Make location input fields invisible until appropriate time
-            #            self.loc_F4.grid_remove()      # Dec. 12 2020
-            self.loc_hide_fields()
-            self.loc_top.update_idletasks()
-            return
-
-        elif not caller == 'Tree':
-            print("ERROR: 'caller' is neither 'Drop' nor 'Tree'.")
-            return
-        #        self.loc_create_tree(caller='Show', mode='Show')
-
-        if len(self.loc_tree.selection()) == 0:
-            messagebox.showinfo(title="Location Error",
-                                message="You must select a location to show.",
-                                parent=self.loc_top)
-            return False
-
-        item = self.loc_tree.selection()[0]
-        self.loc_entry_state('Show', item)  # Show existing entry
-        #        self.loc_F4.grid()                  # Make entry grid visible
-        self.loc_show_fields()
-        self.loc_top.update_idletasks()
-
-        self.loc_populate_screen(item)  # Paint screen with lc.DICT{}
-
-    def loc_forget(self, caller="", mode=""):
-        """ Forget location and remove ~/.../mserve/L999/* directory
-            Called from Edit menu and from within self.loc_create_tree()
-            Buttons are dynamic based on caller:
-                'Drop' called from top bar dropdown menu
-                'Tree' called from treeview button
-        """
-
-        if mode != "":
-            pass    # Pycharm error, should probably get rid of parameter...
-
-        if caller == 'Drop':  # Called from dropdown Edit menu?
-            self.loc_create_tree(caller='Forget', mode='Forget')
-            # Make location input fields invisible until appropriate time
-            #            self.loc_F4.grid_remove()      # Dec. 12 2020
-            self.loc_hide_fields()
-            self.loc_top.update_idletasks()
-            return  # Why was this removed in other spots???
-
-        elif not caller == 'Tree':
-            print("ERROR: 'caller' is neither 'Drop' nor 'Tree'.")
-            return
-        #        self.loc_create_tree(caller='Forget', mode='Forget')
-
-        if len(self.loc_tree.selection()) == 0:
-            messagebox.showinfo(title="Location Error",
-                                message="You must select a location to forget.",
-                                parent=self.loc_top)
-            return False
-
-        item = self.loc_tree.selection()[0]
-        self.loc_entry_state('Forget', item)
-        #        self.loc_F4.grid()                  # Make entry grid visible
-        self.loc_show_fields()
-        self.loc_top.update_idletasks()
-        self.loc_populate_screen(item)  # Paint screen with lc.DICT{}
-
-    def confirm_forget(self, iid):
-        """ Confirm forgetting location. Cannot be current open location.
-            Remove '/home/$USER/.../mserve/L999' directory
-            Rename higher '~/.../mserve/L999' directories 1 less
-            Update higher iid in locations master file 1 less
-            If our opened location iid is changing call:
-                lc.set_location_filenames(iid)
-                Rename LODICT('iid') with new number
-        """
-        global LODICT
-        try:
-            our_current_iid = LODICT['iid']
-        except:
-            pass
-        our_current_iid = lcs.open_code
-        if iid == our_current_iid:
-            message.ShowInfo(
-                self.loc_top, thread=self.get_refresh_thread,
-                align='left', icon='warning', title="Location Error",
-                text="You cannot forget the location currently running.")
-            return
-
-        text  = "The location '" + iid + "' will be forgotten.\n" + \
-                "Entry will be removed from list '~/.../mserve/locations'.\n" + \
-                "The configuration directory '~/.../mserve/" + iid + \
-                "' will be removed.\nThis directory may contain the files:\n" + \
-                "- last_open_states - Expanded / Collapsed list of songs.\n" + \
-                "- last_playlist - Songs selected for playing\n" + \
-                "- last_song_ndx - Last song played in list.\n\n" + \
-                "These actions cannot be undone!\n\n" + \
-                "Song files, lyrics and synchronization are NOT effected."
-        answer = message.AskQuestion(
-            self.loc_top, thread=self.get_refresh_thread, align='left',
-            icon='warning', title="Forget Location Confirmation", text=text)
-        if answer.result is not 'yes':
-            return
-
-        lc.remove(iid)  # Remove DICT and ~/.../mserve/L999 directory.
-
-    def loc_entry_state(self, mode, iid):
-        """ Set location data entry field states
-        """
-
-        self.loc_mode = mode  # Used by loc_submit()
-        self.loc_iid = iid
-        self.location_text = mode + " Location"
-        self.loc_F4['text'] = self.location_text
-
-        if mode is 'Show' or mode is 'Forget' or mode is 'Compare':
-            self.state = 'readonly'  # Data entry NOT allowed (can copy)
-        else:
-            # TODO: Separate state for Name, don't change on Edit as location
-            #       directory in ~/.../mserve will have to be renamed.
-            self.state = 'normal'  # Allow data entry
-
-        # The button text for the submit button
-        if self.loc_mode is 'Edit':
-            sub_text = 'Save'
-        elif self.loc_mode is 'Show':
-            sub_text = 'Done'
-        else:
-            sub_text = self.loc_mode  # 'Add', 'Forget' or 'Compare'
-
-        self.name_fld['state'] = self.state
-        self.topdir_fld['state'] = self.state
-        self.host_fld['state'] = self.state
-        self.wakecmd_fld['state'] = self.state
-        self.testcmd_fld['state'] = self.state
-        self.testrep_fld['state'] = self.state
-        self.mountcmd_fld['state'] = self.state
-        self.activecmd_fld['state'] = self.state
-        self.activemin_fld['state'] = self.state
-        self.sub_btn['text'] = sub_text
-        self.loc_top.update_idletasks()
-
-    def loc_abandon(self):
-        """ Abandoned changes to location, or simply close view
-        """
-        #        self.loc_F4.grid_remove()      # Dec. 12 2020
-        self.loc_hide_fields()
-        self.loc_top.update_idletasks()
-
-    def loc_submit(self):
-        """ Add, Update or Forget location on disk
-            self.loc_mode is set to 'Add', 'Edit', 'Show' or 'Forget'
-            self.loc_iid is set to string index within location LIST[]
-        """
-        if self.loc_mode is 'Show':
-            # Submit button text is "Done".
-            #            self.loc_F4.grid_remove()       # Make entry grid invisible
-            self.loc_hide_fields()
-            return
-
-        name = self.name_var.get()
-        topdir = self.topdir_var.get()
-        host = self.host_var.get()
-        wakecmd = self.wakecmd_var.get()
-        testcmd = self.testcmd_var.get()
-        testrep = self.testrep_var.get()
-        mountcmd = self.mountcmd_var.get()
-        activecmd = self.activecmd_var.get()
-        activemin = self.activemin_var.get()
-
-        # if name == "" or name.isspace():
-        # More efficient way: if not name.strip()
-        if not name.strip():  # If .strip() returns None it's blank
-            # Empty or all blank names not allowed
-            messagebox.showinfo(title="Location Error",
-                                message="Name cannot be blank.",
-                                parent=self.loc_top)
-            self.name_fld.focus_force()
-            return False
-
-        if topdir == "" or topdir.isspace():
-            # Empty or all blank top directory not allowed
-            messagebox.showinfo(title="Location Error",
-                                message="Top Directory for Music cannot be blank.",
-                                parent=self.loc_top)
-            self.topdir_fld.focus_force()
-            return False
-
-        if not testrep.isdigit():
-            # Time must be in digits
-            messagebox.showinfo(title="Location Error",
-                                message="Number of times to repeat test command must be an integer.",
-                                parent=self.loc_top)
-            self.testrep_fld.focus_force()
-            return False
-        else:
-            testrep = int(self.testrep_var.get())
-
-        if not activemin.isdigit():
-            # Time must be in digits
-            messagebox.showinfo(title="Location Error",
-                                message="Minutes between keeping host awake must be an integer.",
-                                parent=self.loc_top)
-            self.activemin_fld.focus_force()
-            return False
-        else:
-            activemin = int(self.activemin_var.get())
-
-        iid = self.loc_iid  # Abbreviate for shorter code lines
-        #        self.loc_F4.grid_remove()          # Dec. 12 2020
-        self.loc_hide_fields()
-        self.loc_top.update_idletasks()  # Sept 23 2020
-        if self.loc_mode is 'Add':
-            # Dec 5 2020 iid was "New".  Causing base10 errors for integers.
-            lc.insert(iid="", name=name, topdir=topdir, host=host,
-                      wakecmd=wakecmd, testcmd=testcmd, testrep=int(testrep),
-                      mountcmd=mountcmd, activecmd=activecmd, activemin=int(activemin))
-        elif self.loc_mode is 'Edit':
-            lc.item(iid=iid, name=name, topdir=topdir, host=host,
-                    wakecmd=wakecmd, testcmd=testcmd, testrep=int(testrep),
-                    mountcmd=mountcmd, activecmd=activecmd, activemin=int(activemin))
-        elif self.loc_mode is 'Forget':
-            self.confirm_forget(iid)
-        elif self.loc_mode is 'Compare':
-            self.cmp_build_toplevel(iid)
-        else:
-            print('submit() Bad self.loc_mode:', self.loc_mode)
-            return
-
-        ''' Close loc_tree when cmp_populate_tree() running gets error: 
-             File "./mserve", line 1031, in loc_submit
-                self.loc_tree.delete(*self.loc_tree.get_children()) '''
-        if self.loc_top_is_active is False:
-            return  # Locations frame closing down
-
-        # Update treeview with new entry / revised / forgotten entry
-        self.loc_tree.delete(*self.loc_tree.get_children())
-        for iid in lc.get_children():
-            loc_item = lc.item(iid)
-            self.loc_tree.insert('', "end", iid=iid, text=loc_item["name"],
-                                 values=(loc_item["iid"], loc_item["topdir"]))
-
-        lc.write()  # Save location changes to disk
-        # Blank out entry fields, but not necessary here
-        self.name_var.set("")
-        self.topdir_var.set("")
-        self.host_var.set("")
-        self.wakecmd_var.set("")
-        self.testcmd_var.set("")
-        self.testrep_var.set("0")
-        self.mountcmd_var.set("")
-        self.activecmd_var.set("")
-        self.activemin_var.set("0")
-        self.loc_top.update_idletasks()
-
-    def loc_compare(self, caller="", mode=""):
-        """ Compare songs to other location
-            Called from File menu and from within self.loc_create_tree()
-            Caller:
-                'Drop' called from top bar dropdown menu
-                    Create treeview and return
-                'Tree' called from treeview button
-                    Pre-processing for Submit button
-        """
-
-        if mode != "":
-            pass    # Pycharm error, should probably get rid of parameter...
-
-        if self.cmp_top_is_active:
-            self.cmp_top.focus_force()  # Get focus
-            self.cmp_top.lift()  # Raise in stacking order
-            root.update_idletasks()  # Sept 20 2020
-            return  # Compare is closing down
-
-        if caller == 'Drop':  # Called from dropdown Edit menu?
-            # TODO: Redesign as we can call New Location from dropdown when
-            #       Compare location is already active in cmp_tree
-            self.loc_create_tree(caller='Tree', mode='Compare')
-            # Make location input fields invisible until appropriate time
-            #            self.loc_F4.grid_remove()      # Dec. 12 2020
-            self.loc_hide_fields()
-            root.update()
-            return
-
-        elif not caller == 'Tree':
-            print("ERROR: 'caller' is neither 'Drop' nor 'Tree'.")
-            return
-
-        # If we are here caller is 'Tree'
-        if len(self.loc_tree.selection()) == 0:
-            messagebox.showinfo(title="Location Error",
-                                message="You must select a location to compare.",
-                                parent=self.loc_top)
-            return False
-
-        iid = self.loc_tree.selection()[0]  # iid of selected item
-        #loc_dict = lc.item(iid)  # get dictionary for iid
-
-        # Test target location to make sure it's online
-        if not lc.test(iid, self.loc_top):
-            # Location doesn't exist or is off-line
-            messagebox.showinfo(title="Location Error",
-                                message="Top directory doesn't exist or is off-line.",
-                                parent=self.loc_top)
-            return False
-
-        self.loc_entry_state('Compare', iid)  # Show target entry
-        #        self.loc_F4.grid()                     # Make entry grid visible
-        self.loc_show_fields()
-        self.loc_top.update_idletasks()
-
-        # TODO: Test what happens if user changes selection and picks 'Show'
-        self.loc_populate_screen(iid)  # Paint screen with lc.DICT{}
-        return True
-
-    # ==============================================================================
-    #
-    #       MusicLocationTree Processing - Compare locations and update file differences
-    #
-    # ==============================================================================
-
-    def cmp_build_toplevel(self, trg_dict_iid, sbar_width=16):
-        """ Compare target location songs to build treeview of differences.
-
-            Source is current LODICT, Target it selected by user here
-
-            After comparison, we can:
-                - Set modification time (mtime) of target to match source
-                - Set modification time (mtime) of source to match target
-                - Copy files from source to target maintaining mtime
-                - Copy files from target to source maintaining mtime
-
-            NOTE: Doesn't export or import songs
-                  Android doesn't allow setting mod time so track in mserve
-
-            TODO:
-
-
-
-            Compare locations can be setup like RipCD () class where generating
-            list is done in background, and it generates a pickle while ps_active
-            is polled. Button to cancel is active with status message in
-            ScrolledText stating work in progress.
-
-            When ps_active is done, text updated with filenames and actions.
-            Button appears to update.
-
-
-        """
-
-        # print('cmp_build_toplevel() get trg_dict',t(time.time()))
-        trg_dict = lc.item(trg_dict_iid)  # get dictionary for iid
-        self.cmp_target_dir = trg_dict['topdir']
-
-        # If no optional `/` at end, add it for equal comparisons
-        if not self.cmp_target_dir.endswith(os.sep):
-            self.cmp_target_dir += os.sep
-
-        self.cmp_top = tk.Toplevel()
-        self.cmp_top.minsize(g.WIN_MIN_WIDTH, g.WIN_MIN_HEIGHT)
-        self.cmp_top_is_active = True
-
-        xy = (self.loc_top.winfo_x() + g.PANEL_HGT,
-              self.loc_top.winfo_y() + g.PANEL_HGT)
-        self.cmp_top.minsize(width=BTN_WID * 10, height=g.PANEL_HGT * 4)
-        self.cmp_top.geometry('%dx%d+%d+%d' % (1800, 500, xy[0], xy[1]))  # 500 pix high
-        title = "Compare Locations - SOURCE: " + PRUNED_DIR + \
-                " - TARGET: " + self.cmp_target_dir
-        self.cmp_top.title(title)
-        self.cmp_top.columnconfigure(0, weight=1)
-        self.cmp_top.rowconfigure(0, weight=1)
-
-        ''' Set program icon in taskbar '''
-        img.taskbar_icon(self.cmp_top, 64, 'white', 'lightskyblue', 'black')
-
-        ''' Create frames '''
-        master_frame = tk.Frame(self.cmp_top, bg="olive", relief=tk.RIDGE)
-        master_frame.grid(sticky=tk.NSEW)
-        master_frame.columnconfigure(0, weight=1)
-        master_frame.rowconfigure(0, weight=1)
-
-        ''' Create a frame for the treeview and scrollbar(s). '''
-        frame2 = tk.Frame(master_frame)
-        tk.Grid.rowconfigure(frame2, 0, weight=1)
-        tk.Grid.columnconfigure(frame2, 0, weight=1)
-        frame2.grid(row=0, column=0, sticky=tk.NSEW)
-
-        ''' Treeview List Box, Columns and Headings '''
-        self.cmp_tree = ttk.Treeview(frame2, show=('tree', 'headings'),
-                                     columns=("SrcModified", "TrgModified", "SrcSize",
-                                              "TrgSize", "Action", "src_mtime", "trg_mtime"),
-                                     selectmode="none")
-        self.cmp_tree.column("#0", width=630, stretch=tk.YES)
-        # self.cmp_tree.heading("#0", text = "➕ / ➖   Artist/Album/Song")
-        self.cmp_tree.heading(
-            "#0", text="Click ▼ (collapse) ▶ (expand) an Artist or Album")
-        self.cmp_tree.column("SrcModified", width=300, stretch=tk.YES)
-        self.cmp_tree.heading("SrcModified", text="Source Modified")
-        self.cmp_tree.column("TrgModified", width=300, stretch=tk.YES)
-        self.cmp_tree.heading("TrgModified", text="Target Modified")
-        self.cmp_tree.column("SrcSize", width=140, anchor=tk.E,
-                             stretch=tk.YES)
-        self.cmp_tree.heading("SrcSize", text="Source " + g.CFG_DIVISOR_UOM)
-        self.cmp_tree.column("TrgSize", width=140, anchor=tk.E,
-                             stretch=tk.YES)
-        self.cmp_tree.heading("TrgSize", text="Target " + g.CFG_DIVISOR_UOM)
-        self.cmp_tree.column("Action", width=280, stretch=tk.YES)
-        self.cmp_tree.heading("Action", text="Action")
-        self.cmp_tree.column("src_mtime")  # Hidden modification time
-        self.cmp_tree.column("trg_mtime")  # Hidden modification time
-        self.cmp_tree.grid(row=0, column=0, sticky=tk.NSEW)
-        self.cmp_tree["displaycolumns"] = ("SrcModified", "TrgModified",
-                                           "SrcSize", "TrgSize", "Action")
-        ''' Treeview Scrollbars '''
-        # Create a vertical scrollbar linked to the frame.
-        v_scroll = tk.Scrollbar(frame2, orient=tk.VERTICAL, width=sbar_width,
-                                command=self.cmp_tree.yview)
-        v_scroll.grid(row=0, column=1, sticky=tk.NS)
-        self.cmp_tree.configure(yscrollcommand=v_scroll.set)
-
-        # Create a horizontal scrollbar linked to the frame.
-        h_scroll = tk.Scrollbar(frame2, orient=tk.HORIZONTAL, width=sbar_width,
-                                command=self.cmp_tree.xview)
-        h_scroll.grid(row=1, column=0, sticky=tk.EW)
-        self.cmp_tree.configure(xscrollcommand=h_scroll.set)
-
-        ''' Treeview Buttons '''
-        frame3 = tk.Frame(master_frame, bg="Blue", bd=2, relief=tk.GROOVE,
-                          borderwidth=g.BTN_BRD_WID)
-        frame3.grid_rowconfigure(0, weight=1)
-        frame3.grid_columnconfigure(0, weight=0)
-        frame3.grid(row=1, column=0, sticky=tk.NW)
-
-        ''' ✘ Close Button '''
-        # TODO: we aren't keeping remote location awake only home location!
-        self.cmp_top.bind("<Escape>", self.cmp_close)
-        self.cmp_top.protocol("WM_DELETE_WINDOW", self.cmp_close)
-        self.cmp_close_btn = tk.Button(frame3, text="✘ Close",
-                                       width=BTN_WID - 4, command=self.cmp_close)
-        self.cmp_close_btn.grid(row=0, column=0, padx=2)
-
-        ''' Create Treeview using source (START_DIR) as driver '''
-        if not self.cmp_populate_tree(trg_dict_iid):  # populate_
-            self.cmp_close()  # Files are identical
-            return
-
-        ''' 🗘  Update differences Button u1f5d8 🗘'''
-        self.update_differences_btn = tk.Button(frame3, width=BTN_WID + 4,
-                                                text="🗘  Update differences",
-                                                command=self.cmp_update_files)
-        self.update_differences_btn.grid(row=0, column=1, padx=2)
-
-        if self.cmp_top_is_active is False:
-            return  # Comparison Window already closed
-        self.cmp_tree.update_idletasks()
-
-    # noinspection PyUnusedLocal
-    def cmp_close(self, *args):
-        """ Close Compare location treeview """
-        if self.cmp_top_is_active is False:
-            return  # Comparison Window already closed
-        self.cmp_top_is_active = False
-        self.tt.close(self.cmp_top)  # Close tooltips under top level
-        #root.update()
-        #root.after(50)  # Give time for treeview to close
-        self.cmp_top.destroy()  # Close the treeview window
-        self.cmp_top = None  # Extra Insurance
-
-        return True
-
-    def cmp_populate_tree(self, trg_dict_iid):
-
-        """ Add Artist, Album and Song to treeview self.cmp_tree.
-            Similar to add_items() in MusicLocationTree
-
-            TODO: Rest of mserve is unresponsive while this is running.
-                  Take all compare location code and make new python module
-                  called compare.py imported as cmp
-
-            It takes 1.5 hour to stat 4,000 songs on phone mounted on sshfs
-            over Wi-Fi. Speed up with: https://superuser.com/questions/344255/
-            faster-way-to-mount-a-remote-file-system-than-sshfs
-
-            -o auto_cache,reconnect,defer_permissions
-            -o Ciphers=aes128-ctr -o Compression=no
-
-
-        """
-        # How many path separators '/' are there in source and target?
-        start_dir_sep = START_DIR.count(os.sep) - 1
-        #target_dir_sep = self.cmp_target_dir.count(os.sep) - 1
-        self.src_mt = lc.ModTime(LODICT['iid'])
-        self.trg_mt = lc.ModTime(trg_dict_iid)
-
-        #first_artist = True
-        LastArtist = ""
-        LastAlbum = ""
-        #first_album = True
-        CurrAlbumId = ""  # When there are no albums?
-        CurrArtistId = ""
-        # do_debug_steps = 0 # DEBUGGING
-        last_i = 0
-
-        for i, os_name in enumerate(self.fake_paths):
-            self.cmp_top.update()  # Allow close button to abort right away
-
-            # Experimental doesn't work! Solution is to make this function
-            # a new python module launched in background. Or use new
-            # tool.thread called every 1000 reads for SSD, less for phone.
-            if self.play_top_is_active:  # Play window open?
-                root.update_idletasks()
-                self.play_top.update()  # Update spinner & text
-
-            # split song /mnt/music/Artist/Album/Song.m4a into variable names
-            groups = os_name.split(os.sep)
-            Artist = str(groups[start_dir_sep + 1])
-            Album = str(groups[start_dir_sep + 2])
-            Song = str(groups[start_dir_sep + 3])
-
-            if Artist != LastArtist:
-                CurrArtistId = self.cmp_tree.insert("", "end", text=Artist,
-                                                    tags=("Artist",), open=True)
-                LastArtist = Artist
-                LastAlbum = ""  # Force subtotal break for Album
-
-            if Album != LastAlbum:
-                CurrAlbumId = self.cmp_tree.insert(CurrArtistId, "end",
-                                                   text=Album, tags=("Album",))
-                LastAlbum = Album
-
-            if self.cmp_top_is_active is False:
-                return  # Comparison Window already closed
-
-            ''' Build full song path from song_list[] '''
-            src_path = os_name
-            src_path = src_path.replace(os.sep + g.NO_ARTIST_STR, '')
-            src_path = src_path.replace(os.sep + g.NO_ALBUM_STR, '')
-
-            # os.stat gives us all of file's attributes
-            src_stat = os.stat(src_path)
-            src_size = src_stat.st_size
-            src_mtime = float(src_stat.st_mtime)
-
-            # Get target list's size and mtime
-            trg_path = src_path.replace(START_DIR, self.cmp_target_dir)
-            if not os.path.isfile(trg_path):
-                self.cmp_tree.see(CurrAlbumId)
-                continue  # Source song doesn't exist on target
-
-            trg_stat = os.stat(trg_path)
-            trg_size = trg_stat.st_size
-            trg_mtime = float(trg_stat.st_mtime)
-            # Android not updating modification time, keep track ourselves
-            # print('mserve before src:',t(src_mtime),' trg:',t(trg_mtime))
-            src_mtime = self.src_mt.get(src_path, src_mtime)
-            trg_mtime = self.trg_mt.get(trg_path, trg_mtime)
-            # print('mserve AFTER  src:',t(src_mtime),' trg:',t(trg_mtime))
-
-            # FUDGE because cp --preserve=timestamps doesn't do nanoseconds
-            src_mtime = int(src_mtime)
-            trg_mtime = int(trg_mtime)
-            # FUDGE if time difference is 1 second. Caused by copy to SD Card
-            if src_mtime > trg_mtime:
-                diff = src_mtime - trg_mtime
-            else:
-                diff = trg_mtime - src_mtime
-            if diff == 1:
-                src_mtime = trg_mtime  # override 1-second difference
-            # End of patch FUDGE
-
-            if src_size == trg_size and src_mtime == trg_mtime:
-                self.cmp_tree.see(CurrAlbumId)
-                continue
-
-            if not src_size == trg_size:
-                # Copy newer file to older
-                if src_mtime < trg_mtime:
-                    action = "Copy Trg -> Src (Size)"
-                elif src_mtime > trg_mtime:
-                    action = "Copy Src -> Trg (Size)"
-                else:
-                    action = "Size diff but same time!"
-
-            elif os.system('diff ' + '"' + src_path + '"' + ' ' +
-                           '"' + trg_path + '" 1>/dev/null'):
-
-                if self.cmp_top_is_active is False:
-                    return  # Comparison Window already closed
-                # Files have different contents even though size the same
-                # Copy newer file to older
-                if src_mtime < trg_mtime:
-                    action = "Copy Trg -> Src (Diff)"
-                else:
-                    action = "Copy Src -> Trg (Diff)"
-
-            else:
-                # File contents same so modification times must be synced
-                if src_mtime > trg_mtime:
-                    action = "Timestamp Trg -> Src"
-                elif src_mtime < trg_mtime:
-                    action = "Timestamp Src -> Trg"
-                else:
-                    # Impossible situation
-                    action = "OOPS same time?"
-
-            converted = float(src_size) / float(g.CFG_DIVISOR_AMT)
-            # Aug 4/23 - DEC_PLACE used to be 1 now it's 0
-            src_fsize = '{:n}'.format(round(converted, g.CFG_DECIMAL_PLACES + 2))
-            converted = float(trg_size) / float(g.CFG_DIVISOR_AMT)
-            trg_fsize = '{:n}'.format(round(converted, g.CFG_DECIMAL_PLACES + 2))
-            # Format date as "Abbreviation - 99 Xxx Ago"
-            src_ftime = tmf.ago(float(src_stat.st_mtime))
-            trg_ftime = tmf.ago(float(trg_stat.st_mtime))
-
-            ''' Insert song into comparison treeview and show on screen '''
-            self.cmp_tree.insert(CurrAlbumId, "end", iid=str(i), text=Song,
-                                 values=(src_ftime, trg_ftime, src_fsize, trg_fsize, action,
-                                         float(src_stat.st_mtime), float(trg_stat.st_mtime)),
-                                 tags=("Song",))
-            self.cmp_tree.see(str(i))
-
-            # Sept 23 2020 - Treeview doesn't scroll after update button added?
-            # After clicking update differences can you click it again?
-            if self.cmp_top_is_active is False:
-                return  # Comparison Window already closed
-            self.cmp_tree.update_idletasks()
-
-            # do_debug_steps += 1
-            # if do_debug_steps == 10000: break     # Set to short for testing
-
-        ''' Prune tree - Albums with no songs, then artists with no albums '''
-        for artist in self.cmp_tree.get_children():
-            album_count = 0
-            for album in self.cmp_tree.get_children(artist):
-                if self.cmp_top_is_active is False:
-                    return  # Comparison Window already closed
-                #song_count = 0
-                #for song in self.cmp_tree.get_children(album):
-                #    song_count += 1  # Signal not to delete album
-                #    break
-                song_count = len(self.cmp_tree.get_children(album))
-                if song_count == 0:
-                    self.cmp_tree.delete(album)
-                else:
-                    album_count += 1  # Signal not to delete artist
-            if album_count == 0:
-                self.cmp_tree.delete(artist)
-
-        ''' Message if files are same (no treeview children) '''
-        if self.cmp_tree.get_children():
-            return True
-        else:
-            messagebox.showinfo(title="Files identical",
-                                message="Files common to both locations are identical.",
-                                parent=self.cmp_top)
-            return False
-
-    def cmp_update_files(self):
-        """ Build list of commands to run with subprocess
-            Called via "Update" button on cmp_top treeview
-        """
-        return_code = 0
-        title = "Updating files"
-        self.update_differences_btn.grid_forget()  # Can't click again
-        # Display status messages in window 800 wide x 260 high
-        self.cmp_msg_box = message.Open(title, self.cmp_top, 800, 260)
-        for artist in self.cmp_tree.get_children():
-            for album in self.cmp_tree.get_children(artist):
-                for song in self.cmp_tree.get_children(album):
-                    # Update file and display in message box.
-                    return_code = self.cmp_run_command(song)
-                    root.update_idletasks()
-                    if self.cmp_top_is_active is False:
-                        # TODO: Move duplicated code into common ...close()
-                        self.src_mt.close()  # Save modification_time to disk
-                        self.trg_mt.close()  # If no changes then simply exit
-                        self.cmp_msg_box.close()
-                        return  # Closing down
-                    if not return_code == 0:
-                        break
-                if not return_code == 0:
-                    break
-            if not return_code == 0:
-                break
-
-        self.src_mt.close()  # Save modification_time to disk
-        self.trg_mt.close()  # If no changes then simply exit
-        self.cmp_msg_box.close()
-
-        if not return_code == 0:
-            print('cmp_update_files() received non-zero return_code:', return_code)
-        # All done, close treeview as it's no longer relevant
-        self.cmp_close()
-
-    def cmp_run_command(self, iid):
-        """ Build single commands to run with subprocess
-                cp -p source_path target_path
-                touch -m -r source_path target_path
-
-            NOTE: START_DIR may become target_path and target_dir may become
-                  source_path after deciphering arrow
-        """
-
-        # action = 'Copy Trg -> Src (Size)', 'Timestamp Src -> Trg', etc.
-        action = self.cmp_tree.item(iid)['values'][4]  # 6th treeview column
-        src_mtime = self.cmp_tree.item(iid)['values'][5]
-        trg_mtime = self.cmp_tree.item(iid)['values'][6]
-        # Extract real source path from treeview display e.g. strip <No Album>
-        src_path = self.real_path(int(iid))
-        # replace source topdir with target topdir for target full path
-        trg_path = src_path.replace(START_DIR, self.cmp_target_dir)
-
-        # Build command line list for subprocess
-        command_line_list = []
-        src, trg = self.cmp_decipher_arrow(action, src_path, trg_path)
-        if src is None:
-            return False  # Programmer made error
-
-        if action.startswith("Copy "):  # Is it a copy?
-            command_line_list.append("cp")
-            command_line_list.append("--preserve=timestamps")
-
-        elif action.startswith("Timestamp "):  # Is it a timestamp?
-            command_line_list.append("touch")
-            command_line_list.append("-m")
-            command_line_list.append("-r")
-
-        else:  # None of above? - ERROR!
-            print("cmp_run_command(): action is not 'Copy ' or 'Timestamp '")
-            return False
-
-        # Add common arguments for source and target to end
-        command_line_list.append(src)
-        command_line_list.append(trg)
-
-        command_str = " ".join(command_line_list)  # list to printable string
-        self.cmp_msg_box.update(command_str)  # Display status line
-        pipe = sp.Popen(command_line_list, stdout=sp.PIPE, stderr=sp.PIPE)
-        text, err = pipe.communicate()  # This performs .wait() too
-
-        # print('subprocess:', command_line_list)
-        # print("return_code of subprocess:",pipe.return_code)
-        if text:
-            print("standard output of subprocess:")
-            print(text)
-            self.cmp_msg_box.update(text)
-        if err:
-            print("standard error of subprocess:")
-            print(err)
-            self.cmp_msg_box.update(err)
-
-        if pipe.return_code == 0:
-            if src == src_path:  # Action is from Src -> Trg
-                self.src_mt.update(src_path, trg_mtime, src_mtime)
-                self.trg_mt.update(trg_path, trg_mtime, src_mtime)
-            elif src == trg_path:  # Action is from Trg -> Src
-                self.src_mt.update(src_path, src_mtime, trg_mtime)
-                self.trg_mt.update(trg_path, src_mtime, trg_mtime)
-            else:
-                print('ERROR: paths do not work')
-
-        return pipe.return_code
-
-    @staticmethod
-    def cmp_decipher_arrow(action, src_path, trg_path):
-        """ Flip src_path (full_path) and trg_path (full_path2) around """
-        if "Trg -> Src" in action:
-            return trg_path, src_path
-        elif "Src -> Trg" in action:
-            return src_path, trg_path
-        else:
-            print('cmp_decipher_arrow(): was passed invalid arrow')
-            return None, None
-
     # ==============================================================================
     #
     #       MusicLocationTree Processing - Select items, Popup Menus
     #
     # ==============================================================================
 
-    """
-        Single button 1 click is processed by CheckboxTreeview().
-    """
 
     def button_1_click(self, event):
         """ Call CheckboxTreeview to manage "checked" and "unchecked" tags.
@@ -4940,8 +3604,6 @@ class MusicLocationTree(PlayCommonSelf):
             self.play_close()
         if self.ltp_top_is_active:          # Sampling middle 10 seconds?
             self.lib_tree_play_close()
-        if self.loc_top_is_active:          # Editing Locations?
-            self.loc_close()
         if self.mus_top_is_active:          # Viewing SQL Music Table?
             self.mus_close()
         if self.his_top_is_active:          # Viewing SQL History Table?
@@ -4969,7 +3631,10 @@ class MusicLocationTree(PlayCommonSelf):
 
         ''' Remove temporary files '''
         for f in TMP_ALL_NAMES:
-            if os.path.isfile(f):
+            if f.endswith("*"):
+                for splat in glob.glob(f):
+                    os.remove(splat)
+            elif os.path.isfile(f):
                 os.remove(f)
 
         ''' Close SQL databases '''
@@ -5521,7 +4186,7 @@ class MusicLocationTree(PlayCommonSelf):
     #
     # ==============================================================================
 
-    def show_sql_music(self, sbar_width=16):
+    def show_sql_music(self, sbar_width=14):
         """ Open SQL Music Location treeview. """
         ''' SQL Music Table View already active? '''
         if self.mus_top_is_active is True:
@@ -5911,7 +4576,7 @@ class MusicLocationTree(PlayCommonSelf):
         self.missing_artwork_dtb = None
 
 
-    def show_sql_hist(self, sbar_width=16):
+    def show_sql_hist(self, sbar_width=14):
         """ Open SQL History treeview. Patterned after show_sql_music() """
         ''' SQL History Table View already active? '''
         if self.his_top_is_active is True:
@@ -6105,7 +4770,7 @@ class MusicLocationTree(PlayCommonSelf):
         self.his_search = None
 
 
-    def show_sql_location(self, sbar_width=16):
+    def show_sql_location(self, sbar_width=14):
         """
             Open SQL Location treeview. Patterned after show_sql_music()
         """
@@ -6690,7 +5355,7 @@ class MusicLocationTree(PlayCommonSelf):
 
         self.rip_cd_class = encoding.RipCD(
             self.lib_top, self.tt, self.info, LODICT, caller_disc=last_disc,
-            thread=self.get_refresh_thread, sbar_width=16)
+            thread=self.get_refresh_thread, sbar_width=14)
         return
 
     def write_playlist_to_disk(self, ShowInfo=True):
@@ -6781,19 +5446,6 @@ class MusicLocationTree(PlayCommonSelf):
             # ProgrammingError: Cannot operate on a closed database.
             if lcs.open_code:  # Is there a location open?
                 lcs.save_mserve_location(lcs.open_code)  # TODO: ditch parameter
-        # noinspection PyBroadException
-        '''
-        try:
-            iid = LODICT['iid']
-            lc.save_mserve_location(iid)
-        except:
-            # Occurs when manually started with directory not in locations
-            # Occurs when there are no locations defined whatsoever
-            print('Checking to save:', lc.FNAME_LAST_LOCATION)
-            print("No 'iid' found in 'LODICT' for:", START_DIR)
-            #return  # June 25, 2023 - Added return
-            # Aug 6/23 remove return because LODICT is disappearing soon.
-        '''
 
         ''' Two songs needed to save, next startup uses previous save '''
         if len(self.saved_selections) < 2:
@@ -11333,7 +9985,7 @@ mark set markName index"
     #
     # ==============================================================================
 
-    def build_chronology(self, _sbar_width=16):
+    def build_chronology(self, _sbar_width=14):
         """ Chronology treeview List Box, Columns and Headings """
 
         ''' Create Chronology Treeview (chron_tree) and style Gold on Black '''
@@ -15047,11 +13699,6 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             self.all_numbers.append(self.act_code)
             self.all_names.append(self.act_name)
             self.names_all_loc.append(self.act_name)
-            try:
-                if self.act_loc_id == LODICT['iid']:
-                    self.names_for_loc.append(self.act_name)
-            except:
-                pass
             if self.act_loc_id == lcs.open_code:
                 self.names_for_loc.append(self.act_name)
         self.names_all_loc.sort()
@@ -15362,10 +14009,6 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                 self.act_code = "P" + str(val).zfill(6)
             else:
                 self.act_code = "P000001"  # Very first playlist
-            try:
-                self.act_loc_id = LODICT['iid']
-            except:
-                pass
             self.act_loc_id = lcs.open_code
             self.act_id_list = []  # Empty list
             self.act_size = 0  # Size of all song files
@@ -16390,45 +15033,6 @@ def get_dir(top, title, start):
     return root.directory
 
 
-def load_last_location():
-    """ Open last location used. """
-    if True is True:
-        return  # Test with no LODICT in future
-
-    global START_DIR, LODICT  # Never change LODICT after startup!
-    ''' Check for Last known location iid '''
-    if not os.path.isfile(lc.FNAME_LAST_LOCATION):
-        print("lc.FNAME_LAST_LOCATION not found:", lc.FNAME_LAST_LOCATION)
-        return False
-    try:
-        with open(lc.FNAME_LAST_LOCATION, 'rb') as f:
-            # read the data as binary data stream
-            iid = pickle.load(f)
-    except IOError as error:
-        # New installation would not have last location...
-        print('Error opening:', lc.FNAME_LAST_LOCATION)
-        print(error)
-        return False
-
-    # Set protected LODICT
-    if len(LODICT) == 0:  # Should be set by lcs Aug 3/23
-        LODICT = lc.item(iid)  # local permanent copy of loc dictionary
-        lc.set_location_filenames(LODICT['iid'])  # insert /L999/ into paths
-    START_DIR = LODICT['topdir']  # Music Top directory
-    # Display keep awake values
-    if LODICT['activecmd'] is not "":
-        print('OLD Keep awake command:', LODICT['activecmd'],
-              'every', LODICT['activemin'], 'minutes.')
-
-    ''' See if last location path and see if it is mounted '''
-    if not os.path.isdir(START_DIR):
-        # NOTE: Should check to make sure not empty.
-        print('Location contains invalid or off-line directory:', START_DIR)
-        return False
-
-    return True
-
-
 def custom_paste(event):
     """ Allow paste to wipe out current selection. Doesn't work yet!
         From: https://stackoverflow.com/a/46636970/6929343
@@ -16541,7 +15145,6 @@ def open_files(old_cwd, prg_path, parameters, toplevel=None):
             START_DIR = lcs.open_topdir
             if not START_DIR.endswith(os.sep):
                 START_DIR += os.sep
-            #LODICT = lc.DICT  # Set by lcs.load_last_location  UNICODE not STRING
             return  # self.lib_top_playlist_name
 
         title = who + "Error retrieving Location to play"  # Error defaults
@@ -16569,27 +15172,6 @@ def open_files(old_cwd, prg_path, parameters, toplevel=None):
             print(text)  # Print to console and show message on screen at 100, 100
             message.ShowInfo(root, title=title, text=text, icon='error', root=True)
 
-        ''' Version 1 load_last_location() global function'''
-        if load_last_location():
-            # If no optional `/` at end, add it for equal comparisons
-            if not START_DIR.endswith(os.sep):
-                START_DIR += os.sep
-            #print('mserve.py open_files() Last location read. START_DIR:',
-            #      START_DIR)
-            return
-        else:
-            print("mserve.py open_files() load_last_location() FAILED !!!!")
-            print("Proceeding to use music_dir:", music_dir)
-
-    ''' Does music_dir or it's subdirectories contain music files? 
-    
-        DO THIS EARLIER. After Music Directory is set then look
-        if it's in location master.
-    
-    '''
-    # print('START_DIR not in location master file:', START_DIR)
-    #LODICT['iid'] = 'new'  # June 6, 2023 - Something new to fit into code
-    #LODICT['name'] = music_dir  # Name required for title bar
     lcs.open_code = 'new'
     lcs.open_name = music_dir
     NEW_LOCATION = True  # Don't use location dictionary (LODICT) fields
@@ -16650,7 +15232,7 @@ def open_files(old_cwd, prg_path, parameters, toplevel=None):
         sys.argv.append(music_dir)
 
 
-pav = lcs = None  # Global classes: pav=PulseAudio(), lcs=Locations()
+pav = lcs = None  # Global classes: pav=PulseAudio() lcs=location.Locations()
 
 
 def main(toplevel=None, cwd=None, parameters=None):
@@ -16687,11 +15269,14 @@ def main(toplevel=None, cwd=None, parameters=None):
     root.wm_attributes('-type', 'splash')  # No window decorations
     monitor.center(root)
     root.withdraw()  # Remove default window because we have own windows
+
     ''' Create initial instance of Locations class.'''
     lcs = lc.Locations(make_sorted_list)  # Pass reference
+
     ''' sql.open_db() is called again in sql.populate_tables() OK '''
     sql.open_db(LCS=lcs)  # SQL needed to build location lists
     lcs.build_locations()  # Build SQL location lists for TopDir lookup
+
     # Get the default background at runtime, you can use the cget
     # https://stackoverflow.com/a/35409593/6929343  (Bryan Oakley)
     #system_bg = root.cget("background")
