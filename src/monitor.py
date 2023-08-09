@@ -410,7 +410,7 @@ class Monitors:
 
     def tk_center(self, window):
         """
-        Similar to mainline center()
+        Similar to center()
 
         From: https://stackoverflow.com/a/10018670/6929343
         centers a tkinter window on monitor in multi-monitor setup
@@ -799,7 +799,8 @@ def get_window_geom(name):
 
 
 def check_window_geom(_geom):
-    """
+    """ NOT USED YET, under development
+
         When switching from multi-head system to laptop ony windows may be
         off visible desktop. Also if xrandr resets same problem.
 

@@ -143,17 +143,21 @@ def populate_tables(SortedList, start_dir, pruned_dir, lodict):
     PRUNED_DIR = pruned_dir  # Toplevel directory, EG /mnt/music/
     LODICT = lodict  # Location dictionary Aug 3/23 - soon will be <type None>
 
-    ''' NOTE from mserve.py:
+    ''' NOTE from mserve.py June/2023:
     LODICT['iid'] = 'new'  # June 6, 2023 - Something new to fit into code
     LODICT['name'] = music_dir  # Name required for title bar
     NEW_LOCATION = True  # Don't use location dictionary (LODICT) fields
-    '''
+
+    Removed Aug 8/23:
     if LODICT:  # Temporary for conversion away from LODICT
         if LODICT['iid'] == 'new':
             NEW_LOCATION = True
     else:
         if lcs.open_code == 'new':
             NEW_LOCATION = True
+    '''
+    if lcs.open_code == 'new':
+        NEW_LOCATION = True
 
     #open_db()  # July 24, 2023 Note new Locations() class has already opened
     #open_new_db()  # July 13, 2023
@@ -550,6 +554,7 @@ def close_db():
     con.commit()
     cursor.close()          # Aug 08/21 Fix "OperationalError:"
     hist_cursor.close()     # See: https://stackoverflow.com/a/53182224/6929343
+    loc_cursor.close()
     con.close()
     # close_new_db()  # Old conversion can't use anymore
 
@@ -846,43 +851,44 @@ def update_metadata(key, artist, album, title, genre, tracknumber, date,
     global update_print_count
     if update_print_count < 10:
         print('\nSQL updating metadata for:', key)
-        print('artist type :', type(artist), 'album type :', type(album),
-              'title type :', type(title), 'tracknumber type :', type(tracknumber))
-        print('SQL type    :', type(d['Artist']), 'album type :',
-              type(d['Album']), 'title type :', type(d['Title']),
-              'tracknumber type :', type(d['TrackNumber']))
-        print(artist, d['Artist'])
-        print(album, d['Album'])
-        print(title, d['Title'])
-        print(genre, d['Genre'])
-        print(disc_number, d['DiscNumber'])
-        print(tracknumber, d['TrackNumber'])
-        print(date, d['ReleaseDate'])
-        print(composer, d['Composer'])
-        print(seconds, d['Seconds'])
-        print(duration, d['Duration'])
+        print('artist type :', type(artist), '  | album type :', type(album),
+              '  | title type :', type(title),
+              '  | tracknumber type :', type(tracknumber))
+        print('SQL type    :', type(d['Artist']), '  | album type :',
+              type(d['Album']), '  | title type :', type(d['Title']),
+              '  | tracknumber type :', type(d['TrackNumber']))
+        print(artist, "  | ", d['Artist'])
+        print(album, "  | ", d['Album'])
+        print(title, "  | ", d['Title'])
+        print(genre, "  | ", d['Genre'])
+        print(disc_number, "  | ", d['DiscNumber'])
+        print(tracknumber, "  | ", d['TrackNumber'])
+        print(date, "  | ", d['ReleaseDate'])
+        print(composer, "  | ", d['Composer'])
+        print(seconds, "  | ", d['Seconds'])
+        print(duration, "  | ", d['Duration'])
 
         print("Variable causing Change:")
         if artist != d['Artist']:
-            print('artist:', artist, d['Artist'])
+            print('  | artist:', artist, d['Artist'])
         elif album != d['Album']:
-            print('album:', album, d['Album'])
+            print('  | album:', album, d['Album'])
         elif title != d['Title']:
-            print('title:', title, d['Title'])
+            print('  | title:', title, d['Title'])
         elif genre != d['Genre']:
-            print('genre:', genre, d['Genre'])
+            print('  | genre:', genre, d['Genre'])
         elif disc_number != d['DiscNumber']:
-            print('disc_number:', disc_number, d['DiscNumber'])
+            print('  | disc_number:', disc_number, d['DiscNumber'])
         elif tracknumber  != d['TrackNumber']:
-            print('tracknumber:', tracknumber, d['TrackNumber'])
+            print('  | tracknumber:', tracknumber, d['TrackNumber'])
         elif date != d['ReleaseDate']:
-            print('date:', date, d['ReleaseDate'])
+            print('  | date:', date, d['ReleaseDate'])
         elif seconds != d['Seconds']:
-            print('seconds:', seconds, d['Seconds'])
+            print('  | seconds:', seconds, d['Seconds'])
         elif duration != d['Duration']:
-            print('duration:', duration, d['Duration'])
+            print('  | duration:', duration, d['Duration'])
         else:
-            print('All things considered EQUAL')
+            print('  | EQUAL - Need fix for sql.update_metadata()')
         update_print_count += 1
     # Update metadata for title into library Music Table
     sql = "UPDATE Music SET Artist=?, Album=?, Title=?, Genre=?, TrackNumber=?, \
@@ -1087,40 +1093,42 @@ def update_metadata2(fc, commit=True):
     if update_print_count < 10:
         print('\nSQL updating metadata for:', key)
         # July 18, 2023 - There are more fields to add but info.cast instead?    
-        print('fc.Artist type :', type(fc.Artist), 'fc.Album type :', type(fc.Album),
-              'fc.Title type :', type(fc.Title), 'fc.TrackNumber type :', type(fc.TrackNumber))
-        print('SQL type    :', type(d['Artist']), 'Album type :',
-              type(d['Album']), 'fc.Title type :', type(d['Title']),
-              'TrackNumber type :', type(d['TrackNumber']))
-        print(fc.Artist, d['Artist'])
-        print(fc.Album, d['Album'])
-        print(fc.Title, d['Title'])
-        print(fc.Genre, d['Genre'])
-        print(fc.TrackNumber, d['TrackNumber'])
-        print(fc.FirstDate, d['FirstDate'])
-        print(fc.DiscNumber, d['DiscNumber'])
-        print(fc.Composer, d['Composer'])
-        print(fc.DurationSecs, d['Seconds'])
-        print(fc.Duration, d['Duration'])
+        print('fc.Artist type :', type(fc.Artist),
+              '  | fc.Album type :', type(fc.Album),
+              '  | fc.Title type :', type(fc.Title),
+              '  | fc.TrackNumber type :', type(fc.TrackNumber))
+        print('SQL type    :', type(d['Artist']), '  | Album type :',
+              type(d['Album']), '  | fc.Title type :', type(d['Title']),
+              '  | TrackNumber type :', type(d['TrackNumber']))
+        print(fc.Artist, '  | ', d['Artist'])
+        print(fc.Album, '  | ', d['Album'])
+        print(fc.Title, '  | ', d['Title'])
+        print(fc.Genre, '  | ', d['Genre'])
+        print(fc.TrackNumber, '  | ', d['TrackNumber'])
+        print(fc.FirstDate, '  | ', d['FirstDate'])
+        print(fc.DiscNumber, '  | ', d['DiscNumber'])
+        print(fc.Composer, '  | ', d['Composer'])
+        print(fc.DurationSecs, '  | ', d['Seconds'])
+        print(fc.Duration, '  | ', d['Duration'])
 
         if fc.Artist != d['Artist']:
-            print('fc.Artist:', fc.Artist, d['Artist'])
+            print('fc.Artist:', '  | ', fc.Artist, d['Artist'])
         elif fc.Album != d['Album']:
-            print('fc.Album:', fc.Album, d['Album'])
+            print('fc.Album:', '  | ', fc.Album, d['Album'])
         elif fc.Title != d['Title']:
-            print('fc.Title:', fc.Title, d['Title'])
+            print('fc.Title:', '  | ', fc.Title, d['Title'])
         elif fc.Genre != d['Genre']:
-            print('fc.Genre:', fc.Genre, d['Genre'])
+            print('fc.Genre:', '  | ', fc.Genre, d['Genre'])
         elif str(fc.TrackNumber)  != str(d['TrackNumber']):
-            print('fc.TrackNumber:', fc.TrackNumber, d['TrackNumber'])
+            print('fc.TrackNumber:', '  | ', fc.TrackNumber, d['TrackNumber'])
         elif fc.FirstDate != d['FirstDate']:
-            print('fc.FirstDate:', fc.FirstDate, d['FirstDate'])
+            print('fc.FirstDate:', '  | ', fc.FirstDate, d['FirstDate'])
         elif fc.DurationSecs != d['Seconds']:
-            print('fc.DurationSecs:', fc.DurationSecs, d['Seconds'])
+            print('fc.DurationSecs:', '  | ', fc.DurationSecs, d['Seconds'])
         elif fc.Duration != d['Duration']:
-            print('fc.Duration:', fc.Duration, d['Duration'])
+            print('fc.Duration:', '  | ', fc.Duration, d['Duration'])
         else:
-            print('All things considered EQUAL')
+            print('  | EQUAL - Need fix for sql.update_metadata2()')
         update_print_count += 1
 
     if not commit:

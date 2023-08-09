@@ -352,10 +352,21 @@ class AskDirectory(filedialog.Directory, AskCommonSelf):
         filedialog.Directory.__init__(self, parent, title=title,
                                       initialdir=initialdir).show()
         #commondialog.Dialog.__init__(self, parent, title=title)
-        if root:
-            ''' When using root window message s/b centered  '''
-            mon = monitor.Monitors()
-            mon.tk_center(self)
+        #if root:
+        #    ''' When using root window message s/b centered  '''
+        #    mon = monitor.Monitors()
+        #    mon.tk_center(self)
+        # Error Aug 8/23:
+        #     mserve.main(toplevel=splash, cwd=cwd, parameters=sys.argv)
+        #   File "/home/rick/python/mserve.py", line 15288, in main
+        #     icon='error', thread=dummy_thread, root=True)
+        #   File "/home/rick/python/message.py", line 404, in __init__
+        #     mon.tk_center(self)
+        #   File "/home/rick/python/monitor.py", line 429, in tk_center
+        #     x = mon.width // 2 - window.winfo_width() // 2 + mon.x
+        #   File "/usr/lib/python2.7/lib-tk/Tkinter.py", line 1009, in winfo_width
+        #     self.tk.call('winfo', 'width', self._w))
+        # _tkinter.TclError: bad window path name ".139679084671920.139679084672064"
 
         if thread is None:
             toolkit.print_trace()
@@ -398,10 +409,21 @@ class ShowInfo(simpledialog.Dialog, AskCommonSelf):
         AskCommonSelf.__init__(self, parent, text=text, confirm=confirm,
                                align=align, thread=thread, icon=icon)
         simpledialog.Dialog.__init__(self, parent, title=title)
-        if root:
-            ''' When using root window message s/b centered  '''
-            mon = monitor.Monitors()
-            mon.tk_center(self)
+        #if root:
+        #    ''' When using root window message s/b centered  '''
+        #    mon = monitor.Monitors()
+        #    mon.tk_center(self)
+        # Error Aug 8/23:
+        #     mserve.main(toplevel=splash, cwd=cwd, parameters=sys.argv)
+        #   File "/home/rick/python/mserve.py", line 15288, in main
+        #     icon='error', thread=dummy_thread, root=True)
+        #   File "/home/rick/python/message.py", line 415, in __init__
+        #     mon.tk_center(self)
+        #   File "/home/rick/python/monitor.py", line 429, in tk_center
+        #     x = mon.width // 2 - window.winfo_width() // 2 + mon.x
+        #   File "/usr/lib/python2.7/lib-tk/Tkinter.py", line 1009, in winfo_width
+        #     self.tk.call('winfo', 'width', self._w))
+        # _tkinter.TclError: bad window path name ".140042227536312.140042227536384"
 
         ''' Even when root=True is passed, no message pops up '''
         if thread is None and root is None:

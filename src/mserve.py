@@ -559,9 +559,6 @@ DIGIT_SPACE = " "             # UTF-8 (2007)
 START_DIR = ""
 PRUNED_DIR = ""  # Same as START_DIR unless manually passing Music Artist
 
-''' WATCHMEN global scope trouble shooting. Created July 5, 2023. '''
-WATCHMEN = []
-
 # noinspection SpellCheckingInspection
 ''' TODO: Start up announcement at 75% volume
     Setting should be for once a day. We don't want this dozens of times when
@@ -1158,6 +1155,7 @@ class MusicLocationTree(PlayCommonSelf):
 
         self.lib_top = tk.Toplevel()
         self.lib_top_is_active = True
+        self.ltp_top_is_active = False  # Sample song NOTICE DIFFERENT SPELLING
         self.lib_top.minsize(g.WIN_MIN_WIDTH, g.WIN_MIN_HEIGHT)
 
         lcs.register_parent(self.lib_top)  # Assign in Locations() class
@@ -1520,10 +1518,10 @@ class MusicLocationTree(PlayCommonSelf):
         # Edit Dropdown Menu
         ext.t_init('self.edit_menu = tk.Menu(mb)')
         self.edit_menu = tk.Menu(mb, tearoff=0)
-        self.edit_menu.add_command(label="Edit Location", font=(None, MED_FONT),
-                                   command=lcs.edit, state=tk.DISABLED)
         self.edit_menu.add_command(label="Synchronize Location", font=(None, MED_FONT),
                                    command=lcs.synchronize, state=tk.DISABLED)
+        self.edit_menu.add_command(label="Edit Location", font=(None, MED_FONT),
+                                   command=lcs.edit, state=tk.DISABLED)
         self.edit_menu.add_command(label="Delete Location", font=(None, MED_FONT),
                                    command=lcs.delete, state=tk.DISABLED)
         self.edit_menu.add_separator()
@@ -1737,7 +1735,7 @@ class MusicLocationTree(PlayCommonSelf):
         self.play_on_top = False
         self.set_lib_tree_play_btn()
 
-    def refresh_lib_top(self, sleep_after=True):
+    def refresh_lib_top(self, tk_after=True):
         """ Wait until clicks to do something in lib_tree (like play music)
             NOTE: this would be a good opportunity for housekeeping
             TODO: Call refresh_acc_times() every 60 seconds
@@ -1781,7 +1779,7 @@ class MusicLocationTree(PlayCommonSelf):
             return False  # self.close() has set to None
 
         ''' Aug 5/23 - Make speedy version for calling in loops '''
-        if not sleep_after:
+        if not tk_after:
             return self.lib_top_is_active
 
         ''' sleep remaining time until 33ms expires '''
@@ -3624,12 +3622,7 @@ class MusicLocationTree(PlayCommonSelf):
         if encoding.RIP_CD_IS_ACTIVE:       # Ripping CD currently active?
             encoding.RIP_CD_IS_ACTIVE = False  # Force ripping window shutdown.
 
-        # Last known window position for music library, saved to SQL
-        last_library_geom = monitor.get_window_geom_string(
-            self.lib_top, leave_visible=False)
-        monitor.save_window_geom('library', last_library_geom)
-
-        ''' Remove temporary files '''
+        ''' Remove temporary files - NOTE: could simply use /tmp/mserve* '''
         for f in TMP_ALL_NAMES:
             if f.endswith("*"):
                 for splat in glob.glob(f):
@@ -3637,8 +3630,14 @@ class MusicLocationTree(PlayCommonSelf):
             elif os.path.isfile(f):
                 os.remove(f)
 
+        ''' Last known window position for music location tree, saved to SQL '''
+        last_library_geom = monitor.get_window_geom_string(
+            self.lib_top, leave_visible=True)  # don't destroy lib_top
+        monitor.save_window_geom('library', last_library_geom)
+
         ''' Close SQL databases '''
         sql.close_db()  # Added July 13, 2023
+        self.lib_top.destroy()  # Was left visible to last second
         #time.sleep(RESTART_SLEEP)           # Extra insurance sleepers close
 
     def open_and_play_callback(self, code, topdir):
@@ -4427,6 +4426,7 @@ class MusicLocationTree(PlayCommonSelf):
 
         ''' Pause music if playing '''
         forced_pause = False
+        ''' Aug 9/23 - experiment 2 
         if self.play_top_is_active:
             if self.pp_state == "Playing":
                 self.pp_toggle()
@@ -4435,6 +4435,7 @@ class MusicLocationTree(PlayCommonSelf):
                 for _i in range(10):
                     self.refresh_play_top()  # Gently fade volume to 25%
                     self.play_top.after(33)
+        '''
 
         ext.t_init("missing_artwork()")
         ''' TODO: Clear title when new button clicked '''
@@ -4502,7 +4503,8 @@ class MusicLocationTree(PlayCommonSelf):
     def missing_artwork_callback(self, Id, values):
         """ Find Songs that have no artwork and update metadata
             sql.update_metadata() is called by get_ffprobe_metadata(os_filename)
-            The .CheckArtwork() function will call self.refresh_play_top()
+            The .CheckArtwork() function will call self.refresh_play_top().
+                This causes freeze up as play_top steals processing cycles.
             When file has artwork no need to update delayed text box because
                 visual feedback is in treeview when file is detached from list.
 
@@ -4517,9 +4519,15 @@ class MusicLocationTree(PlayCommonSelf):
 
         ''' Reading through filenames in mus_view.tree which also has music ID '''
         os_filename = self.mus_view.column_value(values, 'os_filename')
-        self.lib_top.update_idletasks()  # Give chance to 'X' the window
+        #self.lib_top.update_idletasks()  # Give chance to 'X' the window
         if not self.mus_top:
-            return
+            return  # None=closing. Others are False=detach and True=keep.
+        self.mus_top.update()  # Aug 9/23 - Above is too slow to close
+
+
+        ''' Aug 9/23 - experiment 2 allow play_to_end to run. '''
+        lcs.fast_refresh(tk_after=False)  # Aug 9/23 keep spinning till end
+
 
         if not self.mus_ctl.new(PRUNED_DIR + os_filename):  # get metadata
             # .new() returns False when file doesn't exist at this location
@@ -4542,6 +4550,8 @@ class MusicLocationTree(PlayCommonSelf):
 
         ''' Update SQL metadata using this location's music file metadata '''
         result = self.update_sql_metadata(self.mus_ctl)  # Is this resetting?
+        if not self.mus_top:  # Update below getting error when closing
+            return  # None=closing. Others are False=detach and True=keep.
         self.meta_scan.UpdateChanges(result)  # Tally change counts
 
         ''' Check if file metadata has artwork '''
@@ -4916,6 +4926,7 @@ class MusicLocationTree(PlayCommonSelf):
             Used for populate_mus_view and populate_his_view
             test used to omit specific rows from view.
             TODO: Review if 'self.refresh_play_top()' should be called
+                  Problem with previous/next song stalling other xxx_top running
         """
         first_id = None
         #for i, sql_row in enumerate(rows):
@@ -6003,25 +6014,18 @@ class MusicLocationTree(PlayCommonSelf):
         self.lyrics_panel_label = tk.Label(
             self.lyrics_frm, borderwidth=g.BTN_BRD_WID, padx=7, pady=7,
             text=self.lyrics_panel_text, font=g.FONT)
-        #self.lyrics_panel_label.grid(row=0, column=2, sticky=tk.NSEW)
-        #self.lyrics_panel_label.grid_rowconfigure(0, weight=0)
-        #self.lyrics_panel_label.grid_columnconfigure(0, weight=1)  # Note weight to stretch
-        # Center labels in panel
-        #self.lyrics_frm.update()
         self.lyrics_panel_label.place(relx=.6, rely=.5, anchor="center")
 
-        self.lyrics_panel_last_line = 1                 # Appears in title string
+        self.lyrics_panel_last_line = 1  # Appears in title string
 
         self.tt.add_tip(self.lyrics_panel_label, tool_type='label',
                         text="Replace me!", anchor="se")
 
         """ Define Hamburger rounded rectangle button and it's tooltip """
         rounded_text = u"☰"
-        tt_text = "Left-clicking this hamburger icon brings up a\n" + \
+        tt_text = "Left-clicking hamburger icon displays a \n" + \
                   "context sensitive menu for web scraping,\n" + \
-                  "editing lyrics score and time indexes.\n\n" + \
-                  "You can also right-click on the lyrics score\n" + \
-                  "and the same context sensitive menu appears."
+                  "editing lyrics score and time indexes."
         self.lyrics_panel_hamburger = img.RoundedRectangle(
             self.lyrics_frm, rounded_text, 'black', 'white', ms_font=g.FONT,
             stretch=False, command=self.play_lyrics_fake_right_click)
@@ -6254,8 +6258,9 @@ class MusicLocationTree(PlayCommonSelf):
                                 anchor="sw")
             elif name == "Com":
                 ''' Hockey Commercial Button '''
-                self.tt.close(self.com_button)  # Remove old tooltip from list
-                # 📺 | television (U+1F4FA) @ Graphic
+                if self.tt.check(self.com_button):
+                    self.tt.close(self.com_button)  # Remove old tooltip from list
+                # 📺 | television (U+1F4FA)
                 #self.play_hockey_active = False  # U+1f3d2 🏒
                 self.com_button = tk.Button(self.play_btn_frm, text="📺  Commercial",
                                             anchor=tk.CENTER,
@@ -7272,13 +7277,14 @@ class MusicLocationTree(PlayCommonSelf):
                 return True  # Song ended naturally
             self.refresh_play_top()  # Rotate art, update vu meter after(.033)
 
-    def refresh_play_top(self, sleep_after=True):
-        """
-        Common code for updating graphics that can be called from anywhere
-        Use this when stealing processing cycles from self.play_to_end()
+    def refresh_play_top(self, tk_after=True):
+        """ Common code for updating graphics that can be called from anywhere
+            Use this when stealing processing cycles from self.play_to_end()
+            33 millisecond sleep gives 30 fps (frames per second) video speed.
 
-        33 millisecond sleep gives 30 fps (frames per second) video speed.
-
+        PROBLEM: When clicking prev/next song, update missing artwork and
+            synchronize files lose processing cycles.
+            
         April 24, 2023 - Must return something so checks in message.py will
             know a function is being passed as valid "thread=..." parameter.
         """
@@ -7364,20 +7370,59 @@ class MusicLocationTree(PlayCommonSelf):
         ''' May 23, 2023 - Updating metadata takes 10 minutes for 5,000 songs.
                 Current song would end before completion. Also a song can end
                 when .ShowInfo is active. So play next song in list.
+
+            Aug 9/23 - cmp_update_files and missing_artwork_callback lock up
+                because they call the first refresh_play_top which doesn't
+                return because it spawns play_one_song() that generates new
+                refesh_play_top return chain.
         '''
         self.play_ctl.check_pid()   # play_ctl class is omnipresent
-        if self.play_ctl.pid == 0:  # Music has stopped playing
+        if self.play_ctl.path and self.play_ctl.pid == 0:
+
+            ''' Aug 9/23 - experiment 2 '''
+            if True is True:
+                # Back to square 1. Art keeps spinning on song just ended and
+                # play_to_end doesn't trigger next song to start.
+                # play_to_end did not call refresh_play_top. The long running
+                # process is refreshing_play_top and if starts next song
+                # loses future cpu cycles until play_to_end() finishes.
+
+                # experiment 2 song end causes art and progress to stop.
+                # this seems preferable given dead lock.
+
+                # experiment 2 song end causes AskQuestion to lock up
+
+                return True  # Test play_to_end should trigger next song.
+
+            # Music has stopped playing and code below has been run once because
+            # self.play_ctl.path has been run
             self.play_ctl.close()   # Update last song's last access time
             self.queue_next_song()  # Queue up next song in list
             self.song_set_ndx_just_run = True  # So queue doesn't repeat...
+            # Called by def play_to_end which is waiting for song to end
+            # by checking self.last_started != self.ndx and then pid == 0.
+            # play to end was called by def play_one_song
+
+            ''' Aug 9/23 - experiment 1 '''
+            if True is True:
+                # Now when song ends naturally and cmp_update_files gives
+                # lift / focus summary message, the both threads are locked
+                # and the OK button doesn't work to clear message.
+                return True  # Skip self.play_one_song for a better method.
+
             ''' Play next song with signal to return back here '''
             if not self.play_one_song():  # Start song & come back here when done
                 # play_one_song() is blocking but launching again in loop
                 self.play_close()   # closing play or shutdown
                 return False
+
             ''' Return back to normal refresh_play_top() loop '''
             self.play_ctl.close()  # Isn't this done in play_one_song()?
             return True
+
+        ''' Aug 9/23 - song has ended, nothing to spin. '''
+        #if self.play_ctl.pid == 0:
+        #    return True
 
         ''' Updated song progress and graphics for song that is playing '''
         self.play_update_progress()             # Update screen with song progress
@@ -7388,8 +7433,8 @@ class MusicLocationTree(PlayCommonSelf):
             return False                        # Play window closed so shutting down
         self.play_top.update()                  # Update artwork spinner & text
 
-        ''' Aug 5/23 - Optional sleep_after to speed up loops '''
-        if not sleep_after:
+        ''' Aug 5/23 - Optional tk_after to speed up loops '''
+        if not tk_after:
             return self.play_top_is_active
 
         # Jun 20 2023 - Losing 5 ms on average see: self.info.test_tt()
@@ -7398,7 +7443,8 @@ class MusicLocationTree(PlayCommonSelf):
         sleep = sleep if sleep > 0 else 1  # Sleep minimum 1 millisecond
         self.last_sleep_time = now
         if self.play_top:  # Aug 2/23 - exiting
-            self.play_top.after(sleep)  # Sleep until next 30 fps time
+            #self.play_top.after(sleep)  # Sleep until next 30 fps time
+            self.lib_top.after(sleep)  # Aug 9/23 - Try lib_top.after() seems OK?
         return self.play_top_is_active
 
     def play_update_progress(self, start_secs=None):
@@ -8508,7 +8554,7 @@ mark set markName index"
             line too soon simply re-click the current line again and the false
             click will be discarded. rename list_data to os_filenames
 
-            WARNING: work_time_list, new_time_list and lyrics_time_list are
+            BEWARE: work_time_list, new_time_list and lyrics_time_list are
                     used differently.
 
             Lyrics were either retrieved from the internet (takes 2 seconds) or
@@ -8524,7 +8570,9 @@ mark set markName index"
 
         if not self.lyrics_train_is_active:
             # If not in basic training, treat left-click as right-click
-            self.play_lyrics_right_click(event)
+            #self.play_lyrics_right_click(event)
+            # Disable left click to bring up menu. Too annoying when just
+            # trying to select menu.
             return
 
         if self.pp_state is 'Paused':
@@ -13954,7 +14002,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                 self.info.cast(title + "\n\n" + text, "warning")
                 dialog = message.AskQuestion(  # Confirm will be added
                     self.parent, title, text, icon='warning',
-                    align='left', thread=self.get_thread_func())
+                    align='left', thread=self.get_thread_func)
                 if dialog.result != 'yes':
                     return False
             if self.state == 'close':
@@ -13997,7 +14045,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                 text += "Is used in another location. This might cause confusion."
                 dialog = message.AskQuestion(  # Confirm will be added
                     self.parent, title, text, icon='warning',
-                    align='left', thread=self.get_thread_func())
+                    align='left', thread=self.get_thread_func)
                 if dialog.result != 'yes':
                     return False
         ''' Creating a new playlist? '''
@@ -15235,6 +15283,12 @@ def open_files(old_cwd, prg_path, parameters, toplevel=None):
 pav = lcs = None  # Global classes: pav=PulseAudio() lcs=location.Locations()
 
 
+def dummy_thread():
+    """ Needed for ShowInfo from root window. """
+    root.update()
+    root.after(30)
+
+
 def main(toplevel=None, cwd=None, parameters=None):
     """ Establish music location from sys.argv or last used location
     :param toplevel: Splash screen mounted by m for startup
@@ -15260,15 +15314,29 @@ def main(toplevel=None, cwd=None, parameters=None):
     ''' parameters are passed by "m" to mserve.py '''
     if parameters is None:
         parameters = sys.argv
-    ''' Create Tkinter "very top" Top Level window ''' 
+
+    ''' Create Tkinter "very top" Top Level window '''
     if toplevel is None:
         root = tk.Tk()  # Create "very top" toplevel for all top levels
     else:
         root = tk.Toplevel()  # `m` splash screen already used tk.Tk()
-    ''' Create a centered root window ''' 
     root.wm_attributes('-type', 'splash')  # No window decorations
     monitor.center(root)
     root.withdraw()  # Remove default window because we have own windows
+
+    ''' Is another copy of mserve running? '''
+    result = os.popen("ps aux | grep -v grep | grep vu_meter.py").read().splitlines()
+    if len(result) > 0:
+        title = "Another copy of mserve is running!"
+        text = "Cannot start two copies of mserve. Switch to the other version."
+        text += "\n\nIf the other version crashed end the processes still running:"
+        text += "\n\npython m"
+        text += "\npython mserve.py"
+        text += "\npython vu_meter.py"
+        print(title + "\n\n" + text)
+        message.ShowInfo(root, title=title, text=text, align='left',
+                         icon='error', thread=dummy_thread, root=True)
+        exit()
 
     ''' Create initial instance of Locations class.'''
     lcs = lc.Locations(make_sorted_list)  # Pass reference
@@ -15291,16 +15359,19 @@ def main(toplevel=None, cwd=None, parameters=None):
     img.taskbar_icon(root, 64, 'white', 'lightskyblue', 'black')
     ''' Open Files - Shouldn't it return True or False though?'''
     open_files(cwd, prg_path, parameters)  # Create application directory
+
     ''' Original version open Locations and build LIST '''
-    if not lc.read():
-        toolkit.print_trace()
-        exit()
+    #if not lc.read():
+    #    toolkit.print_trace()
+    #    exit()
+
     ''' Sorted list of songs in the location - Need Delayed Text Box '''
     ext.t_init('make_sorted_list()')
     SORTED_LIST, depth_count = make_sorted_list(START_DIR, toplevel=toplevel)
     ext.t_end('no_print')  # May 24, 2023 - make_sorted_list(): 0.1631240845
     # July 24, 2023 - make_sorted_list(): 0.2467391491 (50% slower vs 2 mo ago)
-    # Aug 2/23 - Over ssh new: 15.0521910191 restart: 1.5163669586
+    # Aug 2/23 - Over ssh new: 15.0521910191 restart cached: 1.5163669586
+
     ''' Is sorted list of location's music empty? '''
     if len(SORTED_LIST) == 0:
         title = "Music Location is empty!" 
