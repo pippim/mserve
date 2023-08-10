@@ -16,7 +16,8 @@ from __future__ import with_statement  # Error handling for file opens
 #
 #       July 05 2023 - Optional help button on ShowInfo, AskQuestion, AskString
 #       July 12 2023 - Support to/from mserve_config.py
-#       July 15 2023 - AskString cursor invisible. Use insert background="white",
+#       July 15 2023 - AskString cursor invisible. Use background="white".
+#       Aug. 09 2023 - Add g.MSG_WIDTH_ADJ and self.title2 title width support.
 #
 #==============================================================================
 
@@ -274,7 +275,7 @@ class FakeEvent:
 
 # ==============================================================================
 #
-#   message.py - ShowInfo, AskQuestion, AskString, AskDirectory (NEW JULY 24)
+#   message.py - AskQuestion, AskDirectory, ShowInfo, AskString
 #
 #   NOTE: If a refresh thread isn't passed to .ShowInfo it closes right away
 #
@@ -285,11 +286,13 @@ class AskCommonSelf:
     """ Variables common to ShowInfo, AskQuestion and AskString
         Must appear before first reference (ShowInfo)
     """
-    def __init__(self, parent, text=None, confirm='yes', align='center',
+    def __init__(self, parent, title=None, text=None, confirm='yes', align='center',
                  thread=None, icon='warning', string=None, string_width=None,
                  help=None):
 
         self.top_level = parent     # Allows .after() calls
+        self.title2 = title         # Added Aug 9/23 for setting window width
+        # cannot use self.title because simpleDialog uses it and causes crash.
         self.confirm = confirm      # Append "Are you sure?" line?
         self.align = align          # data (text lines) alignment
         if thread is None:
@@ -342,8 +345,7 @@ class AskDirectory(filedialog.Directory, AskCommonSelf):
     def __init__(self, parent=None, title=None, initialdir=None,
                  thread=None, root=None):
 
-        #        AskCommonSelf.__init__(self, parent, title=title, text=text, confirm=confirm,
-        AskCommonSelf.__init__(self, parent, thread=thread)
+        AskCommonSelf.__init__(self, parent, title=title, thread=thread)
 
         #filedialog.FileDialog.__init__(self, parent, title=title)
         #filedialog.Directory.__init__(self, parent, title=title,
@@ -406,7 +408,7 @@ class ShowInfo(simpledialog.Dialog, AskCommonSelf):
     def __init__(self, parent=None, title=None, text=None, align='center',
                  thread=None, confirm='no', icon='info', root=None):
 
-        AskCommonSelf.__init__(self, parent, text=text, confirm=confirm,
+        AskCommonSelf.__init__(self, parent, title=title, text=text, confirm=confirm,
                                align=align, thread=thread, icon=icon)
         simpledialog.Dialog.__init__(self, parent, title=title)
         #if root:
@@ -456,11 +458,14 @@ class ShowInfo(simpledialog.Dialog, AskCommonSelf):
 # shared by classes: ShowInfo, AskQuestion, AskString
 
 def data_w_l(text):
-    """ Get widest line and number of lines of text in message box """
+    """ Get widest line and number of lines of text in message box
 
+        Fudge \t which adds white space not counted. Text after \t
+        align to defined margin stops which are unknown and guessed. """
+    text = text.replace("\t", " " * 8)  # guesstimate for average tab spaces.
     lines = text.split('\n')
-    longest = max(lines, key=len)
-    width = len(longest)
+    longest = len(max(lines, key=len))
+    width = int(round(float(longest) * g.MSG_WIDTH_ADJUST, 0))  # Aug 9/23
 
     return width, len(lines)
 
@@ -502,11 +507,9 @@ def textbox(box, text, align, lines):
 
 def wait_window_func(self):
     """ Even with no thread passed, this allows other windows to remain
-        updating graphic animations at 30 fps
-    """
+        updating graphic animations at 30 fps """
     if not self.thread:
         return
-
     while self.winfo_exists():  # Loop while our window exists
         now = time.time()
         if self.thread:  # Pass control to animations if thread passed
@@ -544,6 +547,17 @@ def body_func(self):
         f_text = f_text + "\nAre you sure?\n"
 
     if self.align == 'left':
+        # noinspection SpellCheckingInspection
+        ''' ipadx has no effect for left spacing inside textbox '''
+        f_text = f_text.replace("\n", "\n  ")  # next line two spaces indented
+
+    ''' Aug 9/23 - what is happening with \t below? From comments above:
+        If align = 'left' prepend 'Em' space on lines not beginning with '\t'
+        However 'Em' space appears as a gear icon due to font family.
+    '''
+    #f_text = f_text.replace("\t", "  ")  # replace all \t's with two spaces
+    ''' Aug 9/23 - replace all \t with "  "
+    if self.align == 'left':
         p_text = ""                         # Padded text
         for line in f_text.split('\n'):
             if line.startswith('\t'):
@@ -551,9 +565,15 @@ def body_func(self):
             else:
                 p_text = p_text + BIG_SPACE + line + '\n'
         f_text = p_text
-
+    '''
+    
     # Find longest line and use it as text width
     width, lines = data_w_l(f_text)
+
+    ''' Aug 9/23 - self.title2 width2 (self.title used by simpleDialog class) '''
+    width2 = int(round(float(len(self.title2)) * g.MSG_WIDTH_ADJUST, 0))  # Aug 9/23
+    width2 += 4  # For windows' decoration space
+    width = width2 if width2 > width else width
 
     # Get message box icon image from Tkinter
     icon_image = set_icon_image(self.icon)
@@ -562,8 +582,7 @@ def body_func(self):
         self.icon.pack(fill="both", padx=5, pady=15)
 
     self.textbox = tk.Text(self, width=width, font=g.FONT)
-    self.textbox.pack(fill="both", expand=True)
-    # self.textbox.pack(side=tk.LEFT, fill="both", expand=True)
+    self.textbox.pack(fill="both", padx=5, expand=True)  # Aug 9/23 add padx
 
     # Populate the textbox with justification and height
     textbox(self.textbox, f_text, self.align, lines)
@@ -584,14 +603,14 @@ class AskQuestion(simpledialog.Dialog, AskCommonSelf):
     def __init__(self, parent, title=None, text=None, confirm='yes',
                  align='center', thread=None, icon='warning', root=None):
 
-        #        AskCommonSelf.__init__(self, parent, title=title, text=text, confirm=confirm,
-        AskCommonSelf.__init__(self, parent, text=text, confirm=confirm,
+        AskCommonSelf.__init__(self, parent, title=title, text=text, confirm=confirm,
                                align=align, thread=thread, icon=icon)
         simpledialog.Dialog.__init__(self, parent, title=title)
-        if root:
-            ''' When using root window message s/b centered  '''
-            mon = monitor.Monitors()
-            mon.tk_center(self)
+        #if root:
+        #    ''' When using root window message s/b centered  '''
+        #    mon = monitor.Monitors()
+        #    mon.tk_center(self)
+        # Error Aug 8/23 see trace above.
         if thread is None:
             toolkit.print_trace()
             print("message.py, AskQuestion() thread is none, Yes won't work")
@@ -626,8 +645,7 @@ TclError: grab failed: another application has grab
 
     def buttonbox(self):
         """ add standard button box for AskQuestion
-            override to "Yes" and "No" for sense to "Are you sure?" question
-        """
+            override to "Yes" and "No" for sense to "Are you sure?" question """
 
         box = tk.Frame(self)
 
@@ -681,64 +699,50 @@ class AskString(simpledialog.Dialog, AskCommonSelf):
                  align='center', thread=None, icon='question', string=None,
                  string_width=None, root=None):
 
-        AskCommonSelf.__init__(self, parent, text=text, confirm=confirm, 
+        AskCommonSelf.__init__(self, parent, title=title, text=text, confirm=confirm,
                                align=align, thread=thread, icon=icon,
                                string=string, string_width=string_width)
 
         simpledialog.Dialog.__init__(self, parent, title=title)
-        if root:
-            ''' When using root window message s/b centered  '''
-            mon = monitor.Monitors()
-            mon.tk_center(self)
+        #if root:
+        #    ''' When using root window message s/b centered  '''
+        #    mon = monitor.Monitors()
+        #    mon.tk_center(self)
+        # Error Aug 8/23:
 
-    def new_body(self):
-        """ Remove parent from parameter list Aug 12/2021. """
-        self.textbox = body_func(self)
-        return self.textbox
+    #def new_body(self):  # Aug 9/23 comment out and test with rename song title
+    #    """ Remove parent from parameter list Aug 12/2021. """
+    #    self.textbox = body_func(self)
+    #    return self.textbox
 
     def body(self, parent):
-        """ Format passed text into body and setup .Entry input field. """
-        self.text = "\n" + self.text + "\n"
-        if self.confirm is 'yes':
+        """ Format passed text into body and setup tk.Entry() input field. """
+        self.text = "\n" + self.text + "\n"  # Automatic top & bottom white lines
+        if self.confirm is 'yes':  # Automatic confirmation for ask question
             self.text = self.text + "\nAre you sure?\n"
-
-        # Force our window to stay on top
-        self.wm_attributes("-topmost", 1)
-
-        # Find longest line and use it as text width
-        width, lines = data_w_l(self.text)
-
+        self.wm_attributes("-topmost", 1)  # Force window to stay on top
+        width, lines = data_w_l(self.text)  # Longest line used for window width
+        #width = data_w_l(self.text)  # Longest line used for window width
         icon_image = set_icon_image(self.icon)
-        if icon_image:
+        if icon_image:  # info=light bulb, warning=triangle, error=No Entry Symbol
             self.icon = tk.Label(self, image=icon_image)
             self.icon.pack(fill="both", padx=5, pady=15)
-
         self.textbox = tk.Text(self, width=width, font=g.FONT)
         self.textbox.pack(fill="both", padx=5, expand=True)
-        #self.textbox.pack(side=tk.LEFT, fill="both", expand=True)
-
-        # Populate the textbox with justification and height
-        textbox(self.textbox, self.text,  self.align, lines)
-
-        # Append our label and entry field.
-        tk.Label(self, text="Input or Paste below:",
+        textbox(self.textbox, self.text, self.align, lines)  # Populate textbox
+        tk.Label(self, text="Input or Paste below:",  # Append label and entry
                  font=g.FONT).pack(fill="none", padx=5)
         self.entry = tk.Entry(self, font=g.FONT, insertbackground="white",
                               bg="#282B2B", fg="white", width=self.string_width)
-        self.entry.insert(tk.END, self.string)
+        self.entry.insert(tk.END, self.string)  # insert default text
         self.entry.pack(fill="none", padx=5, expand=True)
-        self.entry.focus_set()
-
+        self.entry.focus_set()  # Position cursor in tk.Entry field
         return self.textbox
 
     def buttonbox(self):
-        """ add standard button box for AskString
-
-        override to "Apply" and "Cancel"
-        """
-
+        """ Add standard button box for AskString
+            Override "Yes" and "No" to "Apply" and "Cancel" """
         box = tk.Frame(self)
-
         w = tk.Button(box, text="Apply", width=10, command=self.ok,
                       default=tk.ACTIVE)
         w.pack(side=tk.LEFT, padx=5, pady=5)
@@ -792,9 +796,7 @@ class AskString(simpledialog.Dialog, AskCommonSelf):
 
 
 class CommonIW:
-    """ Variables common to InputWindow__init__() and add_field()
-    """
-
+    """ Variables common to InputWindow__init__() and add_field() """
     def __init__(self):
         self.dict = {}  # add_tip() dictionary
 
@@ -839,7 +841,8 @@ class CommonIW:
 
 
 class InputWindow(CommonIW):
-    """
+    """ Future function for field entry based on data dictionary. NOT USED YET.
+
         Canvas button (rounded rectangles) highlighting upon button focus.
         Tooltips can be buttons, canvas buttons or labels.
         Tooltips are internally tracked by their widget object:

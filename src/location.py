@@ -1072,10 +1072,18 @@ class Locations(LocationsCommonSelf):
         ''' Refresh screen '''
         self.main_top.update_idletasks()
 
+        ''' Preamble messages '''
+        if self.state == 'delete':
+            title = "About the Delete Location function"
+            text = "This does NOT delete any music files.\n\n"
+            text += "It only deletes a location record.\n\n"
+            text += "Only information about a location is deleted."
+            self.out_fact_show(title, text, align='left')
+
+
     def make_main_close_button(self):
         """ Added by main window, removed by testing. """
-
-        ''' Close Button - NOTE: This calls reset() function !!! '''
+        ''' Close Button - After selecting location, changes to "✘ Cancel" '''
         self.main_close_button = tk.Button(
             self.main_frame, text="✘ Close", font=g.FONT,
             width=g.BTN_WID2 - 4, command=self.reset)
@@ -1642,6 +1650,7 @@ class Locations(LocationsCommonSelf):
             width=g.BTN_WID2 - 2, command=self.apply)
         self.apply_button.grid(row=14, column=3, padx=5, pady=5, sticky=tk.W)
         self.main_top.bind("<Return>", self.apply)
+        self.main_close_button['text'] = "✘ Cancel"
         ''' toolkit.Tooltips() guaranteed to be active for Apply button '''
         self.tt.add_tip(self.apply_button, text + 
                         " Location and update records.", anchor="ne")
@@ -1991,13 +2000,36 @@ class Locations(LocationsCommonSelf):
         text = "This does NOT delete any music files.\n\n"
         text += "It only deletes a location record.\n\n"
         text += "Only information about a location is deleted."
-        self.out_show(title, text)
+        self.out_fact_show(title, text, align='left')
         self.state = 'delete'
         self.display_main_window("Delete Location")
 
     def synchronize(self):
         """ Called by lib_top Edit Menubar 'Synchronize Location' """
         LocationsCommonSelf.__init__(self)  # Define self. variables
+        title = "About the Synchronize Location function"
+        text = "This function does NOT add or delete any music files.\n\n"
+
+        text += "It copies existing files between locations and updates files' "
+        text += "modify timestamps.\n\n"
+
+        text += "A typical music file takes about 0.1 "
+        text += "second to copy locally over SSD. Copying to a \n"
+        text += "cell phone over WiFi is much slower. When copying to a "
+        text += "remote host that is asleep,\nthe host is woken up and "
+        text += "kept awake until synchronization ends. The first time\n"
+        text += "synchronization is run, it can take a long time if "
+        text += "files have different dates. The\nsecond time will be "
+        text += "instantaneous unless some music files were changed.\n\n"
+
+        text += "The first time will be fast if, the music files were "
+        text += "created with 'cp -a' or 'cp -p'\nto preserve timestamps.\n\n"
+
+        text += "The next song in the playlist will not be played after "
+        text += "synchronization begins. The\ncurrent song still plays normally."
+
+
+        self.out_fact_show(title, text, align='left')
         self.state = 'synchronize'
         self.display_main_window("Synchronize Location")
 
@@ -3019,7 +3051,7 @@ class Locations(LocationsCommonSelf):
         ''' Wake up host as required and keep awake '''
         if self.act_host:
             title = "Synchronize to Remote Host System? "
-            text = self.act_host + " is remote.\n"
+            text = self.act_host + " is a Remote Host.\n"
             text += "\n\nContinue with synchronization?\n"
             answer = message.AskQuestion(
                 self.main_top, title, text, confirm='no', icon='info',
@@ -3705,10 +3737,17 @@ class Locations(LocationsCommonSelf):
 
     def fast_refresh(self, tk_after=False):
         """ Quickly update animations with no sleep after """
+
+        ''' Aug 9/23 - experiment 2. What if just called lib_top.update() '''
+        #self.parent.update()  # Responsive but no artwork spinning.
+        #return
+
         if not self.last_fast_refresh:
-            self.last_fast_refresh = 0.0  # Not used yet. May be mserve.py call.
+            self.last_fast_refresh = 0.0  # Not init. May be mserve.py call.
         elapsed = time.time() - self.last_fast_refresh
-        if elapsed > .02:
+        if elapsed > .02:  # regular is .033 for 30 FPS.
+            # Aug 9/23 elapsed change from .2 to .1 for missing_artwork_callback
+            #          No performance improvement so it's simply metadata read
             thr = self.get_thread_func()  # main_top, play_top or lib_top
             thr_ret = thr(tk_after=tk_after)
             if not thr_ret:
@@ -3722,17 +3761,17 @@ class Locations(LocationsCommonSelf):
                      After fix with cmp_top_update() still losing cycles until
                      pause pressed in play_top then get cycles back but now
                      get self.cmp_return_code = 4 (greater than 10 seconds
-                     waiting for 'cp verbose' stdout.
+                     waiting for 'cp verbose' stdout.  FIXED in refresh_play_top
                      
                      Then when next song automatically plays the summary
                      message appears with 33 out of 75 files copied. The
-                     error message (ShowInfo) was automatically cleared.
+                     error message (ShowInfo) was automatically cleared.  FIXED
                      
-                     Something around song_set_ndx() is resetting vars?
+                     Fix by stopping refresh_play_top() calling play_to_end()
                      
             '''
-            if self.cmp_top:
-                self.cmp_top.update()
+            #if self.cmp_top:  # part of experiment 1. Not needed anymore
+            #    self.cmp_top.update()
 
             self.last_fast_refresh = time.time()
         return self.cmp_top_is_active is True

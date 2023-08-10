@@ -802,11 +802,12 @@ class PlayCommonSelf:
         self.play_top = None                # Music player selected songs
         self.play_on_top = None             # Is play frame overtop library?
         self.secs_before_pause = None       # get_curr_ffplay_secs(
+        self.current_song_path = None       # Full pathname can have utf-8 chars
         self.current_song_t_start = None    # time.time() started playing
-        self.saved_DurationSecs = None      # self.play_ctl.DurationSecs
-        self.saved_DurationMin = None       # Duration in Min:Sec.Deci
         self.current_song_secs = None       # How much time played
         self.current_song_mm_ss_d = None    # time in mm:ss.d (decisecond)
+        self.saved_DurationSecs = None      # self.play_ctl.DurationSecs
+        self.saved_DurationMin = None       # Duration in Min:Sec.Deci
         self.song_set_ndx_just_run = None   # Song manually set, don't use 'Next'
         self.last_started = None            # self.ndx catch fast clicking Next
         self.play_opened_artist = None      # Play expanded artist in Library?
@@ -846,15 +847,44 @@ class PlayCommonSelf:
         self.xy_list = None                 # list(map(tuple, self.co_ords.
         self.breakpoint = None              # int(self.im.size * self.play/100
 
-        self.song_title_var = None          # Metadata song (Title) name
-        self.song_first_date_var = None     # Metadata First release date
-        self.song_artist_var = None         # Metadata Artist name (ellipses)
-        self.song_comment_var = None        # Metadata comment (ellipses)
-        self.song_album_var = None          # Metadata Album name (ellipses)
-        self.song_album_date = None         # Metadata Album date
-        self.current_song_path = None       # Not sure yet!!!!
-        self.song_number_var = None     # Playing song number in playlist
-        self.song_progress_var = None        # Seconds (1 decimal) song played
+        ''' Metadata Display fields longer names have ellipses '''
+        self.song_title_var = None          # Song (Title) name
+        self.song_first_date_var = None     # Song's first year of release
+        self.song_artist_var = None         # Artist name (ellipses)
+        self.song_album_artist_var = None   # 3 Optional Album Artist name
+        self.song_composer_var = None       # 2 Optional Composer (ellipses)
+        self.song_comment_var = None        # 3 Optional Comment (ellipses)
+        self.song_album_var = None          # Album name (ellipses)
+        self.song_album_date_var = None     # 3 Optional Album release date
+        self.song_genre_var = None          # Optional Genre
+        self.song_disc_var = None           # 2 Optional Disc Number
+        self.song_track_var = None          # Track Number
+        self.song_number_var = None         # Playing song number in playlist
+        self.song_progress_var = None       # Seconds (1 decimal) song played
+
+        ''' Aug 9/23 SQL columns:
+        Version 2 - July 13, 2023 column layout
+            "OsFileName TEXT, OsAccessTime FLOAT, OsModifyTime FLOAT, " 
+            "OsChangeTime FLOAT, OsFileSize INT, " 
+            "Title TEXT, Artist TEXT, Album TEXT, " 
+            "ReleaseDate TEXT, RecordingDate TEXT, " 
+            "CreationTime TEXT, DiscNumber TEXT, TrackNumber TEXT, " 
+            "Rating TEXT, Genre TEXT, Composer TEXT, " 
+            "Comment TEXT, Hyperlink TEXT, Duration TEXT, " 
+            "Seconds INT, PlayCount INT, LastPlayTime FLOAT, " 
+            "LyricsScore BLOB, LyricsTimeIndex TEXT)")
+
+        Future Version 3 - July 18, 2023 column layout
+            "OsFileName TEXT, OsAccessTime FLOAT, OsModifyTime FLOAT, " 
+            "OsChangeTime FLOAT, OsFileSize INT, " 
+            "Title TEXT, Artist TEXT, Album TEXT, Compilation TEXT, " +1
+            "AlbumArtist TEXT, AlbumDate TEXT, FirstDate TEXT, " +1 c2
+            "CreationTime TEXT, DiscNumber TEXT, TrackNumber TEXT, " 
+            "Rating TEXT, Genre TEXT, Composer TEXT, Comment TEXT, "  
+            "Hyperlink TEXT, Duration TEXT, Seconds INT, " 
+            "GaplessPlayback TEXT, PlayCount INT, LastPlayTime FLOAT, " +1 
+            "LyricsScore BLOB, LyricsTimeIndex TEXT)")    
+        '''
 
         # Play frame VU meters - columns 2 & 3
         self.play_vu_meter_style = None     # 'led' = Use LED rectangles
@@ -4413,13 +4443,13 @@ class MusicLocationTree(PlayCommonSelf):
             self.mus_search.close()  # Close old search
 
         answer = message.AskQuestion(
-            self.mus_top, thread=self.get_refresh_thread,
-            title="Songs with no Artwork confirmation - mserve", confirm='no',
-            text="Every song file will be read taking 1 minute/1,000 files.\n" +
-                 "Missing metadata in SQL Music Table will be updated.\n" +
-                 "Songs with no artwork will be displayed.\n\n" +
-                 "You cannot play the next song in playlist while this function.\n" +
-                 "is running. It will cause this function to freeze.\n\n" +
+            self.mus_top, thread=self.get_refresh_thread, confirm='no',
+            title='Update Metadata and Report "missing" confirmation - mserve',
+            text="Every music file will be read. This takes 1 minute/1,000" +
+                 " files. Missing metadata in the SQL\nMusic Table will be updated. " +
+                 "Songs with no artwork (or no audio in red) will be displayed.\n\n" +
+                 "The next song in the playlist will not be played while this" +
+                 "function is running.\n\n" +
                  "Do you want to perform this lengthy process?")
         if answer.result != 'yes':
             return
@@ -5925,11 +5955,48 @@ class MusicLocationTree(PlayCommonSelf):
         self.start_h = self.play_frm.winfo_reqwidth()
 
         ''' Current song display variables '''
-        self.song_title_var = self.make_one_song_var("Title:", 0)
-        self.song_artist_var = self.make_one_song_var("Artist:", 1)
-        self.song_album_var = self.make_one_song_var("Album:", 2)
-        self.song_number_var = self.make_one_song_var("Playlist №", 3)
-        self.song_progress_var = self.make_one_song_var("Progress:", 4)
+        self.song_title_var = self.make_one_song_var("song", 0)  # Was Title
+        self.song_artist_var = self.make_one_song_var("arist", 1)
+        self.song_album_var = self.make_one_song_var("album", 2)
+        self.song_number_var = self.make_one_song_var("playlist №", 3)
+        self.song_progress_var = self.make_one_song_var("progress", 4)
+
+        ''' Aug 9/23 SQL columns in version 2 prep for version 3:
+           Artist=?, Album=?, Title=?, Genre=?, TrackNumber=?, \
+           ReleaseDate=?, Seconds=?, Duration=?, DiscNumber=?, Composer        
+
+        https://soundcharts.com/blog/music-metadata
+        https://images.prismic.io/soundcharts/868e0bf5c60017040f5ca7b84ca94ee1606204d5_
+        macos-itunes-edit-metadata-how-to-2.jpg?auto=compress,format
+        Fields displayed for metadata input screen:
+        song, artist, album, album artist, composer (check box to show composer
+        in views), grouping, genre, year, track 1 of 17, disk 1 of 1,
+        compilation (Album is a compilation of songs by various artists)
+        rating, bpm, play count (Reset play count button)
+
+        https://support.apple.com/lv-lv/guide/music/musf438ffc97/mac
+        https://help.apple.com/assets/63B876DC92F98156FB4566F1/
+        63B876DD92F98156FB4566F8/en_US/c2fdb1929f0c3bde2eaa54ba01abc5bd.png
+
+        Apple playing album has Song name in Black, Artist below in Red then
+        Pop - 2022  5-stars  Dolby Logo
+        To left is Big Album cover underneath Play and Shuffle buttons for album.
+
+        Apple makes you buy a subscription to sync lyrics across devices.
+        Note: Not all features are available in the Apple Music Voice Plan. 
+        Apple Music, Apple Music Voice, lossless, and Dolby Atmos aren’t 
+        available in all countries or regions. See the Apple Support article
+        Availability of Apple Media Services.
+
+        To right are scrolling lyrics with only four to give words per line
+        wrapped. Double spaced lines, current line in black, others grey, bottom
+        two lines fading to white. Above lyrics is slider for volume small
+        speaker to large speaker.
+        
+        Button bar is up top with shuffle, REW, ||, FF, Loop icons. A box with
+        album thumbnail, current song, artist, progress, slider for progress.
+        '''
+
         ''' July 18, 2023 New stuff'''
         self.song_first_date_var = tk.StringVar()  # Optional so change row counts
         self.song_comment_var = tk.StringVar()  # Optional so change row counts
@@ -7327,6 +7394,17 @@ class MusicLocationTree(PlayCommonSelf):
                 self.prev_button_text = self.restart_text
                 self.prev_button['text'] = self.prev_button_text
                 self.tt.set_text(self.prev_button, "Restart song at beginning.")
+
+                ''' Aug 9/23 experiment 2 - Debug if ShowInfo init freezes 
+                # FIXED with lib_top.update_idletasks()
+                # After FIX keep here for quick testing on program startup
+                text = "Hello World !\n\n"
+                text += "\tOne Tab\tTab 2\n"
+                text += "\t\tDouble Tab\tAnother Tab"
+                message.ShowInfo(self.play_top, text=text, align='left',
+                                 thread=self.get_refresh_thread,
+                                 title="debug if ShowInfo freezes")
+                '''
         else:  # Previous button text says "Restart"
             if self.current_song_secs < float(REW_CUTOFF):
                 self.prev_button_text = self.previous_text
@@ -7374,7 +7452,7 @@ class MusicLocationTree(PlayCommonSelf):
             Aug 9/23 - cmp_update_files and missing_artwork_callback lock up
                 because they call the first refresh_play_top which doesn't
                 return because it spawns play_one_song() that generates new
-                refesh_play_top return chain.
+                refresh_play_top return chain.
         '''
         self.play_ctl.check_pid()   # play_ctl class is omnipresent
         if self.play_ctl.path and self.play_ctl.pid == 0:
@@ -7390,8 +7468,9 @@ class MusicLocationTree(PlayCommonSelf):
                 # experiment 2 song end causes art and progress to stop.
                 # this seems preferable given dead lock.
 
-                # experiment 2 song end causes AskQuestion to lock up
-
+                # experiment 2 song end causes AskQuestion to lock up - FIX BELOW
+                #self.lib_top.update()  # Big guns for ShowInfo frozen.
+                self.lib_top.update_idletasks()  # Try pea-shooter instead.
                 return True  # Test play_to_end should trigger next song.
 
             # Music has stopped playing and code below has been run once because
@@ -12816,7 +12895,8 @@ class FileControl(FileControlCommonSelf):
         text += "\n"
         # toolkit.print_trace()  # Getting sick of seeing this !
         print("\n" + text)
-        self.info.cast(text, 'error', 'add')
+        patterns = [("programming error", "White", "Black")]
+        self.info.cast(text, 'error', 'add', patterns=patterns)
         return False
 
     def cast_stat(self, stat):
