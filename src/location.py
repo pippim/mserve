@@ -1080,6 +1080,24 @@ class Locations(LocationsCommonSelf):
             text += "Only information about a location is deleted."
             self.out_fact_show(title, text, align='left')
 
+        if self.state == 'synchronize':
+            title = "About the Synchronize Location function"
+            text = "This function does NOT add or delete any music files.\n\n"
+            text += "It copies existing files between locations and updates files' "
+            text += "modify timestamps.\n\n"
+            text += "A typical music file takes about 0.1 "
+            text += "second to copy locally over SSD. Copying to a \n"
+            text += "cell phone over WiFi is much slower. When copying to a "
+            text += "remote host that is asleep,\nthe host is woken up and "
+            text += "kept awake until synchronization ends. The first time\n"
+            text += "synchronization is run, it can take a long time if "
+            text += "files have different dates. The\nsecond time will be "
+            text += "instantaneous unless some music files were changed.\n\n"
+            text += "The first time will be fast if, the music files were "
+            text += "created with 'cp -a' or 'cp -p'\nto preserve timestamps.\n\n"
+            text += "Music will keep playing but some buttons will be delayed. "
+            self.out_fact_show(title, text, align='left')
+
 
     def make_main_close_button(self):
         """ Added by main window, removed by testing. """
@@ -1996,40 +2014,12 @@ class Locations(LocationsCommonSelf):
     def delete(self):
         """ Called by lib_top Edit Menubar 'Delete Location' """
         LocationsCommonSelf.__init__(self)  # Define self. variables
-        title = "About the Delete Location function"
-        text = "This does NOT delete any music files.\n\n"
-        text += "It only deletes a location record.\n\n"
-        text += "Only information about a location is deleted."
-        self.out_fact_show(title, text, align='left')
         self.state = 'delete'
         self.display_main_window("Delete Location")
 
     def synchronize(self):
         """ Called by lib_top Edit Menubar 'Synchronize Location' """
         LocationsCommonSelf.__init__(self)  # Define self. variables
-        title = "About the Synchronize Location function"
-        text = "This function does NOT add or delete any music files.\n\n"
-
-        text += "It copies existing files between locations and updates files' "
-        text += "modify timestamps.\n\n"
-
-        text += "A typical music file takes about 0.1 "
-        text += "second to copy locally over SSD. Copying to a \n"
-        text += "cell phone over WiFi is much slower. When copying to a "
-        text += "remote host that is asleep,\nthe host is woken up and "
-        text += "kept awake until synchronization ends. The first time\n"
-        text += "synchronization is run, it can take a long time if "
-        text += "files have different dates. The\nsecond time will be "
-        text += "instantaneous unless some music files were changed.\n\n"
-
-        text += "The first time will be fast if, the music files were "
-        text += "created with 'cp -a' or 'cp -p'\nto preserve timestamps.\n\n"
-
-        text += "The next song in the playlist will not be played after "
-        text += "synchronization begins. The\ncurrent song still plays normally."
-
-
-        self.out_fact_show(title, text, align='left')
         self.state = 'synchronize'
         self.display_main_window("Synchronize Location")
 

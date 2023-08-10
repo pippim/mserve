@@ -28,14 +28,20 @@ warnings.simplefilter('default')  # in future Python versions.
 #       July 12 2023 - Interface to/from mserve_config.py
 #       July 13 2023 - Add Music columns: LastPlayTime, DiscNumber, AlbumDate,
 #                      FirstDate, (was ReleaseDate), CreationTime, Composer
-#       July 18 2023 - Add Music columns: AlbumArtist, Compilation, Comment,
+#       Aug. 10 2023 - Add Music columns: AlbumArtist, Compilation, Comment,
 #                      GaplessPlayback
 
 #   TODO:
 
-#   Create new field LastPlayTime (over 80% of song was played)
-#   Create Fix function to touch All Files with OsAccessTime
-#   Replace FileControl.touch_it() with FileControl.set_last_played_time()
+#   Create tables should not be saving OsFileNames that haven't been played
+#       especially for locations that may never be saved 
+
+#   Create set_last_played_time() for PlayCount & LastPlayTime (over 80%)
+
+#   Create Fix function to touch OsAccessTime using OsModifyTime
+
+#   Replace FileControl.touch_it() with FileControl.set_last_played_time()?
+
 #   Create FileControl.get_last_played_time() for lib_tree display when N/A
 #       use st.atime() instead.
 
@@ -131,7 +137,7 @@ azlyrics link, azlyrics download time
 
 # Global variables must be defined at module level
 con = cursor = hist_cursor = loc_cursor = None
-new_con = new_cursor = new_hist_cursor = None
+new_con = new_cursor = new_hist_cursor = new_loc_cursor = None
 NEW_LOCATION = False
 START_DIR = PRUNED_DIR = lcs = LODICT = None
 
@@ -224,8 +230,8 @@ def populate_tables(SortedList, start_dir, pruned_dir, lodict):
     #job_time = ext.t_end('print')  # 0.0793550014496
     #print("Did not print? job_time:", job_time)
 
-    # June 3, 2023 before: sql.create_tables(): 0.1658391953
-    # June 3, 2023 AFTER : sql.create_tables(): 0.0638458729
+    # June 3, 2023 before: sql.populate_tables(): 0.1658391953
+    # June 3, 2023 AFTER : sql.populate_tables(): 0.0638458729
 
 
 def open_db(LCS=None):
@@ -1502,14 +1508,16 @@ def hist_init_lost_and_found():
         This step just records 'file' and 'init' for OS song filename.
         If metadata present then 'meta' and 'init' also recorded.
 
-        The time for 'init' is the files modification time which should be
-            lowest time across all devices if synced properly.
-
-        If a file is both lost and found in the same second and the metadata
-            matches that simply means the file was renamed / moved.
+        The time for 'init' is the files modification time (OsModifyTime)
 
         The same song can be found in multiple locations and smaller devices
             might have fewer songs that the master location.
+
+        PROBLEM: Music Table Rows as soon as directory is opened, however
+            a new location may not be saved and may never be accessed again.
+            populate_tables should only be called when 'new' location is saved.
+            Need function to prompt for location name, assign new code and
+            then call sql.populate_tables()
 
     """
 

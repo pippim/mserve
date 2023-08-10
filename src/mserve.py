@@ -466,7 +466,8 @@ CFG_DIVISOR_UOM = "MB"      # Unit of Measure becomes Megabyte
 # Global variables
 RESTART_SLEEP = .3          # Delay for mserve close down
 KEEP_AWAKE_MS = 250         # Milliseconds between time checks loc_keep_awake()
-META_DISPLAY_ROWS = 5       # Number of Metadata Rows displayed in frame
+META_DISPLAY_ROWS = 6       # Number of Metadata Rows displayed in frame
+# self.meta_display_rows is used for actual number of rows
 # Search on 'July 18, 2023' to see code impacted by global variable usage.
 SCROLL_WIDTH = 16           # Scroll bar width, July 3, 2023 used to be 12
 MON_FONTSIZE = 12           # Font size for monitor name
@@ -476,7 +477,7 @@ LARGE_FONT = 14             # Font size not used
 MED_FONT = 10               # Medium Font size
 BTN_WID = 12                # Width for buttons on main window
 BTN_WID2 = 12               # Width for buttons on play window
-g.BTN_BRD_WID = 3             # Width for button border
+#BTN_BRD_WID = 3            # Now from g. Width for button border
 FRM_BRD_WID = 2             # Width for frame border
 # TODO: Calculate g.PANEL_HGT (height)
 #g.PANEL_HGT = 24              # Height of Unity panel
@@ -848,6 +849,7 @@ class PlayCommonSelf:
         self.breakpoint = None              # int(self.im.size * self.play/100
 
         ''' Metadata Display fields longer names have ellipses '''
+        self.meta_display_rows = None       # Number or rows actually displayed
         self.song_title_var = None          # Song (Title) name
         self.song_first_date_var = None     # Song's first year of release
         self.song_artist_var = None         # Artist name (ellipses)
@@ -998,7 +1000,7 @@ class PlayCommonSelf:
         self.chron_button = None            # tk.Button(..."🖸 Hide Chronology"
 
         ''' Frame for Playlist Chronology '''
-        self.chron_frm = None                      # tk.Frame(self.play_top, bg="Black
+        self.chron_frm = None               # tk.Frame(self.play_top, bg="Black
 
         self.play_ctl = None                # instance of FileControl() class
         self.ltp_ctl = None                 # Location Tree Play sample song
@@ -1386,7 +1388,7 @@ class MusicLocationTree(PlayCommonSelf):
 
         ''' Treeview Buttons '''
         frame3 = tk.Frame(master_frame, bg="Blue", bd=2, relief=tk.GROOVE,
-                          borderwidth=g.BTN_BRD_WID)
+                          borderwidth=g.FRM_BRD_WID)
         frame3.grid_rowconfigure(0, weight=1)
         frame3.grid_columnconfigure(0, weight=0)
         frame3.grid(row=3, column=0, sticky=tk.NW)  # May 28, 2023 was row=2
@@ -1829,7 +1831,7 @@ class MusicLocationTree(PlayCommonSelf):
         """ Define apply pending frame used when lib_tree boxes are checked """
         text = "Pending Playlist Updates from Checkbox Actions"
         self.pending_frame = tk.LabelFrame(
-            master_frame, borderwidth=g.BTN_BRD_WID, text=text,
+            master_frame, borderwidth=g.FRM_BRD_WID, text=text,
             relief=tk.GROOVE, font=('calibre', 13, 'bold'))
         self.pending_frame.grid(row=2, column=0, sticky=tk.NSEW)
         self.pending_frame.grid_columnconfigure(3, weight=5)  # Song name extra wide
@@ -4269,7 +4271,7 @@ class MusicLocationTree(PlayCommonSelf):
 
         ''' Treeview Buttons '''
         frame3 = tk.Frame(master_frame, bg="Blue", bd=2, relief=tk.GROOVE,
-                          borderwidth=g.BTN_BRD_WID)
+                          borderwidth=g.FRM_BRD_WID)
         frame3.grid_rowconfigure(0, weight=1)
         frame3.grid_columnconfigure(0, weight=0)
         frame3.grid(row=1, column=0, sticky=tk.NW)
@@ -4448,8 +4450,7 @@ class MusicLocationTree(PlayCommonSelf):
             text="Every music file will be read. This takes 1 minute/1,000" +
                  " files. Missing metadata in the SQL\nMusic Table will be updated. " +
                  "Songs with no artwork (or no audio in red) will be displayed.\n\n" +
-                 "The next song in the playlist will not be played while this" +
-                 "function is running.\n\n" +
+                 "Music will keep playing but some buttons will be delayed.\n\n" +
                  "Do you want to perform this lengthy process?")
         if answer.result != 'yes':
             return
@@ -4688,7 +4689,7 @@ class MusicLocationTree(PlayCommonSelf):
 
         ''' Treeview Buttons '''
         frame3 = tk.Frame(master_frame, bg="Blue", bd=2, relief=tk.GROOVE,
-                          borderwidth=g.BTN_BRD_WID)
+                          borderwidth=g.FRM_BRD_WID)
         frame3.grid_rowconfigure(0, weight=1)
         frame3.grid_columnconfigure(0, weight=0)
         frame3.grid(row=1, column=0, sticky=tk.NW)
@@ -4885,7 +4886,7 @@ class MusicLocationTree(PlayCommonSelf):
 
         ''' Treeview Buttons '''
         frame3 = tk.Frame(master_frame, bg="Blue", bd=2, relief=tk.GROOVE,
-                          borderwidth=g.BTN_BRD_WID)
+                          borderwidth=g.FRM_BRD_WID)
         frame3.grid_rowconfigure(0, weight=1)
         frame3.grid_columnconfigure(0, weight=0)
         frame3.grid(row=1, column=0, sticky=tk.NW)
@@ -5286,7 +5287,7 @@ class MusicLocationTree(PlayCommonSelf):
         self.hdr_top.protocol("WM_DELETE_WINDOW", self.pretty_close)
 
         ''' frame1 - Holds scrollable text entry '''
-        frame1 = ttk.Frame(self.hdr_top, borderwidth=g.BTN_BRD_WID,
+        frame1 = ttk.Frame(self.hdr_top, borderwidth=g.FRM_BRD_WID,
                            padding=(2, 2, 2, 2), relief=tk.RIDGE)
         frame1.grid(column=0, row=0, sticky=tk.NSEW)
         # 7 rows of text labels and string variables auto adjust with weight 1
@@ -5929,11 +5930,13 @@ class MusicLocationTree(PlayCommonSelf):
         img.taskbar_icon(self.play_top, 64, 'white', 'lightskyblue', 'black')
 
         ''' Create master frame '''
-        self.play_frm = tk.Frame(self.play_top, borderwidth=g.BTN_BRD_WID,
+        self.play_frm = tk.Frame(self.play_top, borderwidth=g.FRM_BRD_WID,
                                  relief=tk.RIDGE)
         self.play_frm.grid(column=0, row=0, sticky=tk.NSEW)
         # 5 rows of text labels and string variables auto adjust with weight 1
         r = META_DISPLAY_ROWS  # July 18, 2023
+        # Aug 10/23 - Button Bar used to be on row 3, changed to row 20 today
+        # Unsure how below metadata rows were not in conflict before?
         for i in range(r):
             self.play_frm.grid_rowconfigure(i, weight=1)
         self.play_frm.grid_columnconfigure(2, minsize=50)
@@ -5955,11 +5958,14 @@ class MusicLocationTree(PlayCommonSelf):
         self.start_h = self.play_frm.winfo_reqwidth()
 
         ''' Current song display variables '''
+        self.meta_display_rows = META_DISPLAY_ROWS
+        # TODO: self.meta_display_rows set below when var is not None
         self.song_title_var = self.make_one_song_var("song", 0)  # Was Title
-        self.song_artist_var = self.make_one_song_var("arist", 1)
-        self.song_album_var = self.make_one_song_var("album", 2)
-        self.song_number_var = self.make_one_song_var("playlist №", 3)
-        self.song_progress_var = self.make_one_song_var("progress", 4)
+        self.song_first_date_var = self.make_one_song_var("year", 1)  # Was Title
+        self.song_artist_var = self.make_one_song_var("arist", 2)
+        self.song_album_var = self.make_one_song_var("album", 3)
+        self.song_number_var = self.make_one_song_var("playlist №", 4)
+        self.song_progress_var = self.make_one_song_var("progress", 5)
 
         ''' Aug 9/23 SQL columns in version 2 prep for version 3:
            Artist=?, Album=?, Title=?, Genre=?, TrackNumber=?, \
@@ -5998,9 +6004,7 @@ class MusicLocationTree(PlayCommonSelf):
         '''
 
         ''' July 18, 2023 New stuff'''
-        self.song_first_date_var = tk.StringVar()  # Optional so change row counts
         self.song_comment_var = tk.StringVar()  # Optional so change row counts
-        self.song_album_date = tk.StringVar()  # Optional so change row counts
 
         ''' VU Meter canvas object spanning META_DISPLAY_ROWS '''
         self.vu_width = 30  # Always stays this value
@@ -6018,7 +6022,7 @@ class MusicLocationTree(PlayCommonSelf):
         '''
         PAD_X = 5
 
-        self.play_frm.grid_columnconfigure(5, weight=1)
+        self.play_frm.grid_columnconfigure(5, weight=1)  # 5 when lyrics right
         self.play_frame3 = tk.Frame(self.play_frm)
         self.play_frame3.grid(row=0, rowspan=r, column=5,
                               padx=PAD_X, pady=PAD_X, sticky=tk.NSEW)
@@ -6079,7 +6083,7 @@ class MusicLocationTree(PlayCommonSelf):
 
         # Extra padding around label so RoundedRectangle has enough space
         self.lyrics_panel_label = tk.Label(
-            self.lyrics_frm, borderwidth=g.BTN_BRD_WID, padx=7, pady=7,
+            self.lyrics_frm, borderwidth=g.FRM_BRD_WID, padx=7, pady=7,
             text=self.lyrics_panel_text, font=g.FONT)
         self.lyrics_panel_label.place(relx=.6, rely=.5, anchor="center")
 
@@ -6126,12 +6130,12 @@ class MusicLocationTree(PlayCommonSelf):
         """
         self.build_play_btn_frm()  # Placement varies if Hockey enabled
 
-        ''' F4 Frame for Playlist (Chronology) '''
-        self.chron_frm = tk.Frame(self.play_top, borderwidth=g.BTN_BRD_WID,
+        ''' F4 Frame for Playlist (Chronology can be hidden) '''
+        self.chron_frm = tk.Frame(self.play_top, borderwidth=g.FRM_BRD_WID,
                                   relief=tk.GROOVE)
         #self.chron_frm.configure(background="Black")  # No effect
-        self.chron_frm.grid(row=8, column=0, sticky=tk.NSEW)
-        self.play_frm.grid_rowconfigure(8, weight=1)
+        self.chron_frm.grid(row=30, column=0, sticky=tk.NSEW)  # Aug 9/23 was 8
+        self.play_frm.grid_rowconfigure(30, weight=1)  # Aug 9/23 was 8
         self.chron_frm.grid_rowconfigure(0, weight=1)
         self.chron_frm.grid_columnconfigure(0, weight=1)  # Note weight to stretch
         self.build_chronology()  # Treeview in play order
@@ -6265,8 +6269,8 @@ class MusicLocationTree(PlayCommonSelf):
 
         ''' Frame for Buttons '''
         self.play_btn_frm = tk.Frame(self.play_top, bg="Olive",
-                                     borderwidth=g.BTN_BRD_WID, relief=tk.GROOVE)
-        self.play_btn_frm.grid(row=3, column=0, sticky=tk.NSEW)
+                                     borderwidth=g.FRM_BRD_WID, relief=tk.GROOVE)
+        self.play_btn_frm.grid(row=20, column=0, sticky=tk.NSEW)  # Aug 9/23 was 3
         # Leave empty row #2 for F3 frame (was row=2)
         self.play_btn_frm.grid_rowconfigure(0, weight=1)
         self.play_btn_frm.grid_columnconfigure(0, weight=0)
@@ -6414,6 +6418,7 @@ class MusicLocationTree(PlayCommonSelf):
 
         ''' Number of META_DISPLAY_ROWS used for VU meter height '''
         r = META_DISPLAY_ROWS - 1
+        r = self.meta_display_rows - 1
         _x, _y, _width, height = self.play_frm.grid_bbox(1, 0, 1, r)
 
         ''' Aug 3/23 - VU meter 27 pixels too short on first call '''
@@ -6431,6 +6436,7 @@ class MusicLocationTree(PlayCommonSelf):
     def move_lyrics_right(self):
         """ Chronology (playlist) tree visible. Move lyrics score right. """
         r = META_DISPLAY_ROWS  # July 18, 2023
+        r = self.meta_display_rows  # Aug 10/23 can change with song
         self.play_frm.grid_rowconfigure(r, weight=0)  # Lyrics Row will be gone now
         # May 9, 2023 - Reset for row 1, column 6 (1's based)
         self.play_frm.grid_columnconfigure(5, weight=1)  # Lyrics in column 5
@@ -6447,6 +6453,7 @@ class MusicLocationTree(PlayCommonSelf):
         """ The chronology (playlist) tree is hidden. Move lyrics score down. """
         # May 9, 2023 - Reset for row 6, column 2 (1's based)
         r = META_DISPLAY_ROWS  # July 18, 2023
+        r = self.meta_display_rows  # Aug 10/23 can change with song
         self.play_frm.grid_columnconfigure(5, weight=0)  # Column 5 gone
         self.play_frame3.grid(row=r, rowspan=1, column=1, columnspan=4, sticky=tk.NSEW)
         self.play_frm.grid_rowconfigure(r, weight=5)  # Lyrics get more space
@@ -6962,7 +6969,7 @@ class MusicLocationTree(PlayCommonSelf):
     #
     # ==============================================================================
 
-    def play_one_song(self, resume=False, chron_state=None):
+    def play_one_song(self, resume=False, chron_state=None, from_refresh=False):
         """ Play song from start. Called on startup, on playlist change and
             by next/prev/restart buttons.
 
@@ -6976,6 +6983,8 @@ class MusicLocationTree(PlayCommonSelf):
             from SQL history record Type: 'resume' Action: 'L00x' or 'P00000x'
         :param chron_state: Pass to "Show" (default) or "Hide" to force change.
             Used at startup 'chron_state' history, or Playlist load.
+        :param from_refresh: Called from refresh_play_top() that ran out of
+            music when song ended.
         """
 
         ''' Call:
@@ -7097,9 +7106,10 @@ class MusicLocationTree(PlayCommonSelf):
         E_WIDTH = 32
         # TODO: self.get_ffprobe_metadata() is called by missing_artwork()
         #       for every song. However .set() is only done here using meta
+        self.song_title_var.set(make_ellipsis(self.play_ctl.Title, E_WIDTH))
+        self.song_first_date_var.set(make_ellipsis(self.play_ctl.FirstDate, E_WIDTH))
         self.song_artist_var.set(make_ellipsis(self.play_ctl.Artist, E_WIDTH))
         self.song_album_var.set(make_ellipsis(self.play_ctl.Album, E_WIDTH))
-        self.song_title_var.set(make_ellipsis(self.play_ctl.Title, E_WIDTH))
         self.saved_DurationSecs = self.play_ctl.DurationSecs
         self.saved_DurationMin = tmf.mm_ss(self.saved_DurationSecs)
         ext.t_end('no_print')
@@ -7207,6 +7217,10 @@ class MusicLocationTree(PlayCommonSelf):
 
         # update treeview display and position treeview to current song
         self.update_lib_tree_song(iid)
+
+        ''' If 'from_refresh' splash removed and play_to_end is running '''
+        if from_refresh:
+            return True  # Return back to self.refresh_play_top() which exits
 
         ''' Remove 'M' splash screen when mserve.py was called by 'm'. '''
         if self.splash_toplevel:
@@ -7349,11 +7363,7 @@ class MusicLocationTree(PlayCommonSelf):
             Use this when stealing processing cycles from self.play_to_end()
             33 millisecond sleep gives 30 fps (frames per second) video speed.
 
-        PROBLEM: When clicking prev/next song, update missing artwork and
-            synchronize files lose processing cycles.
-            
-        April 24, 2023 - Must return something so checks in message.py will
-            know a function is being passed as valid "thread=..." parameter.
+            Must return True or False for message.py to check.
         """
 
         ''' Is system shutting down? '''
@@ -7458,7 +7468,7 @@ class MusicLocationTree(PlayCommonSelf):
         if self.play_ctl.path and self.play_ctl.pid == 0:
 
             ''' Aug 9/23 - experiment 2 '''
-            if True is True:
+            if True is False:
                 # Back to square 1. Art keeps spinning on song just ended and
                 # play_to_end doesn't trigger next song to start.
                 # play_to_end did not call refresh_play_top. The long running
@@ -7481,6 +7491,28 @@ class MusicLocationTree(PlayCommonSelf):
             # Called by def play_to_end which is waiting for song to end
             # by checking self.last_started != self.ndx and then pid == 0.
             # play to end was called by def play_one_song
+
+            ''' Aug 10/23 - experiment 3 
+                Previous/Restart and Next buttons DON'T work.
+                +10 seconds, -10 seconds and chronology toggle DO work.
+                If Update Metadata is running and start synchronizing files
+                then Update Metadata stops.
+
+                Only one-long running process should register at a time and
+                block others. Call build_buttons to remove broken buttons. '''
+            if True is True:
+                self.lib_top.update()  # Big guns for ShowInfo frozen.
+                ret = self.play_one_song(from_refresh=True)
+                self.lib_top.update_idletasks()  # Try pea-shooter instead.
+                if ret is None:
+                    print("Error self.play_one_song(from_refresh=True)",
+                          "returned 'None'")
+                    return False
+                if ret is not True:
+                    print("Error self.play_one_song(from_refresh=True)",
+                          "returned 'False'")
+                    return False
+                return True  # Called self.play_one_song successfully.
 
             ''' Aug 9/23 - experiment 1 '''
             if True is True:
@@ -9989,7 +10021,7 @@ mark set markName index"
         self.ltp_top.rowconfigure(0, weight=1)
 
         ''' Create master frame for artwork, song info and button '''
-        sam_frm = tk.Frame(self.ltp_top, borderwidth=g.BTN_BRD_WID, relief=tk.RIDGE)
+        sam_frm = tk.Frame(self.ltp_top, borderwidth=g.FRM_BRD_WID, relief=tk.RIDGE)
         sam_frm.grid(sticky=tk.NSEW)
 
         ''' Artwork image spanning 7 rows '''
@@ -10484,6 +10516,7 @@ mark set markName index"
         #   SourceMaster = <Tags> SourceDetail = <Notes Body> Comments = ?
         ''' Height of META_DISPLAY_ROWS used for notes height '''
         r = META_DISPLAY_ROWS  # July 18, 2023
+        r = self.meta_display_rows  # Aug 10/23 can change with song
         _x, _y, width, height = self.play_frm.grid_bbox(0, 0, r - 1, r - 1)
         print("4,4 width, height:", width, height)
         _x, _y, width, height = self.play_frm.grid_bbox(0, 0, r, r)
@@ -10840,7 +10873,7 @@ class FineTune:
 
         ''' frame2 - Treeview Listbox'''
         frame2 = tk.Frame(self.top, background=self.theme_bg,
-                          borderwidth=g.BTN_BRD_WID, relief=tk.RIDGE)
+                          borderwidth=g.FRM_BRD_WID, relief=tk.RIDGE)
         tk.Grid.rowconfigure(frame2, 1, weight=1)
         tk.Grid.columnconfigure(frame2, 0, weight=1)
         frame2.grid_columnconfigure(0, weight=1)
@@ -10915,7 +10948,7 @@ class FineTune:
 
         '''   B U T T O N   B A R   F R A M E   '''
         self.btn_bar_frm = tk.Frame(self.top, relief=tk.GROOVE,
-                                    background=self.theme_bg, borderwidth=g.BTN_BRD_WID)
+                                    background=self.theme_bg, borderwidth=g.FRM_BRD_WID)
         self.btn_bar_frm.grid(row=2, column=0, padx=2, pady=2, sticky=tk.W)
         self.build_btn_bar_frm()  # Defaults to 'top' for top main window
 
@@ -10996,7 +11029,7 @@ class FineTune:
 
         ''' Frame for Buttons '''
         self.btn_bar_frm = tk.Frame(self.top, bg="Olive",
-                                    borderwidth=g.BTN_BRD_WID, relief=tk.GROOVE)
+                                    borderwidth=g.FRM_BRD_WID, relief=tk.GROOVE)
         self.btn_bar_frm.grid(row=3, column=0, sticky=tk.NSEW)
 
         ''' Define three different button bars '''
@@ -12249,7 +12282,7 @@ class tvVolume:
         img.taskbar_icon(self.top, 64, 'white', 'lightskyblue', 'black')
 
         ''' Create master frame '''
-        self.vol_frm = tk.Frame(self.top, borderwidth=g.BTN_BRD_WID,
+        self.vol_frm = tk.Frame(self.top, borderwidth=g.FRM_BRD_WID,
                                 relief=tk.RIDGE)
         self.vol_frm.grid(column=0, row=0, sticky=tk.NSEW)
         self.vol_frm.columnconfigure(0, weight=1)
@@ -13717,7 +13750,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         ''' Set program icon in taskbar '''
         img.taskbar_icon(self.top, 64, 'white', 'lightskyblue', 'black')
         ''' Create master frame '''
-        self.frame = tk.Frame(self.top, borderwidth=g.BTN_BRD_WID,
+        self.frame = tk.Frame(self.top, borderwidth=g.FRM_BRD_WID,
                               relief=tk.RIDGE)
         self.frame.grid(sticky=tk.NSEW)
         self.frame.columnconfigure(0, weight=1)
@@ -15462,7 +15495,12 @@ def main(toplevel=None, cwd=None, parameters=None):
                          icon='error', root=True)
         # NOTE: Tempting to exit now but need to proceed to select different location.
     ''' Process sorted list to create SQL Music Table '''
-    ext.t_init('sql.create_tables()')
+    # PROBLEM: Music Table Rows as soon as directory is opened, however
+    #          a new location may not be saved and may never be accessed again.
+    #          populate_tables should only be called when 'new' location is saved.
+    #          Need function to prompt for location name, assign new code and
+    #          then call sql.populate_tables()
+    ext.t_init('sql.populate_tables()')
     sql.populate_tables(SORTED_LIST, START_DIR, PRUNED_DIR, LODICT)
     ext.t_end('no_print')  # sql.create_tables(): 0.1092669964
     ''' Pulse Audio Instance for sinks and volume. '''
