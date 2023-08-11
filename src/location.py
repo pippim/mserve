@@ -3743,6 +3743,9 @@ class Locations(LocationsCommonSelf):
             if not thr_ret:
                 print("fast_refresh() called thr(tk_after=tk_after))",
                       "and it returned False")
+                return False
+            #self.lib_top.update()  # Try big guns to fire Next button.
+            # Big gun works but causes sync to stop. Continue
             '''
             PROBLEM: When clicking prev/next song, update missing artwork and
                      synchronize files lose processing cycles. Get back when

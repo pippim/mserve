@@ -333,10 +333,9 @@ def uni_str(s):
         return s
 
     if s is None:
-        print_trace()
-        print("toolkit.py uni_str() string is None:", s, type(s))
-        return s  # Already unicode, cannot do twice or get error message:
-        # TypeError: decoding Unicode is not supported
+        #print_trace()
+        #print("toolkit.py uni_str() string is None:", s, type(s))
+        return s
 
     if isinstance(s, unicode):
         #print("toolkit.py uni_str() already unicode:", s, type(s))

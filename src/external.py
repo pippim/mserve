@@ -273,8 +273,8 @@ def kill_pid_running(active_pid):
         return 0                    # Programmer error
 
     try:
-        os.kill(active_pid, 9)      # 0 is status check, 9 kills
-        return True                 # pid killed
+        os.kill(active_pid, 9)  # 0 is status check, 9 kills
+        return True  # pid killed. prints "killed" to console if just killed self
     except OSError:
         ''' Problem when 'pulseaudio -k' run in CLI '''
         # toolkit.print_trace()
@@ -404,6 +404,55 @@ def legalize_song_name(name):
         name = name.replace('.', '_', ext - 1)  # Keep last extension
     '''
     return name
+
+
+def get_running_apps(version):
+    """ Return list of named tuples with PIDs and names of running python apps.
+        Used to ensure only one copy of application runs at a time.
+        For Windows use: WMI. Win32_Process function
+
+    :param version: When version 3, search is for python3, else python
+    :returns list of tuples: (pid, prg_name)
+    """
+    ''' Set python program version searched for. '''
+    search = "python"
+    if version and version.startswith("3"):
+        search += "3"  # Don't append "2" to make "pyhon2", no such thing
+
+    ''' Find all python programs running. If 'python', 'python3' returned too. '''
+    all_lines = os.popen("ps -ef | grep -v grep | grep " + search).\
+        read().strip().splitlines
+    apps_running = []
+    for line in all_lines():
+        ''' process single line of ps output '''
+        #line = ' '.join(line.split())       # Compress whitespace to single space
+        parts = line.split()  # No need to compress whitespace above - rework all
+        # Sample: 'rick', '3458', '2829', '0', 'Aug08', '?', '00:19:53',
+        #         '/usr/bin/python3', '/usr/bin/indicator-sysmonitor'
+
+        ''' Split out the program: 'python' or 'python3' '''
+        prg_path = parts[7]
+        base_parts = prg_path.split(os.sep)  # last will be python or python3
+        python_name = base_parts[-1]
+        if python_name == search:
+            #print("Keeping python version:", prg_path)
+            pass
+        else:
+            #print("Version requested:", str(version), "Skipping:", prg_path)
+            continue  # Wrong version
+
+        ''' Split out the app '''
+        base_parts = parts[8].split(os.sep)
+        #print("base_parts:", base_parts)
+        app = base_parts[-1]
+
+        pid = int(parts[1])  # give it name of 'pid' for clarity
+        apps_running.append((pid, app))
+        #print(parts)
+        #print("\tapps", (pid, app))
+
+    #print('pid_list:',PID)
+    return apps_running
 
 
 class GracefulKiller:

@@ -879,6 +879,7 @@ class PlayCommonSelf:
         Future Version 3 - July 18, 2023 column layout
             "OsFileName TEXT, OsAccessTime FLOAT, OsModifyTime FLOAT, " 
             "OsChangeTime FLOAT, OsFileSize INT, " 
+            "ffMajor TEXT, ffMinor TEXT, ffCompatible TEXT, " 
             "Title TEXT, Artist TEXT, Album TEXT, Compilation TEXT, " +1
             "AlbumArtist TEXT, AlbumDate TEXT, FirstDate TEXT, " +1 c2
             "CreationTime TEXT, DiscNumber TEXT, TrackNumber TEXT, " 
@@ -972,6 +973,7 @@ class PlayCommonSelf:
 
         ''' Play Top Button frame (_btn) and Buttons (_button) '''
         self.play_btn_frm = None            # tk.Frame(self.play_top, bg="Blue"
+        self.long_running_process = None    # True = remove most buttons
         self.close_button = None            # tk.Button(text="✘ Close
         self.shuffle_button = None          # tk.Button(text=" 🔀 Shuffle",
         self.prev_button = None             # tk.Button(text="⏮  Previous"
@@ -1174,6 +1176,8 @@ class MusicLocationTree(PlayCommonSelf):
         lcs.register_menu(self.enable_lib_menu)
         lcs.register_pending(self.get_pending_cnt_total)
         lcs.register_oap_cb(self.open_and_play_callback)
+        # Register self.start_long_running_process
+        # Register self.end_long_running_process
         lcs.register_FileControl(FileControl)  # Not used on Aug 7/23
 
         dtb = message.DelayedTextBox(title="Building music view",
@@ -1408,7 +1412,8 @@ class MusicLocationTree(PlayCommonSelf):
             frame3, text=self.play_text, width=BTN_WID + 2,
             command=self.play_selected_list)
         self.lib_tree_play_btn.grid(row=0, column=1, padx=2)
-        self.tt.add_tip(self.lib_tree_play_btn, "Play favorite songs.", anchor="nw")
+        self.tt.add_tip(self.lib_tree_play_btn, "Play favorite songs.",
+                        anchor="nw")
 
         ''' Refresh Treeview Button u  1f5c0 🗀 '''
         ''' 🗘  Update differences Button u1f5d8 🗘'''
@@ -3361,7 +3366,7 @@ class MusicLocationTree(PlayCommonSelf):
             new_base = new_artist + os.sep + new_album + os.sep + new_title
             new_path = PRUNED_DIR + new_base
 
-            """ July 18, 2023 conversion notes:
+            """ July 18, 2023 conversion notes: """
             artist_dir = OsFileName.rsplit(os.sep, 2)[0]
             if artist_dir == "Compilations":
                 new_compilation = "1"
@@ -3380,13 +3385,14 @@ class MusicLocationTree(PlayCommonSelf):
             try:
                 sql.cursor.execute(sql_cmd, (new_base, newArtist, newAlbum, 
                                              new_compilation, music_id))
-            """
+                """
 
             ''' Attempt to update Music Table with new OsFileName base_path '''
             sql_cmd = "UPDATE Music SET OsFileName=?, Artist=?, Album=? WHERE Id=?"
             try:
                 sql.cursor.execute(sql_cmd,
                                    (new_base, newArtist, newAlbum, music_id))
+                """
             except sql.sqlite3.IntegrityError:  # UNIQUE constraint failed: Music.OsFileName
                 print("UNIQUE constraint failed: Music.OsFileName")
                 title = "Cannot rename to duplicate file name"
@@ -4470,10 +4476,11 @@ class MusicLocationTree(PlayCommonSelf):
 
         ext.t_init("missing_artwork()")
         ''' TODO: Clear title when new button clicked '''
-        self.mus_top.title("Music files with missing artwork and " +
-                           "missing audio (in Red) - mserve")
+        self.mus_top.title("Music files with Missing Artwork (and " +
+                           "missing Audio in Red) - mserve")
 
         self.info.cast("Begin Update Metadata and display missing artwork.")
+        self.start_long_running_process()
 
         ''' Initialize reading file control instance '''
         self.mus_ctl = FileControl(self.lib_top, self.info, silent=True,
@@ -4495,6 +4502,7 @@ class MusicLocationTree(PlayCommonSelf):
 
         ''' Perform search for missing artwork & update metadata at same time '''
         self.mus_search.find_callback()  # attach desired to treeview
+        self.end_long_running_process()
 
         ''' Unpause music '''
         if forced_pause:
@@ -4615,7 +4623,8 @@ class MusicLocationTree(PlayCommonSelf):
         if self.missing_artwork_dtb:
             self.missing_artwork_dtb.close()  # Close delayed text box
         self.missing_artwork_dtb = None
-
+        if self.long_running_process:
+            self.end_long_running_process()
 
     def show_sql_hist(self, sbar_width=14):
         """ Open SQL History treeview. Patterned after show_sql_music() """
@@ -5835,8 +5844,7 @@ class MusicLocationTree(PlayCommonSelf):
 
     def play_selected_list(self):
         """ Play songs in self.saved_selections[]. Define buttons:
-                Close, Pause, Prev, Next, Commercial and Intermission
-        """
+                Close, Pause, Prev, Next, Commercial and Intermission """
         ''' Call:
          m.main()
           mserve.main()
@@ -5847,6 +5855,17 @@ class MusicLocationTree(PlayCommonSelf):
                play_to_end()  # play song until end
                 check ends  # even refresh_play_top() checks ending
                  '''
+
+        if self.long_running_process:
+            # TODO: message isn't appearing inside long running process
+            title = "Long running process in progress"
+            text += "Cannot start music after long running process started.\n\n"
+            text += "Music playing before long running process will continue "
+            text += "playing during long running."
+            message.ShowInfo(self.lib_top, title, text, 'left',
+                             thread=self.get_refresh_thread)
+            self.info.cast(title + "\n\n" + text)
+            return
 
         if self.play_top_is_active:  # Are we already playing songs?
             if self.play_on_top:
@@ -5959,7 +5978,7 @@ class MusicLocationTree(PlayCommonSelf):
 
         ''' Current song display variables '''
         self.meta_display_rows = META_DISPLAY_ROWS
-        # TODO: self.meta_display_rows set below when var is not None
+        # TODO: self.meta_display_rows conditional for optional vars not None
         self.song_title_var = self.make_one_song_var("song", 0)  # Was Title
         self.song_first_date_var = self.make_one_song_var("year", 1)  # Was Title
         self.song_artist_var = self.make_one_song_var("arist", 2)
@@ -6022,9 +6041,9 @@ class MusicLocationTree(PlayCommonSelf):
         '''
         PAD_X = 5
 
-        self.play_frm.grid_columnconfigure(5, weight=1)  # 5 when lyrics right
+        self.play_frm.grid_columnconfigure(5, weight=1)  # 0's-COL 5
         self.play_frame3 = tk.Frame(self.play_frm)
-        self.play_frame3.grid(row=0, rowspan=r, column=5,
+        self.play_frame3.grid(row=0, rowspan=r, column=5,  # 0's-ROW = r
                               padx=PAD_X, pady=PAD_X, sticky=tk.NSEW)
         self.play_frame3.grid_rowconfigure(1, weight=1)
         self.play_frame3.grid_columnconfigure(0, weight=1)
@@ -6262,11 +6281,22 @@ class MusicLocationTree(PlayCommonSelf):
         self.play_top.lift()
         self.play_on_top = True
 
+    def start_long_running_process(self):
+        """ Remove buttons from play_top that freeze process """
+        self.long_running_process = True
+        self.play_btn_frm.grid_forget()
+        self.build_play_btn_frm()
+
+    def end_long_running_process(self):
+        """ Restore "normal" buttons to play_top """
+        self.long_running_process = False
+        self.play_btn_frm.grid_forget()
+        self.build_play_btn_frm()
+
     def build_play_btn_frm(self):
         """ Create frame for play_top buttons.
-            Dynamically create buttons depending on 'play_hockey_allowed' state.
-        """
-
+            Dynamically create buttons depending on 'play_hockey_allowed'
+            Less buttons for long running process. """
         ''' Frame for Buttons '''
         self.play_btn_frm = tk.Frame(self.play_top, bg="Olive",
                                      borderwidth=g.FRM_BRD_WID, relief=tk.GROOVE)
@@ -6279,6 +6309,9 @@ class MusicLocationTree(PlayCommonSelf):
             button_list = ["Close", "Shuffle", "Prev", "Com", "PP", "Int", "Next", "Chron"]
         else:
             button_list = ["Close", "Shuffle", "Prev", "Rew", "PP", "FF", "Next", "Chron"]
+
+        if self.long_running_process:
+            button_list = ["Close", "PP", "Chron"]
 
         for col, name in enumerate(button_list):
             if name == "Close":
@@ -7503,7 +7536,7 @@ class MusicLocationTree(PlayCommonSelf):
             if True is True:
                 self.lib_top.update()  # Big guns for ShowInfo frozen.
                 ret = self.play_one_song(from_refresh=True)
-                self.lib_top.update_idletasks()  # Try pea-shooter instead.
+                self.lib_top.update_idletasks()  # Pea-shooter instead.
                 if ret is None:
                     print("Error self.play_one_song(from_refresh=True)",
                           "returned 'None'")
@@ -7600,7 +7633,7 @@ class MusicLocationTree(PlayCommonSelf):
             ''' This should ensure only one thread accesses at a time '''
             meta_update_succeeded = None
             if file_ctl.path.startswith(PRUNED_DIR):
-                ''' July 18, 2023 conversion
+                ''' July 18, 2023 conversion '''
                 meta_update_succeeded = sql.update_metadata(file_ctl)
                 '''
                 sql_key = file_ctl.path[len(PRUNED_DIR):]
@@ -7612,6 +7645,7 @@ class MusicLocationTree(PlayCommonSelf):
                         file_ctl.Genre, file_ctl.Track, file_ctl.Date,
                         file_ctl.DurationSecs, file_ctl.Duration,
                         file_ctl.DiscNumber, file_ctl.Composer)
+                '''
             else:
                 # July 21, 2023 - SQL created metadata from another location.
                 #   Needs work to merge for the most robust information.
@@ -10597,13 +10631,13 @@ mark set markName index"
             return line, None  # No SQL Music Table Row exists, use short line
         line = line + ARTIST_PREFIX + d['Artist'].encode("utf8")
         line = line + ALBUM_PREFIX + d['Album'].encode("utf8")
-        ''' July 18, 2023
+        ''' July 18, 2023 '''
         if d['FirstDate'] is not None:
             line = line + DATE_PREFIX + d['FirstDate'].encode("utf8")
         '''
         if d['ReleaseDate'] is not None:
             line = line + DATE_PREFIX + d['ReleaseDate'].encode("utf8")
-
+        '''
         line = line + CLOCK_PREFIX + d['Duration'].encode("utf8")
         # Replace "00:09:99" duration with "9:99" duration
         line = line.replace("00:0", "")
@@ -12542,29 +12576,37 @@ class FileControlCommonSelf:
         self.valid_artwork = None   # len(self.audio) > 0
         self.invalid_artwork = None  # len(self.audio) == 0
 
+        self.ffMajor = None         # ffMpeg .get('MAJOR_BRAND', "None")
+        self.ffMinor = None         # ffMpeg .get('MINOR VERSION', "None")
+        self.ffCompatible = None    # ffMpeg .get('COMPATIBLE BRANDS', "None") 
+        self.Title = None           # self.metadata.get('TITLE', "None")
         self.Artist = None          # self.metadata.get('ARTIST', "None")
         self.Album = None           # self.metadata.get('ALBUM', "None")
-        self.Title = None           # self.metadata.get('TITLE', "None")
         self.Compilation = None     # self.metadata.get('COMPILATION', "None")
         self.AlbumArtist = None     # self.metadata.get('ALBUM_ARTIST', "None")
-        self.Genre = None           # self.metadata.get('GENRE', "None")
+        self.AlbumDate = None       # self.metadata.get('RECORDING_DATE', "None")
         self.FirstDate = None       # self.metadata.get('DATE', "None")
         self.Date = None            # self.FirstDate
         self.CreationTime = None    # new July 13, 2023 'CREATION_TIME'
+        ''' ffMajor, ffMinor, ffCompatible, Title, Artist, Album, Compilation, 
+        AlbumArtist, AlbumDate, FirstDate, CreationTime, DiscNumber, TrackNumber,
+        Rating, Genre, Composer, Comment, Hyperlink, Duration, Seconds,
+        GaplessPlayback, PlayCount, LastPlayTime, LyricsScore, LyricsTimeIndex '''
+        self.DiscNumber = None      # new July 13, 2023 'DISC'
+        self.TrackNumber = None     # self.metadata.get('TRACK', "None")
+        self.Genre = None           # self.metadata.get('GENRE', "None")
         self.Composer = None        # new July 13, 2023 'COMPOSER'
         self.Comment = None         # new July 13, 2023 'COMMENT'
-        self.DiscNumber = None      # new July 13, 2023 'DISC'
-        self.Track = None           # self.metadata.get('TRACK', "None")
         self.Duration = None        # self.metadata.get('DURATION', "0.0,0")
         self.DurationSecs = None    # hh:mm:ss sting converted to int seconds
         self.GaplessPlayback = None  # self.metadata.get('GAPLESS_PLAYBACK', "None")
 
         ''' Pippim Metadata Add-ons '''
         self.RecordingDate = None   # temporary delete after code converted
-        self.AlbumDate = None       # Retrieved from mserve SQL Music Table
+        self.Rating = None          # self.metadata.get('GENRE', "None")
+        self.Hyperlink = None       # new July 13, 2023
         self.PlayCount = None       # new July 13, 2023
         self.LastTimePlayed = None  # new July 13, 2023
-        self.Hyperlink = None       # new July 13, 2023
         self.Comment = None         # new July 13, 2023
         self.Rating = None          # new July 13, 2023
 
@@ -12795,6 +12837,10 @@ class FileControl(FileControlCommonSelf):
 
         path_parts = self.path.split(os.sep)  # In case metadata missing song parts
 
+        self.ffMajor = self.metadata.get('MAJOR_BRAND', None)
+        self.ffMinor = self.metadata.get('MINOR_BRAND', None)
+        self.ffCompatible = self.metadata.get('COMPATIBLE_BRANDS', None)
+
         self.Title = self.metadata.get('TITLE', "None")
         if self.Title == "None":  # Title missing, use OsFileName part
             self.Title = path_parts[-1].encode('utf-8')
@@ -12809,36 +12855,37 @@ class FileControl(FileControlCommonSelf):
         if self.Album == "None":  # Album missing, use OsFileName part
             self.Album = path_parts[-2].encode('utf-8')
         self.Album = toolkit.uni_str(self.Album)
-
-        '''
-                        "Title TEXT, Artist TEXT, Album TEXT, Compilation TEXT, " +
-                        "AlbumArtist TEXT, AlbumDate TEXT, FirstDate TEXT, " +
-                        "CreationTime TEXT, DiscNumber TEXT, TrackNumber TEXT, " +
-                        "Rating TEXT, Genre TEXT, Composer TEXT, Comment TEXT, " +
-                        "Hyperlink TEXT, Duration TEXT, Seconds INT, " +
-                        "GaplessPlayback TEXT, PlayCount INT, LastPlayTime FLOAT, " +
-                        "LyricsScore BLOB, LyricsTimeIndex TEXT)")            
-        '''
+        ''' ffMajor, ffMinor, ffCompatible, Title, Artist, Album, Compilation, 
+        AlbumArtist, AlbumDate, FirstDate, CreationTime, DiscNumber, TrackNumber,
+        Rating, Genre, Composer, Comment, Hyperlink, Duration, Seconds,
+        GaplessPlayback, PlayCount, LastPlayTime, LyricsScore, LyricsTimeIndex '''
         self.Compilation = self.metadata.get('COMPILATION', "0")
-        self.AlbumArtist = self.metadata.get('ALBUM_ARTIST', "None")
+        self.AlbumArtist = self.metadata.get('ALBUM_ARTIST', None)
         self.AlbumDate = toolkit.uni_str(
-            self.metadata.get('RECORDING_DATE', "None"))  # iTunes RecordingDates
-        self.FirstDate = toolkit.uni_str(self.metadata.get('DATE', "None"))
+            self.metadata.get('RECORDING_DATE', None))  # iTunes RecordingDates
+        self.FirstDate = toolkit.uni_str(self.metadata.get('DATE', None))
         self.Date = self.FirstDate  # Temporary until rewrite
         self.CreationTime = toolkit.uni_str(
-            self.metadata.get('CREATION_TIME', "None"))
-        self.DiscNumber = toolkit.uni_str(self.metadata.get('DISC', "None"))
-        self.Track = toolkit.uni_str(self.metadata.get('TRACK', "None"))
+            self.metadata.get('CREATION_TIME', None))
+        self.DiscNumber = toolkit.uni_str(self.metadata.get('DISC', None))
+        self.TrackNumber = toolkit.uni_str(self.metadata.get('TRACK', None))
         self.RecordingDate = toolkit.uni_str(
-            self.metadata.get('RECORDING_DATE', "None"))  # iTunes RecordingDates
-        self.Genre = toolkit.uni_str(self.metadata.get('GENRE', "None"))
-        self.Composer = toolkit.uni_str(self.metadata.get('COMPOSER', "None"))
-        self.Comment = self.metadata.get('COMMENT', "None")
+            self.metadata.get('RECORDING_DATE', None))  # iTunes RecordingDates
+        self.Genre = toolkit.uni_str(self.metadata.get('GENRE', None))
+        self.Composer = toolkit.uni_str(self.metadata.get('COMPOSER', None))
+        self.Comment = self.metadata.get('COMMENT', None)
 
         self.Duration = self.metadata.get('DURATION', "0.0,0").split(',')[0]
         self.Duration = toolkit.uni_str(self.Duration)
-        self.Duration = self.Duration.split('.')[0]
-        self.DurationSecs = convert_seconds(self.Duration)  # Note must save in parent
+        #self.Duration = self.Duration.split('.')[0]
+        convert = self.Duration.split('.')  # fractional second to part 2
+        if convert:
+            convert_out = convert_seconds(convert[0])  # Note must save in parent
+            if convert[1]:
+                convert_out = str(convert_out) + "." + convert[1]
+            self.DurationSecs = float(convert_out)
+        else:
+            self.DurationSecs = 0.0  # Note must save in parent
         self.GaplessPlayback = self.metadata.get('GAPLESS_PLAYBACK', "0")
 
     def check_metadata(self):
@@ -12857,9 +12904,9 @@ class FileControl(FileControlCommonSelf):
         text = "Title: \t" + self.Title + \
             "\nArtist: \t" + self.Artist + \
             " \tAlbum: \t" + self.Album + \
-            "\nTrack:\t" + self.Track + \
-            "\tDate:\t" + self.Date + \
-            "\tDuration:\t" + self.Duration + "\n"
+            " \tYear: \t" + str(self.FirstDate) + \
+            "\nTrack:\t" + str(self.TrackNumber) + \
+            "\tDuration:\t" + str(self.Duration) + "\n"
 
         for entry in self.audio:
             text += "Audio: \t" + entry + "\n"
@@ -13341,6 +13388,11 @@ class FileControl(FileControlCommonSelf):
                     self.info.fact("Could not restore last access for: \t" +
                                    str(self.Title) +
                                    "\nLikely caused by fast clicking Next/Prev")
+        else:
+            ''' Song counts as being played > 80% '''
+            if not sql.increment_last_play(self.path):
+                self.info.fact("Error incrementing last play: \t" + self.Title,
+                               icon='error')
 
         #start_atime = self.stat_start.st_atime
         #end_atime = self.stat_start.st_atime
@@ -13368,9 +13420,6 @@ class FileControl(FileControlCommonSelf):
         if lcs.host_down:
             return None, None
 
-        '''' During a crash for other reasons, following popped up too '''
-        #     old_atime = old_stat.st_atime
-        # TypeError: coercing to Unicode: need string or buffer, NoneType found
         if self.path is None:
             self.info.cast("FileControl.touch_it() called with No path")
             return None, None
@@ -13434,14 +13483,12 @@ class FileControl(FileControlCommonSelf):
         ''' TODO: get_resume then reset it to zero when done. '''
 
     def close(self, action=None):
-        """
-            When > 80 % of song played (Fast Forward resets to 0%), then set
+        """ When > 80 % of song played (Fast Forward resets to 0%), then set
             last access time to now. When < 80% reset to saved settings when
             file was declared with .new(path)
 
             functions .log('start'), .log('stop') and .log('end') populated
-            self.statuses with status and event time.
-        """
+            self.statuses with status and event time. """
         self.close_WIP = None       # .close() is Work In Progress
         if self.path is None:
             FileControlCommonSelf.__init__(self)  # clear all from .new() down
@@ -15437,19 +15484,64 @@ def main(toplevel=None, cwd=None, parameters=None):
     monitor.center(root)
     root.withdraw()  # Remove default window because we have own windows
 
-    ''' Is another copy of mserve running? '''
-    result = os.popen("ps aux | grep -v grep | grep vu_meter.py").read().splitlines()
-    if len(result) > 0:
+    ''' Is another copy of mserve running? 
+        TODO: vu_meter should simply be killed if m and mserve are not running
+    '''
+    #result = os.popen("ps aux | grep -v grep | grep python").read().splitlines()
+    apps_running = ext.get_running_apps(PYTHON_VER)
+    another_running = m_running = mserve_running = vu_meter_running = False
+    this_pid = os.getpid()
+    print("this_pid:", this_pid, type(this_pid))
+    m_pid = mserve_pid = vu_meter_pid = 0
+    for pid, app in apps_running:
+        if app == "m" and pid != this_pid:
+            m_running = True
+            m_pid = pid
+            another_running = True
+        if app == "mserve.py" and pid != this_pid:
+            mserve_running = True
+            mserve_pid = pid
+            another_running = True
+        if app == "vu_meter.py":  # VU meter isn't launched by this_pid yet
+            another_running = True
+            vu_meter_pid = pid
+            vu_meter_running = True
+
+    if another_running:
         title = "Another copy of mserve is running!"
         text = "Cannot start two copies of mserve. Switch to the other version."
-        text += "\n\nIf the other version crashed end the processes still running:"
-        text += "\n\npython m"
-        text += "\npython mserve.py"
-        text += "\npython vu_meter.py"
+        text += "\n\nIf the other version crashed, the process(es) still running"
+        text += " can be killed:\n\n"
+        if m_running:
+            text += "\t'm' (" + str(m_pid) + ") - mserve splash screen\n"
+        if mserve_running:
+            text += "\t'mserve.py' (" + str(mserve_pid) + \
+                    ") - mserve without splash screen\n"
+        if vu_meter_running:
+            text += "\t'vu_meter.py' (" + str(vu_meter_pid) + \
+                    ") - VU Meter speaker to microphone\n"
+        text += "\nDo you want to kill previous crashed version?"
+
         print(title + "\n\n" + text)
-        message.ShowInfo(root, title=title, text=text, align='left',
-                         icon='error', thread=dummy_thread, root=True)
-        exit()
+        answer = message.AskQuestion(
+            root, title=title, text=text, align='left', confirm='no',
+            icon='error', thread=dummy_thread, root=True)
+
+        if answer.result != 'yes':
+            exit()
+
+        if m_pid:
+            print("killing m_pid:", m_pid)
+            if not ext.kill_pid_running(m_pid):
+                print("killing m_pid FAILED!:", m_pid)
+        if mserve_pid:
+            print("killing mserve_pid:", mserve_pid)
+            if not ext.kill_pid_running(mserve_pid):
+                print("killing mserve_pid FAILED!:", mserve_pid)
+        if vu_meter_pid:
+            print("killing vu_meter_pid:", vu_meter_pid)
+            if not ext.kill_pid_running(vu_meter_pid):
+                print("killing vu_meter_pid FAILED!:", vu_meter_pid)
 
     ''' Create initial instance of Locations class.'''
     lcs = lc.Locations(make_sorted_list)  # Pass reference

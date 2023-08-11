@@ -878,8 +878,10 @@ def save_window_geom(name, geom):
         sql.con.commit()
         return True
 
-    ''' We have the existing history record, simply replace the geometry field '''
-    sql_cmd = "UPDATE History SET Time=?, SourceMaster=? WHERE Id = ?"
+    ''' We have the existing history record, simply replace the geometry field 
+        Time is from creation, Timestamp is from update
+    '''
+    sql_cmd = "UPDATE History SET Timestamp=?, SourceMaster=? WHERE Id = ?"
 
     sql.hist_cursor.execute(sql_cmd, (time.time(), geom, sql.HISTORY_ID))
     sql.con.commit()
