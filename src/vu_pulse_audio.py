@@ -53,9 +53,7 @@ FADE_NO = 0  # Aids in debugging
 
 class PulseAudio:
     """ Manage list of sinks created from Pulse Audio information.
-        Fade in/out sound volumes when polled every 33ms.
-    """
-
+        Fade in/out sound volumes polled every 33ms. """
     def __init__(self, Info=None):
         self.info = Info  # Can also use: self.registerInfoCentre() to set
         self.pulse_is_working = True
@@ -64,7 +62,6 @@ class PulseAudio:
             self.pulse = pulsectl.Pulse()
             # print("pulse:", dir(pulse))
             ext.t_end('no_print')  # 0.0037407875
-
         except Exception as err:  # CallError, socket.error, IOError (pidfile), OSError (os.kill)
             self.pulse_is_working = False
             raise pulsectl.PulseError('mserve.py get_pulse_control() Failed to ' +
@@ -74,7 +71,6 @@ class PulseAudio:
         self.last_pid_sink = None  # Used for stability to ensure same sink
         self.curr_pid_sink = None  # number isn't classified as a new sink.
         self.aliens = None  # To turn down all apps except 'ffplay'
-
         self.last_sink_input_list = None  # = self.pulse.sink_input_list()
         self.sinks_now = None  # mserve formatted list of tuple sinks
         self.get_all_sinks()  # auto saves to self.sinks_now
@@ -84,7 +80,8 @@ class PulseAudio:
         self.fade_list = []
         self.dict = {}
 
-    def fade(self, sink_no_str, begin, end, duration, finish_cb=None, arg_cb=None):
+    def fade(self, sink_no_str, begin, end, duration,
+             finish_cb=None, arg_cb=None, step_cb=None):
         """ Add new self.dict to fade_list
             'finish_cb': is an optional callback when fade cycle is completed
             'arg_cb': is an optional parameter to the optional callback function
@@ -104,6 +101,7 @@ class PulseAudio:
         new_dict['end_perc'] = float(end)  # Ending volume percent
         new_dict['start_time'] = now  # Time entered queue + duration = leave
         new_dict['duration'] = float(duration)  # Seconds fade will last.
+        new_dict['step_cb'] = step_cb  # callback to set slider for each fade step
         new_dict['finish_cb'] = finish_cb  # callback when fade is ALL done
         new_dict['arg_cb'] = arg_cb  # optional argument to callback
         new_dict['curr_perc'] = float(begin)  # Required for reverse_fade()
@@ -162,6 +160,7 @@ class PulseAudio:
             if now >= fade_dict['start_time'] + fade_dict['duration']:
                 self.set_volume(fade_dict['sink_no_str'], fade_dict['end_perc'])
                 fade_dict['curr_perc'] = fade_dict['end_perc']
+                self.step_callback(fade_dict)  # Reflect volume in slider
                 self.fade_list[i] = fade_dict  # Update 'curr_perc' for reverse_fade()
                 self.poll_callback(fade_dict)  # Uses current fade_dict
                 continue
@@ -172,6 +171,7 @@ class PulseAudio:
             adjust = distance * current_duration / fade_dict['duration']
             fade_dict['curr_perc'] = fade_dict['begin_perc'] + adjust
             fade_dict['last_time'] = now
+            self.step_callback(fade_dict)  # Reflect volume in slider
             fade_dict['history'].append((str(fade_dict['curr_perc']),
                                          str(current_duration)))
             self.fade_list[i] = fade_dict  # Update 'curr_perc' for reverse_fade()
@@ -181,6 +181,12 @@ class PulseAudio:
         ''' Build new self.fade_list without the fades that just finished '''
         self.fade_list = \
             [x for x in self.fade_list if now < x['start_time'] + x['duration']]
+
+    @staticmethod
+    def step_callback(fade_dict):
+        """ If step callback, call function and pass current percent """
+        if fade_dict['step_cb'] and fade_dict['curr_perc']:
+            fade_dict['step_cb'](fade_dict['curr_perc'])
 
     def poll_fades_debug(self):
         """ Every 33ms (in theory) process next step of fade job

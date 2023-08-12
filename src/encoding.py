@@ -1341,12 +1341,14 @@ class RipCD:
         genre = None  # TODO: Get with tk.Entry like release date
         # genre = ""                  # None type breaks genre.decode("utf8")
 
-        sql.update_metadata(
+        ''' July 13, 2023 (actually August 13, 2023) have no FileControl 
+        sql.update_metadata(  # old version 2 parameters
             self.sqlOsFileName, self.selected_artist, self.selected_album,
             self.selected_title, genre, self.tracknumber, self.selected_date,
             self.song_seconds, self.song_duration, self.DiscNumber,
             self.selected_composer)
         '''
+        ''' Old version 1 parameters
         sql.update_metadata(
             self.sqlOsFileName, self.selected_artist, self.selected_album,
             self.selected_title, genre, self.tracknumber, self.selected_date,
@@ -1655,7 +1657,7 @@ class RipCD:
             artist = self.selected_artist
         ''' June 3, 2023 Create legal names - Replace '/', '?', ':' with '_' '''
         part = ext.legalize_dir_name(artist.encode("utf8")) + os.sep + \
-               ext.legalize_dir_name(self.selected_album.encode("utf8")) + os.sep
+            ext.legalize_dir_name(self.selected_album.encode("utf8")) + os.sep
         prefix = self.topdir.encode("utf8") + os.sep + part
         if not os.path.isdir(prefix):
             try:
@@ -1826,8 +1828,7 @@ if r['title'] != r['release-group']['title']
 
         for ndx, d in enumerate(self.release_list):
             # print('\nRelease ndx:', ndx, d['title'])
-            ''' Parent line with score, artist and album
-            '''
+            ''' Parent line with score, artist and album '''
             ''' July 17, 2023 skip false positive - mbz_get1 now does this test '''
             if d['title'] != d['release-group']['title']:
                 # In the first release group

@@ -96,10 +96,13 @@ References:
 
 #     TODO:
 #       Revise Metadata display FROM: Playlist #, Artist, Album, Title, Progress
+
 #       TO: Title, Year, Comment, Artist, Album, Album Date, Genre, Disc, Track, 
-#       Playlist #, Progress
+#       Compilation, Playlist #, Progress
 
 #       Hard-coded # 5 rows changes to # 11 rows, so use META_DISPLAY_ROWS = 11
+
+#       Row 0 in metadata panel will be volume slider, dacctivated during pause
 
         Metadata glitches
             .oga files do not store audio and video in separate streams. 
@@ -848,7 +851,12 @@ class PlayCommonSelf:
         self.xy_list = None                 # list(map(tuple, self.co_ords.
         self.breakpoint = None              # int(self.im.size * self.play/100
 
-        ''' Metadata Display fields longer names have ellipses '''
+        ''' Volume slider above Metadata Display fields '''
+        self.ffplay_slider = None           # volume slider above metadata vars
+        self.curr_ffplay_volume = None      # Retrieved from slider adjustments
+        self.set_ffplay_sink_WIP = None     # Only one value handled at a time
+
+        ''' Metadata Display fields under volume slider '''
         self.meta_display_rows = None       # Number or rows actually displayed
         self.song_title_var = None          # Song (Title) name
         self.song_first_date_var = None     # Song's first year of release
@@ -864,31 +872,12 @@ class PlayCommonSelf:
         self.song_number_var = None         # Playing song number in playlist
         self.song_progress_var = None       # Seconds (1 decimal) song played
 
-        ''' Aug 9/23 SQL columns:
-        Version 2 - July 13, 2023 column layout
-            "OsFileName TEXT, OsAccessTime FLOAT, OsModifyTime FLOAT, " 
-            "OsChangeTime FLOAT, OsFileSize INT, " 
-            "Title TEXT, Artist TEXT, Album TEXT, " 
-            "ReleaseDate TEXT, RecordingDate TEXT, " 
-            "CreationTime TEXT, DiscNumber TEXT, TrackNumber TEXT, " 
-            "Rating TEXT, Genre TEXT, Composer TEXT, " 
-            "Comment TEXT, Hyperlink TEXT, Duration TEXT, " 
-            "Seconds INT, PlayCount INT, LastPlayTime FLOAT, " 
-            "LyricsScore BLOB, LyricsTimeIndex TEXT)")
-
-        Future Version 3 - July 18, 2023 column layout
-            "OsFileName TEXT, OsAccessTime FLOAT, OsModifyTime FLOAT, " 
-            "OsChangeTime FLOAT, OsFileSize INT, " 
-            "ffMajor TEXT, ffMinor TEXT, ffCompatible TEXT, " 
-            "Title TEXT, Artist TEXT, Album TEXT, Compilation TEXT, " +1
-            "AlbumArtist TEXT, AlbumDate TEXT, FirstDate TEXT, " +1 c2
-            "CreationTime TEXT, DiscNumber TEXT, TrackNumber TEXT, " 
-            "Rating TEXT, Genre TEXT, Composer TEXT, Comment TEXT, "  
-            "Hyperlink TEXT, Duration TEXT, Seconds INT, " 
-            "GaplessPlayback TEXT, PlayCount INT, LastPlayTime FLOAT, " +1 
-            "LyricsScore BLOB, LyricsTimeIndex TEXT)")    
-        '''
-
+        ''' Aug 10/23 version 3 SQL columns:
+        OsFileName, OsAccessTime, OsModifyTime, OsChangeTime, OsFileSize,
+        ffMajor, ffMinor, ffCompatible, Title, Artist, Album, Compilation, 
+        AlbumArtist, AlbumDate, FirstDate, CreationTime, DiscNumber, TrackNumber, 
+        Rating, Genre, Composer, Comment, Hyperlink, Duration, Seconds, 
+        GaplessPlayback, PlayCount, LastPlayTime, LyricsScore, LyricsTimeIndex '''
         # Play frame VU meters - columns 2 & 3
         self.play_vu_meter_style = None     # 'led' = Use LED rectangles
         self.vu_width = None                # VU Meters (Left & Right channel
@@ -5917,8 +5906,7 @@ class MusicLocationTree(PlayCommonSelf):
         self.sync_paused_music = False          # Important this is False now
 
         ''' Gather data to paint VU Meter
-            TODO: June 6, 2023 - VU meters only work with nvi dia HDMI sound card source 
-        '''
+            TODO: June 6, 2023 - VU meters work with configured sound card source '''
         # /dev/hull prevents ALSA errors from clearing screen with errors:
         #   ALSA lib pcm.c: (snd_pcm_open_no update) Unknown PCM cards.pcm.rear
         #   ALSA lib pcm_route.c: Found no matching channel map
@@ -5953,7 +5941,7 @@ class MusicLocationTree(PlayCommonSelf):
                                  relief=tk.RIDGE)
         self.play_frm.grid(column=0, row=0, sticky=tk.NSEW)
         # 5 rows of text labels and string variables auto adjust with weight 1
-        r = META_DISPLAY_ROWS  # July 18, 2023
+        r = META_DISPLAY_ROWS + 1  # July 18, 2023 - Aug 11/23 + 1 for volume
         # Aug 10/23 - Button Bar used to be on row 3, changed to row 20 today
         # Unsure how below metadata rows were not in conflict before?
         for i in range(r):
@@ -5971,20 +5959,28 @@ class MusicLocationTree(PlayCommonSelf):
         self.art_label.bind("<Button-1>", self.pp_toggle)  # click artwork to pause/play
         # Leave empty row #5 for F3 frame (was row span=5)
 
-        ''' Controls to resize image to fit frame '''
-        self.play_frm.bind("<Configure>", self.on_resize)
-        self.start_w = self.play_frm.winfo_reqheight()
-        self.start_h = self.play_frm.winfo_reqwidth()
+        ''' Volume Slider https://www.tutorialspoint.com/python/tk_scale.htm '''
+        self.ffplay_slider = tk.Scale(
+            self.play_frm, orient=tk.HORIZONTAL, tickinterval=0, showvalue=0,
+            highlightcolor="Blue", activebackgroun="Gold", troughcolor="Black",
+            command=self.set_ffplay_sink, cursor='boat red red')
+        # highlightcolor doesn't seem to work?
+        # self.curr_volume
+        #self.curr_ffplay_volume = 100  # Don't think needed during declaration
+        #self.ffplay_slider.set(self.curr_ffplay_volume)
+
+        self.ffplay_slider.grid(row=0, column=1, columnspan=2, padx=5,
+                                sticky=tk.EW)
 
         ''' Current song display variables '''
-        self.meta_display_rows = META_DISPLAY_ROWS
+        self.meta_display_rows = META_DISPLAY_ROWS + 1
         # TODO: self.meta_display_rows conditional for optional vars not None
-        self.song_title_var = self.make_one_song_var("song", 0)  # Was Title
-        self.song_first_date_var = self.make_one_song_var("year", 1)  # Was Title
-        self.song_artist_var = self.make_one_song_var("arist", 2)
-        self.song_album_var = self.make_one_song_var("album", 3)
-        self.song_number_var = self.make_one_song_var("playlist №", 4)
-        self.song_progress_var = self.make_one_song_var("progress", 5)
+        self.song_title_var = self.make_one_song_var("song", 1)  # Was Title
+        self.song_first_date_var = self.make_one_song_var("year", 2)  # Was Title
+        self.song_artist_var = self.make_one_song_var("arist", 3)
+        self.song_album_var = self.make_one_song_var("album", 4)
+        self.song_number_var = self.make_one_song_var("playlist №", 5)
+        self.song_progress_var = self.make_one_song_var("progress", 6)
 
         ''' Aug 9/23 SQL columns in version 2 prep for version 3:
            Artist=?, Album=?, Title=?, Genre=?, TrackNumber=?, \
@@ -6024,6 +6020,12 @@ class MusicLocationTree(PlayCommonSelf):
 
         ''' July 18, 2023 New stuff'''
         self.song_comment_var = tk.StringVar()  # Optional so change row counts
+
+        ''' Controls to resize art to fit frame spanning metadata # rows '''
+        #         self.art_label.grid(row=0, rowspan=r+1, column=0, sticky=tk.W)
+        self.play_frm.bind("<Configure>", self.on_resize)
+        self.start_w = self.play_frm.winfo_reqheight()
+        self.start_h = self.play_frm.winfo_reqwidth()
 
         ''' VU Meter canvas object spanning META_DISPLAY_ROWS '''
         self.vu_width = 30  # Always stays this value
@@ -6179,6 +6181,56 @@ class MusicLocationTree(PlayCommonSelf):
             resume = False  # Can only resume once
             chron_state = None  # Extra safety
             self.play_from_start = True  # Review variable usage... it's weird.
+
+    def set_ffplay_sink(self, value=None):
+        """ Copied from from tvVolume.set_sink()
+            TODO: Check cross-fading songs there should be two "ffplay" running.
+            Called when slider changes value. Set sink volume to slider setting.
+            Credit: https://stackoverflow.com/a/19534919/6929343 """
+        if value is None:
+            print("Volume.set_ffplay_sink() 'value' argument is None")
+            return
+
+        if self.set_ffplay_sink_WIP:  # Already a WIP?
+            return  # Slider can send dozens of values before message responds
+        self.set_ffplay_sink_WIP = True  # function running, block future spam
+
+        curr_vol, curr_sink = self.get_volume("ffplay")
+        #print("self.curr_ffplay_volume:", self.curr_ffplay_volume,
+        #      "curr_vol:", curr_vol)
+        if self.pp_state == "Paused":
+            #self.ffplay_slider.set(curr_vol)  # no longer needed 2 hours later
+            title = "Music is paused"
+            text = "Cannot change volume when music is paused. Begin\n"
+            text += "playing music and then you can change the volume."
+            message.ShowInfo(self.play_top, title, text,
+                             thread=self.get_refresh_thread)
+            self.init_ffplay_slider(curr_vol)
+            self.set_ffplay_sink_WIP = False
+            return
+
+        pav.set_volume(curr_sink, value)
+        self.curr_ffplay_volume = value  # Record for saving later
+        self.set_ffplay_sink_WIP = False
+
+    def init_ffplay_slider(self, value):
+        """ Called above and from pav.poll_fades callback. """
+        value = int(value)  # Might be float from pav.poll_fades() callback?
+        self.set_ffplay_sink_WIP = True  # Not sure why we have to do this?
+        self.curr_ffplay_volume = value
+        self.ffplay_slider.set(self.curr_ffplay_volume)
+        self.play_top.update_idletasks()
+        self.set_ffplay_sink_WIP = False  # Not sure why we have to do this?
+
+    @staticmethod
+    def get_volume(name=None):
+        """ from tvVolume - Get volume of 'ffplay' before resetting volume """
+        all_sinks = pav.get_all_sinks()  # Recreates pav.sinks_now
+        for Sink in all_sinks:
+            if Sink.name == name:
+                return int(Sink.volume), Sink.sink_no_str
+
+        return None, None
 
     def make_one_song_var(self, text, row):
         """ Make text tkinter label and StringVar() field pair """
@@ -6577,6 +6629,7 @@ class MusicLocationTree(PlayCommonSelf):
             self.pp_toggle_fading_out = True  # Signal pause music fade out
             self.pp_toggle_fading_in = False  # cancel any play fade in signal
             pav.fade(self.play_ctl.sink, self.get_max_volume(), 25, .5,
+                     step_cb=self.init_ffplay_slider,
                      finish_cb=self.pp_finish_fade_out)
             self.secs_before_pause = self.play_ctl.elapsed()
             if self.play_hockey_active:  # Is TV hockey broadcast on air?
@@ -6595,6 +6648,7 @@ class MusicLocationTree(PlayCommonSelf):
             self.pp_toggle_fading_in = True  # Playing music fade in signal
             self.pp_toggle_fading_out = False  # Cancel pause fade out signal
             pav.fade(self.play_ctl.sink, 25, self.get_max_volume(), .5,
+                     step_cb=self.init_ffplay_slider,
                      finish_cb=self.pp_finish_fade_in)
 
             if self.play_ctl.state == 'start':
@@ -7203,10 +7257,8 @@ class MusicLocationTree(PlayCommonSelf):
             self.chron_toggle()  # Toggle chronology between Show and Hide
 
         ''' Start song with ffplay & Update tree view's last played time
-            If resume is passed we are starting up or changing location 
-        '''
-        ''' June 18, 2023 - Default for music to be playing '''
-        self.pp_state = "Playing"  # Is song_set_ndx() duplicating this?
+            If resume is passed we are starting up or changing location '''
+        self.pp_state = "Playing"
         self.set_pp_button_text()
 
         ''' Launch ffplay to play song using extra_opt for start position '''
@@ -7233,10 +7285,12 @@ class MusicLocationTree(PlayCommonSelf):
             ''' Restart Music from last session's save point. '''
             if self.resume_state == "Paused":  # Was resume saved as paused?
                 pav.set_volume(self.play_ctl.sink, 25)
+                self.init_ffplay_slider(25)
                 self.pp_state = "Paused"  # Set Play/Pause status to paused
                 self.set_pp_button_text()
             elif self.play_ctl.sink is not None:
                 pav.set_volume(self.play_ctl.sink, 100.0)
+                self.init_ffplay_slider(100.0)
 
             self.play_update_progress(self.resume_song_secs)  # mm:ss of mm:ss
             self.play_paint_lyrics()  # paint window fields, set highlight
@@ -7247,6 +7301,7 @@ class MusicLocationTree(PlayCommonSelf):
 
         elif self.play_ctl.sink is not None:
             pav.set_volume(self.play_ctl.sink, 100.0)
+            self.init_ffplay_slider(100.0)
 
         # update treeview display and position treeview to current song
         self.update_lib_tree_song(iid)
@@ -7848,10 +7903,8 @@ class MusicLocationTree(PlayCommonSelf):
     # ==============================================================================
 
     def play_vu_meter_blank(self):
-        """
-            Display blank VU Meters (Left and Right), when music paused.
-            Previous dynamic display rectangles have already been removed.
-        """
+        """ Display blank VU Meters (Left and Right), when music paused.
+            Previous dynamic display rectangles have already been removed. """
         self.play_vu_meter_blank_side(self.vu_meter_left,
                                       self.vu_meter_left_rect)
 
@@ -7859,10 +7912,7 @@ class MusicLocationTree(PlayCommonSelf):
                                       self.vu_meter_right_rect)
 
     def play_vu_meter_blank_side(self, canvas, rectangle):
-        """
-            Display one blank VU Meter (Left or Right), when music paused.
-        """
-        # Function to display single large rectangle vu_meter_left.grid(
+        """ Display one blank VU Meter (Left or Right), when music paused. """
         x0, y0, x1, y1 = 0, 0, self.vu_width, self.vu_height
         canvas.coords(rectangle, x0, y0, x1, y1)
         canvas.create_rectangle(x0, y0, self.vu_width, y1,
@@ -7870,11 +7920,7 @@ class MusicLocationTree(PlayCommonSelf):
                                 width=1, outline='black', tag="rect")
 
     def play_vu_meter(self, stop='no'):
-        """
-            Update VU Meter display, either 'mono' or 'left' and 'right'
-        """
-        # print('vu_meter_play')
-        # return
+        """ Update VU Meter display, either 'mono' or 'left' and 'right' """
         if stop == 'yes':
             # Stop display
             self.play_vu_meter_side(
@@ -7896,10 +7942,7 @@ class MusicLocationTree(PlayCommonSelf):
             self.vu_meter_right_rect, self.vu_meter_right_hist)
 
     def play_vu_meter_side(self, fname, canvas, rectangle, history):
-        """
-            Update one VU Meter display
-        """
-
+        """ Update one VU Meter display """
         if fname == 'stop':
             # Pausing music but vu_meter.py will wait for sounds and
             # not update the files with zero values. So manually do it here.
@@ -7982,19 +8025,10 @@ class MusicLocationTree(PlayCommonSelf):
         num_rect = height / 13  # How many rectangles will fit in height?
         if num_rect < 1:
             num_rect = 1  # Not enough height for rectangles
-
-        # r_hgt_pad = rectangle height + padding and sits on y-axis
-        #        r_hgt_pad = int(height / num_rect * 1.1)     # Use 10% padding
         r_hgt_pad = int(height / num_rect)
-
-        #r_hgt = int(r_hgt_pad * .9)  # Rectangle height
         r_hgt = r_hgt_pad - 2  # Experimental overrides
         if r_hgt < 1:
             r_hgt = 1  # Not enough height for rectangles
-
-        #pad = r_hgt_pad - r_hgt  # Padding height
-        #if pad < 0:
-        #    pad = 0
 
         canvas.delete("rect")  # Remove rectangles from last time
 
@@ -9565,10 +9599,8 @@ mark set markName index"
     # ==============================================================================
 
     def set_artwork_colors(self):
-        """
-            Get artwork for currently playing song.
-            Apply artwork colors to panels, buttons and text.
-        """
+        """ Get artwork for currently playing song.
+            Apply artwork colors to panels, buttons and text. """
         self.play_current_song_art, self.play_resized_art, self.play_original_art = \
             self.play_ctl.get_artwork(self.art_width, self.art_height)
 
@@ -12412,44 +12444,32 @@ class tvVolume:
         return None, None
 
     def set_sink(self, value=None):
-        """
-            Called when slider changes value. Set sink volume to slider setting.
-            Credit: https://stackoverflow.com/a/19534919/6929343
-        """
+        """ Called when slider changes value. Set sink volume to slider setting.
+            Credit: https://stackoverflow.com/a/19534919/6929343 """
         if value is None:
-            print("Volume.set_sink() 'value' argument is None")
+            print("tvVolume.set_sink() 'value' argument is None")
             return
-
         curr_vol, curr_sink = self.get_volume()
         pav.set_volume(curr_sink, value)
         self.curr_volume = value  # Record for saving later
 
     def read_vol(self):
-        """
-            Get last saved volume.  Based on get_hockey. If nothing found
-            set defaults.
-        """
-
+        """ Get last saved volume.  Based on get_hockey. If nothing found
+            set defaults. """
         self.curr_volume = 100  # mserve volume when TV commercial on air
         d = self.get_config_for_loc('hockey_state')
         if d is None:
             return None
-
         ''' Get hockey tv commercial volume '''
         if 25 <= int(d['Size']) <= 100:
             self.curr_volume = int(d['Size'])
-            #print("self.curr_volume 1:", self.curr_volume)  # 60
-
         self.commercial_secs.set(d['Count'])
         self.intermission_secs.set(int(d['Seconds']))
         self.tv_application.set(d['SourceDetail'])
-
         if self.last_volume:
             pav.fade(self.last_sink, self.last_volume, self.curr_volume, 1)
-
         self.slider.set(self.curr_volume)
         self.top.update_idletasks()
-
         return True
 
     def save_vol(self):
@@ -14995,6 +15015,9 @@ def play_padded_number(song_number, number_digits, prefix=NUMBER_PREFIX):
         Called from refresh_acc_times() and build_chron_line()
     """
     padded_number = ""
+    if song_number is None:
+        print("mserve.py play_padded_number() received song_number '<type>None'")
+        song_number = "?"
     this_digits = len(str(song_number))
     pad_digits = number_digits - this_digits
     for _ in range(pad_digits):
@@ -15002,11 +15025,14 @@ def play_padded_number(song_number, number_digits, prefix=NUMBER_PREFIX):
     return prefix + padded_number + str(song_number)
 
 
-def make_ellipsis(string, cutoff):
+def make_ellipsis(text, cutoff):
     """ Change: 'Long long long long' to: 'Long long...' """
-    if len(string) > cutoff:
-        return string[:cutoff - 3] + "..."
-    return string
+    if not text:
+        print("mserve.py make_ellipsis() no text passed")
+        return "???..."
+    if len(text) > cutoff:
+        return text[:cutoff - 3] + "..."
+    return text
 
 
 def sec_min_str(seconds):
@@ -15484,42 +15510,40 @@ def main(toplevel=None, cwd=None, parameters=None):
     monitor.center(root)
     root.withdraw()  # Remove default window because we have own windows
 
-    ''' Is another copy of mserve running? 
-        TODO: vu_meter should simply be killed if m and mserve are not running
-    '''
+    ''' Is another copy of mserve running? '''
     #result = os.popen("ps aux | grep -v grep | grep python").read().splitlines()
     apps_running = ext.get_running_apps(PYTHON_VER)
-    another_running = m_running = mserve_running = vu_meter_running = False
-    this_pid = os.getpid()
-    print("this_pid:", this_pid, type(this_pid))
-    m_pid = mserve_pid = vu_meter_pid = 0
+    this_pid = os.getpid()  # Don't commit suicide!
+    m_pid = mserve_pid = vu_meter_pid = 0  # Running PID's found later
+    ffplay_pid = ext.pid_list("ffplay")  # If more than one, kill the first seen
+    ffplay_pid = 0 if len(ffplay_pid) == 0 else ffplay_pid[0]
+
+    ''' Loop through all running apps with 'python' in name '''
     for pid, app in apps_running:
         if app == "m" and pid != this_pid:
-            m_running = True
-            m_pid = pid
-            another_running = True
+            m_pid = pid  # 'm' splash screen found
         if app == "mserve.py" and pid != this_pid:
-            mserve_running = True
-            mserve_pid = pid
-            another_running = True
+            mserve_pid = pid  # 'mserve.py' found
         if app == "vu_meter.py":  # VU meter isn't launched by this_pid yet
-            another_running = True
-            vu_meter_pid = pid
-            vu_meter_running = True
+            vu_meter_pid = pid  # 'vu_meter.py' found
 
-    if another_running:
+    ''' One or more fingerprints indicating another copy running? '''
+    if m_pid or mserve_pid or vu_meter_pid:
         title = "Another copy of mserve is running!"
         text = "Cannot start two copies of mserve. Switch to the other version."
         text += "\n\nIf the other version crashed, the process(es) still running"
         text += " can be killed:\n\n"
-        if m_running:
+        if m_pid:
             text += "\t'm' (" + str(m_pid) + ") - mserve splash screen\n"
-        if mserve_running:
+        if mserve_pid:
             text += "\t'mserve.py' (" + str(mserve_pid) + \
                     ") - mserve without splash screen\n"
-        if vu_meter_running:
+        if vu_meter_pid:
             text += "\t'vu_meter.py' (" + str(vu_meter_pid) + \
                     ") - VU Meter speaker to microphone\n"
+        if ffplay_pid:
+            text += "\t'ffplay' (" + str(ffplay_pid) + \
+                    ") - Background music player\n"
         text += "\nDo you want to kill previous crashed version?"
 
         print(title + "\n\n" + text)
@@ -15531,17 +15555,23 @@ def main(toplevel=None, cwd=None, parameters=None):
             exit()
 
         if m_pid:
-            print("killing m_pid:", m_pid)
+            #print("killing m_pid:", m_pid)
             if not ext.kill_pid_running(m_pid):
                 print("killing m_pid FAILED!:", m_pid)
         if mserve_pid:
-            print("killing mserve_pid:", mserve_pid)
+            #print("killing mserve_pid:", mserve_pid)
             if not ext.kill_pid_running(mserve_pid):
                 print("killing mserve_pid FAILED!:", mserve_pid)
         if vu_meter_pid:
-            print("killing vu_meter_pid:", vu_meter_pid)
+            #print("killing vu_meter_pid:", vu_meter_pid)
             if not ext.kill_pid_running(vu_meter_pid):
                 print("killing vu_meter_pid FAILED!:", vu_meter_pid)
+        if ffplay_pid:
+            #print("killing ffplay_pid:", ffplay_pid)
+            if not ext.kill_pid_running(ffplay_pid):
+                #print("killing ffplay_pid FAILED!:", ffplay_pid)
+                # ffplay may have finished before ShowInfo close
+                pass
 
     ''' Create initial instance of Locations class.'''
     lcs = lc.Locations(make_sorted_list)  # Pass reference
