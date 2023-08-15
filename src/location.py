@@ -107,6 +107,10 @@ FNAME_MOD_TIME        = MSERVE_DIR + "modification_time"
 TMP_STDOUT = g.TEMP_DIR + "mserve_stdout"  # _g7gh75 appended Defined mserve.py
 TMP_STDERR = g.TEMP_DIR + "mserve_stderr"  # _u4rt5m appended Defined mserve.py
 
+''' Temporary files for encoding.py '''
+IPC_PICKLE_FNAME = g.TEMP_DIR + "mserve_encoding_pickle"
+ENCODE_DEV_FNAME = g.TEMP_DIR + "mserve_encoding_last_disc"
+
 ''' Global variables
 '''
 LIST = []                           # List of DICT entries
@@ -1095,7 +1099,7 @@ class Locations(LocationsCommonSelf):
             text += "instantaneous unless some music files were changed.\n\n"
             text += "The first time will be fast if, the music files were "
             text += "created with 'cp -a' or 'cp -p'\nto preserve timestamps.\n\n"
-            text += "Music will keep playing but some buttons will be delayed. "
+            text += "Music will keep playing but some buttons will be disabled. "
             self.out_fact_show(title, text, align='left')
 
 
@@ -3516,7 +3520,7 @@ class Locations(LocationsCommonSelf):
                         break  # Programmer error
         self.fast_refresh(tk_after=True)  # Update play_top animations
 
-        ''' Tally sizes of all files to be copied '''
+        ''' Tally sizes of all files to be copied. For granular progress bars. '''
         all_sizes = 0
         command_count = len(self.cmp_command_list)
         for iid, command, size, src_to_trg, src_time, trg_time in \
@@ -3533,15 +3537,16 @@ class Locations(LocationsCommonSelf):
         ''' Process self.build_command_list(song) list '''
         for iid, command, size, src_to_trg, src_time, trg_time in \
                 self.cmp_command_list:
-            ''' src_to_trg values: True=source->target.  False=target->source '''
+            # Variable src_to_trg: True=source->target. False=target->source
 
             ''' Initialization '''
             if self.cmp_return_code != 0:
                 break  # Could be from previous loop too
 
-            for _i in range(10):  # About 1/2 second lag to test play_top
-                time.sleep(.05)
-                self.fast_refresh(tk_after=True)
+            ''' Uncomment code below for enough lag to watch progress bar '''
+            #for _i in range(10):  # About 1/2 second lag to test play_top
+            #    time.sleep(.05)
+            #    self.fast_refresh(tk_after=True)
 
             fake_path = self.fake_paths[int(iid)]  # TODO: put paths in tuple?
             src_path = self.real_from_fake_path(fake_path)
@@ -3560,7 +3565,7 @@ class Locations(LocationsCommonSelf):
             ''' 2. Run the copy or touch command '''
             start_time = time.time()
             if not self.run_one_command(command, size):
-                #self.cmp_return_code = 2  # Indicate how update failed
+                #self.cmp_return_code can be set to 2, 3, 4 or 5
                 break  # Run one command failed
 
             ''' 3. Refresh progress bar '''
@@ -3591,6 +3596,7 @@ class Locations(LocationsCommonSelf):
                 print("c_trg_path:", c_trg_path)
                 print("c_trg_size:", c_trg_size)
                 self.cmp_return_code = 10  # Files not same
+                # self.cmp_return_code UNUSED 6, 7, 8 and 9
                 break
 
         ''' Shutting down? '''
@@ -3607,7 +3613,6 @@ class Locations(LocationsCommonSelf):
             title = "location.py Locations.cmp_update_files()"
             text = "received non-zero self.cmp_return_code: "
             text += str(self.cmp_return_code)
-            # TODO: Add errors 1,2,3,4,5,
             self.out_cast_show_print(title, text, 'error')
 
         ''' Summary message '''
@@ -3728,14 +3733,11 @@ class Locations(LocationsCommonSelf):
     def fast_refresh(self, tk_after=False):
         """ Quickly update animations with no sleep after """
 
-        ''' Aug 9/23 - experiment 2. What if just called lib_top.update() '''
-        #self.parent.update()  # Responsive but no artwork spinning.
-        #return
-
         if not self.last_fast_refresh:
             self.last_fast_refresh = 0.0  # Not init. May be mserve.py call.
         elapsed = time.time() - self.last_fast_refresh
-        if elapsed > .02:  # regular is .033 for 30 FPS.
+        ''' Refresh designed for .033 seconds. If less art spins faster. '''
+        if elapsed > .02:  # .02 + refresh time close to .033 for 30 FPS.
             # Aug 9/23 elapsed change from .2 to .1 for missing_artwork_callback
             #          No performance improvement so it's simply metadata read
             thr = self.get_thread_func()  # main_top, play_top or lib_top
@@ -3744,30 +3746,11 @@ class Locations(LocationsCommonSelf):
                 print("fast_refresh() called thr(tk_after=tk_after))",
                       "and it returned False")
                 return False
-            #self.lib_top.update()  # Try big guns to fire Next button.
-            # Big gun works but causes sync to stop. Continue
-            '''
-            PROBLEM: When clicking prev/next song, update missing artwork and
-                     synchronize files lose processing cycles. Get back when
-                     closing play_top, but then get self.cmp_return_code = 2.
-                     
-                     After fix with cmp_top_update() still losing cycles until
-                     pause pressed in play_top then get cycles back but now
-                     get self.cmp_return_code = 4 (greater than 10 seconds
-                     waiting for 'cp verbose' stdout.  FIXED in refresh_play_top
-                     
-                     Then when next song automatically plays the summary
-                     message appears with 33 out of 75 files copied. The
-                     error message (ShowInfo) was automatically cleared.  FIXED
-                     
-                     Fix by stopping refresh_play_top() calling play_to_end()
-                     
-            '''
-            #if self.cmp_top:  # part of experiment 1. Not needed anymore
-            #    self.cmp_top.update()
-
             self.last_fast_refresh = time.time()
-        return self.cmp_top_is_active is True
+        if self.cmp_top_is_active:
+            return self.cmp_top_is_active is True
+        else:
+            return True  # Could be called from encoding.py, etc.
 
     @staticmethod
     def rm_file(fname):

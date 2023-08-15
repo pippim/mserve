@@ -1309,6 +1309,25 @@ def get_releases_by_recording_id(mbz_id):
 # noinspection PyBroadException
 def get_date_info(pass_back):
     """ Find first year date by parsing all releases for recording """
+
+    ''' HUNTING:
+
+"artist-credit": [
+        "artist": {
+            "id": "2e700147-56a3-416b-a95d-381ea42f947f",
+            "name": "Slade",
+"artist-credit-phrase": "Slade",
+"id": "843def33-3509-4e30-ab10-630422b95c55",
+"recording": {
+    "artist-credit": [
+            "artist": {
+                "disambiguation": "British rock band",
+                "id": "2e700147-56a3-416b-a95d-381ea42f947f",
+    "artist-credit-phrase": "Slade",
+    "id": "5b7be2d3-965e-4e43-8a1b-83be019a1c46",    
+
+    '''
+
     ''' For debugging save original mbz list in json format '''
     prt_dates = []  # Printing to debug file
     for d in pass_back:
@@ -1321,8 +1340,10 @@ def get_date_info(pass_back):
                 except:
                     prt_dates.append("Invalid rec_id:" + str(rec_id))
                     continue
+                if "artist-credit-phrase" in recordings:
+                    prt_dates.append("artist-credit-phrase in recordings")
                 for _ in recordings:
-                    ''' Only 1 recording record exists 
+                    ''' Only 1 recording record exists but still have to loop: 
                         ["recording", { 
                             "release-list":[{
                                 "title": "The Amazing Kamikaze Syndrome", 
@@ -1330,10 +1351,16 @@ def get_date_info(pass_back):
                                 "date": "1983-12-03", 
                     '''
                     rec_dict = recordings['recording']  # Needs loop to work?
+                    if "artist-credit-phrase" in rec_dict:
+                        prt_dates.append("artist-credit-phrase in rec_dict")
                     rel_list = rec_dict['release-list']
+                    if "artist-credit-phrase" in rel_list:
+                        prt_dates.append("artist-credit-phrase in rel_list")
                     first_date = None
 
                     for rel_entry in rel_list:
+                        if "artist-credit-phrase" in rel_entry:
+                            prt_dates.append("artist-credit-phrase in rel_entry")
                         try:
                             str_date = rel_entry["date"]
                             prt_dates.append("str_date: " + str(str_date))

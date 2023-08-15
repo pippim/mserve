@@ -67,7 +67,7 @@ BTN_WID = 17            # Width for buttons on main window
 BTN_WID2 = 15           # Width for buttons on play window
 BTN_BRD_WID = 3         # Width for button border
 FRM_BRD_WID = 2         # Width for frame border
-MSG_WIDTH_ADJUST = .85  # message.py data_w_l() override width (a bit too long)
+MSG_WIDTH_ADJUST = .88  # message.py data_w_l() override width (a bit too long)
 # TODO: Calculate PANEL_HGT (height)
 PANEL_HGT = 24          # Height of Unity panel
 

@@ -95,14 +95,18 @@ def tail(f, n, offset=0):
 
 def read_into_list(fname):
     """ Read text file into list """
-    with open(fname) as f:
-        return f.read().splitlines()
+    if os.path.isfile(fname):
+        with open(fname) as f:
+            return f.read().splitlines()
+    return None
 
 
 def read_into_string(fname):
     """ Read text file into string with "\n" separating lines """
-    with open(fname) as f:
-        return f.read()
+    if os.path.isfile(fname):
+        with open(fname) as f:
+            return f.read()
+    return None
 
 
 def check_command(name):
@@ -356,9 +360,15 @@ def remove_existing(filename):
 
 
 def join(topdir, bottom):
-    """ Based on: https://stackoverflow.com/a/51276165/6929343 """
+    """  BEWARE DOES NOT PLAY NICELY WITH unicode 
+    Based on: https://stackoverflow.com/a/51276165/6929343 """
     topdir = topdir.rstrip(os.sep)
-    return os.path.join(os.sep, topdir + os.sep, bottom)
+    bottom = bottom.lstrip(os.sep)
+    #return os.path.join(os.sep, topdir + os.sep, bottom)
+    # Doesn't work see encoding.py
+    # prefix = ext.join(self.topdir, part)
+    return os.path.join(os.sep, topdir.encode('utf-8') + os.sep, 
+                        bottom.encode('utf-8'))
 
 
 def legalize_dir_name(name):

@@ -1131,7 +1131,7 @@ def asc_time(Time=None):
     return time.asctime(time.localtime(Time))
 
 
-update_print_count = 11  # Change to 0 to print first 10 songs
+update_print_count = 0  # Change to 0 to print first 10 songs
 
 
 def update_metadata(fc, commit=True):
