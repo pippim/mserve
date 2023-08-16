@@ -31,27 +31,18 @@ warnings.simplefilter('default')  # in future Python versions.
 #       July 13 2023 - Upgrade to new SQL database.
 #       July 16 2023 - Prompt to override Artist, Album Artist, Album, AlbumDate,
 #           Genre & Compilations. FirstDate overriden in table cell.
+#       Aug. 15 2023 - Support M4A gstreamer and mutagen.
 #
 # ==============================================================================
 # noinspection SpellCheckingInspection
 """
 TODO:
 
-Grab FirstDate (DONE) and Composer (Doesn't Work!) so set to Artist.
-Set Genre same for all songs when one Genre is entered.
-Set Composer to Artist Name.
-Set AlbumArtist to "Various Artists" when Compilation = "1". Store in /Compilations
 Set Comment to entry variable at time of ripping.
-
-Double click on cd_tree row to edit:
-    Title Line - FirstYear & Genre
-    Release Line - AlbumArtist, Album & Compilation Flag (Use True/False)
-    Date Line - The AlbumDate
-Before ripping, all the line variables above are presented for final override.
-Also extra line with Comment about Album.
-
-M4A support:
-    https://mutagen.readthedocs.io/en/latest/api/mp4.html
+Fix os_song_format() and self.track_meta_title overlapping.
+Iron clad editing of song title with formatting coming after.
+Fix save picture (.oga) and image.save (.m4a) overlapping.
+Fix Dropdown Menu Tooltip showing up on top-left monitor. 
 
 MP3 support:
     https://mutagen.readthedocs.io/en/latest/api/mp3.html
@@ -62,9 +53,6 @@ ID3 Tag reference:
 How ffmpeg uses tags:
     https://gist.github.com/eyecatchup/0757b3d8b989fe433979db2ea7d95a01
     E.G.
-
-Windows      ID3v1.1 ID3v2.3 iTunes      Low-level ffmpeg key   ffmpeg example
-Album Artist   n/a 	  TPE2   Album Artist   aART   album_artist -metadata album_artist="Artist Name"
 
 Music Brainz NGS reference:
 https://buildmedia.readthedocs.org/media/pdf/python-musicbrainz-ngs-jonnyjd/latest/python-musicbrainz-ngs-jonnyjd.pdf
@@ -635,7 +623,8 @@ class RipCD:
             "and allow images and ID tags.  Both WAV and FLAC files take\n" + \
             "the largest space, about 35 MB.  OGA and AAC files balance size,\n" + \
             "about 6 MB, and quality with image and ID tag support."
-        self.tt.add_tip(fmt_bar, text=text, tool_type='menu')
+        self.tt.add_tip(fmt_bar, text=text, tool_type='menu',
+                        menu_tuple=(self.cd_top, 430, 10))  # First s/b 20 but 300
 
         # Quality menu
         self.quality_var = tk.IntVar()
@@ -675,7 +664,8 @@ class RipCD:
             "quality set from 30% to 100%.  The higher quality the larger\n" + \
             "size for the music file.  For OGA 70% appears the best balance\n" + \
             "between quality and file size.  Do some tests for yourself."
-        self.tt.add_tip(quality_bar, text=text, tool_type='menu', anchor="sw")
+        self.tt.add_tip(quality_bar, text=text, tool_type='menu', anchor="sw",
+                        menu_tuple=(self.cd_top, 650, 10))
 
         # Song naming format
         self.nam_var = tk.StringVar()
@@ -696,7 +686,8 @@ class RipCD:
             'MP4 files are are assigned as ".m4a". You can however\n' + \
             'choose the prefix of "99 " or "99 - " to prepend to filenames.\n\n' + \
             "Where '99' is the track number of the song."
-        self.tt.add_tip(nam_bar, text=text, tool_type='menu', anchor="nw")
+        self.tt.add_tip(nam_bar, text=text, tool_type='menu', anchor="sw",
+                        menu_tuple=(self.cd_top, 600, 10))
 
         # Target menu
         self.trg_var = tk.StringVar()
@@ -2575,29 +2566,7 @@ location="/media/rick/SANDISK128/Music/Compilations/Greatest Hits of the 80’s 
 
     def update_rip_status(self):
         """ Update songs done, songs todo, song in progress using
-            pattern_highlight
-
-        ERROR at close:
-
-          File "/usr/lib/python2.7/lib-tk/tkSimpleDialog.py", line 86, in __init__
-    self.wait_window(self)
-  File "/home/rick/python/message.py", line 516, in wait_window_func
-    result = self.thread()  # This calls thread, or gets the thread name
-  File "/home/rick/python/encoding.py", line 1355, in update_display
-    self.update_rip_status()  # Update ripping progress
-  File "/home/rick/python/encoding.py", line 2512, in update_rip_status
-    str(self.last_shade))
-  File "/home/rick/python/toolkit.py", line 619, in unhighlight_pattern
-    count=count, regexp=regexp)
-  File "/usr/lib/python2.7/lib-tk/Tkinter.py", line 3156, in search
-    return str(self.tk.call(tuple(args)))
-TclError: wrong # args: should be ".140564593153016.140564593152728.140564593152368.140564586036544.140564586035968 search ?switches? pattern index ?stopIndex?"
-^G2512
-
-
-        """
-        if not self.cd_top:
-            return  # Closing down
+            pattern_highlight """
         if self.skip_once:
             # Refresh every .2 seconds instead of every .1 second.
             self.skip_once = False
@@ -2613,8 +2582,7 @@ TclError: wrong # args: should be ".140564593153016.140564593152728.140564593152
             if self.curr_shade == 10:
                 self.curr_shade = 0
         else:
-            # This is our first time updating rip status
-            self.curr_shade = 0
+            self.curr_shade = 0  # First time updating rip status
 
         self.scrollbox.highlight_pattern(self.os_song_name,
                                          str(self.curr_shade))
@@ -2799,7 +2767,6 @@ if r['title'] != r['release-group']['title']
                 opened = False
             rel_id = self.cd_tree.insert("", "end", text=formatted,
                                          tags=tags, open=opened)
-            #self.cd_tree.tag_bind(rel_id, '<Motion>', self.cd_highlight_row)
 
             ''' Our second parent line with Musicbrainz ID '''
             formatted = 'Id: ' + d['id'] + sep + 'Barcode: ' + d.get('barcode', '')
@@ -2809,21 +2776,16 @@ if r['title'] != r['release-group']['title']
                 opened = False
             mbz_id = self.cd_tree.insert(rel_id, "end", text=formatted,
                                          tags=("mbz_id", "unchecked"), open=opened)
-            #self.cd_tree.tag_bind(mbz_id, '<Motion>', self.cd_highlight_row)
 
-        # self.cd_tree.item(mbz_id, open = opened)
             # If no release date, create an entry for user to select.
             if 'release-event-list' not in d:
                 d['release-event-list'][0]['date'] = "????"  # Denotes added here
 
-            # Temporary override for testing
-            # d['release-event-list'][0]['date'] = "????" # Denotes added here
-
             formatted = "Album date: " + d['release-event-list'][0]['date']
+            # Aug 2023 - Drop Country and use Compilation instead
             # +sep+ 'Country: ' + d['release-event-list'][0]['area']['name']
-            iid = self.cd_tree.insert(
+            self.cd_tree.insert(
                 mbz_id, "end", text=formatted, tags=("date_id", "unchecked"))
-            #self.cd_tree.tag_bind(iid, '<Motion>', self.cd_highlight_row)
 
             if 'label-info-list' in d:
                 # Sometimes [1] has catalog-number key and not [0]
@@ -2835,11 +2797,9 @@ if r['title'] != r['release-group']['title']
                     if 'catalog-number' in label:
                         formatted = "Catalog number: " + \
                                     label['catalog-number'] + sep + 'Label: ' + label_str
-                        iid = self.cd_tree.insert(
+                        self.cd_tree.insert(
                             mbz_id, "end", text=formatted,
                             tags=("label_id", "unchecked"))
-                        #self.cd_tree.tag_bind(iid, '<Motion>',
-                        #                      self.cd_highlight_row)
 
             if disc_found:
                 mdm_ndx = self.this_disc_number - 1
@@ -2871,29 +2831,15 @@ if r['title'] != r['release-group']['title']
             medium_id = self.cd_tree.insert(
                 rel_id, "end", text=formatted,
                 tags=("medium_id", "unchecked"), open=opened)
-            #self.cd_tree.tag_bind(medium_id, '<Motion>', self.cd_highlight_row)
 
-            # TODO medium-list is 1 for second CD, etc.
+            ''' Loop through all tracks in medium list '''
             tracks_list = d['medium-list'][mdm_ndx]['track-list']
-            # tracks_list = r['release']['medium-list'][mdm_ndx]['track-list']
             for i, track_d in enumerate(tracks_list):
-                # print('track_d:\n',track_d)
-                # position = track_d['position']
-                # if i == 0:
-                #    print("\n---------------------------------- First Track:")
-                #    pprint(track_d)
-                #    pass
                 recording_d = track_d['recording']
                 song = track_d['recording']['title']  # Becomes out_name
                 first_date = track_d['recording']['first-date'][:4]  # Year only
                 song_composer = ""  # This and artist currently hidden column
                 song_artist = track_d['recording']['artist-credit-phrase']
-
-                # Not sure why below getting pycharm errors...
-                # try:
-                #    first_date = track_d['recording']['first-date']
-                # else:
-                #    first_date = None
                 length = recording_d.get('length', '0')
 
                 # In database some tracks have no length key
@@ -2908,11 +2854,11 @@ if r['title'] != r['release-group']['title']
                 else:
                     track_name_fmt = "{:02} - {}"  # song name = '01 - song name'
 
-                # Where is '/' coming from that is replaced with '-'
+                # Aug 2023 - Where is '/' coming from that is replaced with '-'
                 out_name = track_name_fmt.format(i + 1, song.encode("utf8")) \
                     .replace('/', '-')
 
-                if self.disc_count > 1:  # '01 song name' = '2-01 song name'
+                if self.disc_count > 1:  # '01 song name' -> '2-01 song name'
                     # Prepend disc number to track (song) name
                     out_name = str(self.this_disc_number) + "-" + out_name
 
@@ -3010,7 +2956,6 @@ if r['title'] != r['release-group']['title']
             self.our_parent = self.cd_tree.insert(
                 rel_id, "end", tags=("images_id", "unchecked"), open=opened,
                 text="Artwork from: http://coverartarchive.org/release/" + mbz_id)
-            #self.cd_tree.tag_bind(self.our_parent, '<Motion>', self.cd_highlight_row)
 
         for d in image_list:
             # There are only dictionaries at list index 0
@@ -3019,24 +2964,20 @@ if r['title'] != r['release-group']['title']
                     # TODO: When size is 14 no file was downloaded
                     # size = str(len(d['thumbnails']['small-data']))
                     size = "{:,}".format(len(d['thumbnails']['small-data']))
-                    iid = self.cd_tree.insert(self.our_parent, "end", values=size,
-                                              text=d['thumbnails']['small'],
-                                              tags=("image_id", "unchecked"))
-                    #self.cd_tree.tag_bind(iid, '<Motion>', self.cd_highlight_row)
+                    self.cd_tree.insert(self.our_parent, "end", values=size,
+                                        text=d['thumbnails']['small'],
+                                        tags=("image_id", "unchecked"))
                 if 'large' in d['thumbnails']:
                     # size = str(len(d['thumbnails']['large-data']))
                     size = "{:,}".format(len(d['thumbnails']['large-data']))
-                    iid = self.cd_tree.insert(self.our_parent, "end", values=size,
-                                              text=d['thumbnails']['large'],
-                                              tags=("image_id", "unchecked"))
-                    #self.cd_tree.tag_bind(iid, '<Motion>', self.cd_highlight_row)
+                    self.cd_tree.insert(self.our_parent, "end", values=size,
+                                        text=d['thumbnails']['large'],
+                                        tags=("image_id", "unchecked"))
             if 'image' in d:
-                # size = str(len(d['image-data']))
                 size = "{:,}".format(len(d['image-data']))
-                iid = self.cd_tree.insert(self.our_parent, "end", values=size,
-                                          text=d['image'], 
-                                          tags=("image_id", "unchecked"))
-                #self.cd_tree.tag_bind(iid, '<Motion>', self.cd_highlight_row)
+                self.cd_tree.insert(self.our_parent, "end", values=size,
+                                    text=d['image'], 
+                                    tags=("image_id", "unchecked"))
 
     def cd_close(self):
         """ Wrapup """
@@ -3166,17 +3107,14 @@ if r['title'] != r['release-group']['title']
             self.clip_parent = self.cd_tree.insert(
                 rel_id, "end", text="Cover Art from clipboard",
                 tags=("clips_id", "unchecked"), open=True)
-            #self.cd_tree.tag_bind(self.clip_parent, '<Motion>',
-            #                      self.cd_highlight_row)
 
         self.clipboard_images.append(text)  # Add our image next in list
         self.image_from_clipboard_count += 1
 
         size = str(len(text))
-        iid = self.cd_tree.insert(
+        self.cd_tree.insert(
             self.clip_parent, "end", values=(size,), tags=("image_id", "unchecked"),
             text="Clipboard Image " + str(self.image_from_clipboard_count))
-        #self.cd_tree.tag_bind(iid, '<Motion>', self.cd_highlight_row)
 
     # ==============================================================================
     #

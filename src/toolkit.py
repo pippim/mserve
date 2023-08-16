@@ -22,6 +22,7 @@ from __future__ import with_statement       # Error handling for file opens
 #       Apr. 15 2023 - Move in normalize_tcl() from bserve.py for mserve.py.
 #       Jun. 15 2023 - New Tooltip anchor "sc" South Centered for banner_btn
 #       July 11 2023 - Delete unused methods to simplify mserve_config.py
+#       Aug. 15 2023 - 'menu' tooltips appear on top left mon. Add self.menu_tuple.
 #
 #==============================================================================
 
@@ -1906,8 +1907,9 @@ class CommonTip:
         self.normal_text_color = None   # self.widget.itemcget(...)       # 26
         self.normal_button_color = None  # .itemcget("button_color"...)   # 27
         self.anchor = None              # tooltip anchor point on widget  # 28
+        self.menu_tuple = None              # Optional parent needed for 'menu' # 29
 
-                                        # 'piggy_back' below with # 29 to # 32
+                                        # 'piggy_back' below with # 30 to # 33
         self.pb_alpha = None            # Update 'piggy_back' with alpha percent
         self.pb_leave = None            # Tell 'piggy_back' mouse left widget
         self.pb_ready = None            # Tell 'piggy_back' it can display msg
@@ -2011,10 +2013,11 @@ class ToolTips(CommonTip):
         self.normal_text_color = self.dict['normal_text_color']     # 26
         self.normal_button_color = self.dict['normal_button_color']  # 27
         self.anchor = self.dict['anchor']                           # 28
-        self.pb_alpha = self.dict['pb_alpha']                       # 29
-        self.pb_leave = self.dict['pb_leave']                       # 30
-        self.pb_ready = self.dict['pb_ready']                       # 31
-        self.pb_close = self.dict['pb_close']                       # 32
+        self.menu_tuple = self.dict['menu_tuple']                   # 29
+        self.pb_alpha = self.dict['pb_alpha']                       # 30
+        self.pb_leave = self.dict['pb_leave']                       # 31
+        self.pb_ready = self.dict['pb_ready']                       # 32
+        self.pb_close = self.dict['pb_close']                       # 33
 
 
     def fields_to_dict(self):
@@ -2047,10 +2050,11 @@ class ToolTips(CommonTip):
         self.dict['normal_text_color'] = self.normal_text_color     # 26
         self.dict['normal_button_color'] = self.normal_button_color  # 27
         self.dict['anchor'] = self.anchor                           # 28
-        self.dict['pb_alpha'] = self.pb_alpha                       # 29
-        self.dict['pb_leave'] = self.pb_leave                       # 30
-        self.dict['pb_ready'] = self.pb_ready                       # 31
-        self.dict['pb_close'] = self.pb_close                       # 32
+        self.dict['menu_tuple'] = self.menu_tuple                   # 29
+        self.dict['pb_alpha'] = self.pb_alpha                       # 30
+        self.dict['pb_leave'] = self.pb_leave                       # 31
+        self.dict['pb_ready'] = self.pb_ready                       # 32
+        self.dict['pb_close'] = self.pb_close                       # 33
 
 
     def log_event(self, action, widget, x, y):
@@ -2125,8 +2129,8 @@ class ToolTips(CommonTip):
             return
             # Could exit now and save second test
         
-        self.dict_to_fields()               # Dictionary to easy names
-        self.current_mouse_xy = (self.log_nt.x, self.log_nt.y)
+        self.dict_to_fields()  # Dictionary to easy names
+        self.current_mouse_xy = (self.log_nt.x, self.log_nt.y)  # pos in widget
 
         ''' OVERVIEW:
             Enter, wait, create, fade in, wait, fade out, destroy.  
@@ -2197,7 +2201,8 @@ class ToolTips(CommonTip):
 
     def move_window(self):
         """ Move window as mouse moves"""
-
+        if self.menu_tuple:
+            return  # Dropdown Menus don't have normal widget width or height
         # s = start, g = geometry, m = mouse, x = x-axis, y = y-axis
         sgx, sgy = self.window_geom.split('+')[1:3]
         smx, smy = self.window_mouse_xy[0:2]
@@ -2254,7 +2259,7 @@ class ToolTips(CommonTip):
     def add_tip(self, widget, text='Pass text here', tool_type='button',
                 visible_delay=VISIBLE_DELAY, visible_span=VISIBLE_SPAN,
                 extra_word_span=EXTRA_WORD_SPAN, fade_in_span=FADE_IN_SPAN,
-                fade_out_span=FADE_OUT_SPAN, anchor="sw", 
+                fade_out_span=FADE_OUT_SPAN, anchor="sw", menu_tuple=None,
                 pb_alpha=None, pb_leave=None, pb_ready=None, pb_close=None):
         """ Declare Tooltip """
         CommonTip.__init__(self)            # Initialize all tip instances
@@ -2262,6 +2267,7 @@ class ToolTips(CommonTip):
         self.widget = widget                # .140599674917592.140599679077192.140599679077336
         self.text = text                    # "This button \n does that."
         self.tool_type = tool_type          # 'button' or 'canvas_button' or 'menu'
+        self.menu_tuple = menu_tuple        # E.G. (self.cd_top, 200, 50)
         self.pb_alpha = pb_alpha            # Piggy-back callback when alpha changes
         self.pb_leave = pb_leave            # Piggy-back callback when mouse leaves widget
         self.pb_ready = pb_ready            # Piggy-back callback when tip can be displayed
@@ -2525,17 +2531,42 @@ class ToolTips(CommonTip):
 
         x = self.widget.winfo_rootx() + 20
         y = self.widget.winfo_rooty() + self.widget.winfo_height() + 10
+
         if self.tool_type == 'menu':
             # For menu bars the x & y is way off to 0,0
             # https://stackoverflow.com/a/47855128/6929343
-            parent = self.widget.master.master
-            x = parent.winfo_rootx() + self.widget.winfo_width()
-            y = parent.winfo_rooty() + self.widget.winfo_height()
-            x = x + self.current_mouse_xy[0]
-            y = y + self.current_mouse_xy[1] + 30
-
-        # Track mouse movements to change window geometry
-        self.window_mouse_xy = self.current_mouse_xy
+            #parent = self.widget.master.master
+            # Aug 15/23 encoding.py cd_top takes too far back past lib_top
+            # to root which appears to have been opened on top-left monitor
+            # before it was moved to top-right monitor.
+            #parent = self.widget.master  # Still on top-left monitor
+            parent = self.widget  # still on top-left monitor
+            # https://stackoverflow.com/a/27161829/6929343
+            #from Tkinter import Widget
+            #parent = self.widget.winfo_parent()
+            #parent = Widget._nametowidget(parent)
+            #x = parent.winfo_rootx() + self.widget.winfo_width()
+            #y = parent.winfo_rooty() + self.widget.winfo_height()
+            parent, menu_x, menu_y = self.menu_tuple
+            x = parent.winfo_rootx() + menu_x
+            y = parent.winfo_rooty() + menu_y
+            print("'menu_tuple' tooltip x, y:", x, y)  # 4730 1310
+            mouse_x = x + self.widget.winfo_reqwidth()
+            self.current_mouse_xy = (mouse_x, y)  # Reassign out of widget coords
+            print("self.current_mouse_xy:", self.current_mouse_xy)
+            #print("parent.winfo_rootx():", parent.winfo_rootx())  # 4179
+            #print("parent.winfo_rooty():", parent.winfo_rooty())  # 1049
+            #print("winfo_reqwidth():", self.widget.winfo_reqwidth())  # 479
+            #print("winfo_reqheight():", self.widget.winfo_reqheight())  # 242
+            #print("self.widget.winfo_width():", self.widget.winfo_width())  # 1
+            #print("self.widget.winfo_height():", self.widget.winfo_height())  # 1
+            # Format menu left edge first item 18, 23
+            # Format menu bottom right 404, 115
+            # Quality menu left edge first item 7, 18
+            # Quality menu 70% option 1/3 in: 123, 140
+            # Quality menu bottom right 471, 231
+            # Naming menu left edge first item 7, 18
+            # Naming menu bottom right 256, 57
 
         # Invert tooltip colors from current widget album art colors.
         #if self.tool_type is not 'canvas_button':  # comment June 15/23
@@ -2543,13 +2574,23 @@ class ToolTips(CommonTip):
             self.fg = self.widget["background"]
             self.bg = self.widget["foreground"]
         else:
-            self.fg = None
+            self.fg = None  # canvas button has no coloring
             self.bg = None
 
         #self.tip_window = tw = tk.Toplevel(self.widget)  # Original weird code...
-        self.tip_window = tk.Toplevel(self.widget)
-        self.tip_window.wm_overrideredirect(1)   # Undecorated
-        self.tip_window.wm_geometry("+%d+%d" % (x, y))
+        if self.menu_tuple:
+            # For 'menu' the self.widget is believed to be top-left monitor
+            self.tip_window = tk.Toplevel(parent)
+            self.tip_window.wm_overrideredirect(1)  # Undecorated
+            self.tip_window.wm_geometry("+%d+%d" % (x, y))
+            parent.update()
+        else:
+            self.tip_window = tk.Toplevel(self.widget)
+            self.tip_window.wm_overrideredirect(1)   # Undecorated
+            self.tip_window.wm_geometry("+%d+%d" % (x, y))
+
+        # Track mouse movements to change window geometry
+        self.window_mouse_xy = self.current_mouse_xy
 
         # https://www.tcl.tk/man/tcl8.6/TkCmd/wm.htm#M9
         # self.tip_window['background'] = self.bg
@@ -2582,8 +2623,9 @@ class ToolTips(CommonTip):
 
         self.tip_window.attributes("-alpha", 0)  # Start at 0%
         self.tip_window.update_idletasks()
-        self.window_geom = self.tip_window.wm_geometry()
-        self.override_window_geom(widget_nw, widget_ne, widget_se, widget_sw)
+        if not self.menu_tuple:
+            self.window_geom = self.tip_window.wm_geometry()
+            self.override_window_geom(widget_nw, widget_ne, widget_se, widget_sw)
         d_print('tip_window created at:', "+%d+%d" % (x, y), 'for:', self.widget)
 
     def override_window_geom(self, nw, ne, se, sw):

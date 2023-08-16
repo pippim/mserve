@@ -12607,7 +12607,7 @@ class FileControlCommonSelf:
         self.GaplessPlayback = None  # self.metadata.get('GAPLESS_PLAYBACK', "None")
 
         ''' Pippim Metadata Add-ons '''
-        self.RecordingDate = None   # temporary delete after code converted
+        self.CopyrightDate = None   # temporary delete after code converted
         self.Rating = None          # self.metadata.get('GENRE', "None")
         self.Hyperlink = None       # new July 13, 2023
         self.PlayCount = None       # new July 13, 2023
@@ -12874,15 +12874,17 @@ class FileControl(FileControlCommonSelf):
             self.metadata.get('CREATION_TIME', None))
         self.DiscNumber = toolkit.uni_str(self.metadata.get('DISC', None))
         self.TrackNumber = toolkit.uni_str(self.metadata.get('TRACK', None))
-        self.RecordingDate = toolkit.uni_str(
-            self.metadata.get('RECORDING_DATE', None))  # iTunes RecordingDates
+        self.CopyrightDate = toolkit.uni_str(
+            self.metadata.get('COPYRIGHT', None))  # iTunes Copyright
         self.Genre = toolkit.uni_str(self.metadata.get('GENRE', None))
         self.Composer = toolkit.uni_str(self.metadata.get('COMPOSER', None))
         self.Comment = self.metadata.get('COMMENT', None)
+        #print("sys.getsizeof(self.Comment):", sys.getsizeof(self.Comment))
+        # Empty comment is 16. for .oga file is 50.
 
         self.Duration = self.metadata.get('DURATION', "0.0,0").split(',')[0]
         self.Duration = toolkit.uni_str(self.Duration)
-        #self.Duration = self.Duration.split('.')[0]
+        #self.Duration = self.Duration.split('.')[0]  # Aug 10/23 - dec. secs
         convert = self.Duration.split('.')  # fractional second to part 2
         if convert:
             convert_out = convert_seconds(convert[0])  # Note must save in parent
