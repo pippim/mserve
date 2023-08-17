@@ -1884,7 +1884,7 @@ class MusicLocationTree(PlayCommonSelf):
     def pending_restore_grid(self):
         """ Popup frame to apply pending checkboxes in lib_tree """
         # When applying or canceling updates, restore open_states
-        self.lib_tree_open_states = self.get_all_open_states()
+        self.lib_tree_open_states = self.make_open_states()
         # NOTE: The very first check that restored the grid will appear
         #       As initially opened. All subsequent albums opened will
         #       be closed.
@@ -5477,7 +5477,7 @@ class MusicLocationTree(PlayCommonSelf):
         '''
 
         ''' Save expanded/collapsed state of Artists & Albums '''
-        self.lib_tree_open_states = self.get_all_open_states()
+        self.lib_tree_open_states = self.make_open_states()
         with open(lc.FNAME_LAST_OPEN_STATES, "wb") as f:
             pickle.dump(self.lib_tree_open_states, f)  # Save open states
 
@@ -5519,77 +5519,94 @@ class MusicLocationTree(PlayCommonSelf):
         with open(lc.FNAME_LAST_SONG_NDX, "wb") as f:
             pickle.dump(self.ndx, f)  # Save song index
 
-    def get_all_open_states(self):
-        """
-        Get expanded/collapsed state (opened/closed) of lib_tree Artists & Albums
-        Return list of tuples. Where each tuple contains:
-            (opened 0/1, artist or album name, tag with u'Artist' or u'Album')
+    def make_open_states(self):
+        """ Read lib_tree Artists & Albums to find those expanded (opened).
+            Add qualified to open states list.
 
-        Revised: June 24, 2023 - Was storing both the open and close states:
-            22028 Jun 24 09:49 last_open_states
-        Significant performance boost by storing just the open states:
-              912 Jun 24 10:19 last_open_states
-        Bug: Aug. 14, 2023 - Storing duplicates in list.
-             1283 Aug 14 20:27 last_open_states
-        Put in print statements and then bug disappeared
-               85 Aug 14 20:45 last_open_states
+            Return list of tuples. Where each tuple contains:
+                (Artist Name, Album Name or None, first_tag)
+                    When Album Name is None, that means Artist is Open.
+                    Can have Artist Open and an Album Open for two records.
+                    Can have Artist Open and two Albums Open for three records.
+                    first_tag is specifies "Artist" or "Album" type
 
-           NOTE Sometimes 1 and sometimes True:
-                Opened: True   |  Compilations   |  Artist
-                Opened: True   |  Greatest Hits of the 80’s [Disc #3 of 3]   |  Album
-                Opened: 1   |  The Cars   |  Artist
-                Opened: 1   |  Complete Greatest Hits   |  Album
+                    Can have Album Open and Artist Closed for a single record.
 
-        :return open_list: [(opened, text, tag), (opened, text, tag), ... ()]
+            NOTE: being called twice on shut down.
+
+        :return open_list: [(Artist Name, Album Name, tag_type), (), ... ()]
         """
         open_list = list()
-        #print("len(open_list):", len(open_list))
         for Artist in self.lib_tree.get_children():  # Process artists
-            self.append_open_state(Artist, open_list)  # Append opened, text, tag
+            self.append_if_open(Artist, None, open_list)
             for Album in self.lib_tree.get_children(Artist):  # Process albums
-                self.append_open_state(Album, open_list)  # Album text
-        #print("len(open_list):", len(open_list))
+                self.append_if_open(Artist, Album, open_list)
         return open_list
 
-    def get_open_state(self, Id):
-        """
-        Get expanded/collapsed state (opened/closed) of one Artist or Album:
+    def append_if_open(self, artistId, albumId, open_states_list):
+        """ NEW VERSION on Aug 17-23 
+            open_states_states list is mutable. 
+            Append when Artist/Album open
+            tag is for sanity check, but no insanity test yet. """
+
+        ''' Artist opened?, Artist Name, tag s/b "Artist" '''
+        art_opened, art_text, art_tag = self.get_tree_state(artistId)
+
+        ''' Artist is opened and No album passed. Append artist and return '''
+        if art_opened == 1 or art_opened is True:
+            test = (art_text, None, art_tag)
+            if test not in open_states_list:
+                open_states_list.append(tuple((art_text, None, art_tag)))
+            if not albumId:
+                return  # No album to check, leave now
+
+        ''' Album opened?, Album Name, tag s/b "Album" '''
+        alb_opened, alb_text, alb_tag = self.get_tree_state(albumId)
+        if alb_opened == 1 or alb_opened is True:
+            open_states_list.append(tuple((art_text, alb_text, alb_tag)))
+
+    def get_tree_state(self, Id):
+        """ Get expanded/collapsed state (opened/closed) of one Artist or Album:
             (opened 0/1, artist or album name, tag with u'Artist' or u'Album')
-        :return tuple: (opened, text, tag)
+        :return tuple: (opened, text, "Artist" or "Album" tag)
         """
-        item = self.lib_tree.item(Id)
-        first_tag = item['tags'][0]
-        if first_tag != "Artist" and first_tag != "Album":
-            print("Error first tag is:", first_tag)
+        try:
+            item = self.lib_tree.item(Id)
+        except tk.TclError:
+            # Error occurs when quitting mserve
+            # TclError: wrong # args: should be ".140484140082384.140484140082600.
+            # 140484140084544.140484140084616 item item ?option ?value??..."
+            #print("mserve.py get_tree_state() FAILED: self.lib_tree.item(Id)",
+            #      Id)
+            return 0, "Unknown", "Unknown"
         return item['open'], item['text'], item['tags'][0]  # First tag only
 
-    def append_open_state(self, Id, open_states_list):
-        """ open_states_states list is mutable. Append when Artist/Album open """
-        opened, text, tag = self.get_open_state(Id)
-        if opened == 1 or opened is True:
-            #print("Opened:", opened, "  | ", text, "  | ", tag)
-            open_states_list.append(tuple((1, text, tag)))
-
     def apply_all_open_states(self, open_states):
-        """
-        Set expanded/collapsed state (opened/closed) of lib_tree Artists & Albums
-        :param open_states: List of tuples [(opened, text, tag),... ()]
+        """  Set expanded (opened) state of lib_tree Artists & Albums
+        :param open_states: self.lib_tree_open_states[]
         """
         for Artist in self.lib_tree.get_children():  # Read all artists
-            self.apply_open_state(Artist, open_states)
+            self.apply_open_state(Artist, None, open_states)
             for Album in self.lib_tree.get_children(Artist):  # Read all albums
-                self.apply_open_state(Album, open_states)
+                self.apply_open_state(Artist, Album, open_states)
 
-    def apply_open_state(self, Id, open_states_list):
+    def apply_open_state(self, artistId, albumId, open_states_list):
         """ Set the expanded (Open) indicators (chevrons) for a single
-            artist or album.
-        """
-        _opened, text, tag = self.get_open_state(Id)  # lib_tree fields
-        ''' Create tuple for search into storage open states list 
-            Remap opened 1/True to always be 1 for testing if open'''
-        test_open = tuple((1, text, tag))  # only tag = "Artist" or "Album"
-        if test_open in open_states_list:
-            self.lib_tree.item(Id, open=True)
+            artist or album. """
+
+        ''' Get Artist Name using generic get_tree_state() method '''
+        art_opened, art_text, art_tag = self.get_tree_state(artistId)
+        if albumId is None:  # Artist only check?
+            test = (art_text, None, art_tag)
+            if test in open_states_list:  # If not in list already, add Artist
+                self.lib_tree.item(artistId, open=True)
+            return
+
+        ''' Check if Artist + Album should be opened '''
+        alb_opened, alb_text, alb_tag = self.get_tree_state(albumId)
+        test = (art_text, alb_text, alb_tag)
+        if test in open_states_list:
+            self.lib_tree.item(albumId, open=True)
 
     def load_last_selections(self):
 
@@ -5661,6 +5678,8 @@ class MusicLocationTree(PlayCommonSelf):
             self.lib_tree_open_states = pickle.load(f)
             #print('len(self.lib_tree_open_states):', len(self.lib_tree_open_states))
             #print('self.lib_tree_open_states[:10]:', self.lib_tree_open_states[:10])  # DEBUG
+            # Next line added Aug 17/23 but should always have been here?
+            self.apply_all_open_states(self.lib_tree_open_states)
             # self.lib_tree_open_states: [(0, u'10cc', u'Artist'),
             # (0, u'The Best of 10cc', u'Album'), (0, u'3 Doors Down',
         ext.t_end('no_print')
@@ -5769,7 +5788,7 @@ class MusicLocationTree(PlayCommonSelf):
         if update:
             self.lib_tree.item(iid, tags=tags)
 
-    def set_all_checks_and_opened(self, opened=True):
+    def set_all_checks_and_opened(self):
         """ Called from self.pending_reset() and self.load_last_selections()
             June 15, 2023 - called from self.playlists.apply_callback().
             June 19, 2023 - opened=False for playlists which do not record
@@ -5788,17 +5807,10 @@ class MusicLocationTree(PlayCommonSelf):
         selected_count = 0
         ext.t_init('Set open/closed, add BatchSelect totals')
         for Artist in self.lib_tree.get_children():  # Read all artists
-            if opened:
-                self.apply_open_state(Artist, self.lib_tree_open_states)
-                #print("self.lib_tree_open_states:", self.lib_tree_open_states)
-            else:
-                self.lib_tree.item(Artist, open=False)
-
+            self.apply_open_state(Artist, None, self.lib_tree_open_states)
             for Album in self.lib_tree.get_children(Artist):  # Read all albums
-                if opened:
-                    self.apply_open_state(Album, self.lib_tree_open_states)
-                else:
-                    self.lib_tree.item(Album, open=False)
+                ''' Opening an Album will automatically open it's Artist '''
+                self.apply_open_state(Album, None, self.lib_tree_open_states)
 
                 for Song in self.lib_tree.get_children(Album):  # Read all songs
                     ''' Is song in playlist? '''
@@ -9998,7 +10010,7 @@ mark set markName index"
 
     def save_open_states(self):
         """ Save state of playing / paused and seconds progress into song. """
-        open_states = self.get_all_open_states()
+        open_states = self.make_open_states()
         Comments = "Artists and Albums that were expanded when play closed."
         self.save_config_for_loc(
             'open_states', Target=json.dumps(open_states), Comments=Comments)
@@ -12804,7 +12816,8 @@ class FileControl(FileControlCommonSelf):
         # Song: Heart/GreatestHits/17 Rock and Roll (Live).m4a
         m = mutagen.File(self.last_path)
         for line in m:
-            print("mutagen line:", line)
+            #print("mutagen line:", line)  # keys are in lowercase with _ removed
+            pass
         #     m = mutagen.File(self.last_path, easy=True)
         #   File "/usr/lib/python2.7/dist-packages/mutagen/_file.py", line 251, in File
         #     return Kind(filename)
@@ -12873,11 +12886,21 @@ class FileControl(FileControlCommonSelf):
                     ''' Fudge for .oga files created with gstreamer '''
                     if key_unique == "CREATION_TIME" and held_duration:
                         self.metadata['DURATION'] = held_duration
+                        held_duration = None
                         if held_stream0:
                             self.metadata['STREAM #0'] = held_stream0
+                            held_stream0 = None
 
                     # Key "Stream #0" appears twice
                     self.metadata[key_unique] = val
+
+        ''' comment below for message.py test threading.RLock() wait_lock: '''
+        # Fudge for .oga files created with gstreamer. No 'CREATION_TIME'
+        if held_duration:
+            self.metadata['DURATION'] = held_duration
+            if held_stream0:
+                self.metadata['STREAM #0'] = held_stream0
+
 
         #print("sys.getsizeof(self.metadata):", sys.getsizeof(self.metadata))
         # size is a couple K. No images included.
@@ -12967,17 +12990,23 @@ class FileControl(FileControlCommonSelf):
             audio_pattern = ("Audio:", "Green", "Black")
         else:
             audio_pattern = ("Audio:", "Red", "White")
-            text += "Audio: \tNOT FOUND !!!"
+            text += "Audio: \tNOT FOUND !!!\n"
 
         for entry in self.artwork:
-            text += "Artwork: \t" + entry + "\n"
+            text += "Video: \t" + entry + "\n"
 
         if self.valid_artwork:
-            artwork_pattern = [("Video:", "Green", "Black"),
-                               ("Artwork:", "Green", "Black")]
+            #artwork_pattern = ("Video:", "Green", "Black"), \
+            #                  ("Artwork:", "Green", "Black")
+            #   File "/home/rick/python/mserve.py", line 14687, in view
+            #     self.zoom(show_close=True)  # Close button appears to close frame
+            #   File "/home/rick/python/mserve.py", line 14777, in zoom
+            #     pattern, fg, bg = entry  # fg + bg color names forms the tag name
+            # ValueError: need more than 2 values to unpack
+            artwork_pattern = ("Video:", "Green", "Black")
         else:
-            artwork_pattern = ("Artwork:", "Red", "White")
-            text += "Artwork: \tNOT FOUND !!!"
+            artwork_pattern = ("Video:", "Red", "White")
+            text += "Video: \tNOT FOUND !!!\n"
 
         patterns = [("Title:", "Green", "Black"),
                     ("Artist:", "Green", "Black"),

@@ -361,14 +361,15 @@ def check_upgrade(conn):
     loc_cursor = con.cursor()
 
     ''' Functions to fix errors in SQL database '''
-    # fd = FixData("Thu Jun 10 23:59:59 2023")  # Class for common fix functions
+    #fd = FixData("Thu Jun 10 23:59:59 2023")  # Class for common fix functions
 
-    # fd.del_music_ids(3939, 5000, update=False)  # Leave range 3939-5000 for awhile
+    #fd.del_music_ids(3913, 5000, update=False)  # Encoding CD test errors
     # Patch run Jun 02, 2023 with "update=True". 39 Music Ids deleted 3908->3946
     # Patch run Jun 07, 2023 with "update=True". 1 Music Ids deleted 2186->2186
     # Patch run Jun 10, 2023 with "update=True". 160 Music Ids deleted 3908->4067
     # Jun 11, 2023 Duplicate "The Very Best Things". 14 Music Ids deleted 1092->1105
     # Jun 11, 2023 Duplicate "The Very Best Things". 14 Music Ids deleted 1106->1119
+    # Aug 17, 2023 Encoding "Greatest Hits of the 80's". 27 Music Ids deleted 3913->3935
 
     #fd.fix_scrape_parm(update=False)
     # Patch run May 23, 2023 with "update=True". 66 corrupt scrape-parm deleted

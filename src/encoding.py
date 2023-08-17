@@ -2019,31 +2019,37 @@ class RipCD:
                                      stat.st_mtime, stat.st_ctime, self.song_size))
         sql.con.commit()
         last_music_id = sql.cursor.lastrowid
-        # returning last history # 20,659 when no insert (already exists)
+        # returning last history # 20,659 when no music (already exists)
 
         ''' Check if song existed previously in SQL. '''
         sql.cursor.execute("SELECT Id FROM Music WHERE OsFileName = ?",
                            [self.sqlOsFileName])
         d = dict(sql.cursor.fetchone())
+        sql.con.commit()  # Will this fix bug?
         self.music_id = d["Id"]
         if self.music_id != last_music_id:
             ''' The last encoding may be different quality and file size.
                 use new stat variables and leave metadata / lyrics on file. '''
             text = "Song file already encoded. Updating file times and size in SQL."
+            text += "\nSong: " + self.sqlOsFileName
+            text += "\nSQL Music Table Row ID: " + str(self.music_id)
+            text += "\nCurrent bug is ID +1: " + str(int(self.music_id) + 1)
             print("\n" + text)
-            print('self.music_id:', self.music_id, "last_music_id:", last_music_id)
             self.info.cast(text)
             sql_cmd = "UPDATE Music SET OsAccessTime=?, OsModifyTime=?, \
-                OsChangeTime=?, OsFileSize=? WHERE OsFileName = ?"
-            sql.cursor.execute(sql_cmd,
+                OsChangeTime=?, OsFileSize=? WHERE Id = ?"
+            #r = sql.con.execute(sql_cmd,  # NO DIFFERENCE
+            sql.cursor.execute(sql_cmd,  # ORIGINAL NORMAL METHOD
                                (stat.st_atime, stat.st_mtime, stat.st_ctime,
-                                self.song_size, self.sqlOsFileName))
+                                self.song_size, self.music_id))
             sql.con.commit()  # This update not working, times show 1/2 hour ago.
-
-        self.rip_ctl.new(self.os_full_path)  # Setup FileControl() after SQL added
-
+            #print("using sql.con.execute for test. r = ", r)
+            # <sqlite3.Cursor object at 0x7f9f748c2c00>
+            action = 'edit'
+        else:
+            action = 'init'
         sql.hist_add(
-            time.time(), self.music_id, g.USER, 'file', 'init',
+            time.time(), self.music_id, g.USER, 'file', action,
             self.track_artist, self.os_song_name, self.sqlOsFileName,
             self.song_size, self.song_seconds, self.encode_track_time,
             "encoded: " + time.asctime(time.localtime(time.time())))
@@ -2052,6 +2058,8 @@ class RipCD:
             self.track_artist, self.os_song_name, self.sqlOsFileName,
             self.song_size, self.song_seconds, self.encode_track_time,
             "finished: " + time.asctime(time.localtime(time.time())))
+
+        self.rip_ctl.new(self.os_full_path)  # Setup FileControl() after SQL added
 
     def add_sql_metadata(self):
         """ July 13, 2023 - Need DiscNumber, FirstDate, CreationTime, Composer,

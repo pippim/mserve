@@ -18,6 +18,7 @@ from __future__ import with_statement  # Error handling for file opens
 #       July 12 2023 - Support to/from mserve_config.py
 #       July 15 2023 - AskString cursor invisible. Use background="white".
 #       Aug. 09 2023 - Add g.MSG_WIDTH_ADJ and self.title2 title width support.
+#       Aug. 17 2023 - threading.RLock() prevent to messages waiting at once.
 #
 #==============================================================================
 
@@ -50,6 +51,7 @@ except ImportError:  # No module named subprocess32
 import re
 import time
 import datetime
+import threading  # RLock() prevent two messages waiting for input.
 import webbrowser
 
 # mserve modules
@@ -505,21 +507,66 @@ def textbox(box, text, align, lines):
     box.configure(state="disabled")
 
 
+# https://stackoverflow.com/a/16568426/6929343
+wait_lock = threading.RLock()  # Not working in wait_window_func()
+# https://stackoverflow.com/a/31851600/6929343
+from threading import Thread  # try in __init__
+
+
 def wait_window_func(self):
     """ Even with no thread passed, this allows other windows to remain
-        updating graphic animations at 30 fps """
-    if not self.thread:
-        return
-    while self.winfo_exists():  # Loop while our window exists
-        now = time.time()
-        if self.thread:  # Pass control to animations if thread passed
-            result = self.thread()  # This calls thread, or gets the thread name
-            if callable(result):  # The result isn't True/False but rather a thread
-                result()  # Aug 4/23 Call result of get_thread_func that changes
-        sleep = 33 - (time.time() - now) * 1000
-        if sleep < 1:
-            sleep = 1
-        self.top_level.after(int(sleep))
+        updating graphic animations at 30 fps
+
+        BUG when one window waiting, music player starts new song and sends
+        message the music file is invalid:
+  File "/home/rick/python/message.py", line 518, in wait_window_func
+    result()  # Aug 4/23 Call result of get_thread_func that changes
+  File "/home/rick/python/mserve.py", line 7600, in refresh_play_top
+    ret = self.play_one_song(from_refresh=True)
+  File "/home/rick/python/mserve.py", line 7211, in play_one_song
+    self.corrupted_music_file(self.current_song_path)  # No blocking dialog box
+  File "/home/rick/python/mserve.py", line 6791, in corrupted_music_file
+    title="Invalid music file - mserve")
+  File "/home/rick/python/message.py", line 413, in __init__
+    simpledialog.Dialog.__init__(self, parent, title=title)
+  File "/usr/lib/python2.7/lib-tk/tkSimpleDialog.py", line 86, in __init__
+    self.wait_window(self)
+
+RuntimeError: maximum recursion depth exceeded while calling a Python object
+OrderedDict([('INPUT #0', "ogg, from
+'/media/rick/SANDISK128/Music/April Wine/The Hits/09 Rock Myself to Sleep.oga':"),
+('DISCID', '1b106f13'), ('MUSICBRAINZ_DISCID', 'aBDD8PM52w34Sn7q3cTxQabfLFk-'),
+('TRACKTOTAL', '19'), ('TRACK', '9/19'), ('ARTIST', 'April Wine'),
+('ALBUM_ARTIST', 'April Wine'), ('ALBUM', 'The Hits'),
+('TITLE', 'Rock Myself to Sleep'), ('DATE', '1987'),
+('STREAM #0', '1: Video: png, rgba(pc), 500x446, 90k tbr, 90k tbn, 90k tbc'),
+('COMMENT', 'Cover (front)'), ('TITLE(1)', 'Rock Myself to Sleep')])
+^C
+mserve.py refresh_lib_top() closed by SIGTERM
+
+    Duplicate bug by commenting these lines:
+        # Fudge for .oga files created with gstreamer. No 'CREATION_TIME'
+        if held_duration:
+            self.metadata['DURATION'] = held_duration
+            if held_stream0:
+                self.metadata['STREAM #0'] = held_stream0
+
+    Then have message open when song begins to play.
+
+    """
+    with wait_lock:
+        if not self.thread:
+            return
+        while self.winfo_exists():  # Loop while our window exists
+            now = time.time()
+            if self.thread:  # Pass control to animations if thread passed
+                result = self.thread()  # This calls thread, or gets the thread name
+                if callable(result):  # The result isn't True/False but rather a thread
+                    result()  # Aug 4/23 Call result of get_thread_func that changes
+            sleep = 33 - (time.time() - now) * 1000
+            if sleep < 1:
+                sleep = 1
+            self.top_level.after(int(sleep))
 
 
 if 'BIG_SPACE' not in locals() and 'BIG_SPACE' not in globals():
