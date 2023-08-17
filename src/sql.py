@@ -322,6 +322,39 @@ def open_db(LCS=None):
     ''' For mserve.py rename_file() function to rename "the" to "The" '''
     con.execute("PRAGMA case_sensitive_like = ON;")
 
+    ''' https://stackoverflow.com/a/19332352/6929343
+def get_schema_version(conn):
+    cursor = conn.execute('PRAGMA user_version')
+    return cursor.fetchone()[0]
+
+def set_schema_version(conn, version):
+    conn.execute('PRAGMA user_version={:d}'.format(version))
+
+def initial_schema(conn):
+    # install initial schema
+    # ...
+
+def ugrade_1_2(conn):
+    # modify schema, alter data, etc.
+
+# map target schema version to upgrade step from previous version
+upgrade_steps = {
+    1: initial_schema,
+    2: ugrade_1_2,
+}
+
+def check_upgrade(conn):
+    current = get_schema_version(conn)
+    target = max(upgrade_steps)
+    for step in range(current + 1, target + 1):
+        if step in upgrade_steps:
+            upgrade_steps[step](conn)
+            set_schema_version(conn, step)    
+    '''
+    user_cursor = con.execute("PRAGMA user_version;")
+    user_version = user_cursor.fetchone()[0]
+    print("sql database user_version:", user_version)
+
     con.row_factory = sqlite3.Row
     cursor = con.cursor()
     hist_cursor = con.cursor()

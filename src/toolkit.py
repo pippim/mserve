@@ -2533,6 +2533,7 @@ class ToolTips(CommonTip):
         y = self.widget.winfo_rooty() + self.widget.winfo_height() + 10
 
         if self.tool_type == 'menu':
+            ''' Menu objects have no parent and no widget _winfo(). '''
             # For menu bars the x & y is way off to 0,0
             # https://stackoverflow.com/a/47855128/6929343
             #parent = self.widget.master.master
@@ -2550,10 +2551,10 @@ class ToolTips(CommonTip):
             parent, menu_x, menu_y = self.menu_tuple
             x = parent.winfo_rootx() + menu_x
             y = parent.winfo_rooty() + menu_y
-            print("'menu_tuple' tooltip x, y:", x, y)  # 4730 1310
+            #print("'menu_tuple' tooltip x, y:", x, y)  # 4730 1310
             mouse_x = x + self.widget.winfo_reqwidth()
             self.current_mouse_xy = (mouse_x, y)  # Reassign out of widget coords
-            print("self.current_mouse_xy:", self.current_mouse_xy)
+            #print("self.current_mouse_xy:", self.current_mouse_xy)
             #print("parent.winfo_rootx():", parent.winfo_rootx())  # 4179
             #print("parent.winfo_rooty():", parent.winfo_rooty())  # 1049
             #print("winfo_reqwidth():", self.widget.winfo_reqwidth())  # 479

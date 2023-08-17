@@ -49,6 +49,7 @@ PROGRAM_DIR = None      # Directory where mserve.py is stored.
 TEMP_DIR = None         # Directory for temporary files /run/user/1000 preferred
 
 # Same values used by gnome-terminal to prevent window shrinking too small
+MSERVE_VERSION = "3.3.12"
 WIN_MIN_WIDTH = 142
 WIN_MIN_HEIGHT = 63
 RESTART_SLEEP = .3      # Delay for mserve close down

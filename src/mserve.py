@@ -1556,6 +1556,7 @@ class MusicLocationTree(PlayCommonSelf):
 
         # View Dropdown Menu
         self.view_menu = tk.Menu(mb, tearoff=0)
+        # If adding new view options, bump up variable Enable option from 3 to 4
         self.view_menu.add_command(label="Information Centre", font=(None, MED_FONT),
                                    command=self.info.view)
         self.view_menu.add_command(label="View Locations", font=(None, MED_FONT),
@@ -1566,7 +1567,7 @@ class MusicLocationTree(PlayCommonSelf):
         if self.play_hockey_allowed:
             text = "Enable FF/Rewind buttons"  # TODO: Make self.variable names
         else:
-            text = "Use TV Commercial buttons"
+            text = "Enable TV Commercial buttons"
         self.view_menu.add_command(label=text, font=(None, MED_FONT),
                                    command=self.toggle_hockey)
         self.view_menu.add_separator()  # If countdown running, don't show options
@@ -5362,12 +5363,12 @@ class MusicLocationTree(PlayCommonSelf):
         """ Rip CD using libdiscid, MusicBrainzNGS, CoverArtArchive.org,
             images copied from clipboard and mutagen. """
         if encoding.RIP_CD_IS_ACTIVE:
-            messagebox.showinfo(title="Rip CD Error",
-                                message="Rip CD function is already running!",
-                                parent=self.lib_top)
-            ''' lift toplevel .ShowInfo '''
             self.rip_cd_class.cd_top.focus_force()  # Get focus
             self.rip_cd_class.cd_top.lift()  # Raise in stacking order
+            title = "Rip CD Error"
+            text = "Rip CD function is already running!"
+            message.ShowInfo(self.rip_cd_class.cd_top, title, text,
+                             icon='error', thread=self.get_refresh_thread)
             return
 
         try:
@@ -5962,7 +5963,8 @@ class MusicLocationTree(PlayCommonSelf):
         ''' Aug 11/23 - Need to call this after option metadata rows are
                         counted. 
         '''
-        for i in range(r):
+        #for i in range(r):
+        for i in range(10):
             self.play_frm.grid_rowconfigure(i, weight=1)
         self.play_frm.grid_columnconfigure(2, minsize=50)
         ms_font = g.FONT
@@ -5973,7 +5975,8 @@ class MusicLocationTree(PlayCommonSelf):
         self.play_no_art()  # Temporary starting image
         self.art_label = tk.Label(self.play_frm, borderwidth=0,
                                   image=self.play_current_song_art, font=ms_font)
-        self.art_label.grid(row=0, rowspan=r+1, column=0, sticky=tk.W)
+        #self.art_label.grid(row=0, rowspan=r+1, column=0, sticky=tk.W)
+        self.art_label.grid(row=0, rowspan=20, column=0, sticky=tk.W)
         self.art_label.bind("<Button-1>", self.pp_toggle)  # click artwork to pause/play
         # Leave empty row #5 for F3 frame (was row span=5)
 
@@ -5997,7 +6000,7 @@ class MusicLocationTree(PlayCommonSelf):
         self.song_first_date_var = self.make_one_song_var("year", 2)  # Was Title
         self.song_artist_var = self.make_one_song_var("arist", 3)
         self.song_album_var = self.make_one_song_var("album", 4)
-        self.song_number_var = self.make_one_song_var("playlist №", 5)
+        self.song_number_var = self.make_one_song_var("playlist №", 5)  # No.
         self.song_progress_var = self.make_one_song_var("progress", 6)
 
         ''' Aug 9/23 SQL columns in version 2 prep for version 3:
@@ -6049,8 +6052,10 @@ class MusicLocationTree(PlayCommonSelf):
         self.vu_width = 30  # Always stays this value
         self.vu_height = 100  # Will be overriden
         self.vu_meter_first_time = True  # Patch for VU meter height
-        self.vu_meter_left, self.vu_meter_left_rect = self.create_vu_meter(r, 3)
-        self.vu_meter_right, self.vu_meter_right_rect = self.create_vu_meter(r, 4)
+        #self.vu_meter_left, self.vu_meter_left_rect = self.create_vu_meter(r, 3)
+        #self.vu_meter_right, self.vu_meter_right_rect = self.create_vu_meter(r, 4)
+        self.vu_meter_left, self.vu_meter_left_rect = self.create_vu_meter(18, 3)
+        self.vu_meter_right, self.vu_meter_right_rect = self.create_vu_meter(18, 4)
         self.VU_HIST_SIZE = 6
         self.vu_meter_left_hist = [0.0] * self.VU_HIST_SIZE
         self.vu_meter_right_hist = [0.0] * self.VU_HIST_SIZE
@@ -6063,7 +6068,8 @@ class MusicLocationTree(PlayCommonSelf):
 
         self.play_frm.grid_columnconfigure(5, weight=1)  # 0's-COL 5
         self.play_frame3 = tk.Frame(self.play_frm)
-        self.play_frame3.grid(row=0, rowspan=r, column=5,  # 0's-ROW = r
+        #self.play_frame3.grid(row=0, rowspan=r, column=5,  # 0's-ROW = r
+        self.play_frame3.grid(row=0, rowspan=20, column=5,  # 0's-ROW = r
                               padx=PAD_X, pady=PAD_X, sticky=tk.NSEW)
         self.play_frame3.grid_rowconfigure(1, weight=1)
         self.play_frame3.grid_columnconfigure(0, weight=1)
@@ -6165,8 +6171,8 @@ class MusicLocationTree(PlayCommonSelf):
                                          foreground='white')
 
         """ build_play_btn_frm() replaces Hockey Commercial button with Rewind 
-            button and replaces Intermission button with Fast Forward button. 
-        """
+            button and replaces Intermission button with Fast Forward button.
+            grid row is 20 allowing 19 rows for Artwork, Metadata, Lyrics """
         self.build_play_btn_frm()  # Placement varies if Hockey enabled
 
         ''' F4 Frame for Playlist (Chronology can be hidden) '''
@@ -6333,14 +6339,14 @@ class MusicLocationTree(PlayCommonSelf):
 
         self.play_hockey_allowed = not self.play_hockey_allowed  # Flip switch
         if self.play_hockey_allowed:
-            self.view_menu.entryconfigure(2, label="Enable FF/Rewind buttons")
+            self.view_menu.entryconfigure(3, label="Enable FF/Rewind buttons")
             self.info.fact("Enable FF/Rewind buttons")
         else:
-            self.view_menu.entryconfigure(2, label="Use TV Commercial buttons")
-            self.info.fact("Use TV Commercial buttons")
+            self.view_menu.entryconfigure(3, label="Enable TV Commercial buttons")
+            self.info.fact("Enable TV Commercial buttons")
 
         if not self.play_top_is_active:
-            return
+            return  # Only lib_top is open. No play window to rebuild buttons
 
         self.tt.close(self.play_btn_frm)  # Remove old tooltip buttons in play_btn frame
         self.play_btn_frm.grid_forget()
@@ -6522,7 +6528,8 @@ class MusicLocationTree(PlayCommonSelf):
         ''' Number of META_DISPLAY_ROWS used for VU meter height '''
         r = META_DISPLAY_ROWS - 1
         r = self.meta_display_rows - 1
-        _x, _y, _width, height = self.play_frm.grid_bbox(1, 0, 1, r)
+        #_x, _y, _width, height = self.play_frm.grid_bbox(1, 0, 1, r)
+        _x, _y, _width, height = self.play_frm.grid_bbox(1, 0, 1, 18)
 
         ''' Aug 3/23 - VU meter 27 pixels too short on first call '''
         if self.vu_meter_first_time:
@@ -6540,11 +6547,14 @@ class MusicLocationTree(PlayCommonSelf):
         """ Chronology (playlist) tree visible. Move lyrics score right. """
         r = META_DISPLAY_ROWS  # July 18, 2023
         r = self.meta_display_rows  # Aug 10/23 can change with song
-        self.play_frm.grid_rowconfigure(r, weight=0)  # Lyrics Row will be gone now
+        #self.play_frm.grid_rowconfigure(r, weight=0)  # Lyrics Row will be gone now
+        self.play_frm.grid_rowconfigure(19, weight=0)  # Lyrics Row will be gone now
         # May 9, 2023 - Reset for row 1, column 6 (1's based)
         self.play_frm.grid_columnconfigure(5, weight=1)  # Lyrics in column 5
-        self.play_frame3.grid(row=0, rowspan=r, column=5, sticky=tk.NSEW)
-        self.play_frm.grid_rowconfigure(r, weight=0)  # Lyrics gone now
+        #self.play_frame3.grid(row=0, rowspan=r, column=5, sticky=tk.NSEW)
+        #self.play_frm.grid_rowconfigure(r, weight=0)  # Lyrics gone now
+        self.play_frame3.grid(row=0, rowspan=20, column=5, sticky=tk.NSEW)
+        self.play_frm.grid_rowconfigure(19, weight=0)  # Lyrics gone now
         # Define title frame top of play_F3
         self.lyrics_frm.grid(row=0, rowspan=1, column=0, sticky=tk.NSEW)
         # song info column narrow as possible for wide lyrics lines
@@ -6558,8 +6568,10 @@ class MusicLocationTree(PlayCommonSelf):
         r = META_DISPLAY_ROWS  # July 18, 2023
         r = self.meta_display_rows  # Aug 10/23 can change with song
         self.play_frm.grid_columnconfigure(5, weight=0)  # Column 5 gone
-        self.play_frame3.grid(row=r, rowspan=1, column=1, columnspan=4, sticky=tk.NSEW)
-        self.play_frm.grid_rowconfigure(r, weight=5)  # Lyrics get more space
+        #self.play_frame3.grid(row=r, rowspan=1, column=1, columnspan=4, sticky=tk.NSEW)
+        #self.play_frm.grid_rowconfigure(r, weight=5)  # Lyrics get more space
+        self.play_frame3.grid(row=19, rowspan=1, column=1, columnspan=4, sticky=tk.NSEW)
+        self.play_frm.grid_rowconfigure(19, weight=5)  # Lyrics get more space
         # Define title frame top of play_F3
         self.lyrics_frm.grid(row=0, rowspan=1, column=0, sticky=tk.NSEW)
         # song info column wide as possible for wide lyrics lines
@@ -10180,8 +10192,10 @@ mark set markName index"
         if os.path.isfile(TMP_CURR_SAMPLE):
             os.remove(TMP_CURR_SAMPLE)  # Clean up /tmp directory
 
-        self.ltp_top.destroy()  # Close the window NOT self.lib_top !!!
+        if self.ltp_top:  # Ended already - Aug 16/23
+            self.ltp_top.destroy()  # Close the window NOT self.lib_top !!!
         self.ltp_top = None  # Extra insurance
+        self.ltp_top_is_active = False
         self.wrapup_lib_popup()  # Set color tags and counts
 
     def lib_tree_play_lift(self):
@@ -12591,7 +12605,6 @@ class FileControlCommonSelf:
         self.AlbumArtist = None     # self.metadata.get('ALBUM_ARTIST', "None")
         self.AlbumDate = None       # self.metadata.get('RECORDING_DATE', "None")
         self.FirstDate = None       # self.metadata.get('DATE', "None")
-        self.Date = None            # self.FirstDate
         self.CreationTime = None    # new July 13, 2023 'CREATION_TIME'
         ''' ffMajor, ffMinor, ffCompatible, Title, Artist, Album, Compilation, 
         AlbumArtist, AlbumDate, FirstDate, CreationTime, DiscNumber, TrackNumber,
@@ -12607,7 +12620,6 @@ class FileControlCommonSelf:
         self.GaplessPlayback = None  # self.metadata.get('GAPLESS_PLAYBACK', "None")
 
         ''' Pippim Metadata Add-ons '''
-        self.CopyrightDate = None   # temporary delete after code converted
         self.Rating = None          # self.metadata.get('GENRE', "None")
         self.Hyperlink = None       # new July 13, 2023
         self.PlayCount = None       # new July 13, 2023
@@ -12656,7 +12668,7 @@ class FileControl(FileControlCommonSelf):
         self.tk_top = tk_top        # Tkinter Toplevel window used by parent
         self.info = info            # Parent's InfoCentre() instance
         self.close_callback = close_callback
-        self.silent = silent        # Messages broadcast are logged as facts
+        self.block_cast = silent        # Messages broadcast are logged as facts
         self.log_level = log_level  # E.G when 'silent' often use 'error'
         self.get_thread = get_thread  # Refresh thread when dialog grabs screen
         self.last_path = None       # Use for fast clicking Next
@@ -12691,7 +12703,7 @@ class FileControl(FileControlCommonSelf):
 
         ''' Is last song file still open (path not none)? '''
         if self.path is not None:
-            if self.silent:  # In silent mode, normal broadcasts become facts
+            if self.block_cast:  # In silent mode, normal broadcasts become facts
                 if self.log_level == 'all' or self.log_level == 'error':
                     self.info.fact("FileControl.new() last song still open:\n" +
                                    self.path, 'error')
@@ -12766,10 +12778,12 @@ class FileControl(FileControlCommonSelf):
         """ Use ffprobe to write metadata to file self.TMP_FFPROBE
             Loop through self.TMP_FFPROBE lines to create dictionary self.metadata
 
-            .oga files do not store audio and video in separate streams.
-            The TAG section has to be checked to see if they exist.
-            Check the music file type in FileControl.check_metadata() method.
+            oga has DURATION and STREAM #0 first and second instead of near
+            bottom.
+
+            TODO: Huge time lag with .oga image of 10 MB inside 30 MB file.
         """
+
         self.metadata = OrderedDict()
 
         ''' Is host down? '''
@@ -12783,10 +12797,14 @@ class FileControl(FileControlCommonSelf):
         # ffprobe on good files: 0.0858271122 0.0899128914 0.0877139568
         # ffprobe on corrupted : 0.1700458527  (file contains dozen bytes of text)
         # Jim Stein man Bad for Good: ffprobe: 0.1356880665
+        # 3-12 - Poison.oga (30 MB with 10 MB image) : 10.9 seconds !!!
+        # 3-12 - Poison.oga using kid3 < 1 second
 
         ext.t_init("FileControl.get_metadata() - mutagen")
         # Song: Heart/GreatestHits/17 Rock and Roll (Live).m4a
-        #m = mutagen.File(self.last_path, easy=True)
+        m = mutagen.File(self.last_path)
+        for line in m:
+            print("mutagen line:", line)
         #     m = mutagen.File(self.last_path, easy=True)
         #   File "/usr/lib/python2.7/dist-packages/mutagen/_file.py", line 251, in File
         #     return Kind(filename)
@@ -12815,7 +12833,11 @@ class FileControl(FileControlCommonSelf):
         if len(result) > 1:
             print('mserve.py FileControl.get_metadata() ffprobe result:', result)
 
-        ''' Create self.metadata{} dictionary '''
+        ''' Create self.metadata{} dictionary 
+            oga has 'DURATION' 2nd and 'STREAM #0' 3rd which need to be held
+            and then inserted just before 'CREATION_TIME' '''
+        held_duration = None
+        held_stream0 = None
         with open(self.TMP_FFPROBE) as f:
             for line in f:
                 line = line.rstrip()  # remove \r and \n
@@ -12832,13 +12854,33 @@ class FileControl(FileControlCommonSelf):
                 except:
                     continue  # No ':' on line
 
-                key = key.strip()  # strip leading and
-                val = val.strip()  # trailing whitespace
+                key = key.strip()  # strip leading and trailing whitespace
+                val = val.strip()  # Most keys are indented 2, 4 & 6 spaces.
+
+                ''' override for oga to move lower to encoding section '''
+                if len(self.metadata) == 1 and key.upper() == "DURATION":
+                    held_duration = val
+                    continue
+                if len(self.metadata) == 1 and key.upper() == "STREAM #0":
+                    held_stream0 = val
+                    continue
+
                 if key is not "" and val is not "":
                     # Convert all keys to upper case for simpler lookups
+                    # Make unique for dictionary - Comment can appear twice.
                     key_unique = toolkit.unique_key(key.upper(), self.metadata)
+
+                    ''' Fudge for .oga files created with gstreamer '''
+                    if key_unique == "CREATION_TIME" and held_duration:
+                        self.metadata['DURATION'] = held_duration
+                        if held_stream0:
+                            self.metadata['STREAM #0'] = held_stream0
+
                     # Key "Stream #0" appears twice
                     self.metadata[key_unique] = val
+
+        #print("sys.getsizeof(self.metadata):", sys.getsizeof(self.metadata))
+        # size is a couple K. No images included.
 
         path_parts = self.path.split(os.sep)  # In case metadata missing song parts
 
@@ -12867,20 +12909,18 @@ class FileControl(FileControlCommonSelf):
         self.Compilation = self.metadata.get('COMPILATION', "0")
         self.AlbumArtist = self.metadata.get('ALBUM_ARTIST', None)
         self.AlbumDate = toolkit.uni_str(
-            self.metadata.get('RECORDING_DATE', None))  # iTunes RecordingDates
+            self.metadata.get('RECORDING_DATE', None))  # Use OGA
+        if self.AlbumDate is None:  # No RECORDING_DATE
+            self.AlbumDate = toolkit.uni_str(
+                self.metadata.get('COPYRIGHT', None))  # Use M4A
         self.FirstDate = toolkit.uni_str(self.metadata.get('DATE', None))
-        self.Date = self.FirstDate  # Temporary until rewrite
         self.CreationTime = toolkit.uni_str(
             self.metadata.get('CREATION_TIME', None))
         self.DiscNumber = toolkit.uni_str(self.metadata.get('DISC', None))
         self.TrackNumber = toolkit.uni_str(self.metadata.get('TRACK', None))
-        self.CopyrightDate = toolkit.uni_str(
-            self.metadata.get('COPYRIGHT', None))  # iTunes Copyright
         self.Genre = toolkit.uni_str(self.metadata.get('GENRE', None))
         self.Composer = toolkit.uni_str(self.metadata.get('COMPOSER', None))
         self.Comment = self.metadata.get('COMMENT', None)
-        #print("sys.getsizeof(self.Comment):", sys.getsizeof(self.Comment))
-        # Empty comment is 16. for .oga file is 50.
 
         self.Duration = self.metadata.get('DURATION', "0.0,0").split(',')[0]
         self.Duration = toolkit.uni_str(self.Duration)
@@ -12893,10 +12933,12 @@ class FileControl(FileControlCommonSelf):
             self.DurationSecs = float(convert_out)
         else:
             self.DurationSecs = 0.0  # Note must save in parent
+
         self.GaplessPlayback = self.metadata.get('GAPLESS_PLAYBACK', "0")
 
     def check_metadata(self):
         """ Ensure Audio stream exists. """
+
         self.artwork = []           # List of lines about artwork found
         self.audio = []             # List of lines about audio streams found
         for key, value in self.metadata.iteritems():
@@ -12931,9 +12973,10 @@ class FileControl(FileControlCommonSelf):
             text += "Artwork: \t" + entry + "\n"
 
         if self.valid_artwork:
-            artwork_pattern = ("Video:", "Green", "Black")
+            artwork_pattern = [("Video:", "Green", "Black"),
+                               ("Artwork:", "Green", "Black")]
         else:
-            artwork_pattern = ("Video:", "Red", "White")
+            artwork_pattern = ("Artwork:", "Red", "White")
             text += "Artwork: \tNOT FOUND !!!"
 
         patterns = [("Title:", "Green", "Black"),
@@ -12945,10 +12988,14 @@ class FileControl(FileControlCommonSelf):
                     audio_pattern,
                     artwork_pattern]
 
-        ''' Aug 6/23 - Too annoying, change all to 'fact' for now '''
-        if self.valid_audio or self.silent:
+        ''' Aug 6/23 - Too annoying, change all to 'fact' for now 
+            Aug 16/23 - Change back to cast when invalid audio or no artwork
+        '''
+        if self.valid_audio or self.block_cast:
             if self.log_level == 'all' or self.log_level == 'info':
                 self.info.fact(text, 'info', patterns=patterns)
+        elif self.invalid_audio or self.invalid_artwork:
+            self.info.cast(text, 'error', patterns=patterns)
         else:
             if self.log_level == 'all' or self.log_level == 'info':
                 self.info.fact(text, 'error', patterns=patterns)
@@ -13031,7 +13078,7 @@ class FileControl(FileControlCommonSelf):
                     ("Inode No:", "Green", "Black")]
 
         ''' Aug 6/23 - Too annoying, change all to 'fact' for now '''
-        if self.silent:
+        if self.block_cast:
             if self.log_level == 'all' or self.log_level == 'info':
                 self.info.fact(text, patterns=patterns)
         else:
@@ -13048,7 +13095,6 @@ class FileControl(FileControlCommonSelf):
             set_artwork_colors()
             lib_tree_play()
         """
-
         if len(self.artwork) == 0:
             # Song has no artwork that ffmpeg can identify.
             return None, None, None
@@ -13112,8 +13158,8 @@ class FileControl(FileControlCommonSelf):
         if self.DurationSecs < 20:
             return False  # Not even a real song.
 
-        old_silent = self.silent
-        self.silent = True  # Don't broadcast what happens next
+        old_block_cast = self.block_cast
+        self.block_cast = True  # Don't broadcast what happens next
         start = self.DurationSecs / 2
         # Start halfway through, duration 5 seconds, with 4 second fade in
         self.start(start, 5, 4, 1, TMP_CURR_SAMPLE, True)
@@ -13122,7 +13168,7 @@ class FileControl(FileControlCommonSelf):
         time.sleep(.2)  # If ffplay breaks, job crashes in .1 second
         pid = self.check_pid()
         self.end()  # Kill song and restore last access time.
-        self.silent = old_silent  # Restore original broadcast setting
+        self.block_cast = old_block_cast  # Restore original broadcast setting
 
         ''' Reset statuses '''
         self.statuses = []
@@ -13353,7 +13399,7 @@ class FileControl(FileControlCommonSelf):
                     ("Percent play:", "Green", "Black")]
 
         ''' Aug 6/23 - Too annoying, change all to 'fact' for now '''
-        if self.silent:  # bugs in lib_tree_play()
+        if self.block_cast:  # bugs in lib_tree_play()
             if self.log_level == 'all' or self.log_level == 'info':
                 self.info.fact(text, 'info', 'update', patterns)
         else:
@@ -13374,7 +13420,7 @@ class FileControl(FileControlCommonSelf):
             patterns = [("Restoring last access for:", "White", "Black"),
                         ("Current time:", "Green", "Black"),
                         ("Original time:", "Green", "Black")]
-            if self.silent and old_time is not None:
+            if self.block_cast and old_time is not None:
                 if self.log_level == 'all' or self.log_level == 'info':
                     self.info.fact("Restoring last access for: \t" + self.Title +
                                    "\n\tCurrent time:  \t" +
@@ -15287,12 +15333,12 @@ def create_files():
         print("Could not create directory:", g.USER_DATA_DIR)
         return False
     # Open and Close will create SQL database
-    sql.open_db(LCS=lcs)
+    sql.open_db(LCS=lcs)  # sql needs use open_xxx vars in Locations() class
     sql.close_db()
     # create lc.FNAME_LOCATIONS
-    lc.read()  # If no file, creates empty lc.LIST
+    lc.read()  # If no file, creates empty lc.LIST for favorites & last records
     lc.write()  # LIST is empty and written as pickle
-    # create lc.FNAME_LAST_LOCATION is not needed as saved at close
+    # create lc.FNAME_LAST_LOCATION is not needed now. It is saved at close
 
 
 def open_files(old_cwd, prg_path, parameters, toplevel=None):
