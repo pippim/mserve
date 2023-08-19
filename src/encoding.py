@@ -15,7 +15,7 @@ warnings.simplefilter('default')  # in future Python versions.
 
 # ==============================================================================
 #
-#       encoding.py - Encode CD to '.oga', '.wav' or '.flac'
+#       encoding.py - Encode CD to '.flac', '.mp3', '.m4a', '.oga', '.wav'
 #
 #       TODO:   Whilst encoding obtain lyrics and allow play song encoded with
 #               full lyrics edit and time index synchronization.
@@ -33,22 +33,25 @@ warnings.simplefilter('default')  # in future Python versions.
 #           Genre & Compilations. FirstDate overriden in table cell.
 #       Aug. 15 2023 - Support M4A gstreamer and mutagen.
 #       Aug. 16 2023 - Album level overrides & track level metadata editing.
+#       Aug. 17 2023 - Large radio buttons easier to see.
+#       Aug. 18 2023 - Fix nasty SQL bugs bump version to 3.3.13.
+#       Aug. 19 2023 - Add MP3 support and more MP4 tags.
 #
 # ==============================================================================
 # noinspection SpellCheckingInspection
 """
 TODO:
 
-    Get/Set last history record 'encoding' - 'format', 'quality' & 'naming'
-        copy mserve.py: self.play_hockey_allowed = self.get_hockey_state()
-    With only 1 release passing filter, mark checkbox for Album Date, Tracks and
-        middle artwork resolution. 
+    If only 1 release passes filtration, mark checkbox for Album Date, Tracks and
+        middle artwork resolution.
+    Don't bother downloading images over 4 MB e.g. Greatest Hits of the 80's has
+        file over 10 MB which wastes time as it can never be encoded to .oga as
+        it takes 10 seconds to ffprobe.
 
-MP3 support:
-    https://mutagen.readthedocs.io/en/latest/api/mp3.html
+NOTES:
 
-ID3 Tag reference:
-    https://mutagen.readthedocs.io/en/latest/api/id3.html
+    Hijack the m4a 'catg' tag from podcast category for "discid"
+    Hijack the m4a 'keyw' tag from podcast keywords for "musicbrainz_discid"
 
 How ffmpeg uses tags:
     https://gist.github.com/eyecatchup/0757b3d8b989fe433979db2ea7d95a01
@@ -58,15 +61,6 @@ Music Brainz NGS reference:
 https://buildmedia.readthedocs.org/media/pdf/python-musicbrainz-ngs-jonnyjd/latest/python-musicbrainz-ngs-jonnyjd.pdf
 
 
-    What is the correct iTunes song date?
-    -------------------------------------
-    If there is only one YEAR per iTunes song, should it be the:
-        1. original song creator's publishing YEAR?
-        2. YEAR as published by the Cover Artist?
-        3. Apple Reissued YEAR version date?
-    
-    Id3v2 has the "TORY" (Original Release Year) frame
-    foobar calls it "ORIGINAL RELEASE DATE"
         
 """
 
@@ -74,19 +68,6 @@ https://buildmedia.readthedocs.org/media/pdf/python-musicbrainz-ngs-jonnyjd/late
 # from clipboard.
 # import gtk                     # Doesn't work. Use xclip instead
 # gtk.set_interactive(False)
-
-# noinspection SpellCheckingInspection
-'''
-Buried in functions:
-from mutagen.flac import FLAC as audio_file
-from mutagen.oggvorbis import OggVorbis as audio_file
-
-from mutagen.oggvorbis import OggVorbis
-from mutagen.flac import Picture
-
-from mutagen.mp4 import MP4, MP4Cover
-
-'''
 
 ''' Caller must be 'mserve.py' '''
 import inspect
@@ -130,12 +111,11 @@ from ttkwidgets import CheckboxTreeview
 
 try:
     import subprocess32 as sp
-
     SUBPROCESS_VER = '32'
 except ImportError:  # No module named subprocess32
     import subprocess as sp
-
     SUBPROCESS_VER = 'native'
+
 import sys
 import os
 import io
@@ -158,7 +138,7 @@ import external as ext
 import toolkit
 import monitor  # To get/save window geometry
 import message
-import image as img
+import image as img  # To make checkboxes for radio buttons
 import timefmt as tmf  # Aug 13/2021 switch over to tmf abbreviation
 import sql
 
@@ -248,7 +228,7 @@ class RipCD:
         self.image_count = None  # Album artwork selected
 
         # Ripping '#' multiple disc #. '99 - ' or '99 ' track numbering
-        self.os_song_name = None  # '#-99 Song name.xxx'
+        self.os_song_title = None  # '#-99 Song name.xxx'
         self.os_full_path = None  # top_dir/artist/album/#-99 Song name.xxx
         self.sqlOsFileName = None  # artist/album/#-99 Song name.xxx
         # When artist is "Various Artists" the directory is "Compilations" but
@@ -476,16 +456,7 @@ class RipCD:
 
         self.cd_tree.bind('<Button-1>', self.button_1_click)
 
-        """ style ALREADY DEFINED IN mserve.py:
-        style = ttk.Style()
-        style.configure("Treeview.Heading", font=(None, g.MED_FONT), \
-                        rowheight=int(g.MED_FONT*2.2))
-        row_height=int(g.MON_FONTSIZE*2.2)
-        style.configure("Treeview", font=(None, g.MON_FONTSIZE), \
-                        rowheight=row_height)
-        style.configure('Treeview', indent=row_height+6)
-        """
-        row_height = int(g.MON_FONTSIZE * 2.2)  # Copy from mserve
+        row_height = int(g.MON_FONTSIZE * 2.2)  # Copy from mserve.py
 
         ''' Create images for checked, unchecked and tristate '''
         self.checkboxes = img.make_checkboxes(row_height - 6, 'black',
@@ -561,24 +532,45 @@ class RipCD:
             "Enter Composer, Album Date, Genre."
         self.tt.add_tip(self.cd_tree_btn4, text=text, anchor='ne')
 
-        ''' Menu bars: Format, Quality '''
+        ''' Menu bars: Format, Quality, Naming, Target '''
+        # https://anzeljg.github.io/rin2/book2/2405/docs/tkinter/menu-coptions.html
+
+        ''' Create images for checked and unchecked radio buttons '''
+        self.radios = img.make_checkboxes(row_height - 8, 'White',
+                                          'LightGray', 'Red')
+        # "unchecked" image=self.radios[0]  |  "checked" image=self.radios[2]
+
         # Format menu
         mb = tk.Menu(self.cd_top)
         fmt_bar = tk.Menu(mb, tearoff=0)
         self.fmt_var = tk.StringVar()
-        self.fmt_var.set("oga")
+        ''' Get saved 'encoding'-'format' configuration from history table '''
+        d = sql.get_config('encoding', 'format')
+        if d:  # dictionary found?
+            last_fmt = d['Target']
+        else:
+            last_fmt = "m4a"  # Likely most popular
+        self.fmt_var.set(last_fmt)
         fmt_bar.add_radiobutton(
             label=".wav (Original CD format)", command=self.show_selections,
-            font=g.FONT, value="wav", variable=self.fmt_var)
+            font=g.FONT, value="wav", variable=self.fmt_var,
+            compound=tk.LEFT, image=self.radios[0], selectimage=self.radios[2])
         fmt_bar.add_radiobutton(
             label=".m4a (AAC / MP4 compression)", command=self.show_selections,
-            font=g.FONT, value="m4a", variable=self.fmt_var)
+            font=g.FONT, value="m4a", variable=self.fmt_var,
+            compound=tk.LEFT, image=self.radios[0], selectimage=self.radios[2])
+        fmt_bar.add_radiobutton(
+            label=".mp3 (MPEG Audio Layer III)", command=self.show_selections,
+            font=g.FONT, value="mp3", variable=self.fmt_var,
+            compound=tk.LEFT, image=self.radios[0], selectimage=self.radios[2])
         fmt_bar.add_radiobutton(
             label=".oga (Ogg Vorbis compression)", command=self.show_selections,
-            font=g.FONT, value="oga", variable=self.fmt_var)
+            font=g.FONT, value="oga", variable=self.fmt_var,
+            compound=tk.LEFT, image=self.radios[0], selectimage=self.radios[2])
         fmt_bar.add_radiobutton(
             label=".flac (Free Lossless Audio Codec)", command=self.show_selections,
-            font=g.FONT, value="flac", variable=self.fmt_var)
+            font=g.FONT, value="flac", variable=self.fmt_var,
+            compound=tk.LEFT, image=self.radios[0], selectimage=self.radios[2])
         mb.add_cascade(label=" Format ▼ ", menu=fmt_bar, font=g.FONT)
 
         text = \
@@ -590,42 +582,54 @@ class RipCD:
             "the largest space, about 35 MB.  OGA and AAC files balance size,\n" + \
             "about 6 MB, and quality with image and ID tag support."
         self.tt.add_tip(fmt_bar, text=text, tool_type='menu',
-                        menu_tuple=(self.cd_top, 430, 10))  # First s/b 20 but 300
+                        menu_tuple=(self.cd_top, 460, 10))  # First s/b 20 but 300
 
-        ''' Quality menu. Usage for m4a below:
-                quality_ndx = (int(self.quality_var.get()) - 30) / 10
+        ''' Quality menu. AAC/MP4/m4a Kbps vs quality %:
                 kbps = [96, 112, 128, 160, 192, 224, 256, 320]
-                bitrate = kbps[quality_ndx] * 1000
-                quality = 'bitrate=' + str(bitrate) '''
+                quality 30%  40%  50%  60%  70%  80%  90% 100% '''
         self.quality_var = tk.IntVar()
-        self.quality_var.set(70)
+        ''' Get saved 'encoding'-'quality' configuration from history table '''
+        d = sql.get_config('encoding', 'quality')
+        if d:  # dictionary found?
+            last_quality = d['Size']
+        else:
+            last_quality = 70  # Likely most popular
+        self.quality_var.set(last_quality)
         quality_bar = tk.Menu(mb, tearoff=0)
         quality_bar.add_radiobutton(
             label="30 % (Smallest size, lowest quality)", command=self.show_selections,
-            font=g.FONT, value=30, variable=self.quality_var)
+            font=g.FONT, value=30, variable=self.quality_var,
+            compound=tk.LEFT, image=self.radios[0], selectimage=self.radios[2])
         quality_bar.add_radiobutton(
             label="40 %", command=self.show_selections, font=g.FONT, value=40,
-            variable=self.quality_var)
+            variable=self.quality_var,
+            compound=tk.LEFT, image=self.radios[0], selectimage=self.radios[2])
         quality_bar.add_radiobutton(
             label="50 %", command=self.show_selections, font=g.FONT, value=50,
-            variable=self.quality_var)
+            variable=self.quality_var,
+            compound=tk.LEFT, image=self.radios[0], selectimage=self.radios[2])
         quality_bar.add_radiobutton(
             label="60 %", command=self.show_selections, font=g.FONT, value=60,
-            variable=self.quality_var)
+            variable=self.quality_var,
+            compound=tk.LEFT, image=self.radios[0], selectimage=self.radios[2])
         quality_bar.add_radiobutton(
             label="70 % (Medium size, very good quality)",
             command=self.show_selections, font=g.FONT, value=70,
-            variable=self.quality_var)
+            variable=self.quality_var,
+            compound=tk.LEFT, image=self.radios[0], selectimage=self.radios[2])
         quality_bar.add_radiobutton(
             label="80 %", command=self.show_selections, font=g.FONT, value=80,
-            variable=self.quality_var)
+            selectcolor='Red', variable=self.quality_var,
+            compound=tk.LEFT, image=self.radios[0], selectimage=self.radios[2])
         quality_bar.add_radiobutton(
             label="90 %", command=self.show_selections, font=g.FONT, value=90,
-            variable=self.quality_var)
+            variable=self.quality_var,
+            compound=tk.LEFT, image=self.radios[0], selectimage=self.radios[2])
         quality_bar.add_radiobutton(
             label="100 % (Largest size, highest quality)",
             command=self.show_selections, font=g.FONT, value=100,
-            variable=self.quality_var)
+            variable=self.quality_var,
+            compound=tk.LEFT, image=self.radios[0], selectimage=self.radios[2])
         mb.add_cascade(label=" Quality ▼ ", menu=quality_bar, font=g.FONT)
         text = \
             "The Quality dropdown menu allows you to pick the encoding\n" + \
@@ -635,29 +639,36 @@ class RipCD:
             "size for the music file.  For OGA 70% appears the best balance\n" + \
             "between quality and file size.  Do some tests for yourself."
         self.tt.add_tip(quality_bar, text=text, tool_type='menu', anchor="sw",
-                        menu_tuple=(self.cd_top, 650, 10))
+                        menu_tuple=(self.cd_top, 680, 10))
 
         # Song naming format
         self.nam_var = tk.StringVar()
-        self.nam_var.set("99 ")
+        ''' Get saved 'encoding'-'naming' configuration from history table '''
+        d = sql.get_config('encoding', 'naming')
+        if d:  # dictionary found?
+            last_naming = d['Target']
+        else:
+            last_naming = "99 "  # Likely most popular
+        self.nam_var.set(last_naming)
         nam_bar = tk.Menu(mb, tearoff=0)
         nam_bar.add_radiobutton(
             label="99 Song name.ext", command=self.show_selections, font=g.FONT,
-            value="99 ", variable=self.nam_var)
+            value="99 ", variable=self.nam_var,
+            compound=tk.LEFT, image=self.radios[0], selectimage=self.radios[2])
         nam_bar.add_radiobutton(
             label="99 - Song name.ext", command=self.show_selections, font=g.FONT,
-            value="99 - ", variable=self.nam_var)
+            value="99 - ", variable=self.nam_var,
+            compound=tk.LEFT, image=self.radios[0], selectimage=self.radios[2])
         mb.add_cascade(label=" Naming ▼ ", menu=nam_bar, font=g.FONT)
         text = \
-            "The Naming dropdown menu allows you to choose the filenames\n" + \
-            "assigned to music files.  The extension is automatic where\n" + \
+            "The 'Naming' Dropdown Menu specifies how filenames are formatted.\n" + \
+            "Options are '99 song name' or '99 - song name'. Where '99'\n" + \
+            "is the track number.  The filename extension is automatic where\n" + \
             'WAV files are assigned as ".wav", FLAC files are assigned as\n' + \
             '".flac", OGA files are assigned as ".oga" and AAC files or\n' + \
-            'MP4 files are are assigned as ".m4a". You can however\n' + \
-            'choose the prefix of "99 " or "99 - " to prepend to filenames.\n\n' + \
-            "Where '99' is the track number of the song."
+            'MP4 files are are assigned as ".m4a".'
         self.tt.add_tip(nam_bar, text=text, tool_type='menu', anchor="sw",
-                        menu_tuple=(self.cd_top, 600, 10))
+                        menu_tuple=(self.cd_top, 635, 10))
 
         # Target menu
         self.trg_var = tk.StringVar()
@@ -665,7 +676,8 @@ class RipCD:
         trg_bar = tk.Menu(mb, tearoff=0)
         trg_bar.add_radiobutton(
             label=self.topdir, command=self.show_selections, font=g.FONT,
-            value=self.topdir, variable=self.trg_var)
+            value=self.topdir, variable=self.trg_var,
+            compound=tk.LEFT, image=self.radios[0], selectimage=self.radios[2])
         mb.add_cascade(label=" Target ▼ ", menu=trg_bar, font=g.FONT)
 
         # No tooltip for Target because there are no options to pick from yet
@@ -992,7 +1004,8 @@ class RipCD:
         tree_song_title = \
             self.build_out_name(int(self.track_no), self.track_meta_title)
         out_name2 = self.build_out_name2(  # Append: | Artist | Composer
-            tree_song_title, self.track_artist, self.track_composer)
+            tree_song_title, self.track_artist, self.track_composer,
+            self.track_comment)
         self.cd_tree.item(tree_iid, text=out_name2)  # New text line
 
     # ==============================================================================
@@ -1054,7 +1067,9 @@ class RipCD:
                 # self.active_pid = ext.launch_command(ext_name)
                 self.active_pid = 0
                 self.disc = self.caller_disc  # misleading disc object and string
-                text = "ENCODE_DEV - Override with last Disc ID: " + self.disc.id
+
+                text = "ENCODE_DEV - Override with last Disc ID: " + \
+                       str(self.disc.freedb_id)
                 self.info.cast(text)
                 with open(IPC_PICKLE_FNAME, "wb") as f:
                     ''' Give next step what it expects to see in IPC file '''
@@ -1084,7 +1099,7 @@ class RipCD:
 
             ''' ENCODE_DEV - Save disc ID'''
             with open(lc.ENCODE_DEV_FNAME, "wb") as f:
-                print("Saving", str(self.disc.id), "to:", lc.ENCODE_DEV_FNAME)
+                #print("Saving", str(self.disc.id), "to:", lc.ENCODE_DEV_FNAME)
                 pickle.dump(self.disc, f)  # Save dictionary as pickle file
 
             text = "Begin Step 2. Search MusicBrainz for Disc ID: "
@@ -1152,7 +1167,7 @@ class RipCD:
 
             ''' Copy for fast reloading saved pickle. '''
             os.popen("cp " + IPC_PICKLE_FNAME + " " + SAVED_MBZ1_PICKLE)
-            print("Created mbz_get1.py reload results in:", SAVED_MBZ1_PICKLE)
+            #print("Created mbz_get1.py reload results in:", SAVED_MBZ1_PICKLE)
 
             ''' json.dumps to file '''
             #debug_name = ext.join(g.TEMP_DIR, "mserve_mbz_get1_json")
@@ -1259,7 +1274,7 @@ class RipCD:
 
             ''' Copy for fast reloading saved pickle. '''
             os.popen("cp " + IPC_PICKLE_FNAME + " " + SAVED_MBZ2_PICKLE)
-            print("Created mbz_get2.py reload results in:", SAVED_MBZ2_PICKLE)
+            #print("Created mbz_get2.py reload results in:", SAVED_MBZ2_PICKLE)
 
             # Did mbz_get2.py report an error?
             if self.image_dict.get('error'):
@@ -1699,6 +1714,7 @@ class RipCD:
         text = "Track(s) changed with new Album Level Overrides."
         message.ShowInfo(self.cd_top, title, text, thread=self.update_display)
 
+    # noinspection PyUnusedLocal
     def get_compilation(self, *args):
         """ Use AskQuestion to set "1" (yes) or "0" (no) """
         title = "Set Compilation Flag"
@@ -1714,6 +1730,7 @@ class RipCD:
         else:
             self.compilation_var.set("0")
 
+    # noinspection PyUnusedLocal
     def get_gapless_playback(self, *args):
         """ Use AskQuestion to set "1" (yes) or "0" (no) """
         title = "Set Gapless Playback Flag"
@@ -1728,6 +1745,7 @@ class RipCD:
         else:
             self.gapless_playback_var.set("0")
 
+    # noinspection PyUnusedLocal
     def confirm_cancel(self, *args):
         """ Clicked 'Cancel' or called from confirm_proceed() """
         if self.tt and self.confirm_top:
@@ -1811,98 +1829,112 @@ class RipCD:
 
     # noinspection SpellCheckingInspection,PyPep8Naming
     def set_gst_encoding(self):
+
         """ https://gstreamer.freedesktop.org/documentation/tools/gst-launch.html """
+
         if self.fmt == 'wav':
             self.gst_encoding = 'wavenc'
+
         elif self.fmt == 'flac':
             self.gst_encoding = 'flacenc'
-            from mutagen.flac import FLAC as audio_file
+
         elif self.fmt == 'oga':
             # "70" percent qaulity becomes "0.7"
             quality = 'quality=' + str(float(self.quality_var.get()) / 100.0)
             self.gst_encoding = 'vorbisenc {} ! oggmux'.format(quality)
-            from mutagen.oggvorbis import OggVorbis as audio_file
+
         elif self.fmt == 'm4a':
-            # Later quality can set Bitrate. Assume 256kbps is 70% quality for now
-            # Highest bitrate is 320kbps. gstreamer default is 128kbps
             # https://gstreamer.freedesktop.org/documentation/voaacenc/index.html?gi-language=c
-            quality_ndx = (int(self.quality_var.get()) - 30) / 10  # 30% to 100%
+            ''' Example:
+                gst-launch-1.0 filesrc location=abc.wav ! wavparse ! audioresample
+                 ! audioconvert ! voaacenc ! filesink location=abc.aac
+            '''
+            quality_ndx = int(((self.quality_var.get()) - 30) / 10)  # 30% to 100%
             kbps = [96, 112, 128, 160, 192, 224, 256, 320]
             bitrate = kbps[quality_ndx] * 1000
             quality = 'bitrate=' + str(bitrate)
             self.gst_encoding = 'voaacenc {} ! mp4mux '.format(quality)
-            from mutagen.mp4 import MP4 as audio_file
 
-            ''' Tags: https://mutagen.readthedocs.io/en/latest/api/mp4.html#mutagen.mp4.MP4Tags
-            Bases: mutagen._util.DictProxy, mutagen.Tags
-            Dictionary containing Apple iTunes metadata list key/values.
-            Keys are four byte identifiers, except for freeform (’—-‘) keys. 
-            Values are usually unicode strings, but some atoms have a special
-            structure:
-            Text values (multiple values per key are supported):
-                ‘\xa9nam’ – track title
-                ‘\xa9alb’ – album
-                ‘\xa9ART’ – artist
-                ‘aART’ – album artist
-                ‘\xa9wrt’ – composer
-                ‘\xa9day’ – year
-                ‘\xa9cmt’ – comment
-                ‘\xa9grp’ – grouping
-                ‘\xa9gen’ – genre
-                ‘\xa9lyr’ – lyrics
-                ‘\xa9too’ – encoded by
-                ‘cprt’ – copyright
-                ‘\xa9wrk’ – work
-                ‘\xa9mvn’ – movement
-            
-            Boolean values:
-                ‘cpil’ – part of a compilation
-                ‘pgap’ – part of a gapless album
-                ‘pcst’ – podcast (iTunes reads this only on import)
-            
-            Tuples of ints (multiple values per key are supported):
-                ‘trkn’ – track number, total tracks
-                ‘disk’ – disc number, total discs
-            
-            Integer values:
-                ‘tmpo’ – tempo/BPM
-                ‘\xa9mvc’ – Movement Count
-                ‘\xa9mvi’ – Movement Index
-                ‘shwm’ – work/movement
-                ‘stik’ – Media Kind
-                ‘hdvd’ – HD Video
-                ‘rtng’ – Content Rating
-                ‘tves’ – TV Episode
-                ‘tvsn’ – TV Season
-                ‘plID’, ‘cnID’, ‘geID’, ‘atID’, ‘sfID’, ‘cmID’, ‘akID’ 
-                    – Various iTunes Internal IDs
-            
-            Others:
-                ‘covr’ – cover artwork, list of MP4Cover objects (which are 
-                         tagged strs)
-                ‘gnre’ – ID3v1 genre. Not supported, use ‘\xa9gen’ instead.
-            
-            The freeform ‘—-’ frames use a key in the format ‘—-:mean:name’ 
-            where ‘mean’ is usually ‘com.apple.iTunes’ and ‘name’ is a 
-            unique identifier for this frame. The value is a str, but is 
-            probably text that can be decoded as UTF-8. Multiple values 
-            per key are supported.
-            
-            MP4 tag data cannot exist outside of the structure of an MP4 
-            file, so this class should not be manually instantiated.
-            
-            Unknown non-text tags and tags that failed to parse will be 
-            written back as is.            
-
-            https://gist.github.com/lemon24/ebd0b8fa9b223be1948cddc279ea7970
-            shutil.copy('original.mp4', 'new.mp4')
-
-            # mutagen.File knows how to open any file (works with both MP4 and M4A):
-            #
-            # https://mutagen.readthedocs.io/en/latest/user/gettingstarted.html    
-            # https://mutagen.readthedocs.io/en/latest/api/base.html#mutagen.File
+        elif self.fmt == 'mp3':
+            # https://gstreamer.freedesktop.org/documentation/lame/index.html?gi-language=c
+            ''' Encode Audio CD track 5 to MP3 with a constant bitrate of 192kbps:
+            gst-launch-1.0 -v autoaudiosrc ! audioconvert ! lamemp3enc 
+            target=bitrate bitrate=192 ! filesink location=alsasrc.mp3 '''
+            quality_ndx = int(((self.quality_var.get()) - 30) / 10)  # 30% to 100%
+            kbps = [96, 112, 128, 160, 192, 224, 256, 320]
+            bitrate = kbps[quality_ndx]
+            quality = 'target=bitrate bitrate=' + str(bitrate)
+            # v2-version=3 can't be used. Not recognized and crashes gst-launch
+            self.gst_encoding = 'lamemp3enc {} ! id3v2mux '.format(quality)
+            """ NOTE gst_ecoding automatically adds:
+                    CDDB DISCID:	    ba0dcd0e
+                    DISCID:	            ba0dcd0e
+                    MUSICBRAINZ DISCID:	tjAnC0ReEc.f48DpI_lHjx1VEBA-
+                    MUSICBRAINZ_DISCID:	tjAnC0ReEc.f48DpI_lHjx1VEBA-
+                    TRACK:	            12/14 """
+            #from mutagen.mp3 import MP3 as audio_file  # Stopped using...
+            #from mutagen.id3 import ID3, APIC, error  # reimported below
 
             '''
+            ID3v2.3 is the most widely used version of ID3v2 tags and is widely 
+
+            https://learn.microsoft.com/en-us/windows/win32/wmformat/id3-tag-support
+            
+            Attribute       ID3v1.x     ID3v2.2 ID3v2.3     mserve
+            Author          Artist      TP1     TPE1        * Artist
+            Copyright 		            TCR 	TCOP        * AlbumDate
+            CopyrightURL 		        WCP 	WCOP
+            Description 	Comment 	COM 	COMM        * Comment
+            Duration 		            TLE 	TLEN        * Duration
+            FileSize 			                TSIZ        * OsFileSize
+            Title 	        Title 	    TT2 	TIT2        * Title
+            WM/AlbumArtist 		        TP2 	TPE2        * AlbumArtist
+            WM/AlbumSortOrder 			        TSOA
+            WM/AlbumTitle 	Album 	    TAL 	TALB        * Album
+            WM/ArtistSortOrder 			        TSOP
+            WM/AudioFileURL 		    WAF 	WOAF
+            WM/AudioSourceURL 		    WAS 	WOAS
+            WM/AuthorURL 		        WAR 	WOAR
+            WM/BeatsPerMinute 			TBPM
+            WM/Binary 		            GEO 	GEOB
+            WM/Comments 		        COM 	COMM
+            WM/Composer 		        TCM 	TCOM        * Composer
+            WM/Conductor 		        TP3 	TPE3
+            WM/ContentGroupDescription 	TT1 	TIT1
+            WM/EncodedBy 		        TEN 	TENC        * mserve 3.3.13
+            WM/EncodingSettings 		TSS 	TSSE        
+            WM/EncodingTime 			        TDEN        * CreationTime
+            WM/GenreID 	    GenreID 	TCO 	TCON        * Genre
+            WM/InitialKey 			            TKEY
+            WM/ISRC 			                TSRC
+            WM/Language 		        TLA 	TLAN
+            WM/Lyrics_Synchronised 		SLT 	SYLT
+            WM/MCDI 			                MCDI
+            WM/ModifiedBy 			            TPE4
+            WM/Mood 		                    TMOO
+            WM/OriginalAlbumTitle 		TOT 	TOAL
+            WM/OriginalArtist 		    TOA 	TOPE
+            WM/OriginalFilename 		TOF 	TOFN
+            WM/OriginalLyricist 		TOL 	TOLY
+            WM/OriginalReleaseYear 		TOR 	TORY        * AlbumDate
+            WM/PartOfSet 		        TPA 	TPOS
+            WM/Picture 		            PIC 	APIC
+            WM/PlaylistDelay 			        TDLY
+            WM/Publisher 		        TPB 	TPUB
+            WM/RadioStationName 		TRN 	TRSN
+            WM/RadioStationOwner 		TRO 	TRSO
+            WM/SetSubTitle 			            TSST
+            WM/SubTitle 		        TT3 	TIT3
+            WM/Text 		            TXX 	TXXX
+            WM/TitleSortOrder 			        TSOT
+            WM/TrackNumber 	Track 	    TRK 	TRCK        * TrackNumber
+            WM/UniqueFileId             UFI 	UFID
+            WM/UserWebURL 		        WXX 	WXXX        * Hyperlink
+            WM/Writer 		            TXT 	TEXT
+            WM/Year 	    Year 	    TYE 	TYER        * FirstDate
+
+            '''
+
         else:
             print('Programmer ERROR set_gst_encoding() bad fmt=', fmt)
             return False
@@ -1922,17 +1954,17 @@ class RipCD:
         if self.rip_current_track > 0:
             # print('END:   self.encode_track_time:', time.time())
             self.encode_track_time = time.time() - self.encode_track_time
-            self.add_sql_music()  # Create base sql Music Table Row
+            self.add_sql_music()  # Create SQL Music Table Row stub
             self.encode_album_time += self.encode_track_time
             self.encode_album_seconds += self.song_seconds
             self.encode_album_track_cnt += 1
             self.encode_album_size += self.song_size
-            self.scrollbox.highlight_pattern(self.os_song_name, "green")
-            self.last_highlighted = self.os_song_name  # Tag song as completed
+            self.scrollbox.highlight_pattern(self.os_song_title, "green")
+            self.last_highlighted = self.os_song_title  # Tag song as completed
 
             if not self.fmt == "wav":  # Does song format support metadata?
                 self.add_metadata_to_song()  # Use Metagen to update song
-                self.add_sql_metadata()  # Update SQL with metadata
+                self.add_sql_metadata()  # Update SQL with metadata from song
                 if self.image_count > 0:  # Apply Cover art
                     if self.fmt == "oga":
                         self.add_image_to_oga()
@@ -1940,6 +1972,8 @@ class RipCD:
                         self.add_image_to_flac()
                     elif self.fmt == "m4a":
                         self.add_image_to_m4a()
+                    elif self.fmt == "mp3":
+                        self.add_image_to_mp3()
                     else:
                         print('Programmer ERROR: Add unknown image support.')
             else:
@@ -1950,7 +1984,7 @@ class RipCD:
         if self.image_count > 0:  # Alternate tracks with next image
             image_key = self.selected_image_keys[self.next_image_key_ndx]
             self.image_data = self.get_image_by_key(image_key)
-            self.image_data_to_frame(self.image_data) # Update artwork
+            self.image_data_to_frame(self.image_data)  # Update artwork
             self.next_image_key_ndx += 1  # Setup for next track
             if self.next_image_key_ndx == self.image_count:
                 self.next_image_key_ndx = 0  # End of image list, back 1st
@@ -1961,6 +1995,7 @@ class RipCD:
                 sql.hist_add(
                     time.time(), 0, g.USER, 'encode', 'album',
                     self.selected_album_artist, self.selected_album_name,
+                    # self.disc.id was repurposed to mbz_release_id
                     "Audio disc id: " + self.disc.id, self.encode_album_size,
                     self.encode_album_seconds, self.encode_album_time,
                     "Tracks: " + str(self.encode_album_track_cnt) +
@@ -1989,9 +2024,13 @@ class RipCD:
         NO_STDOUT = " > " + g.TEMP_DIR + "mserve_gst_launch"
         ext_name = 'gst-launch-1.0 cdiocddasrc track={} ! ' \
                    .format(self.rip_current_track) + \
-                   'audioconvert ! {} '.format(self.gst_encoding)
+                   'audioresample ! audioconvert ! {} '.format(self.gst_encoding)
         ext_name += ' ! filesink location="{}"'.format(self.os_full_path)
         ext_name += NO_STDOUT
+
+        text = "Launching gstreamer to encode music file. Parameters:\n\n"
+        self.info.cast(text + ext_name)
+        print(ext_name)  # to copy text which info.cast doesn't allow yet...
 
         # ext_name = "sleep 3" # Activate this for speedy loop testing
         self.active_pid = ext.launch_command(ext_name,
@@ -2001,8 +2040,8 @@ class RipCD:
         return  # Loops for next song
 
     def add_sql_music(self):
-        """ Populate SQL Music Table Row with new CD track before encoding
-            success. """
+        """ Populate SQL Music Table Row with new CD track after encoding
+            but before metadata tagging. """
         # os.stat returns file attributes object
         stat = os.stat(self.os_full_path)
         self.song_size = int(stat.st_size)
@@ -2010,7 +2049,12 @@ class RipCD:
         dt = datetime.datetime.fromtimestamp(stat.st_mtime)
         self.CreationTime = dt.strftime('%Y-%m-%d %H:%M:%S')  # This is correct 2nd time
 
-        ''' Add the song without metadata '''
+        tm = time.localtime(stat.st_mtime)
+        local_time = time.strftime('%Y-%m-%d %H:%M:%S', tm)
+        print("self.CreationTime:", self.CreationTime, "local_time:", local_time)
+        # Time is OK at this point, but 6 hours ahead when stored...
+
+        ''' Add SQL Music Row stub with OS file info but no metadata '''
         # 'sql' conflict with import. Use 'sql_cmd' instead
         sql_cmd = "INSERT OR IGNORE INTO Music (OsFileName, OsAccessTime, \
             OsModifyTime, OsChangeTime, OsFileSize) \
@@ -2019,6 +2063,8 @@ class RipCD:
                                      stat.st_mtime, stat.st_ctime, self.song_size))
         sql.con.commit()
         last_music_id = sql.cursor.lastrowid
+
+        #print("\nencoding.py sql_add_music() last_music_id:", last_music_id)
         # returning last history # 20,659 when no music (already exists)
 
         ''' Check if song existed previously in SQL. '''
@@ -2033,7 +2079,6 @@ class RipCD:
             text = "Song file already encoded. Updating file times and size in SQL."
             text += "\nSong: " + self.sqlOsFileName
             text += "\nSQL Music Table Row ID: " + str(self.music_id)
-            text += "\nCurrent bug is ID +1: " + str(int(self.music_id) + 1)
             print("\n" + text)
             self.info.cast(text)
             sql_cmd = "UPDATE Music SET OsAccessTime=?, OsModifyTime=?, \
@@ -2048,60 +2093,47 @@ class RipCD:
             action = 'edit'
         else:
             action = 'init'
+
+            #print("encoding.py sql_add_music() FIRST TIME ADD", last_music_id)
+
         sql.hist_add(
             time.time(), self.music_id, g.USER, 'file', action,
-            self.track_artist, self.os_song_name, self.sqlOsFileName,
+            self.track_artist, self.os_song_title, self.sqlOsFileName,
             self.song_size, self.song_seconds, self.encode_track_time,
             "encoded: " + time.asctime(time.localtime(time.time())))
         sql.hist_add(
             time.time(), self.music_id, g.USER, 'encode', 'track',
-            self.track_artist, self.os_song_name, self.sqlOsFileName,
+            self.track_artist, self.os_song_title, self.sqlOsFileName,
             self.song_size, self.song_seconds, self.encode_track_time,
             "finished: " + time.asctime(time.localtime(time.time())))
-
-        self.rip_ctl.new(self.os_full_path)  # Setup FileControl() after SQL added
 
     def add_sql_metadata(self):
         """ July 13, 2023 - Need DiscNumber, FirstDate, CreationTime, Composer,
             GaplessPlayback, AlbumDate, Compilation, """
-        genre = None  # TODO: Get with tk.Entry like release date
-        # genre = ""                  # None type breaks genre.decode("utf8")
 
-        ''' July 18, 2023 (actually August 12, 2023) Version 3 '''
-        sql.update_metadata(self.rip_ctl)
-
-        ''' July 13, 2023 (actually August 12, 2023) Version 2  
-        sql.update_metadata(  # old version 2 parameters
-            self.sqlOsFileName, self.selected_album_artist, self.selected_album_name,
-            self.selected_title, genre, self.tracknumber, self.selected_album_date,
-            self.song_seconds, self.track_duration, self.DiscNumber,
-            self.selected_composer)
-        '''
-        ''' Old version 1 parameters
-        sql.update_metadata(
-            self.sqlOsFileName, self.selected_album_artist, self.selected_album_name,
-            self.selected_title, genre, self.tracknumber, self.selected_album_date,
-            self.song_seconds, self.track_duration)
-        '''  # convert July 13, 2023 
-
-        # Above automatically creates history records for 'meta' 'init'
+        if self.rip_ctl.new(self.os_full_path):  # Read metadat from music file
+            success = sql.update_metadata(self.rip_ctl)
+            if not success:
+                print("encoding.py add_sql_metadata() without changes. ")
 
     # noinspection PyPep8Naming, SpellCheckingInspection
     def add_metadata_to_song(self):
-        """ July 13, 2023 - Need DiscNumber, AlbumArtist, AlbumDate, Genre,
-            Compilation "0" or "1". CreationTime, Composer """
+        """ Open music file with Mutagen, apply tags and save """
         if self.fmt == 'flac':
             from mutagen.flac import FLAC as audio_file
         elif self.fmt == 'oga':
             from mutagen.oggvorbis import OggVorbis as audio_file
         elif self.fmt == 'm4a':
             from mutagen.mp4 import MP4 as audio_file
+        elif self.fmt == 'mp3':
+            from mutagen.mp3 import MP3 as audio_file  # Just for show
+            #from mutagen.id3 import ID3 as audio_file  # Used differently below
         else:
             print('Programmer ERROR: add_metadata_to_song() bad fmt=', self.fmt)
             return False
 
         try:
-            audio = audio_file(self.os_full_path)
+            audio = audio_file(self.os_full_path)  # Not used for mp3
         except UnicodeDecodeError as err:
             print(err)
             print('UnicodeDecodeError ERROR mutagen.oggvorbis on file:')
@@ -2112,14 +2144,123 @@ class RipCD:
             print('TypeError ERROR mutagen.mp4 on file:')
             print(self.os_full_path)
             return False
+        except:
+            print("gstreamer failed to generate music file. Try again.")
+            return False
 
         # print("self.tracknumber before rip track:", self.tracknumber)
         self.tracknumber = str(self.rip_current_track) + \
             "/" + str(self.disc.last_track)
         self.tracknumber = toolkit.uni_str(self.tracknumber)
 
-        if self.fmt == "m4a":
-            audio['\xa9too'] = "mserve " + g.MSERVE_VERSION
+        if self.fmt == "mp3":
+            # https://mutagen.readthedocs.io/en/latest/api/mp3.html#mutagen.mp3.MP3Tags
+            '''
+            Attribute       ID3v1.x     ID3v2.2 ID3v2.3     mserve
+            Author          Artist      TP1     TPE1        * Artist
+            Copyright 		            TCR 	TCOP        * AlbumDate
+            Description 	Comment 	COM 	COMM        * Comment
+            Duration 		            TLE 	TLEN        * Duration
+            FileSize 			                TSIZ        * OsFileSize
+            Title 	        Title 	    TT2 	TIT2        * Title
+            WM/AlbumArtist 		        TP2 	TPE2        * AlbumArtist
+            WM/AlbumTitle 	Album 	    TAL 	TALB        * Album
+            WM/Composer 		        TCM 	TCOM        * Composer
+            WM/EncodedBy 		        TEN 	TENC        * mserve 3.3.13
+            WM/EncodingSettings 		TSS 	TSSE        ? Bitrate maybe
+            WM/EncodingTime 			        TDEN        * CreationTime
+            WM/GenreID 	    GenreID 	TCO 	TCON        * Genre
+            WM/OriginalReleaseYear 		TOR 	TORY        * AlbumDate
+            WM/Picture 		            PIC 	APIC
+            WM/TrackNumber 	Track 	    TRK 	TRCK        * TrackNumber
+            WM/Year 	    Year 	    TYE 	TYER        * FirstDate
+            '''
+            # https://mutagen.readthedocs.io/en/latest/user/id3.html
+
+            # https://from-locals.com/python-mutagen-mp3-id3/
+
+            # Next four lines work without save errors
+            #from mutagen.id3 import ID3, TIT2
+            #audio = ID3(self.os_full_path)
+            #audio.add(TIT2(encoding=3, text=u"An example"))
+            #audio.save()
+            # Musicbrainz ID and DiscId are auto added by gstreamer TWICE !
+
+            import mutagen.id3 as id3
+            audio = id3.ID3(self.os_full_path)  # override above for now
+            audio.add(id3.TENC(encoding=3, text=u"mserve " + g.MSERVE_VERSION))
+            audio.add(id3.TIT2(encoding=3, text=self.track_meta_title))
+            audio.add(id3.TPE1(encoding=3, text=self.track_artist))
+            audio.add(id3.TALB(encoding=3, text=self.selected_album_name))
+            if self.selected_album_artist:
+                audio.add(id3.TPE2(encoding=3, text=self.selected_album_artist))
+            if self.track_composer:
+                audio.add(id3.TCOM(encoding=3, text=self.track_composer))
+            if self.track_first_date:
+                audio.add(id3.TYER(encoding=3, text=self.track_first_date[:4]))
+            if self.track_comment:
+                audio.add(id3.COMM(encoding=3, text=self.track_comment))
+            if self.selected_genre:
+                audio.add(id3.TCON(encoding=3, text=self.selected_genre))
+            if self.selected_album_date:
+                audio.add(id3.TCOP(encoding=3, text=self.selected_album_date[:4]))
+                # Only use COPYRIGHT above not RELEASE_DATE below
+                #audio.add(id3.TORY(encoding=3, text=self.selected_album_date[:4]))
+            if self.tracknumber:
+                audio.add(id3.TRCK(encoding=3, text=self.tracknumber))
+            if self.CreationTime:
+                audio.add(id3.TDEN(encoding=3, text=self.CreationTime))
+            # For MP3, gstreamer automatically adds: "CDDB DiscID" and "discid"
+            # For MP3, gstreamer automatically adds:
+            #   "MusicBrainz DiscID" and "musicbrainz_discid"
+
+        elif self.fmt == "m4a":
+            # https://mutagen.readthedocs.io/en/latest/api/mp4.html#mutagen.mp4.MP4Tags
+
+            # EXPERIMENT - Try all mp4tags to see which ffprobe will report
+            ''' * appears in ffprobe (in order of appearance)
+\xa9lyr – lyrics *
+\xa9grp – grouping *
+purd – purchase date *
+sosn – show sort order *
+soal – album sort order *
+catg – podcast category *
+keyw – podcast keywords *
+purl – podcast URL *
+sonm – title sort order *
+soar – artist sort order *
+soco – composer sort order *
+eipsode_uid = value 32 shows up but not added to file *
+egid – podcast episode GUID *
+soaa – album artist sort order *
+desc – description (usually used in podcasts) *
+
+tvsh – show name
+\xa9wrk – classical work
+\xa9mvn – classical movement
+      
+            audio['desc'] = u" – description (usually used in podcasts)"
+            audio['purd'] = u" – purchase date"
+            audio['\xa9grp'] = u" – grouping"
+            audio['\xa9lyr'] = u" – lyrics"
+            audio['purl'] = u" – podcast URL"
+            audio['egid'] = u" – podcast episode GUID"
+            audio['catg'] = u" – podcast category"
+            audio['keyw'] = u" – podcast keywords"
+            audio['soal'] = u" – album sort order"
+            audio['soaa'] = u" – album artist sort order"
+            audio['soar'] = u" – artist sort order"
+            audio['sonm'] = u" – title sort order"
+            audio['soco'] = u" – composer sort order"
+            audio['sosn'] = u" – show sort order"
+            audio['tvsh'] = u" – show name"
+            audio['\xa9wrk'] = u" – classical work"
+            audio['\xa9mvn'] = u" – classical movement"
+            '''
+
+
+            # Regular m4a tags that ffprobe reports
+            audio['\xa9too'] = u"mserve " + g.MSERVE_VERSION
             audio['\xa9nam'] = self.track_meta_title
             audio['\xa9ART'] = self.track_artist
             audio['\xa9alb'] = self.selected_album_name
@@ -2132,7 +2273,7 @@ class RipCD:
             if self.track_comment:
                 audio['\xa9cmt'] = self.track_comment
             if self.selected_genre:
-                audio['\xa9gen’'] = self.selected_genre
+                audio['\xa9gen'] = self.selected_genre
             if self.selected_album_date:
                 audio['cprt'] = self.selected_album_date
             if self.selected_compilation:
@@ -2140,133 +2281,59 @@ class RipCD:
             if self.selected_gapless_playback:
                 audio['pgap'] = int(self.selected_gapless_playback)
             if self.DiscNumber:
+                # https://stackoverflow.com/a/70563415/6929343
                 str_a, str_b = self.DiscNumber.split("/")
                 audio['disk'] = [(int(str_a), int(str_b))]
-                # https://stackoverflow.com/a/70563415/6929343
             if self.tracknumber:
                 str_a, str_b = self.tracknumber.split("/")
                 audio['trkn'] = [(int(str_a), int(str_b))]
             if self.CreationTime:  # ID3.2.4 tag works in Kid 3
                 audio['TDEN'] = self.CreationTime
-        else:
-            ''' Assume below will be ignored by mutagen MP4 '''
-            audio['ENCODER'] = "mserve " + g.MSERVE_VERSION
 
-            """ July 13, 2023 - Need Genre, FirstDate, CreationTime, Compilation, 
-                                Composer, Comment, Gapless Playback """
-            # July 13, 2023 - Perhaps ALBUMARTIST is the original band/artist
+            # On MP3, gstreamer adds "CDDB DiscID" and "discid"
+            if self.disc.freedb_id:
+                # Hijack the 'catg' tag from podcast category for m4a
+                audio['catg'] = self.disc.freedb_id  # gstreamer does this for MP3
+            # On MP3, gstreamer adds "MusicBrainz DiscID" and "musicbrainz_discid"
+            if self.mbz_release_id:
+                # Hijack the 'keyw' tag from podcast keywords for m4a
+                audio['keyw'] = self.mbz_release_id  # gstreamer does this for MP3
 
-            """ July 13, 2023 - 'ARTIST' would be Clarence Clemmons """
+        elif self.fmt == "flac" or self.fmt == "oga":
+            ''' FLAC and OGA '''
+            audio['ENCODER'] = u"mserve " + g.MSERVE_VERSION
             audio['TITLE'] = self.track_meta_title  # '99 -' and .ext stripped
-            # 'ARTIST' goes to 'ALBUMARTIST' in Kid3 and iTunes
-            audio['ARTIST'] = self.track_artist
-            audio['ALBUM'] = self.selected_album_name
+            audio['ARTIST'] = self.track_artist  # Song artist c/b diff than album
+            audio['ALBUM'] = self.selected_album_name  # c/b 'Greatest Hits'
             audio['TRACK_NUMBER'] = self.tracknumber  # kid3 show 'Track Number'
             if self.selected_album_artist:
-                audio['ALBUM_ARTIST'] = self.selected_album_artist
-
-            """ July 13, 2023 - 'ALBUM' would be Greatest Hits [Disc 3] 
-            if self.selected_compilation:
-                audio['cpil'] = int(self.selected_compilation)
-            if self.selected_gapless_playback:
-                audio['pgap'] = int(self.selected_gapless_playback)
-            """
+                audio['ALBUM_ARTIST'] = self.selected_album_artist  # c/b 'Various'
             if self.track_composer:
                 audio['COMPOSER'] = self.track_composer
             if self.track_first_date:  # first_date
-                audio['DATE'] = self.track_first_date
+                audio['DATE'] = self.track_first_date  # song first release date
             if self.selected_genre:
                 audio['GENRE'] = self.selected_genre
             if self.selected_album_date:
-                audio['RECORDING_DATE'] = self.selected_album_date
+                audio['COPYRIGHT'] = self.selected_album_date  # album copyright
             if self.track_comment:
-                # self.selected_comment may exist but would be applied to tracks.
-                audio['COMMENT'] = self.track_comment
+                audio['COMMENT'] = self.track_comment  # track not album
             if self.DiscNumber:
                 audio['DISC_NUMBER'] = self.DiscNumber  # July 13, 2023
             if self.CreationTime:  # Apple iTunes m4a no tag, use 'TDEN' ID3.2.4
                 audio['CREATION_TIME'] = self.CreationTime  # July 13, 2023 CreationTime
-            # What about Musicbrainz ID? It is auto added along with discid
-            # Add comment "Encoded 2020-10-16 12:15, format: x, quality: y
-            # Already has comment in 'file' command header
+            # On MP3, gstreamer adds "CDDB DiscID" and "discid"
+            if self.disc.freedb_id:
+                audio['DISCID'] = self.disc.freedb_id  # gstreamer does this for MP3
+            # On MP3, gstreamer adds "MusicBrainz DiscID" and "musicbrainz_discid"
+            if self.mbz_release_id:
+                audio['MUSICBRAINZ_DISCID'] = self.mbz_release_id  # gstreamer does this for MP3
 
-        # audio.save(v2_version=3)    # Version 4 causing problems?
-        audio.save()  # v2_version flag unknown
+        else:
+            print("no tags added.")
+            return
 
-        # noinspection SpellCheckingInspection
-        '''
-            Other ripping image options from:
-    https://www.programcreek.com/python/example/84797/mutagen.id3.ID3
-    def modified_id3(self, file_name, info):
-            id3 = ID3()
-            id3.add(TRCK(encoding=3, text=str(info['track'])))
-            id3.add(TDRC(encoding=3, text=str(info['year'])))
-            id3.add(TIT2(encoding=3, text=info['song_name']))
-            id3.add(TALB(encoding=3, text=info['album_name']))
-            id3.add(TPE1(encoding=3, text=info['artist_name']))
-            id3.add(TPOS(encoding=3, text=str(info['cd_serial'])))
-            lyric_data = self.get_lyric(info)
-            id3.add(USLT(encoding=3, text=lyric_data)) if lyric_data else None
-            #id3.add(TCOM(encoding=3, text=info['composer']))
-            #id3.add(WXXX(encoding=3, desc=u'xiami_song_url', text=info['song_url']))
-            #id3.add(TCON(encoding=3, text=u'genre'))
-            #id3.add(TSST(encoding=3, text=info['sub_title']))
-            #id3.add(TSRC(encoding=3, text=info['disc_code']))
-            id3.add(COMM(encoding=3, desc=u'Comment', \
-                text=info['comment']))
-            id3.add(APIC(encoding=3, mime=u'image/jpeg', type=3, \
-                desc=u'Front Cover', data=self.get_cover(info)))
-            id3.save(file_name) 
-
-    Another example: https://stackoverflow.com/a/14040318/6929343
-
-    from mutagen.id3 import ID3NoHeaderError
-    from mutagen.id3 import ID3, TIT2, TALB, TPE1, TPE2, COMM, TCOM, TCON, TDRC
-
-    # Read ID3 tag or create it if not present
-    try: 
-        tags = ID3(fname)
-    except ID3NoHeaderError:
-        print("Adding ID3 header")
-        tags = ID3()
-
-    tags["TIT2"] = TIT2(encoding=3, text=title)
-    tags["TALB"] = TALB(encoding=3, text=u'mutagen Album Name')
-    tags["TPE2"] = TPE2(encoding=3, text=u'mutagen Band')
-    tags["COMM"] = COMM(encoding=3, lang=u'eng', desc='desc', text=u'mutagen comment')
-    tags["TPE1"] = TPE1(encoding=3, text=u'mutagen Artist')
-    tags["TCOM"] = TCOM(encoding=3, text=u'mutagen Composer')
-    tags["TCON"] = TCON(encoding=3, text=u'mutagen Genre')
-    tags["TDRC"] = TDRC(encoding=3, text=u'2010')
-    tags["TRCK"] = TRCK(encoding=3, text=u'track_number')
-
-    tags.save(fname)
-    
-    
-    What Media Monkey says about dates:
-    
-    MediaMonkey 5,4 and 3, by default save Year and Date metadata in 
-    ID3 v2.3 tags to TYER / TDRC frames. Although this is generally a 
-    good approach for maximum compatibility, some users may wish to 
-    change this since TDRC is normally associated with ID3 v2.4 tags 
-    and Winamp will not read the TDRC field for an ID3v2.3 tag. This 
-    can be done by modifying MediaMonkey’s .ini file with the following 
-    section which allows you to enable/disable frames at will:
-
-    [MP3Tagging]
-    DisableFrames=TDAT;TDRC
-    EnableFrames=TYER
-    
-    To also solve the problem of Original Year being saved twice, the 
-    MP3Tagging section in MediaMonkey.ini should look like this:
-    
-    [MP3Tagging]
-    DisableFrames=TDRC;TDOR;
-    EnableFrames=TYER;TDAT;TORY;
-    
-    This disables the ID3v2.4 TDOR which MM is using for Original Year, 
-    and enables use of the ID3v2.3 TORY, intended for original release year.
-        '''
+        audio.save()
 
     # noinspection SpellCheckingInspection
     def add_image_to_oga(self):
@@ -2287,34 +2354,13 @@ class RipCD:
             return False
 
         picture = Picture()  # For FLAC files
-
-        # Convert image to jpeg for saving
-
-        # print('Opening image being encoded with picture.data')
-        # TODO: There are two different python-magic, expand to handle that.
-        # print('magic contents:')
-        ''' TODO: Also saving in add_image_to_m4a() '''
         m = magic.open(magic.MAGIC_MIME_TYPE)
         m.load()
         mime_type = m.buffer(self.image_data)
         picture.mime = mime_type.encode('utf-8')
-        # print(mime_type)
-
-        #        self.image_data_to_frame(self.image_data)               # Shortcut
-        #        width, height = self.original_art.size
-        #        mode_to_bpp = {"1": 1, "L": 8, "P": 8, "RGB": 24, "RGBA": 32, \
-        #                       "CMYK": 32, "YCbCr": 24, "LAB": 24, "HSV": 24, \
-        #                       "I": 32, "F": 32}
-        #        depth = mode_to_bpp[self.original_art.mode]
-        #        print('width, height, depth, format:', width, height, depth, form)
-
         picture.data = self.image_data
         picture.type = 3  # Hex 03 - Cover (Front)
         picture.desc = self.track_meta_title
-        #width, height, depth = 100, 100, 32  # Defaults have no effect
-        #picture.width = width  # Seems to have no effect?
-        #picture.height = height
-        #picture.depth = depth
 
         try:
             picture_data = picture.write()
@@ -2331,14 +2377,13 @@ class RipCD:
         audio.save()
 
     def add_image_to_flac(self):
-        """ From: https://stackoverflow.com/a/7282712/6929343
-            NOT TESTED as of Aug 16/23
-        """
+        """ From: https://stackoverflow.com/a/7282712/6929343 """
         from mutagen import File  # User comments this no longer exists
         from mutagen.flac import Picture, FLAC
         audio = File(self.os_full_path)
         image = Picture()
         image.type = 3
+        image.desc = 'front cover'
 
         m = magic.open(magic.MAGIC_MIME_TYPE)
         m.load()
@@ -2348,17 +2393,12 @@ class RipCD:
         else:
             art_name = RIP_ARTWORK + ".png"
         image.mime = mime  # Missing in original answer
+
         ''' Save image as file for mutagen to read back in '''
         t_file = io.BytesIO(self.image_data)
         self.original_art = Image.open(t_file)
         self.original_art.save(art_name)
         del t_file  # Delete object to save memory
-
-        #if albumart.endswith('png'):  # From original answer, but mime not used?
-        #    mime = 'image/png'
-        #else:
-        #    mime = 'image/jpeg'
-        image.desc = 'front cover'
         with open(art_name, 'rb') as f:
             image.data = f.read()
 
@@ -2366,18 +2406,16 @@ class RipCD:
         audio.save()
 
     def add_image_to_m4a(self):
-        """ See: https://mutagen.readthedocs.io/en/latest/api/mp4.html#mutagen.mp4.MP4Tags
-
+        """
+    See: https://mutagen.readthedocs.io/en/latest/api/mp4.html#mutagen.mp4.MP4Tags
         """
         from mutagen.mp4 import MP4, MP4Cover
 
         video = MP4(self.os_full_path)
 
-        ''' TODO: Also saving in add_image_to_oga() '''
         m = magic.open(magic.MAGIC_MIME_TYPE)
         m.load()
         mime_type = m.buffer(self.image_data)
-        print("mime_type:", mime_type)  # image/jpeg
         if mime_type == "image/jpeg":
             cover_format = 'MP4Cover.FORMAT_JPEG'  # for Mutagen to figure out
             art_name = RIP_ARTWORK + ".jpg"  # .ext for PIL to figure out
@@ -2394,15 +2432,51 @@ class RipCD:
         # https://stackoverflow.com/a/56673959/6929343
         with open(art_name, 'rb') as f:
             art = MP4Cover(f.read(), imageformat=cover_format)
+        # noinspection SpellCheckingInspection
         video['covr'] = [bytes(art)]
 
         video.save()
 
+    def add_image_to_mp3(self):
+        """
+        https://groups.google.com/g/quod-libet-development/c/cqGVk6RNYkM?pli=1
+
+        from mutagen import id3, mp3
+        file = mp3.MP3('test.mp3')
+        imagedata = open('cover.png', 'rb').read()
+        file.tags.add(id3.APIC(3, 'image/png', 3, 'Front cover', imagedata))
+        file.save()
+        """
+        from mutagen import id3, mp3
+        audio = mp3.MP3(self.os_full_path)
+        #imagedata = open('cover.png', 'rb').read()  # from link NOT USED
+        #audio.tags.add(id3.APIC(3, 'image/png', 3, 'Front cover', imagedata))
+
+        m = magic.open(magic.MAGIC_MIME_TYPE)
+        m.load()
+        mime_type = m.buffer(self.image_data)
+        if mime_type == "image/jpeg":
+            art_name = RIP_ARTWORK + ".jpg"  # .ext for PIL to figure out
+        else:
+            art_name = RIP_ARTWORK + ".png"
+
+        ''' Save image as file for mutagen to read back in '''
+        t_file = io.BytesIO(self.image_data)
+        self.original_art = Image.open(t_file)
+        self.original_art.save(art_name)
+        del t_file  # Delete object to save memory
+
+        # https://stackoverflow.com/a/56673959/6929343
+        with open(art_name, 'rb') as f:
+            imagedata = f.read()
+
+        audio.tags.add(id3.APIC(3, mime_type, 3, 'Front cover', imagedata))
+        audio.save()
+
     def get_next_rip_name(self):
         """ Get next song in selected list and convert to UTF-8.
-            Set the song name, OS song name and full OS path song name
-        """
-        self.os_song_name = None
+            Set the song name, OS song name and full OS path song name """
+        self.os_song_title = None
         #self.track_song_title = ""  # Aug 16/23 - no longer used
         i = 0  # To make pycharm charming :)
         for i, track_id in enumerate(self.cd_tree.get_children(
@@ -2414,13 +2488,13 @@ class RipCD:
                 self.get_track_from_tree(track_id)  # Grab values from treeview
                 tree_song_title = \
                     self.build_out_name(self.track_no, self.track_meta_title)
-                self.os_song_name = self.os_song_format(tree_song_title)
-                self.song_seconds = tmf.get_sec(self.track_duration)
+                self.os_song_title = self.os_song_format(tree_song_title)
+                self.song_seconds = tmf.get_sec(self.track_duration)  # 2 dec.
                 break
 
-        if self.os_song_name is None:
-            self.rip_current_track = self.disc.last_track + 1
-            return False  # No more songs
+        if self.os_song_title is None:
+            self.rip_current_track = self.disc.last_track + 1  # force return
+            return False  # No more songs selected for ripping
 
         ''' July 18, 2023 Support compilations. Could check " | Type:" flag too! 
             rel_type = d['release-group']['type']
@@ -2429,27 +2503,49 @@ class RipCD:
                         'Artist: ' + d['artist-credit'][0]['artist']['name'] \
                         + sep + 'Title: ' + d['title'] + sep + "Type: " + rel_type
         '''
-        self.selected_compilation = "1" if self.selected_album_artist == "Various Artists" else "0"
+
+        """ PROBLEM:
+
+SQL Blacklisted songs
+====================================
+
+0 : Nothing Has Changed [Disc 1]/01 Track 1.wav
+1 : Compilations/Greatest Hits of the 80’s [Disc #3 of 3]/3-12 Poison.m4a
+2 : Alice Cooper/Greatest Hits of the 80’s [Disc #3 of 3]/3-12 Poison.m4a
+
+SQL Whitelist substitutes
+====================================
+
+0 : None
+1 : None
+2 : None
+        
+        """
+        # Aug 18/23 selected_compilation already set in
+        #self.selected_compilation = "1" if self.selected_album_artist == "Various Artists" else "0"
         if self.selected_compilation == "1":
             artist_dir = u"Compilations"
         else:
             artist_dir = self.selected_album_artist
 
-        # Does target directory exist?
         ''' June 3, 2023 Create legal names - Replace '/', '?', ':' with '_' '''
-        part = ext.legalize_dir_name(artist_dir.encode("utf8")) + os.sep + \
-            ext.legalize_dir_name(self.selected_album_name.encode("utf8")) + os.sep
-        prefix = self.topdir.encode("utf8") + os.sep + part
+        legal_artist = ext.legalize_dir_name(artist_dir)
+        self.legal_message("Album Artist", artist_dir, legal_artist)
+        legal_album = ext.legalize_dir_name(self.selected_album_name) 
+        self.legal_message("Album Name", self.selected_album_name, legal_album)
+        legal_song_name = ext.legalize_song_name(self.os_song_title)
+        self.legal_message("Song Title", self.os_song_title, legal_song_name)
 
-        ''' Problems with os.path.join'''
-        #print("OLD prefix:", prefix, type(prefix))
-        #legal_artist_dir = ext.legalize_dir_name(toolkit.uni_str(artist_dir))
-        #legal_album_name = ext.legalize_dir_name(toolkit.uni_str(self.selected_album_name))
-        #part = ext.join(legal_artist_dir, legal_album_name)  # Inserts leading /
-        #prefix = ext.join(self.topdir, part)  # Topdir already legalized
-        #print("self.topdir:", self.topdir, type(self.topdir))
-        #print("part:", part, type(part))
-        #print("joined prefix:", prefix, type(prefix))
+        ''' Build SQL OsFileName and OS full path '''
+        self.sqlOsFileName = \
+            legal_artist + os.sep + legal_album + os.sep + legal_song_name
+        self.sqlOsFileName = toolkit.uni_str(self.sqlOsFileName)
+        self.os_full_path = self.topdir + os.sep + self.sqlOsFileName
+        self.os_full_path = toolkit.uni_str(self.os_full_path)
+ 
+        ''' Does target directory exist? '''
+        prefix = self.topdir + os.sep + legal_artist + os.sep + legal_album
+        prefix = toolkit.uni_str(prefix)
         if not os.path.isdir(prefix):
             try:
                 os.makedirs(prefix)
@@ -2460,20 +2556,23 @@ class RipCD:
         elif os.path.isfile(prefix):
             title = "Directory path already exists as a filename."
             return self.abort_no_dir(title, prefix)  # Always false
-
-        # topdir/artist/album/99 song.ext - self.os_song_name already legal
-        legal_song_name = ext.legalize_song_name(self.os_song_name)
-        #self.os_full_path = prefix + self.os_song_name
-        self.os_full_path = ext.join(prefix, legal_song_name)
-        self.os_full_path = toolkit.uni_str(self.os_full_path)
-        #self.sqlOsFileName = part + self.os_song_name  # SQL music key
-        #self.sqlOsFileName = ext.join(part, legal_song_name)  # Adds leading /
-        self.sqlOsFileName = part + os.sep + legal_song_name
-        self.sqlOsFileName = toolkit.uni_str(self.sqlOsFileName)
-        #print("self.sqlOsFileName:", self.sqlOsFileName, type(self.sqlOsFileName))
-        ''' TODO: Advise when legalized name different than original name '''
         self.rip_current_track = i + 1
         return True
+
+    def legal_message(self, label, old, new):
+        """ Advise when name with illegal characters was changed """
+        if old == new:
+            return True
+        title = "Name contains characters OS will reject."
+        text = "Certain characters cannot be stored in Operating System filenames."
+        text += "\nThe " + label + " was modified for the OS filename. Illegal:\n\t"
+        text += old
+        text += "\nLegalized Name:\n\t"
+        text += new
+        ''' TODO: ShowInfo with anti-spam subsequent illegal directory names '''
+        self.info.fact(title + "\n\n" + text)
+        print(title + "\n" + text)
+        return False  # Do not pass Go. Pay $200 to get out of jail.
 
     def abort_no_dir(self, title, prefix):
         """ Can't create directory """
@@ -2497,7 +2596,7 @@ class RipCD:
 
         if self.last_shade is not None:
             # Remove last shade before applying next shade
-            self.scrollbox.unhighlight_pattern(self.os_song_name,
+            self.scrollbox.unhighlight_pattern(self.os_song_title,
                                                str(self.last_shade))
             self.curr_shade = self.last_shade + 1
             if self.curr_shade == 10:
@@ -2505,7 +2604,7 @@ class RipCD:
         else:
             self.curr_shade = 0  # First time updating rip status
 
-        self.scrollbox.highlight_pattern(self.os_song_name,
+        self.scrollbox.highlight_pattern(self.os_song_title,
                                          str(self.curr_shade))
         self.last_shade = self.curr_shade
 
@@ -2620,7 +2719,7 @@ if r['title'] != r['release-group']['title']
             '''
             # disc_list = disc['disc-list']
             # print('index i:', i, 'disc_list:', disc_list)
-            disc_id = str(d['medium-list'][i]['disc-list'][0]['id'])
+            #disc_id = str(d['medium-list'][i]['disc-list'][0]['id'])
             # print("disc-list:", d['medium-list'][i]['disc-list'])
             for disc_id in d['medium-list'][i]['disc-list']:
                 if disc_id['id'] == self.mbz_release_id:
@@ -2776,7 +2875,8 @@ if r['title'] != r['release-group']['title']
                     self.build_out_name(self.track_no, self.track_meta_title)
 
                 out_name2 = self.build_out_name2(  # Append: | Artist | Composer
-                    tree_song_title, self.track_artist, self.track_composer)
+                    tree_song_title, self.track_artist, self.track_composer,
+                    self.track_comment)
 
                 self.cd_tree.insert(
                     medium_id, "end", text=out_name2, tags=("track_id", "unchecked"),
@@ -2850,22 +2950,26 @@ if r['title'] != r['release-group']['title']
             out_name = str(self.this_disc_number) + "-" + out_name
         return out_name
 
-    def build_out_name2(self, out_name, art, comp):
+    def build_out_name2(self, out_name, art, comp, comm):
         """ Add ' | artist: Artist Name ' and ' | composer: Composer Name'
             to treeview detail line. Repeatedly called as Artist Name,
             Composer Name and Comment are changed.
-        :param out_name: "D-99 Song Name"
-        :param art: song_artist
-        :param comp: song_composer
+        :param out_name: "D-99 Song Name" or "D-99 - Song Name"
+        :param art: track_artist
+        :param comp: track_composer
+        :param comm: track_comment
         :returns out_name2: Optional Artist Name and Composer appended
         """
         out_name2 = out_name
-        artist = art if len(art) <= 15 else art[:12] + "..."  # Max 20 chars
-        composer = comp if len(comp) <= 15 else comp[:12] + "..."  # Max 20 chars
+        artist = art if len(art) <= 15 else art[:12] + "..."  # Max 15 chars
+        composer = comp if len(comp) <= 15 else comp[:12] + "..."  # Max 15 chars
+        comment = comm if len(comm) <= 15 else comm[:12] + "..."  # Max 15 chars
         if art != self.selected_album_artist:  # Highlight track diff from album
             out_name2 += "  | artist: " + artist
         if comp != self.selected_composer:  # Highlight track diff from album
             out_name2 += "  | composer: " + composer
+        if comm != self.selected_comment:  # Highlight track diff from album
+            out_name2 += "  | comment: " + comment
         return out_name2
 
     def cd_tree_insert_image(self, rel_id, mbz_id, opened, image_list, first_time):
@@ -3517,7 +3621,11 @@ if r['title'] != r['release-group']['title']
             Called when boxes checked and drop down menu is changed.
         """
         self.fmt = self.fmt_var.get()
+        c = "Rip CD default encoding format"
+        sql.save_config('encoding', 'format', Target=self.fmt, Comments=c)
         self.naming = self.nam_var.get()
+        c = "Rip CD default filename format"
+        sql.save_config('encoding', 'naming', Target=self.naming, Comments=c)
         # For consistency should create self.quality instance 
 
         # Allow program changes to displayed selections
@@ -3528,6 +3636,9 @@ if r['title'] != r['release-group']['title']
         y = 100  # wav and flac are 100% quality
         if x == "m4a" or x == "oga":  # "oga" or "m4a" selected?
             y = self.quality_var.get()  # Menu bar quality radiobutton
+            c = "Rip CD default encoding quality (30% to 100%)"
+            sql.save_config('encoding', 'quality', Size=y, Comments=c)
+
         self.scrollbox.insert("end", "\tQuality: " + str(y) + " %")
         self.scrollbox.insert("end", "\tNaming: " + '"' + self.naming + '"' + "\n")
         topdir = self.trg_var.get()  # Menu bar format target
@@ -3661,9 +3772,7 @@ if r['title'] != r['release-group']['title']
     def os_song_format(self, tree_name):
         """ Format song name as it will appear in operating system.
         :param tree_name: Formatted with Disk, Track & "-" but no extension.
-            Previously created with build_out_name() and NOT build_out_name2().
-        returns os_name: Legalized tree_name with extension appended
-        """
+        returns os_name: Legalized tree_name with extension appended """
         os_name = tree_name + u'.' + toolkit.uni_str(self.fmt)  # Add extension
         os_name = ext.legalize_song_name(os_name)  # Take out '/', '>', etc.
         return os_name  # os_name inserted into selection

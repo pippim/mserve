@@ -16,6 +16,7 @@ from __future__ import with_statement  # Error handling for file opens
 #
 #       Aug. 13 2021 - Switch over to 'import timefmt as tmf'
 #       July 12 2023 - Interface to/from mserve_config.py
+#       Aug. 18 2023 - Expand "ago" past-tense with "away" future-tense.
 #
 #==============================================================================
 
@@ -157,6 +158,7 @@ LAST_YEAR = LAST_WEEK * 52          # Formatted dates
 def ago(Time, seconds=False):
     """ Format time as 99 xx ago.
         Modified June 30, 2023 to include seconds in time.
+        Modified Aug. 18, 2023 to include future-tense "away".
     """
 
     now = time.time()
@@ -169,6 +171,11 @@ def ago(Time, seconds=False):
         else use:               "MMM DD YYYY - 99 Years ago"
     '''
     difference = now - Time
+    if difference < 0:
+        tense = "away"
+        difference = difference * -1
+    else:
+        tense = "ago"
     if difference < (12 * 60 * 60):  # Last 12 hours?
         if seconds:  # Caller requested Seconds to print?
             fmt = fmt_time.strftime("%I:%M:%S %p")  # Set HH:MM:SS xm
@@ -184,10 +191,10 @@ def ago(Time, seconds=False):
         if minutes < 1.0:
             fmt = fmt + " - Just now"
         elif minutes < 90.0:
-            fmt = fmt + " - " + str(int(round(minutes))) + " Minutes ago"
+            fmt = fmt + " - " + str(int(round(minutes))) + " Minutes " + tense
         else:
             hours = difference / (60 * 60)
-            fmt = fmt + " - " + str(int(round(hours))) + " Hours ago"
+            fmt = fmt + " - " + str(int(round(hours))) + " Hours " + tense
 
     elif difference < LAST_WEEK:                # Last 7 days?
         fmt = fmt_time.strftime("%A")        # Set day name
@@ -196,7 +203,7 @@ def ago(Time, seconds=False):
         if days < 1.0:
             fmt = fmt + " - Yesterday"
         else:
-            fmt = fmt + " - " + str(int(round(days))) + " Days ago"
+            fmt = fmt + " - " + str(int(round(days))) + " Days " + tense
 
     elif difference < LAST_YEAR:                # This year?
         fmt = fmt_time.strftime("%B %d")     # Set month name & day
@@ -205,12 +212,12 @@ def ago(Time, seconds=False):
         if weeks < 1.5:
             fmt = fmt + " - Last week"
         elif weeks < 4.0:
-            fmt = fmt + " - " + str(int(round(weeks))) + " Weeks ago"
+            fmt = fmt + " - " + str(int(round(weeks))) + " Weeks " + tense
         elif weeks < 6.0:
             fmt = fmt + " - Last month"
         else:
             months = difference / (30 * 24 * 60 * 60)
-            fmt = fmt + " - " + str(int(round(months))) + " Months ago"
+            fmt = fmt + " - " + str(int(round(months))) + " Months " + tense
     else:                                       # Before this year
         fmt = fmt_time.strftime("%b %d %Y")       # Set Mon Day Year
         # How many years ago or last year?
@@ -218,7 +225,7 @@ def ago(Time, seconds=False):
         if years < 2.0:
             fmt = fmt + " - Last year"
         else:
-            fmt = fmt + " - " + str(int(round(years))) + " Years ago"
+            fmt = fmt + " - " + str(int(round(years))) + " Years " + tense
 
     fmt = fmt.replace(" 0", " ", 1)           # "May 05" to "May 5"
 

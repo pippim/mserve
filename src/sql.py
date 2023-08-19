@@ -249,7 +249,7 @@ def open_db(LCS=None):
     con = sqlite3.connect(FNAME_LIBRARY)
 
     # MUSIC TABLE
-    """ Version 3 """
+    """ Version 3 - Note times are in UTC as returned by os.stat() """
     con.execute("create table IF NOT EXISTS Music(Id INTEGER PRIMARY KEY, " +
                 "OsFileName TEXT, OsAccessTime FLOAT, OsModifyTime FLOAT, " +
                 "OsChangeTime FLOAT, OsFileSize INT, " +
@@ -361,7 +361,7 @@ def check_upgrade(conn):
     loc_cursor = con.cursor()
 
     ''' Functions to fix errors in SQL database '''
-    #fd = FixData("Thu Jun 10 23:59:59 2023")  # Class for common fix functions
+    #fd = FixData("Fri Aug 18 23:59:59 2023")  # Cutoff time for selections
 
     #fd.del_music_ids(3913, 5000, update=False)  # Encoding CD test errors
     # Patch run Jun 02, 2023 with "update=True". 39 Music Ids deleted 3908->3946
@@ -439,8 +439,7 @@ def convert_to_database3():
         Change  ReleaseDate             -> AlbumDate
                 RecordingDate           -> FirstDate
 
-    Revise: update_metadata2() below
-            mserve.py update_sql_metadata(fc)
+    Revise: mserve.py update_sql_metadata(fc)
             mserve.py rename_files to set Compilation flag or at least warning.
         '''
         OsFileName = row['OsFileName']
@@ -639,7 +638,7 @@ def open_new_db():
             Disc, Date, Compilation, Gapless Playback
 
         Review - mserve FileControl() where metadata is read
-               - sql.update_metadata2()
+               - sql.update_metadata()
                - encoding.py
                - musicbrainzngs
 
@@ -751,7 +750,7 @@ class OsFileNameBlacklist:
     def Select(self, key):
         """
         Wrapper for reading Music Table Row by OsFileName - "artist/album/99 song.ext"
-        :param key: E.G. "Faith No More/17 Last Cup Of Sorrow.m4a"
+        :param key: E.G. "Faith No More/This is it_/17 Last Cup Of Sorrow.m4a"
         :return: Returns dictionary or None
         """
 
@@ -917,226 +916,6 @@ def music_get_row(key):
     return OrderedDict(row)
 
 
-def update_metadata2(key, artist, album, title, genre, tracknumber, date,
-                     seconds, duration, disc_number, composer):
-    """
-
-        DEPRECATED August 10, 2023 - NOT USED
-
-        Version 2 Update Music Table with metadata tags.
-        Called from mserve.py and encoding.py
-
-        Check if metadata has changed. If no changes return False.
-
-        Update metadata in library and insert history record:
-            'meta' 'init' for first time
-            'meta' 'edit' for 2nd and subsequent changes
-
-         What is the correct iTunes song date?
-
-        If there is only one YEAR per iTunes song, should it be the:
-            1. original song creator's publishing YEAR?
-            2. YEAR as published by the Cover Artist?
-            3. Apple Reissued YEAR version date?
-
-        Id3v2 has the "TORY" (Original Release Year) frame
-        foobar calls it "ORIGINAL RELEASE DATE"
-
-    """
-
-    # noinspection SpellCheckingInspection
-
-    # Crazy all the time spent encoding has to be decoded for SQLite3 or error:
-    # sqlite3.ProgrammingError: You must not use 8-bit bytestrings unless you
-    # use a text_factory that can interpret 8-bit bytestrings (like
-    # text_factory = str). It is highly recommended that you instead just
-    # switch your application to Unicode strings.
-    # TODO: Check for Python 3 may be required because Unicode is default type
-    #artist = artist.decode("utf8")  # Queensrÿche
-    # inspection SpellCheckingInspection
-    #album = album.decode("utf8")
-    #title = title.decode("utf8")
-
-    ''' June 28, 2023 - title.decode("utf-8") has been removed. Need to test '''
-
-
-    if date:
-        if type(date) is str:
-            if date == "None":  # sting value "None" !!!
-                # See "She's No Angel" by April Wine.
-                date = None
-        elif type(date) is float:
-            date = str(int(date))
-        elif type(date) is int:
-            date = str(date)
-        elif type(date) is unicode:
-            date = str(date)
-        else:
-            print("sql.update_metadata() invalid date:", date, type(date))
-    if disc_number is not None:
-        disc_number = disc_number.decode("utf8")
-    if composer is not None:
-        composer = composer.decode("utf8")
-    if genre is not None:
-        genre = genre.decode("utf8")
-
-    # Don't allow GIGO which required FixData del_music_ids() function June 2023
-    if artist is None or album is None or title is None:
-        return False
-    if artist == NO_ARTIST_STR or album == NO_ARTIST_STR:
-        return False
-    if artist == NO_ALBUM_STR or album == NO_ALBUM_STR:
-        return False
-
-    ''' TODO Add to Whitelist if possible '''
-    d = ofb.Select(key)
-    if d is None:
-        ''' June 3, 2023 - See if Whitelist can be created '''
-        # File and Directory names with ":", "?", "/" and "." replaced with "_"
-        fudged_artist = ext.legalize_dir_name(artist)
-        fudged_album = ext.legalize_dir_name(album)
-        fudged_title = key.split(os.sep)[-1]  # "title" S/B "99 title.ext"
-        fudged_title = ext.legalize_song_name(fudged_title)
-        white_key = fudged_artist + os.sep + fudged_album + os.sep + fudged_title
-
-        e = ofb.Select(white_key)  # If white key works, use it in Whitelist
-        if e is not None:
-            #print("Found substitute key:", e['OsFileName'])
-            ofb.SetWhitelist(key, white_key)
-            key = white_key  # Use white_key instead of passed key
-            d = e  # Replace d (None) with e (good dictionary of valid SQL)
-        else:
-            #print('sql.py update_metadata() error no music ID for:', key)
-            return False
-
-    # Are we adding a new 'init' or 'edit' history record?
-    if d['Artist'] is None:
-        # This happens when music file has never been played in mserve
-        action = 'init'
-        #print('\nSQL adding metadata for:', key)
-        # June 6, 2023 not legalized for white_key:
-        # SQL adding metadata for: Filter/The Very Best Things: 1995–2008/01 Hey Man Nice Shot.oga
-    elif \
-        artist       != d['Artist'] or \
-        album        != d['Album'] or \
-        title        != d['Title'] or \
-        genre        != d['Genre'] or \
-        tracknumber  != d['TrackNumber'] or \
-        date         != d['ReleaseDate'] or \
-        disc_number  != d['DiscNumber'] or \
-        composer     != d['Composer'] or \
-        seconds      != d['Seconds'] or \
-            duration != d['Duration']:
-        action = 'edit'
-    else:
-        return False  # Metadata same as library
-
-    # For debugging, set update_print_count to 0. Otherwise set initial value to 10
-    global update_print_count
-    if update_print_count < 10:
-        print('\nSQL updating metadata for:', key)
-        print('artist type :', type(artist), '  | album type :', type(album),
-              '  | title type :', type(title),
-              '  | tracknumber type :', type(tracknumber))
-        print('SQL type    :', type(d['Artist']), '  | album type :',
-              type(d['Album']), '  | title type :', type(d['Title']),
-              '  | tracknumber type :', type(d['TrackNumber']))
-        print(artist, "  | ", d['Artist'])
-        print(album, "  | ", d['Album'])
-        print(title, "  | ", d['Title'])
-        print(genre, "  | ", d['Genre'])
-        print(disc_number, "  | ", d['DiscNumber'])
-        print(tracknumber, "  | ", d['TrackNumber'])
-        print(date, "  | ", d['ReleaseDate'])
-        print(composer, "  | ", d['Composer'])
-        print(seconds, "  | ", d['Seconds'])
-        print(duration, "  | ", d['Duration'])
-
-        print("Variable causing Change:")
-        if artist != d['Artist']:
-            print('  | artist:', artist, d['Artist'])
-        elif album != d['Album']:
-            print('  | album:', album, d['Album'])
-        elif title != d['Title']:
-            print('  | title:', title, d['Title'])
-        elif genre != d['Genre']:
-            print('  | genre:', genre, d['Genre'])
-        elif disc_number != d['DiscNumber']:
-            print('  | disc_number:', disc_number, d['DiscNumber'])
-        elif tracknumber  != d['TrackNumber']:
-            print('  | tracknumber:', tracknumber, d['TrackNumber'])
-        elif date != d['ReleaseDate']:
-            print('  | date:', date, d['ReleaseDate'])
-        elif seconds != d['Seconds']:
-            print('  | seconds:', seconds, d['Seconds'])
-        elif duration != d['Duration']:
-            print('  | duration:', duration, d['Duration'])
-        else:
-            print('  | EQUAL - Need fix for sql.update_metadata()')
-        update_print_count += 1
-    # Update metadata for title into library Music Table
-    sql = "UPDATE Music SET Artist=?, Album=?, Title=?, Genre=?, TrackNumber=?, \
-           ReleaseDate=?, Seconds=?, Duration=?, DiscNumber=?, Composer=? \
-           WHERE OsFileName = ?"
-    cursor.execute(sql, (artist, album, title, genre, tracknumber, date,
-                         seconds, duration, disc_number, composer, key))
-    con.commit()
-
-    # Add history record
-    # Time will be file's last modification time
-    ''' Build full title path '''
-    full_path = START_DIR.encode("utf8") + key
-    # Below not needed because "<No Album>" strings not in Music Table filenames
-    # June 2, 2023, no longer relevant because rejected above.
-    full_path = full_path.replace(os.sep + NO_ARTIST_STR, '')
-    full_path = full_path.replace(os.sep + NO_ALBUM_STR, '')
-
-    # os.stat gives us all of file's attributes
-    stat = ext.stat_existing(full_path)
-    if stat is None:
-        print("sql.update_metadata(): File below doesn't exist:\n")
-        for i in d:
-            # Pad name with spaces for VALUE alignment
-            print('COLUMN:', "{:<25}".format(i), 'VALUE:', d[i])
-        return False  # Misleading because SQL music table was updated
-
-    Size = stat.st_size                     # File size in bytes
-    Time = stat.st_mtime                    # File's current mod time
-    #SourceMaster = lcs.open_name
-    #SourceMaster = LODICT['name']
-    #SourceDetail = time.asctime(time.localtime(Time))
-    #Comments = "Found: " + time.asctime(time.localtime(time.time()))
-    Comments = "Found: " + asc_time()
-    if seconds is not None:
-        FloatSeconds = float(str(seconds))  # Convert from integer
-    else:
-        FloatSeconds = 0.0
-
-    Count = 0
-
-    # If adding, the file history record may be missing too.
-    if action == 'init' and \
-       not hist_check(d['Id'], 'file', action):
-        hist_add(Time, d['Id'], g.USER, 'file', action, loc_name(),
-                 asc_time(Time), key, Size, Count, FloatSeconds,
-                 Comments)
-        #hist_add(Time, d['Id'], g.USER, 'file', action, SourceMaster,
-        #         SourceDetail, key, Size, Count, FloatSeconds,
-        #         Comments)  # OLD METHOD
-
-    # Add the meta Found or changed record
-    hist_add(Time, d['Id'], g.USER, 'meta', action, loc_name(),
-             asc_time(Time), key, Size, Count, FloatSeconds,
-             Comments)
-    #hist_add(Time, d['Id'], g.USER, 'meta', action, SourceMaster,
-    #         SourceDetail, key, Size, Count, FloatSeconds,
-    #         Comments)  # Aug 3/23 conversion
-
-    con.commit()
-
-    return True  # Metadata was updated in SQL database
-
-
 def loc_code():
     """ Simple function to return current location code for recording
         in d['SourceDetail'] SQL History Table column."""
@@ -1148,7 +927,8 @@ def loc_code():
 
 
 def loc_name():
-    """ Simple function to return current location name for recording
+    """ Aug 18/23 - created for database Version 2 to Version 3 update
+        Simple function to return current location name for recording
         in d['SourceMaster'] SQL History Table column."""
     if LODICT:  # Temporary for conversion away from LODICT
         name = LODICT['name']
@@ -1165,7 +945,7 @@ def asc_time(Time=None):
     return time.asctime(time.localtime(Time))
 
 
-update_print_count = 0  # Change to 0 to print first 10 songs
+update_print_count = 11  # Change to 0 to print first 10 songs
 
 
 def update_metadata(fc, commit=True):
@@ -1174,8 +954,8 @@ def update_metadata(fc, commit=True):
 
         Check if metadata has changed. If no changes return False.
         Same song file name may exist in two locations where one
-        location has more metadata than the other. Also the metaddta
-        may be different for let's say "Artist" name. E.G.
+        location has more metadata than the other. Also the metadata
+        may be different for example, Artist name. E.G.
         "Tom Cochran & Red Rider" in one location and "Red Rider" 
         in the other location.
 
@@ -1183,8 +963,8 @@ def update_metadata(fc, commit=True):
             'meta' 'init' for first time
             'meta' 'edit' for 2nd and subsequent changes
 
-        Problem when one location has more metadata for song than another
-        will be blanking out good metadata
+        Problem when one location has less metadata for song than another
+        will be blanking out other location's extra metadata
 
     :param fc: File control block: mus_ctl, ltp_ctl and play_ctl.
     :param commit: Live run. Update SQL database if metadata changed. If
@@ -1202,7 +982,6 @@ def update_metadata(fc, commit=True):
     key = fc.path[len(PRUNED_DIR):]  # Create OsFileName (base path)
     d = ofb.Select(key)
     if d is None:
-        ''' July 18, 2023 - Run scan on database to confirm not too legal. '''
         # File and Directory names with ":", "?", "/", etc. replaced with "_"
         fudged_Artist = ext.legalize_dir_name(fc.Artist)
         fudged_Album = ext.legalize_dir_name(fc.Album)
@@ -1212,12 +991,13 @@ def update_metadata(fc, commit=True):
 
         e = ofb.Select(white_key)  # If white key works, use it in Whitelist
         if e is not None:
-            #print("Found substitute key:", e['OsFileName'])
+            print("Found substitute key\n\t:", e['OsFileName'])
+            print("SQL substitute Music Id:", e['Id'])
             ofb.SetWhitelist(key, white_key)
             key = white_key  # Use white_key instead of passed key
             d = e  # Replace d (None) with e (good dictionary of valid SQL)
         else:
-            #print('sql.py update_metadata() error no music ID for:', key)
+            print('sql.py update_metadata() error no music ID for:', key)
             return False
 
     ''' Adding a new 'init' or 'edit' history record? '''
@@ -1370,6 +1150,7 @@ def update_metadata(fc, commit=True):
     # If adding, the file history record may be missing too.
     if action == 'init' and \
        not hist_check(d['Id'], 'file', action):
+        ''' Add file-init history if it doesn't exist already '''
         hist_add(Time, d['Id'], g.USER, 'file', action, loc_name(),
                  asc_time(Time), key, Size, Count, FloatSeconds,
                  Comments)
@@ -1732,6 +1513,9 @@ def get_config(Type, Action):
         Type - Action   'location' - 'last': The last location played.
                         SourceMaster = loc. Code, SourceDetail = loc. Name,
                         Target = TopDir
+        Type - Action   'encoding' - 'format': Target = oga, mp4, flac or wav
+                        'encoding' - 'quality': Size = 30 to 100
+                        'encoding' - 'naming': SM = '99 ' or '99 - '
         Target          For Type='window' = geometry (x, y, width, height)
     """
     hist_cursor.execute("SELECT * FROM History INDEXED BY TypeActionIndex " +
@@ -2208,7 +1992,7 @@ class PrettyMusic:
 
         # List of part section headings at part_start[] list above
         self.part_names = ['SQL and Operating System Information',
-                           'Metadata (available after song played once)',
+                           'SQL Metadata Subset (After song played once)',
                            'Lyrics score (usually after Webscraping)',
                            'History Time - Row Number      ' +
                            ' | Type | Action | Master | Detail | Target | Comments',
@@ -2314,20 +2098,19 @@ class PrettyMusic:
         rows = hist_cursor.fetchall()
         for sql_row in rows:
             row = dict(sql_row)
-            ''' SQL is in Unicode, to concatenate convert to string '''
-            #key = sql_format_date(row['Time']) + " - " + str(row['Id'])
-            ''' SQL is in Unicode, concatenate with unicode strings '''
-            #d = toolkit.uni_str(" | ")
-            #value = row['Type'] + d + row['Action'] + d + row['SourceMaster'] + d
-            #value += row['SourceDetail'] + d + row['Target'] + d + row['Comments']
-            #value += row['SourceDetail'] + d + row['Target'] + d + row['Comments']
-            #self.dict[key] = value
             ''' SQL is in Unicode, to concatenate "-" convert to strings '''
             self.dict[sql_format_date(row['Time']) + " - " + str(row['Id'])] = \
                 " | " + str(row['Type']) + " | " + str(row['Action']) + " | " + \
                 str(row['SourceMaster']) + " | " + str(row['SourceDetail']) + \
                 " | " + str(row['Target']) + " | " + str(row['Comments'])
+
         if self.calc is not None:
+            ''' TODO: extra ffprobe metadata not stored in SQL Music Table. e.g.: 
+                      Encoder Settings
+                      Encoding Time
+                      Free DiscId
+                      Musicbrainz DiscId
+            '''
             self.calc(self.dict)  # Call external function passing our dict
 
 
@@ -3177,7 +2960,9 @@ def location_treeview():
 
 
 class FixData:
-    """ Class driver for various database repairs """
+    """ Class driver for various database repairs
+        Change 999999 to Music ID to start granular printing.
+    """
     # Date parameter in form "Sun May 22 23:59:59 2023"
 
     def __init__(self, cutoff_str):
@@ -3197,10 +2982,12 @@ class FixData:
             First pass delete History Table rows matching MusicId range.
             Second pass delete Music Table rows matching Id range.
 
-            FIXES ERRORS after another location wasn't handled properly:
+            Remember to physically delete corrupted music files or they
+            will be added back on mserve.py startup !!!
         """
         # Backup database before updating
         self.backup(update)
+        print_all = None
 
         ''' PHASE I - Delete History Records linked to MusicId '''
 
@@ -3212,9 +2999,7 @@ class FixData:
 
         for sql_row in rows:
             row = dict(sql_row)
-            # self.rows_count += 1 We only count Music Rows in second pass
             print_all = False
-            #if 15879 <= row['Id'] <= 15880:
             if row['MusicId'] == 999999:  # Change 999999 to MusicId to print for debugging
                 print("\nFound history History Row Id:", row['Id'], "| MusicId:", row['MusicId'])
                 print("\trow['SourceMaster'] =", row['SourceMaster'],
@@ -3261,7 +3046,7 @@ class FixData:
             print_all = False
             #if 15879 <= row['Id'] <= 15880:
             if row['Id'] == 999999:  # Change 999999 to MusicId to print for debugging
-                print("\nFound history History Row Id:", row['Id'], "| Title:", row['Title'])
+                print("\nFound Music Table Row Id:", row['Id'], "| Title:", row['Title'])
                 print_all = True
 
             del_list.append(OrderedDict([('Id', row['Id']),
@@ -3298,8 +3083,7 @@ class FixData:
         self.wrapup(update)
 
     def fix_scrape_parm(self, update=False):
-        """ Fix MusicId 0 by looking up real MusicId
-        """
+        """ Fix MusicId 0 by looking up real MusicId """
         # Backup database before updating
         self.backup(update)
 

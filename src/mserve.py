@@ -74,6 +74,7 @@ warnings.simplefilter('default')  # in future Python versions.
 #       July 15 2023 - Rename Artist or Album. Rename files in OS & SQL.
 #       July 16 2023 - Click Artist, Album or Title to open kid3 or nautilus
 #       July 21 2023 - check_missing_artwork() report files missing audio stream.
+#       Aug. 18 2023 - InfoCentre() Banner tooltip erase and rebuild not necessary.
 
 # noinspection SpellCheckingInspection
 """
@@ -96,59 +97,40 @@ References:
 
 #     TODO:
 #       Revise Metadata display FROM: Playlist #, Artist, Album, Title, Progress
+#       TO: Title(1), Year(1), Comment(1), Artist(1), Album(1), Album Artist(2), 
+#           Album Date(2), Genre(1), Disc(3), Track(3), Compilation(3), 
+#           PlayCount(2), LastPlayTime(2), Gapless Playback(3), Playlist #(2), 
+#           CreationTime(4), FileSize(4), Progress(1) (always on bottom)
 
-#       TO: Title, Year, Comment, Artist, Album, Album Date, Genre, Disc, Track, 
-#       Compilation, Playlist #, Progress
+#       CreationTime and FileSize fillers for .wav files with no metadata
 
-#       Hard-coded # 5 rows changes to # 11 rows, so use META_DISPLAY_ROWS = 11
+#       Skip blank metadata. Limit size to 11 rows. There are 7x(1), 5x(2)
+#           and 6x(3). Create ordered list where last priority (1) at bottom:
+#               (Label, var_name, priority)  
 
-#       Row 0 in metadata panel will be volume slider, dacctivated during pause
+#       Zero out 19 row weights and then apply weight 1 to number of rows.
 
-        Metadata glitches
-            .oga files do not store audio and video in separate streams. 
-            The TAG section has to be checked to see if they exist. 
-            Check the music file type in FileControl.check_metadata() method.
-            ARTWORK OK THOUGH???: April Wine/The Hits/01 - Say Hello.oga
-
-
-#       Create help buttons for dropdown menu options.
-
-#       After popup menu unposts, return cursor to line called from and
-#       highlight it. After kid3 or nautilus ends, return cursor back to
-#       original row and highlight it. Helps when moving through list of songs.
+#       Create help buttons for dropdown menu options. Actually Help everywhere!
 
 #       When expanding Artist, if only one Album, then expand it too.
-#       When collapsing Album, if only one Album, then collapse Artist too.
 
 #       Besides Kid3 and Nautilus right click add Google Search. Later
 #       Hyperlink Recipe Baker small sized window to set new Hyperlink column.
 
 #       Chronology filter "this artist" is pulling all compilations
 
-#       Major encoding.py overhaul. See encoding.py for notes.
-#       Major Locations() new class lifted from Playlists()
-#       FileControl.zoom() better animation for alpha_cb()
+#       FileControl.zoom() _alpha_cb() that covers instead of pushing tree down
 #       FineTune.sync() divide last duration time to zero duration lines
 
+#       Fix file modification time which will make it greater than
+#       creation time (not birth time which is unused) which is the time it
+#       was copied to the directory and permissions were established. Use
+#       ID3 tag: CREATION_TIME : 2012-08-20 17:06:42
+
 #   Language Conventions - Title should never be labled "song".
-#       Song = Title (can have variations E.G. "Live in Paris" at end)
-#              + Artist - Cover artists may sing the same Title
-#              + Album - Artist can have same title on different albums
-
-#   Music library name of lib_tree is too generic. There is already
-#   SQL Music Table which is more like the real library of mserve.
-#
-#   Candidates:
-#
-#   1. Location song files (lsf_tree)  # Is misleading for Pruned Tree's
-#   2. OS song file library (osf_tree)  # To close to: sql.ofb.Select()?
-#   3. Filenames by Album by Artist (faa_tree)  # Sounds like a plane crash
-#   4. Artist/Album/Title tree (aat_tree)  # probably subject to typo's
-#   5. Collapsed OS walk (cow_tree)  # Sounds cool plus CoW used in industry
-#   6. Grouped Song Files (gsf_tree)  # Same problem as osf and sounds like groupies
-#   7. All Music Files (all_tree)  # Difficult if using "sel". E.G. "sel_all_ndx"
-
-#   and... the WINNER is...  8. Music Location   
+#       Song = Song Title (can have variations E.G. "Live in Paris" at end)
+#              + Song Artist - Cover artists may sing the same Title
+#              + Song Album - Artist can have same title on different albums
 
 #   RENAME VARIABLES:
 #       'self.saved_selections' -> 'self.play_order_iid'
@@ -206,35 +188,6 @@ References:
 
 #       'self.play_insert()'    -> 'self.add_selected()'
 #       'self.play_insert()'    -> 'self.insert_selection()'
-
-#    Need to fix file modification time which will make it greater than
-#       creation time (not birth time which is unused) which is the time it
-#       was copied to the directory and permissions were established. Use
-#       ID3 tag: CREATION_TIME : 2012-08-20 17:06:42
-
-#   Location processing is 1500 lines and really is never used after setup. Move
-#       to separate file? Add generic processing for synchronizing programming
-#       files across different devices?  TODO: Clone from Playlists() class
-
-#   Verify parameter #1 is directory. E.G. "START_DIR = sys.argv[1]"
-#       If START_DIR is not a directory, use last location with warning message.
-#       If no last location give error and select a good START_DIR.
-
-#   Move ~/.config/mserve/library.db to ~/.local/share/mserve/library.db
-#       New open_files() function that verifies "START_DIR" described above.
-#       Also move all files and L999 directories. Update daily backup script.
-#       Create message that directory ~/.local/share/mserve/ has been created
-#       and the files 'locations' and 'library.db' have been created there.
-#       Advise to add these files to daily backup along with subdirectories
-#       ~/.local/share/mserve/L999.  Where 999 is subdirectory created for
-#       music location configured on this device and other devices.
-#       The ~/.config/mserve/ directory will be used in future to specify
-#       windows vs linux vs chrome os vs MAC. Also to define color scheme 
-
-#   History Type 'encode' uses MusicId 0 which is also used for configuration.
-#       This will slow down configuration operations over time. Create new index
-#       by History Type + Action. Then for example, get Type-"resume" +
-#       Action-"L004", instead of search through all MusicId=0 records.
 #
 # =============================================================================
 
@@ -290,8 +243,8 @@ REQUIRES:
 
 ERROR OVERRIDE - https://github.com/quodlibet/mutagen/issues/499:
     File "/usr/lib/python2.7/dist-packages/mutagen/flac.py", line 597, in write
-    desc = self.desc.encode('UTF-8')
-    UnicodeDecodeError: 'ascii' codec can't decode byte 0xe2 in position 4: 
+      desc = self.desc.encode('UTF-8')
+  UnicodeDecodeError: 'ascii' codec can't decode byte 0xe2 in position 4: 
     ordinal not in range(128)
     CHANGE line 597 from:
         desc = self.desc.encode('UTF-8')
@@ -301,6 +254,14 @@ ERROR OVERRIDE - https://github.com/quodlibet/mutagen/issues/499:
         except UnicodeDecodeError:          # Filename: 06 Surf’s Up.oga
             desc = self.desc                # self.desc already in UTF-8
     $ sudo apt-mark hold python-mutagen
+
+    ERROR # 2
+
+    File "/usr/lib/python2.7/dist-packages/mutagen/id3/__init__.py", line 600, in __save_frame
+      framedata = frame._writeData()
+  AttributeError: 'unicode' object has no attribute '_writeData'
+
+
 
 NOTES:
     File server needs to mount music directory if not mounted already:
@@ -467,7 +428,7 @@ CFG_DIVISOR_UOM = "MB"      # Unit of Measure becomes Megabyte
 """
 
 # Global variables
-RESTART_SLEEP = .3          # Delay for mserve close down
+RESTART_SLEEP = .3          # Delay for mserve close down - No longer used
 KEEP_AWAKE_MS = 250         # Milliseconds between time checks loc_keep_awake()
 META_DISPLAY_ROWS = 6       # Number of Metadata Rows displayed in frame
 # self.meta_display_rows is used for actual number of rows
@@ -1219,10 +1180,11 @@ class MusicLocationTree(PlayCommonSelf):
         self.lib_tree.column("Access", width=200, stretch=tk.YES)
         # TODO: When mserve gets metadata, but doesn't play song, keep old Access
         self.lib_tree.heading("Access", text="Count / Last Access or Played")
-        self.lib_tree.column("Size", width=50, anchor=tk.E, stretch=tk.YES)
-        self.lib_tree.heading("Size", text="Size " + g.CFG_DIVISOR_UOM, anchor=tk.E)
+        self.lib_tree.column("Size", width=100, anchor=tk.E, stretch=tk.NO)
+        self.lib_tree.heading("Size", text="Size " + g.CFG_DIVISOR_UOM + " ",
+                              anchor=tk.E)
         self.lib_tree.column("Selected", width=50, anchor=tk.E, stretch=tk.YES)
-        self.lib_tree.heading("Selected", text="Play № / Sel. MB", anchor=tk.E)
+        self.lib_tree.heading("Selected", text="Play № / Sel. MB ", anchor=tk.E)
 
         # Debug hidden columns by making them visible in Treeview:
         # Uncomment first pair of lines to show REGULAR columns, comment last pair
@@ -1298,10 +1260,6 @@ class MusicLocationTree(PlayCommonSelf):
         self.lib_top_totals = ["", "", "", "", "", 0, 0, 0, 0, 0, 0]
         #                           1       3      5     7     9
         #                           Play    Space  Size  Secs  sCount
-        try:
-            self.lib_top_totals[0] = LODICT['name']
-        except:
-            pass
         self.lib_top_totals[0] = str(lcs.open_name)
         self.lib_top_totals[1] = ""  # Playlist name makes title too long
         self.lib_top_playlist_name = ""  # appended to lib_top.title after totals
@@ -1319,9 +1277,7 @@ class MusicLocationTree(PlayCommonSelf):
         style.configure("Treeview.Heading", font=(None, MED_FONT),
                         rowheight=int(MED_FONT * 2.2))
         row_height = int(MON_FONTSIZE * 2.2)
-        style.configure("Treeview", font=g.FONT,
-                        rowheight=row_height)
-        style.configure('Treeview', indent=row_height + 6)
+        style.configure("Treeview", font=g.FONT, rowheight=row_height)
 
         ''' Create images for checked, unchecked and tristate '''
         self.checkboxes = img.make_checkboxes(
@@ -2681,7 +2637,6 @@ class MusicLocationTree(PlayCommonSelf):
                 text += result
                 lcs.out_cast_show_print(title, text, 'error')
             self.awake_last_time_check = time.time()
-            #self.next_active_cmd_time = self.awake_last_time_check + (60 * LODICT['activemin'])
             self.next_active_cmd_time = self.awake_last_time_check + (60 * lcs.open_touchmin)
 
             title = "Keeping Remote Host awake."
@@ -2689,14 +2644,6 @@ class MusicLocationTree(PlayCommonSelf):
             text += "  | This time: " + ext.t(self.awake_last_time_check)
             text += "  | Next time: " + ext.t(self.next_active_cmd_time)
             lcs.out_fact(title, text, 'info')
-            # noinspection SpellCheckingInspection
-            '''
-            now2 = datetime.datetime.now()
-            print(now2.strftime("%H:%M:%S"),'Wake command:',LODICT['activecmd'])
-            ftime = datetime.datetime.fromtimestamp(self.next_active_cmd_time)
-            print('Next keep awake time:', ftime.strftime("%H:%M:%S"))
-            '''
-            # inspection SpellCheckingInspection
 
             if not self.loc_keep_awake_is_active:
                 return  # mserve.py is shutting down
@@ -7682,6 +7629,7 @@ class MusicLocationTree(PlayCommonSelf):
             Multiple file controls can be calling at same time.
             E.G. Playing Music and self.missing_artwork_callback()
         :param file_ctl: self.play_ctl, self.ltp_ctl, self.mus_ctl
+        :returns False: when no changes were needed.
         """
         ''' Using instance of threading.Lock() '''
         with critical_function_lock:
@@ -7690,20 +7638,10 @@ class MusicLocationTree(PlayCommonSelf):
             if file_ctl.path.startswith(PRUNED_DIR):
                 ''' July 18, 2023 conversion '''
                 meta_update_succeeded = sql.update_metadata(file_ctl)
-                '''
-                sql_key = file_ctl.path[len(PRUNED_DIR):]
-                # Remove prefix from filename leaving base-path (OsFileName)
-                # returns true if metadata changed and row updated
-                meta_update_succeeded = \
-                    sql.update_metadata(
-                        sql_key, file_ctl.Artist, file_ctl.Album, file_ctl.Title,
-                        file_ctl.Genre, file_ctl.Track, file_ctl.Date,
-                        file_ctl.DurationSecs, file_ctl.Duration,
-                        file_ctl.DiscNumber, file_ctl.Composer)
-                '''
+                # WARNING: Returns false when no changes made
             else:
                 # July 21, 2023 - SQL created metadata from another location.
-                #   Needs work to merge for the most robust information.
+                #   Needs work ...
                 print('mserve.py update_sql_metadata() path:', file_ctl.path)
                 print('mserve.py update_sql_metadata() Missing PRUNED_DIR:', PRUNED_DIR)
                 pass
@@ -8892,17 +8830,33 @@ mark set markName index"
         except ValueError:
             toolkit.print_trace()
             print('lyrics_update_title_line_number() string not found')
+            # After deleting all lyrics get error:
+
+            # File "/home/rick/python/mserve.py", line 7489, in play_to_end
+            #     self.refresh_play_top()  # Rotate art, update vu meter after(.033)
+            # File "/home/rick/python/mserve.py", line 7630, in refresh_play_top
+            #     self.play_paint_lyrics()                # Uses the lyrics time index
+            # File "/home/rick/python/mserve.py", line 8442, in play_paint_lyrics
+            #     self.play_lyrics_auto_scroll()
+            # File "/home/rick/python/mserve.py", line 8537, in play_lyrics_auto_scroll
+            #     self.lyrics_update_title_line_number(line_no)
+            # File "/home/rick/python/mserve.py", line 8893, in lyrics_update_title_line_number
+            #     toolkit.print_trace()
+            # File "/home/rick/python/toolkit.py", line 87, in print_trace
+            #     for line in traceback.format_stack():
+            # lyrics_update_title_line_number() string not found
+
             return
 
         suffix2 = suffix.split()[2:]
-        self.lyrics_panel_text = prefix + "Line: " + str(line_no) + " " + ' '.join(suffix2)
+        self.lyrics_panel_text = prefix + "Line: " + str(line_no) + " " + \
+            ' '.join(suffix2)
         self.lyrics_frm.update()
         self.lyrics_panel_last_line = line_no
 
     def play_lyrics_see_ahead(self, rewind=False):
         """ Should always see two lines ahead to coming up.
-            If rewinding need to see previous two lines.
-        """
+            If rewinding need to see previous two lines. """
         ''' July 4, 2023 Now show next five lines instead of next two. '''
         if rewind:
             # When rewinding song we are jumping backwards in lyrics
@@ -10105,6 +10059,7 @@ mark set markName index"
         sample_art_label.grid(row=0, rowspan=7, column=0, sticky=tk.W)
 
         ''' Artist, Album, Song '''
+        ''' TODO shared function with play_top non-blank metadata display '''
         tk.Label(sam_frm, text="Artist:\t" + self.ltp_ctl.Artist, padx=10,
                  font=g.FONT).grid(row=0, column=1, sticky=tk.W)
         # Truncate self.Album to 25 characters plus ...
@@ -10119,7 +10074,7 @@ mark set markName index"
             tk.Label(sam_frm, text="Track:\t" + self.ltp_ctl.TrackNumber,
                      padx=10, font=g.FONT).grid(row=4, column=1, sticky=tk.W)
         if self.ltp_ctl.FirstDate:
-            tk.Label(sam_frm, text="Date:\t" + self.ltp_ctl.Date, padx=10,
+            tk.Label(sam_frm, text="Date:\t" + self.ltp_ctl.FirstDate, padx=10,
                      font=g.FONT).grid(row=5, column=1, sticky=tk.W)
         if self.ltp_ctl.Duration:
             tk.Label(sam_frm, text="Duration:\t" + self.ltp_ctl.Duration,
@@ -11395,7 +11350,7 @@ class FineTune:
 
         self.time_ctl.start(self.start_sec, self.limit_sec,
                             .5, .5, TMP_CURR_SYNC, True)
-        pav.set_volume(self.time_ctl.sink, 100)  # Restore volume def start(s
+        pav.set_volume(self.time_ctl.sink, 100)  # Restore volume
         self.time_ctl.cont()
         pav.fade_out_aliens(.5)
 
@@ -12630,6 +12585,9 @@ class FileControlCommonSelf:
         self.Duration = None        # self.metadata.get('DURATION', "0.0,0")
         self.DurationSecs = None    # hh:mm:ss sting converted to int seconds
         self.GaplessPlayback = None  # self.metadata.get('GAPLESS_PLAYBACK', "None")
+        self.EncodingFormat = None  # 'wav', 'm4a', 'oga', etc.
+        self.DiscId = None          # gstreamer adds to MP3 automatically
+        self.MusicBrainzDiscId = None  # "       "           "
 
         ''' Pippim Metadata Add-ons '''
         self.Rating = None          # self.metadata.get('GENRE', "None")
@@ -12815,9 +12773,10 @@ class FileControl(FileControlCommonSelf):
         ext.t_init("FileControl.get_metadata() - mutagen")
         # Song: Heart/GreatestHits/17 Rock and Roll (Live).m4a
         m = mutagen.File(self.last_path)
-        for line in m:
-            #print("mutagen line:", line)  # keys are in lowercase with _ removed
-            pass
+        if m:  # .wav files have no metadata
+            for line in m:
+                #print("mutagen line:", line)  # keys are in lowercase with _ removed
+                pass
         #     m = mutagen.File(self.last_path, easy=True)
         #   File "/usr/lib/python2.7/dist-packages/mutagen/_file.py", line 251, in File
         #     return Kind(filename)
@@ -12870,7 +12829,25 @@ class FileControl(FileControlCommonSelf):
                 key = key.strip()  # strip leading and trailing whitespace
                 val = val.strip()  # Most keys are indented 2, 4 & 6 spaces.
 
-                ''' override for oga to move lower to encoding section '''
+                ''' gstreamer bug - doubled up MP3 tags '''
+                # For MP3, gstreamer automatically adds: "CDDB DiscID" and "discid"
+                # For MP3, gstreamer automatically adds:
+                #   "MusicBrainz DiscID" and "musicbrainz_discid"
+                if key == "CDDB DiscID":
+                    continue
+                if key == "MusicBrainz DiscID":
+                    continue
+
+                ''' .m4a limitations for no custom tags - see encoding.py '''
+                # Doesn't work because ffprobe doesn't report these.
+                # Must convert to Mutagen to get tags.  In that case lose
+                # common naming convention that ffprobe uses.
+                if key == 'category':  # Hijack the 'catg' tag for podcast category
+                    key = "discid"
+                if key == 'keywords':  # Hijack the 'keyw' tag for podcast keywords
+                    key = "musicbrainz_discid"
+
+                ''' override .oga to move lower in encoding section '''
                 if len(self.metadata) == 1 and key.upper() == "DURATION":
                     held_duration = val
                     continue
@@ -12895,12 +12872,11 @@ class FileControl(FileControlCommonSelf):
                     self.metadata[key_unique] = val
 
         ''' comment below for message.py test threading.RLock() wait_lock: '''
-        # Fudge for .oga files created with gstreamer. No 'CREATION_TIME'
+        # Catch .oga files with no 'CREATION_TIME'
         if held_duration:
             self.metadata['DURATION'] = held_duration
             if held_stream0:
-                self.metadata['STREAM #0'] = held_stream0
-
+                self.metadata['STREAM #0'] = held_stream0  # Put in audio stream
 
         #print("sys.getsizeof(self.metadata):", sys.getsizeof(self.metadata))
         # size is a couple K. No images included.
@@ -12958,6 +12934,27 @@ class FileControl(FileControlCommonSelf):
             self.DurationSecs = 0.0  # Note must save in parent
 
         self.GaplessPlayback = self.metadata.get('GAPLESS_PLAYBACK', "0")
+
+        ''' Aug 18/23 Bug fixed 3 months ago, not in production ffplay 
+            https://trac.ffmpeg.org/ticket/9248 '''
+        fmt = self.metadata.get('INPUT #0', None)
+        if fmt:
+            ''' Can be "wav." or "mov,mp4,m4a,3pg,3g2,mj2," '''
+            fmt = fmt.split(' ', 1)[0]
+            if fmt.endswith('.'):
+                fmt = fmt.rstrip('.')
+            else:
+                fmt = fmt.rstrip(',')
+                fmt = fmt.replace(',', ' ')
+            self.EncodingFormat = fmt
+        else:
+            self.EncodingFormat = None
+
+        ''' Aug 19/23 - Fields added to MP3 by gstreamer automatically '''
+        self.DiscId = toolkit.uni_str(self.metadata.get('DISCID', None))
+        self.MusicBrainzDiscId = \
+            toolkit.uni_str(self.metadata.get('MUSICBRAINZ_DISCID', None))
+
 
     def check_metadata(self):
         """ Ensure Audio stream exists. """
@@ -13252,14 +13249,24 @@ class FileControl(FileControlCommonSelf):
         # dead_start = After starting song set volume to zero and stop running.
         #              When starting with fade-in there is no sound "pop"
 
+        ''' Aug 18/23 Bug fixed 3 months ago, not in production ffplay 
+            https://trac.ffmpeg.org/ticket/9248 '''
+        if self.EncodingFormat and self.EncodingFormat == "wav":
+            # noinspection SpellCheckingInspection
+            extra_opt += ' -af "aformat=channel_layouts=stereo"'
+
         ''' uncomment for debugging 
         text = "FileControl.start(self.start_sec, \t" + str(self.start_sec) +\
             "\nself.limit_sec, \t" + str(self.limit_sec) + "\nself.fade_in_sec, \t" +\
             str(self.fade_in_sec) + "\nself.fade_out_sec, \t" + str(self.fade_out_sec) +\
             "\nself.dead_start, \t" + str(self.dead_start) + "\nself.ff_name, \t" + \
             str(self.ff_name) + "\n"
+        self.info.cast("FileControl.start() path:\n" + self.path)
         self.info.cast("FileControl.start() extra_opt:\n" + extra_opt)
         self.info.cast(text)  # For debugging
+        # Can't copy from file.info zoom window so print to console to copy
+        print("FileControl.start() path:\n" + self.path)
+        print("FileControl.start() extra_opt:\n" + extra_opt)
         #print(text)  # For debugging
         '''
 
@@ -14749,13 +14756,21 @@ class InfoCentre:
         self.start_time = time.time()  # To calculate total elapsed time
         self.last_delta_time = self.start_time  # To calculate ms between calls
 
-        ''' Destroy banner button in Tooltips() and banner button '''
+        ''' Destroy banner button in Tooltips() and banner button 
         if self.banner_btn:
             # July 31, 2023 recent change making 'None' caused error on destroy
             self.tt.close(self.banner_btn)
             self.tt.poll_tips()
             self.banner_btn.destroy()  # Real Estate commandeered for zoom frame
             self.banner_btn = None  # Extra insurance
+        '''
+        # Aug 18/23 sledge hammer experiment
+        if self.tt.check(self.banner_frm):
+            #print("mserve.py InfoCentre.zoom(): self.tt.check(self.banner_frm)")
+            # PROBLEM: Just closed banner_btn tooltip that was fading out.
+            #self.tt.close(self.banner_frm)
+            # Why does banner button have to be destroyed and rebuilt?
+            pass  # Aug 18/23 - Yank all banner_btn code - not needed.
 
         ''' Build tk.Frame and tk.Text widgets. Optional tk.Button to close frame '''
         self.frame = tk.Frame(self.banner_frm, bg="black", height=7)
@@ -14835,6 +14850,8 @@ class InfoCentre:
 
     def _close_clicked(self):
         """ When close button clicked tell Tooltips to start fading out """
+        # Generates error inside ToolTips() because fade not finished when
+        # widget is closed early.
         self.tt.log_event('press', self.widget, 100, 50)  # x=100, y=50
 
     def _str_to_text_widget(self, text):
@@ -14863,14 +14880,14 @@ class InfoCentre:
         self.start_time = time.time()  # To calculate total elapsed time
         self.last_delta_time = self.start_time  # To calculate ms between calls
 
-        ''' Destroy banner button in Tooltips() '''
+        ''' Destroy banner button in Tooltips() 
         if self.banner_btn:
             self.tt.close(self.banner_btn)
             self.banner_btn.destroy()  # Destroy banner button. Real Estate commandeered
             self.banner_btn = None  # Extra insurance
         else:
             print("self.banner_btn is 'None' in test_tt()")
-
+        '''
         ''' Build new frame and Text widget. Add to Tooltips() '''
         self.frame = tk.Frame(self.banner_frm, bg="black", height=7)
         self.frame.grid()
@@ -14879,12 +14896,12 @@ class InfoCentre:
         self.text.place(height=self.height, width=self.width, x=40, y=10)
         self.text.config(highlightthickness=0, borderwidth=0)
 
-        text = "\t▼ ▲ ▼ ▲  Expanding/Collapsing Information Centre  ▲ ▼ ▲ ▼ \n\n" + \
+        text = "\tInfoCentre._tt.test()\n\n" + \
                "\t\t          Why is it spelled that way?\n\n" + \
                '\t\t   In programming, "center" is an action.\n\n' +\
                '\t\t       In this case, "Centre" is a place.'
 
-        self._str_to_text_widget(text)
+        self._str_to_text_widget(text)  # Update object self.text with text
         # Limitation: 'visible_delay' must be greater than 'fade_out_span'
         self.widget = self.text
         self.tt.add_tip(
@@ -15023,8 +15040,11 @@ FADE_OUT_SPAN = 400     # 1/5 second to fade out
         pass
 
     def _close_cb(self):
-        """
-        Called from Tooltips when fading-out process has ended.
+        """ Called from Tooltips when fading-out process has ended.
+
+            BUG: Aug 18/23 - Banner button's piling up in tooltips.
+                             Not being tt.close() not being called.
+
         :return: None
         """
         #print("InfoCentre() _close_cb() tooltip processing has ended.",
@@ -15049,12 +15069,13 @@ FADE_OUT_SPAN = 400     # 1/5 second to fade out
                 self.frame.destroy()  # Nuke the frame used for info message
             self.frame = None
 
+        ''' Aug 18/23 - why does banner button have to be destroyed and rebuilt? 
         if self.tt.check(self.banner_btn):  # Aug 1/23 was typo 'frm' not 'btn'
             self.tt.close(self.banner_btn)  # July 22, 2023 - btn was staying in tt
-
-        ''' Rebuild banner button '''
-        self.build_banner_btn()
+        # Rebuild banner button
+        self.build_banner_btn()  # Aug 18/23 - review why just deleted above?
         self.test = False
+        '''
 
         ''' Ugly patch to show that zoom has finished '''
         self.zoom_is_active = False
@@ -15063,7 +15084,7 @@ FADE_OUT_SPAN = 400     # 1/5 second to fade out
         if self.original_sleep is not None:
             global SLEEP_PAUSED
             SLEEP_PAUSED = self.original_sleep
-            self.original_sleep = None
+            self.original_sleep = None  # Use normal 33ms updates
 
         
 # ==============================================================================

@@ -720,7 +720,6 @@ class DictTreeview:
         row_height = int(g.MON_FONTSIZE * 2.2)
         style.configure("Treeview", font=(None, g.MON_FONTSIZE),
                         rowheight=row_height)
-        style.configure('Treeview', indent=row_height + 6)
 
         ''' Create images for checked, unchecked and tristate '''
         self.checkboxes = img.make_checkboxes(
@@ -2363,11 +2362,13 @@ class ToolTips(CommonTip):
                 self.tips_list[self.tips_index] = self.dict
                 # Should verify it's same as old dictionary since they disappear
             except IndexError:  # list assignment index out of range
+                ''' Aug 18/23 - Normal behavior for InfoCentre() tt.close() '''
                 # Caused by fast clicking 'Next' song. likely tt.close() run
-                print("toolkit.py Tooltips.poll_tips() - " + 
-                      "Tip disappeared in loop!")
-                print("len(self.tips_list) change 4. size at start:", start_len,
-                      "now:", now_len)
+                #print("toolkit.py Tooltips.poll_tips() - " +
+                #      "Tip disappeared in loop!")
+                now_len = len(self.tips_list)
+                #print("len(self.tips_list) change 4. size at start:", start_len,
+                #      "now:", now_len)
                 break
 
     def process_tip(self):

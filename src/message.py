@@ -277,17 +277,18 @@ class FakeEvent:
 
 # ==============================================================================
 #
-#   message.py - AskQuestion, AskDirectory, ShowInfo, AskString
+#   message.py - ShowInfo, AskQuestion, AskString, AskDirectory(WIP)
 #
 #   NOTE: If a refresh thread isn't passed to .ShowInfo it closes right away
 #
 # ==============================================================================
 
+WAIT_LOCK = False  # Only one message can be waiting at once, else chaos
+
 
 class AskCommonSelf:
     """ Variables common to ShowInfo, AskQuestion and AskString
-        Must appear before first reference (ShowInfo)
-    """
+        Must appear before first reference (ShowInfo) """
     def __init__(self, parent, title=None, text=None, confirm='yes', align='center',
                  thread=None, icon='warning', string=None, string_width=None,
                  help=None):
@@ -302,8 +303,8 @@ class AskCommonSelf:
         elif callable(thread):
             self.thread = thread    # The thread runs whilst waiting for button click
         else:
-            print("message.py, AskCommonSelf, invalid thread= passed:", thread)
-            toolkit.print_trace()
+            #print("message.py, AskCommonSelf, invalid thread= passed:", thread)
+            #toolkit.print_trace()
             self.thread = None
         self.text = text            # data (text lines) for text box
         self.textbox = None         # Textbox widget
@@ -321,85 +322,11 @@ class AskCommonSelf:
             self.string_width = 28  # Size of string .Entry variable
         self.result = None          # Defined in simpledialog already
 
-        # Shared functions
+        # Shared functions - if None is passed this will exit right away.
+        if WAIT_LOCK:
+            self.thread = None  # Force function to quit right away
+            # Hopefully self.info.cast() and/or print() was run
         self.wait_window = wait_window_func
-
-
-# Failed attempts:
-#class AskDirectory(filedialog.Directory, AskCommonSelf):
-#class AskDirectory(filedialog.Directory, common dialog.Dialog, AskCommonSelf):
-
-class AskDirectory(filedialog.Directory, AskCommonSelf):
-    """
-        documentation:
-            https://docs.python.org/3/library/dialog.html
-
-        installed code:
-            gedit /usr/lib/python2.7/lib-tk/tkFileDialog.py
-        
-        example code(different than installed):
-            https://github.com/python/cpython/blob/main/Lib/tkinter/filedialog.py
-
-        USAGE for normal class:
-        root.directory = filedialog.askdirectory(
-            initialdir=start, parent=parent, title=title)
-    """
-    def __init__(self, parent=None, title=None, initialdir=None,
-                 thread=None, root=None):
-
-        AskCommonSelf.__init__(self, parent, title=title, thread=thread)
-
-        #filedialog.FileDialog.__init__(self, parent, title=title)
-        #filedialog.Directory.__init__(self, parent, title=title,
-        #filedialog.askdirectory.__init__(self, parent, title=title,
-        #  Above: return Directory(**options).show()
-        filedialog.Directory.__init__(self, parent, title=title,
-                                      initialdir=initialdir).show()
-        #commondialog.Dialog.__init__(self, parent, title=title)
-        #if root:
-        #    ''' When using root window message s/b centered  '''
-        #    mon = monitor.Monitors()
-        #    mon.tk_center(self)
-        # Error Aug 8/23:
-        #     mserve.main(toplevel=splash, cwd=cwd, parameters=sys.argv)
-        #   File "/home/rick/python/mserve.py", line 15288, in main
-        #     icon='error', thread=dummy_thread, root=True)
-        #   File "/home/rick/python/message.py", line 404, in __init__
-        #     mon.tk_center(self)
-        #   File "/home/rick/python/monitor.py", line 429, in tk_center
-        #     x = mon.width // 2 - window.winfo_width() // 2 + mon.x
-        #   File "/usr/lib/python2.7/lib-tk/Tkinter.py", line 1009, in winfo_width
-        #     self.tk.call('winfo', 'width', self._w))
-        # _tkinter.TclError: bad window path name ".139679084671920.139679084672064"
-
-        if thread is None:
-            toolkit.print_trace()
-            print("message.py, ShowInfo() thread is none, 'OK' won't work")
-
-    #
-    # standard button semantics
-    def ok(self, _event=None):
-        """ OK button clicked """
-        # From: /usr/lib/python2.7/lib-tk/tkSimpleDialog.py (returns 1)
-        if not self.validate():
-            self.initial_focus.focus_set()  # put focus back
-            return
-
-        self.withdraw()
-        self.update_idletasks()
-
-        try:
-            self.apply()  # There is no apply() for AskQuestion or ShowInfo
-        finally:
-            self.cancel()
-        return self.directory
-
-    def cancel(self, _event=None):
-        """ Cancel button clicked. """
-        # put focus back to the parent window
-        if self.parent is not None:
-            self.parent.focus_set()
-        self.destroy()
 
 
 class ShowInfo(simpledialog.Dialog, AskCommonSelf):
@@ -430,9 +357,9 @@ class ShowInfo(simpledialog.Dialog, AskCommonSelf):
         # _tkinter.TclError: bad window path name ".140042227536312.140042227536384"
 
         ''' Even when root=True is passed, no message pops up '''
-        if thread is None and root is None:
-            toolkit.print_trace()
-            print("message.py, ShowInfo() thread is none, 'OK' won't work")
+        #if thread is None and root is None:
+        #    toolkit.print_trace()
+        #    print("message.py, ShowInfo() thread is none, 'OK' won't work")
 
     def body(self, parent):
         """ Wrapper to body_func in mainline """
@@ -554,6 +481,7 @@ mserve.py refresh_lib_top() closed by SIGTERM
     Then have message open when song begins to play.
 
     """
+    ''' Doesn't work to block second message
     with wait_lock:
         if not self.thread:
             return
@@ -567,6 +495,24 @@ mserve.py refresh_lib_top() closed by SIGTERM
             if sleep < 1:
                 sleep = 1
             self.top_level.after(int(sleep))
+    '''
+
+    if not self.thread:
+        return
+
+    global WAIT_LOCK
+    WAIT_LOCK = True  # Only one message can be waiting at once, else chaos
+
+    while self.winfo_exists():  # Loop while our window exists
+        now = time.time()
+        if self.thread:  # Pass control to animations if thread passed
+            result = self.thread()  # This calls thread, or gets the thread name
+            if callable(result):  # The result isn't True/False but rather a thread
+                result()  # Aug 4/23 Call result of get_thread_func that changes
+        sleep = 33 - (time.time() - now) * 1000
+        if sleep < 1:
+            sleep = 1
+        self.top_level.after(int(sleep))
 
 
 if 'BIG_SPACE' not in locals() and 'BIG_SPACE' not in globals():
@@ -658,9 +604,9 @@ class AskQuestion(simpledialog.Dialog, AskCommonSelf):
         #    mon = monitor.Monitors()
         #    mon.tk_center(self)
         # Error Aug 8/23 see trace above.
-        if thread is None:
-            toolkit.print_trace()
-            print("message.py, AskQuestion() thread is none, Yes won't work")
+        #if thread is None:  Aug 17/23 thread forced to None for WAIT_LOCK
+        #    toolkit.print_trace()
+        #    print("message.py, AskQuestion() thread is none, Yes won't work")
         '''
         When encoding.py was popping up question to manually enter disc id
         cursor was being forced into web browser to copy the new disc id at
@@ -712,6 +658,8 @@ TclError: grab failed: another application has grab
     # standard button semantics
     def ok(self, _event=None):
         """ OK button clicked """
+        global WAIT_LOCK
+        WAIT_LOCK = False  # Only one message can be waiting at once, else chaos
         # From: /usr/lib/python2.7/lib-tk/tkSimpleDialog.py (returns 1)
         if not self.validate():
             self.initial_focus.focus_set()  # put focus back
@@ -728,6 +676,8 @@ TclError: grab failed: another application has grab
 
     def cancel(self, _event=None):
         """ Cancel button clicked. """
+        global WAIT_LOCK
+        WAIT_LOCK = False  # Only one message can be waiting at once, else chaos
         # put focus back to the parent window
         if self.parent is not None:
             self.parent.focus_set()
@@ -806,6 +756,8 @@ class AskString(simpledialog.Dialog, AskCommonSelf):
     # standard button semantics
     def ok(self, _event=None):
         """ Clicked Yes/OK button """
+        global WAIT_LOCK
+        WAIT_LOCK = False  # Only one message can be waiting at once, else chaos
         # From: /usr/lib/python2.7/lib-tk/tkSimpleDialog.py (returns 1)
         if not self.validate():
             self.initial_focus.focus_set()  # put focus back
@@ -822,16 +774,102 @@ class AskString(simpledialog.Dialog, AskCommonSelf):
 
     def apply(self, _event=None):
         """ Clicked Apply button. E.G. accept string input """
+        global WAIT_LOCK
+        WAIT_LOCK = False  # Only one message can be waiting at once, else chaos
         self.string = self.entry.get()
         #print('self.string:', self.string)
         return True
 
     def cancel(self, _event=None):
         """ Clicked No/Cancel button. """
+        global WAIT_LOCK
+        WAIT_LOCK = False  # Only one message can be waiting at once, else chaos
         # put focus back to the parent window
         if self.parent is not None:
             self.parent.focus_set()
         self.result = "no"
+        self.destroy()
+
+
+# Failed attempts:
+# class AskDirectory(filedialog.Directory, AskCommonSelf):
+# class AskDirectory(filedialog.Directory, common dialog.Dialog, AskCommonSelf):
+
+class AskDirectory(filedialog.Directory, AskCommonSelf):
+    """
+        documentation:
+            https://docs.python.org/3/library/dialog.html
+
+        installed code:
+            gedit /usr/lib/python2.7/lib-tk/tkFileDialog.py
+
+        example code(different than installed):
+            https://github.com/python/cpython/blob/main/Lib/tkinter/filedialog.py
+
+        USAGE for normal class:
+        root.directory = filedialog.askdirectory(
+            initialdir=start, parent=parent, title=title)
+    """
+
+    def __init__(self, parent=None, title=None, initialdir=None,
+                 thread=None, root=None):
+
+        AskCommonSelf.__init__(self, parent, title=title, thread=thread)
+
+        # filedialog.FileDialog.__init__(self, parent, title=title)
+        # filedialog.Directory.__init__(self, parent, title=title,
+        # filedialog.askdirectory.__init__(self, parent, title=title,
+        #  Above: return Directory(**options).show()
+        filedialog.Directory.__init__(self, parent, title=title,
+                                      initialdir=initialdir).show()
+        # commondialog.Dialog.__init__(self, parent, title=title)
+        # if root:
+        #    ''' When using root window message s/b centered  '''
+        #    mon = monitor.Monitors()
+        #    mon.tk_center(self)
+        # Error Aug 8/23:
+        #     mserve.main(toplevel=splash, cwd=cwd, parameters=sys.argv)
+        #   File "/home/rick/python/mserve.py", line 15288, in main
+        #     icon='error', thread=dummy_thread, root=True)
+        #   File "/home/rick/python/message.py", line 404, in __init__
+        #     mon.tk_center(self)
+        #   File "/home/rick/python/monitor.py", line 429, in tk_center
+        #     x = mon.width // 2 - window.winfo_width() // 2 + mon.x
+        #   File "/usr/lib/python2.7/lib-tk/Tkinter.py", line 1009, in winfo_width
+        #     self.tk.call('winfo', 'width', self._w))
+        # _tkinter.TclError: bad window path name ".139679084671920.139679084672064"
+
+        #if thread is None:  Aug 17/23 thread forced to None for WAIT_LOCK
+        #    toolkit.print_trace()
+        #    print("message.py, ShowInfo() thread is none, 'OK' won't work")
+
+    #
+    # standard button semantics
+    def ok(self, _event=None):
+        """ OK button clicked """
+        global WAIT_LOCK
+        WAIT_LOCK = False  # Only one message can be waiting at once, else chaos
+        # From: /usr/lib/python2.7/lib-tk/tkSimpleDialog.py (returns 1)
+        if not self.validate():
+            self.initial_focus.focus_set()  # put focus back
+            return
+
+        self.withdraw()
+        self.update_idletasks()
+
+        try:
+            self.apply()  # There is no apply() for AskQuestion or ShowInfo
+        finally:
+            self.cancel()
+        return self.directory
+
+    def cancel(self, _event=None):
+        """ Cancel button clicked. """
+        global WAIT_LOCK
+        WAIT_LOCK = False  # Only one message can be waiting at once, else chaos
+        # put focus back to the parent window
+        if self.parent is not None:
+            self.parent.focus_set()
         self.destroy()
 
 

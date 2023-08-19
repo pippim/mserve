@@ -382,7 +382,8 @@ def make_triangles(triangle_list, hgt, out_c, fill_c):
                       ]
            })])
 
-    style.configure('Treeview', indent=63)
+    #style.configure('Treeview', indent=63)  # Aug 17/23 working for months
+    style.configure('Treeview', indent=50)  # Aug 17/23 too much indent fix
 
 
 def triangle_raw_images(hgt, out_c, fill_c):

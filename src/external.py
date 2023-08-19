@@ -15,7 +15,7 @@ from __future__ import with_statement  # Error handling for file opens
 #       external.py - Used by mserve, encoding.py and dell_start
 #
 #       July 12 2023 - Hooks to mserve_config.py
-#       Aug. 17 2023 - Fix newish function - get_running_apps()
+#       Aug. 18 2023 - Fix newish function - get_running_apps()
 #
 #==============================================================================
 
@@ -452,28 +452,16 @@ def get_running_apps(version):
             #print("Version requested:", str(version), "Skipping:", prg_path)
             continue  # Wrong version
 
-        ''' Split out the app '''
-        #print("parts:", parts)
-        # parts: ['rick', '8204', '6132', '0', '12:08', 'pts/19', '00:00:00', 'python']
-        base_parts = parts[-1].split(os.sep)
-        #base_parts = parts[8].split(os.sep)
-        #   File "./m", line 75, in main
-        #     mserve.main(toplevel=splash, cwd=cwd, parameters=sys.argv)
-        #   File "/home/rick/python/mserve.py", line 15620, in main
-        #     apps_running = ext.get_running_apps(PYTHON_VER)
-        #   File "/home/rick/python/external.py", line 456, in get_running_apps
-        #     base_parts = parts[8].split(os.sep)
-        # IndexError: list index out of range
-
-        #print("base_parts:", base_parts)
-        app = base_parts[-1]
+        ''' Split out the app behind python command '''
+        try:
+            base_parts = parts[8].split(os.sep)  # /usr/bin/indicator-sysmonitor
+        except IndexError:  # list index out of range
+            ''' This is python interpreter and there is no script '''
+            base_parts = parts[7].split(os.sep)  # /usr/bin/python3 
 
         pid = int(parts[1])  # give it name of 'pid' for clarity
+        app = base_parts[-1]
         apps_running.append((pid, app))
-        #print(parts)
-        #print("\tapps", (pid, app))
-
-    #print('pid_list:',PID)
     return apps_running
 
 
