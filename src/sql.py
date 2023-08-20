@@ -31,17 +31,14 @@ warnings.simplefilter('default')  # in future Python versions.
 #       Aug. 10 2023 - Add Music columns: AlbumArtist, Compilation, Comment,
 #                      GaplessPlayback
 #       Aug. 19 2023 - Add known SQL metadata to FileControl() variables.
+#       Aug. 20 2023 - Print SQL Table sizes and Row Counts by Type 
 
 #   TODO:
 
 #   Create tables should not be saving OsFileNames that haven't been played
 #       especially for locations that may never be saved 
 
-#   Create set_last_played_time() for PlayCount & LastPlayTime (over 80%)
-
 #   Create Fix function to touch OsAccessTime using OsModifyTime
-
-#   Replace FileControl.touch_it() with FileControl.set_last_played_time()?
 
 #   Create FileControl.get_last_played_time() for lib_tree display when N/A
 #       use st.atime() instead.
@@ -50,12 +47,48 @@ warnings.simplefilter('default')  # in future Python versions.
 #==============================================================================
 
 ''' TODO:
-    Create stub to prevent calling from command line:
 
-    $ python encoding.py
-    location.py was forced to run g.init()
-    'from location import FNAME_LIBRARY' FAILED !!!
-    Using hard-coded: /home/rick/.local/share/mserve/library.db
+    History Table is very large. After a few months delete history prior
+    to cutoff date. Output from mserve.py show_debug() is below:
+
+    SQL Location Table      Page Count: 1           Size of all pages: 1,024
+    SQL Music Table         Page Count: 3,874       Size of all pages: 3,966,976
+    SQL History Table       Page Count: 4,520 	    Size of all pages: 4,628,480
+            History Table rows:  | Type='file' | Action='init' |  count: 3,905
+            History Table rows:  | Type='file' | Action='edit' |  count: 44
+            History Table rows:  | Type='meta' | Action='init' |  count: 3,768
+            History Table rows:  | Type='meta' | Action='edit' |  count: 9,784
+
+
+    When vacuuming, the primary keys are left intact: 
+        https://stackoverflow.com/questions/76940830/
+        python-sqlite3-vacuum-with-and-without-reseting-primary-key?
+        noredirect=1#comment135636425_76940830
+    
+
+    The SQLite VACUUM command https://www.sqlitetutorial.net/sqlite-vacuum/
+    
+    The VACUUM command does not change the content of the database except 
+    the rowid values. If you use INTEGER PRIMARY KEY column, the VACUUM 
+    does not change the values of that column. However, if you use un-aliased 
+    rowid, the VACUUM command will reset the rowid values. Besides changing 
+    the rowid values, the VACUUM command also builds the index from scratch.
+    
+    It is a good practice to perform the VACUUM command periodically, 
+    especially when you delete large tables or indexes from a database.
+    
+    It is important to note that the VACUUM command requires storage to 
+    hold the original file and also the copy. Also, the VACUUM command 
+    requires exclusive access to the database file. In other words, the 
+    VACUUM command will not run successfully if the database has a pending 
+    SQL statement or an open transaction.
+    
+    Currently, as of version 3.9.2, you can run the VACUUM command on the 
+    main database, not the attached database file.
+    
+    Even though SQLite enables the auto-vacuum mode that triggers the 
+    vacuum process automatically with some limitations. It is a good 
+    practice to run the VACUUM command manually.
 
 '''
 
@@ -251,17 +284,18 @@ def open_db(LCS=None):
 
     # MUSIC TABLE
     """ Version 3 - Note times are in UTC as returned by os.stat() """
-    con.execute("create table IF NOT EXISTS Music(Id INTEGER PRIMARY KEY, " +
-                "OsFileName TEXT, OsAccessTime FLOAT, OsModifyTime FLOAT, " +
-                "OsChangeTime FLOAT, OsFileSize INT, " +
-                "ffMajor TEXT, ffMinor TEXT, ffCompatible TEXT, " +
-                "Title TEXT, Artist TEXT, Album TEXT, Compilation TEXT, " +
-                "AlbumArtist TEXT, AlbumDate TEXT, FirstDate TEXT, " +
-                "CreationTime TEXT, DiscNumber TEXT, TrackNumber TEXT, " +
-                "Rating TEXT, Genre TEXT, Composer TEXT, Comment TEXT, " +
-                "Hyperlink TEXT, Duration TEXT, Seconds FLOAT, " +
-                "GaplessPlayback TEXT, PlayCount INT, LastPlayTime FLOAT, " +
-                "LyricsScore BLOB, LyricsTimeIndex TEXT)")
+    con.execute(
+        "create table IF NOT EXISTS Music(Id INTEGER PRIMARY KEY, " +
+        "OsFileName TEXT, OsAccessTime FLOAT, OsModifyTime FLOAT, " +
+        "OsChangeTime FLOAT, OsFileSize INT, " +
+        "ffMajor TEXT, ffMinor TEXT, ffCompatible TEXT, " +
+        "Title TEXT, Artist TEXT, Album TEXT, Compilation TEXT, " +
+        "AlbumArtist TEXT, AlbumDate TEXT, FirstDate TEXT, " +
+        "CreationTime TEXT, DiscNumber TEXT, TrackNumber TEXT, " +
+        "Rating TEXT, Genre TEXT, Composer TEXT, Comment TEXT, " +
+        "Hyperlink TEXT, Duration TEXT, Seconds FLOAT, " +
+        "GaplessPlayback TEXT, PlayCount INT, LastPlayTime FLOAT, " +
+        "LyricsScore BLOB, LyricsTimeIndex TEXT)")
 
     """ Version 2 
     con.execute("CREATE TABLE IF NOT EXISTS Music(Id INTEGER PRIMARY KEY, " +
@@ -281,11 +315,12 @@ def open_db(LCS=None):
 
     # HISTORY TABLE
     """ Version 3 """
-    con.execute("create table IF NOT EXISTS History(Id INTEGER PRIMARY KEY, " +
-                "Time FLOAT, MusicId INTEGER, User TEXT, Type TEXT, " +
-                "Action TEXT, SourceMaster TEXT, SourceDetail TEXT, " +
-                "Target TEXT, Size INT, Count INT, Seconds FLOAT, " +
-                "Comments TEXT, Timestamp FLOAT)")
+    con.execute(
+        "create table IF NOT EXISTS History(Id INTEGER PRIMARY KEY, " +
+        "Time FLOAT, MusicId INTEGER, User TEXT, Type TEXT, " +
+        "Action TEXT, SourceMaster TEXT, SourceDetail TEXT, " +
+        "Target TEXT, Size INT, Count INT, Seconds FLOAT, " +
+        "Comments TEXT, Timestamp FLOAT)")
 
     """ Version 2 
     con.execute("CREATE TABLE IF NOT EXISTS History(Id INTEGER PRIMARY KEY, " +
@@ -310,12 +345,13 @@ def open_db(LCS=None):
                 "History(Type, Action)")
 
     # LOCATION TABLE
-    con.execute("CREATE TABLE IF NOT EXISTS Location(Id INTEGER PRIMARY KEY, " +
-                "Code TEXT, Name TEXT, ModifyTime FLOAT, ImagePath TEXT, " +
-                "MountPoint TEXT, TopDir TEXT, HostName TEXT, " +
-                "HostWakeupCmd TEXT, HostTestCmd TEXT, HostTestRepeat INT, " +
-                "HostMountCmd TEXT, HostTouchCmd TEXT, HostTouchMinutes INT, " +
-                "Comments TEXT)")
+    con.execute(
+        "CREATE TABLE IF NOT EXISTS Location(Id INTEGER PRIMARY KEY, " +
+        "Code TEXT, Name TEXT, ModifyTime FLOAT, ImagePath TEXT, " +
+        "MountPoint TEXT, TopDir TEXT, HostName TEXT, " +
+        "HostWakeupCmd TEXT, HostTestCmd TEXT, HostTestRepeat INT, " +
+        "HostMountCmd TEXT, HostTouchCmd TEXT, HostTouchMinutes INT, " +
+        "Comments TEXT)")
     con.execute("CREATE UNIQUE INDEX IF NOT EXISTS LocationCodeIndex ON " +
                 "Location(Code)")
 
@@ -400,6 +436,15 @@ def convert_to_database3():
         Review sqlitebrowser ~/.local/share/library_new.db
         If success cp ~/.local/share/library_new.db ~/.local/share/library.db
         After success run "View", "SQL Music", "Update Metadata"
+
+        TODO: Full conversion run
+                pgc, pgs = show_sql_table_size("convert", History, prt=False)
+                missing_artwork
+                new_pgc, new_pgs = show_sql_table_size("convert", History, prt=False)
+                message.ShowInfo(... "x new history records", "y new size used"
+
+             Turn off option in missing_artwork to create history records
+
     """
     live_update = True  # Cannot run twice, it will crash, delete library_new.db
     open_new_db()
@@ -1475,21 +1520,25 @@ def hist_check(MusicId, check_type, check_action):
 
         VARIABLE        DESCRIPTION
         --------------  -----------------------------------------------------
-        Id              Primary integer key auto-incremented
+        Id              Primary Key integer key auto-incremented
         Time            In system format with nano-second precision
                         filetime = (unix time * 10000000) + 116444736000000000
-                        Secondary key
+                        Secondary Key
         MusicId         Link to primary key in Music Table usually rowid
                         For setting (screen, monitor, window, etc) the
-                        MusicId is set to 0.
+                        MusicId is set to 0. History's Tertiary Key
         User            User name, User ID or GUID varies by platform.
         Type            'file', 'catalog', 'link', 'index', 'checkout', 'song',
                         'lyrics', 'time', 'fine-tune', 'meta', 'resume', 
-                        'volume', 'window', 'chron-state', 'hockey'
+                        'scrape', 'volume', 'window', 'chron-state', 'hockey'
         Action          'copy', 'download', 'remove', 'burn', 'edit', 'play',
-                        'scrape', 'init', 'shuffle', 'save', 'load', 'level',
-                        'show', 'hide', 'On', 'Off'
-                        NAME 
+                        'parm', 'init', 'shuffle', 'save', 'load', 'level',
+                        'scrape', 'show', 'hide', 'On', 'Off'
+
+        NOTE: Type-Action is History's Quaternary key.
+              Type-Action can be: 'scrape'-'parm' and 'lyrics'-'scrape'
+
+                        EXAMPLES USING LYRICS WEBSCRAPING
         SourceMaster    'Genius', 'Metro Lyrics', etc.
                         Device name, Playlist
         SourceDetail    '//genius.com' or 'www.metrolyrics.com', etc.
@@ -1616,7 +1665,6 @@ def hist_delete_type_action(Type, Action):
                 Keep this as boilerplate for next time
     """
 
-    # TODO: Use "INDEXED BY TypeActionIndex " +
     sql = "DELETE FROM History WHERE Type=? AND Action=?"
 
     hist_cursor.execute(sql, (Type, Action))
@@ -1624,6 +1672,57 @@ def hist_delete_type_action(Type, Action):
     print('hist_delete_type_action(Type, Action):', Type, Action,
           'deleted_row_count:', deleted_row_count)
     con.commit()
+
+
+def hist_count_type_action(Type, Action, prt=True, tab=True):
+    """ Count History Rows for matching Type and Action. """
+
+    sql = "SELECT * FROM History INDEXED BY TypeActionIndex " +\
+          "WHERE Type = ? AND Action = ? "
+    hist_cursor.execute(sql, (Type, Action))
+    rows = hist_cursor.fetchall()
+    row_count = len(rows)
+
+    tabs = "\t\t" if tab else ""  # show_debug() will want a tab to align
+    prt_type = " | Type='" + Type + "' | Action='" + Action + "' | "
+    if prt:
+        print(tabs + 'History Table rows:', prt_type,
+              'count:', '{:n}'.format(row_count))
+
+    return row_count
+
+
+def hist_tally_whole(prt=True, tab=True):
+    """ Tally All History Rows by Type and Action. """
+
+    sql = "SELECT max(Id) FROM History;"
+    hist_cursor.execute(sql)
+    d = hist_cursor.fetchone()
+    print("SELECT max(Id) FROM History;", d)
+
+
+    tally = {}
+    sql = "SELECT * FROM History;"
+    hist_cursor.execute(sql)
+    rows = hist_cursor.fetchall()
+    for sql_row in rows:
+        row = dict(sql_row)
+        Type = row['Type']
+        Action = row['Action']
+        if Type+"-"+Action in tally:
+            tally[Type+"-"+Action] += 1
+        else:
+            tally[Type+"-"+Action] = 1
+
+    tabs = "\t\t" if tab else ""  # show_debug() will want a tab to align
+    if prt:
+        total = 0
+        for key in tally:
+            print(tabs+key[:12], '\t{:n}'.format(tally[key]))
+            total += tally[key]
+        print(tabs+"Total all Type-Action:", '{:n}'.format(total))
+
+    return tally
 
 
 def hist_init_lyrics_and_time():

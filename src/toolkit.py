@@ -2577,7 +2577,7 @@ class ToolTips(CommonTip):
             self.bg = self.widget["foreground"]
         else:
             self.fg = None  # canvas button has no coloring
-            self.bg = None
+            self.bg = None  # 'piggy-back' will also come here
 
         #self.tip_window = tw = tk.Toplevel(self.widget)  # Original weird code...
         if self.menu_tuple:
@@ -2595,9 +2595,15 @@ class ToolTips(CommonTip):
         self.window_mouse_xy = self.current_mouse_xy
 
         # https://www.tcl.tk/man/tcl8.6/TkCmd/wm.htm#M9
-        # self.tip_window['background'] = self.bg
-        self.tip_window['background'] = self.bg
+        # self.tip_window['background'] = self.bg  # Aug 20/23 already commented!
+        ''' Aug 20/23 - Add if check for 'NoneType' error '''
+        if self.tip_window and self.bg:
+            self.tip_window['background'] = self.bg  # original below commented
+            #   File "/home/rick/python/toolkit.py", line 2599, in create_tip_window
+            #     self.tip_window['background'] = self.bg
+            # TypeError: 'NoneType' object does not support item assignment
         # https://stackoverflow.com/a/52123172/6929343
+
         self.tip_window.wm_attributes('-type', 'tooltip')  # only works X11 and not all distros
 
         d_print('created self.tip_window:', self.tip_window)

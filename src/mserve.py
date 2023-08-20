@@ -76,6 +76,7 @@ warnings.simplefilter('default')  # in future Python versions.
 #       July 21 2023 - check_missing_artwork() report files missing audio stream.
 #       Aug. 18 2023 - InfoCentre() Banner tooltip erase and rebuild not necessary.
 #       Aug. 19 2023 - Dynamic display_metadata(), fix VU Meter Height on startup.
+#       Aug. 20 2023 - SQL Debug + Metadata dictionaries built on ffprobe.
 
 # noinspection SpellCheckingInspection
 """
@@ -3910,12 +3911,6 @@ class MusicLocationTree(PlayCommonSelf):
 
         print("\nAll Windows (Wnck) - mon.get_all_windows():")
         print("=============================================\n")
-        """  BROKE SOMETIME AROUND JULY 27, 2023
-        /home/rick/python/mserve.py:5336: Warning: invalid un classed pointer in cast to 'WnckWindow'
-  for i, window in enumerate(mon.get_all_windows()):
-
-(m:16537): Wnck-CRITICAL **: _wnck_window_destroy: assertion 'WNCK_IS_WINDOW (window)' failed
-        """
         for i, window in enumerate(mon.get_all_windows()):
             ''' Testing desktop - should check each monitor individually '''
             if window.x > mon.screen_width or window.y > mon.screen_height:
@@ -4042,16 +4037,6 @@ class MusicLocationTree(PlayCommonSelf):
             for i in self.mus_ctl.metadata:
                 print(i, ":", self.mus_ctl.metadata[i])
 
-        if sql.ofb.blacks is not None:
-            print("\nSQL Blacklisted songs")
-            print("====================================\n")
-            for i, entry in enumerate(sql.ofb.blacks):
-                print(i, ":", entry)
-            print("\nSQL Whitelist substitutes")
-            print("====================================\n")
-            for i, entry in enumerate(sql.ofb.whites):
-                print(i, ":", entry)
-
         print("\nGLOBAL VARIABLES")
         print("====================================\n")
         print("START_DIR:", START_DIR, " | START_DIR.count(os.sep):",
@@ -4077,6 +4062,39 @@ class MusicLocationTree(PlayCommonSelf):
 
         # Need SQL version 3.22 for INTO option, current is 3.11
         #sql.con.execute("VACUUM INTO '/run/user/1000/mserve library.db'")
+
+        if sql.ofb.blacks is not None:
+            print("\nSQL Blacklisted songs")
+            print("====================================\n")
+            for i, entry in enumerate(sql.ofb.blacks):
+                print(i, ":", entry)
+            print("\nSQL Whitelist substitutes")
+            print("====================================\n")
+            for i, entry in enumerate(sql.ofb.whites):
+                print(i, ":", entry)
+
+        print("\nSQL Table Sizes")
+        print("====================================\n")
+
+        self.show_sql_table_size("SQL Location Table", "Location")
+        self.show_sql_table_size("SQL Music Table", "Music")
+        self.show_sql_table_size("SQL History Table", "History")
+        sql.hist_count_type_action('file', 'init')
+        sql.hist_count_type_action('file', 'edit')
+        sql.hist_count_type_action('meta', 'init')
+        sql.hist_count_type_action('meta', 'edit')
+        sql.hist_count_type_action('scrape', 'parm')
+        sql.hist_count_type_action('lyrics', 'scrape')
+        sql.hist_tally_whole()
+        ''' To use Virtual Table
+        # https://www.sqlite.org/dbstat.html
+        try:
+            sql.con.execute("CREATE VIRTUAL TABLE temp.stat USING dbstat(main);")
+        except sql.sqlite3.Error as er:
+            print('SQLite error: %s' % (' '.join(er.args)))
+            print("Exception class is: ", er.__class__)
+            print("SQL wasn't compiled with SQLITE_ENABLE_DBSTAT_VTAB")
+        '''
 
         if pav.pulse_is_working:
             ''' Fast method using pulse audio direct interface '''
@@ -4144,6 +4162,47 @@ class MusicLocationTree(PlayCommonSelf):
                          "DEBUG information written to Stdout (Standard Output)",
                          thread=self.get_refresh_thread)
         self.info.cast("DEBUG information written to Stdout (Standard Output)")
+
+    @staticmethod
+    def show_sql_table_size(title, key, prt=True):
+        """ Print table page count and size of all pages. """
+
+        sql_cmd = "SELECT count(*) FROM dbstat('main') WHERE name=?;"
+        sql.cursor.execute(sql_cmd, [key])
+        try:
+            d = dict(sql.cursor.fetchone())
+            page_count = d['count(*)']
+        except sql.sqlite3.Error as er:
+            print('SQLite error: %s' % (' '.join(er.args)))
+            print("Exception class is: ", er.__class__)
+            print("SQL wasn't compiled with SQLITE_ENABLE_DBSTAT_VTAB")
+
+        sql_cmd = "SELECT sum(pgsize) FROM dbstat WHERE name=?"
+        try:
+            sql.cursor.execute(sql_cmd, [key])
+        except sql.sqlite3.OperationalError as er:
+            print('SQLite error: %s' % (' '.join(er.args)))
+            print("Exception class is: ", er.__class__)
+            print("SQL Error")
+            return
+
+        try:
+            d = dict(sql.cursor.fetchone())
+            pages_size = d['sum(pgsize)']
+        except sql.sqlite3.Error as er:
+            print('SQLite error: %s' % (' '.join(er.args)))
+            print("Exception class is: ", er.__class__)
+            print("SQL wasn't compiled with SQLITE_ENABLE_DBSTAT_VTAB")
+            return
+
+        # Location table only has 1 page so needs extra tab
+        tabs = "\t\t" if key == "Location" else "\t"
+
+        if prt:
+            print("\t" + title, "\tPage Count:", '{:n}'.format(page_count),
+                  tabs + "Size of all pages:", '{:n}'.format(pages_size))
+
+        return page_count, pages_size
 
     # ==============================================================================
     #
@@ -4493,6 +4552,18 @@ class MusicLocationTree(PlayCommonSelf):
 
         ''' Aug 9/23 - Allow play_to_end() to run. '''
         lcs.fast_refresh(tk_after=False)  # Aug 9/23 keep spinning till end
+
+        ''' Aug 20/23 - Quick check to see if over-legalizing dir names '''
+        parts = os_filename.split(os.sep)
+        legal_part1 = ext.legalize_dir_name(parts[0])
+        legal_part2 = ext.legalize_dir_name(parts[1])
+        legal_part3 = ext.legalize_dir_name(parts[2])
+        if legal_part1 != parts[0]:
+            print("over-legalized parts[0]", legal_part1)
+        if legal_part2 != parts[1]:
+            print("over-legalized parts[1]", legal_part2)
+        if legal_part3 != parts[2]:
+            print("over-legalized parts[2]", legal_part3)
 
         if not self.mus_ctl.new(PRUNED_DIR + os_filename):  # get metadata
             # .new() returns False when file doesn't exist at this location
@@ -5937,8 +6008,8 @@ class MusicLocationTree(PlayCommonSelf):
             self.play_frm, orient=tk.HORIZONTAL, tickinterval=0, showvalue=0,
             highlightcolor="Blue", activebackgroun="Gold", troughcolor="Black",
             command=self.set_ffplay_sink, cursor='boat red red')
-        self.ffplay_slider.grid(row=0, column=1, columnspan=2, padx=5,
-                                sticky=tk.EW)
+        self.ffplay_slider.grid(row=0, column=1, columnspan=2, sticky=tk.EW, 
+                                padx=5, pady=(8, 0))
 
         ''' Aug 9/23 
         https://soundcharts.com/blog/music-metadata
@@ -6206,7 +6277,6 @@ class MusicLocationTree(PlayCommonSelf):
             ("progress", 999999, self.song_progress_var, 7)
             ]
 
-
         ''' Erase previous song's labels '''
         my_children = self.play_frm.winfo_children()  # Get play_frm children
         for wdg in my_children:  # Iterate over children
@@ -6249,10 +6319,9 @@ class MusicLocationTree(PlayCommonSelf):
             self.play_frm.grid_rowconfigure(i, weight=0)  # Empty row
 
         ''' play_frm rows 0-18 artwork, metadata, vu meters, lyrics (on right)
-            row 19 (lyrics on bottom) chron_frm
+            row 19 (lyrics on bottom)
             row 20 button bar
-            row 30 chronology 
-        '''
+            row 30 chronology  '''
 
     def display_meta_var(self, fld, var):
         """ Set tk.StringVar() with fld string contents unless special values.
@@ -12613,6 +12682,7 @@ class FileControlCommonSelf:
         self.Duration = None        # self.metadata.get('DURATION', "0.0,0")
         self.DurationSecs = None    # hh:mm:ss sting converted to int seconds
         self.GaplessPlayback = None  # self.metadata.get('GAPLESS_PLAYBACK', "None")
+        self.Encoder = None         # e.g. iTunes, mserve, etc.
         self.EncodingFormat = None  # 'wav', 'm4a', 'oga', etc.
         self.DiscId = None          # gstreamer adds to MP3 automatically
         self.MusicBrainzDiscId = None  # "       "           "
@@ -12799,12 +12869,31 @@ class FileControl(FileControlCommonSelf):
         # 3-12 - Poison.oga using kid3 < 1 second
 
         ext.t_init("FileControl.get_metadata() - mutagen")
-        # Song: Heart/GreatestHits/17 Rock and Roll (Live).m4a
-        m = mutagen.File(self.last_path)
-        if m:  # .wav files have no metadata
-            for line in m:
-                #print("mutagen line:", line)  # keys are in lowercase with _ removed
-                pass
+        try:
+            # Song: Heart/GreatestHits/17 Rock and Roll (Live).m4a
+            # Song: /media/rick/SANDISK128/Music/Hello/There/smile.mp3
+            m = mutagen.File(self.last_path)
+            if m:  # .wav files have no metadata
+                for line in m:
+                    #print("mutagen line:", line)  # keys are in lowercase with _ removed
+                    pass
+        except:
+            print("Mutagen error on:", self.last_path)
+
+        #   File "/home/rick/python/mserve.py", line 12871, in get_metadata
+        #     m = mutagen.File(self.last_path)
+        #   File "/usr/lib/python2.7/dist-packages/mutagen/_file.py", line 251, in File
+        #     return Kind(filename)
+        #   File "/usr/lib/python2.7/dist-packages/mutagen/_file.py", line 42, in __init__
+        #     self.load(filename, *args, **kwargs)
+        #   File "/usr/lib/python2.7/dist-packages/mutagen/id3/__init__.py", line 1093, in load
+        #     self.info = self._Info(fileobj, offset)
+        #   File "/usr/lib/python2.7/dist-packages/mutagen/mp3.py", line 185, in __init__
+        #     self.__try(fileobj, offset, size - offset, False)
+        #   File "/usr/lib/python2.7/dist-packages/mutagen/mp3.py", line 223, in __try
+        #     raise HeaderNotFoundError("can't sync to an MPEG frame")
+        # HeaderNotFoundError: can't sync to an MPEG frame
+
         #     m = mutagen.File(self.last_path, easy=True)
         #   File "/usr/lib/python2.7/dist-packages/mutagen/_file.py", line 251, in File
         #     return Kind(filename)
@@ -12840,6 +12929,7 @@ class FileControl(FileControlCommonSelf):
         held_stream0 = None
         with open(self.TMP_FFPROBE) as f:
             for line in f:
+                print(line.strip("\n"))
                 line = line.rstrip()  # remove \r and \n
                 # print('line:', line)
                 if line.startswith('  configuration:'):
@@ -12851,6 +12941,11 @@ class FileControl(FileControlCommonSelf):
                 # noinspection PyBroadException
                 try:
                     (key, val) = line.split(':', 1)  # Split first ':' only
+                    # "Stream #0:0: Audio..." -> [STREAM #0]    = "0: Audio..."
+                    # "Stream #0:1: Video..." -> [STREAM #0(1)] = "1: Video..."
+                    # If (key, val) = line.split(':', 2) was used then:
+                    #   "Stream #0:0: Audio..." -> [STREAM #0:0] = "Audio..."
+                    #   "Stream #0:1: Video..." -> [STREAM #0:1] = "Video..."
                 except:
                     continue  # No ':' on line
 
@@ -12903,8 +12998,302 @@ class FileControl(FileControlCommonSelf):
         # Catch .oga files with no 'CREATION_TIME'
         if held_duration:
             self.metadata['DURATION'] = held_duration
+            held_duration = None
             if held_stream0:
                 self.metadata['STREAM #0'] = held_stream0  # Put in audio stream
+                held_stream0 = None
+
+        if held_stream0:
+            self.metadata['STREAM #0'] = held_stream0  # Put in audio stream
+            print("held_stream0 out of sequence", held_stream0)
+            held_stream0 = None
+            if held_duration:
+                self.metadata['DURATION'] = held_duration
+                print("held_duration out of sequence", held_stream0)
+                held_duration = None
+
+
+        ''' More .oga out of order in SQL Music Table Viewer: 
+
+            GARBAGE IN:
+                Input #0, ogg, from '/media/rick/SANDISK128/Music/Compilations/Greatest Hits of the 80’s [Disc #3 of 3]/3-12 Poison.oga':
+                  Duration: 00:04:29.16, start: 0.000000, bitrate: 240 kb/s
+                    Stream #0:0: Audio: vorbis, 44100 Hz, stereo, fltp, 256 kb/s
+                    Metadata:
+                      TRACKTOTAL      : 14
+                      track           : 12
+                      ENCODER         : mserve 3.4.2
+                      TITLE           : Poison
+                      ARTIST          : Alice Cooper
+                      ALBUM           : Greatest Hits of the 80’s [Disc #3 of 3]
+                      TRACK_NUMBER    : 12/14
+                      ALBUM_ARTIST    : Various Artists
+                      COMPOSER        : A. Cooper
+                      DATE            : 1989
+                      GENRE           : Rock
+                      COPYRIGHT       : 2001
+                      COMMENT         : Test two comments in OGG
+                      DISC_NUMBER     : 3/3
+                      CREATION_TIME   : 2023-08-20 17:01:55
+                      DISCID          : ba0dcd0e
+                      MUSICBRAINZ_DISCID: tjAnC0ReEc.f48DpI_lHjx1VEBA-
+                    Stream #0:1: Video: mjpeg, yuvj420p(pc, bt470bg/unknown/unknown), 500x408 [SAR 89:89 DAR 125:102], 90k tbr, 90k tbn, 90k tbc
+                    Metadata:
+                      comment         : Cover (front)
+                      title           : Poison
+
+            GARBAGE OUT:
+                DURATION:	00:04:29.16, start: 0.000000, bitrate: 240 kb/s
+                STREAM #0:	0: Audio: vorbis, 44100 Hz, stereo, fltp, 256 kb/s
+                CREATION_TIME:	2023-08-20 17:01:55
+                DISCID:	ba0dcd0e
+                MUSICBRAINZ_DISCID:	tjAnC0ReEc.f48DpI_lHjx1VEBA-
+                STREAM #0(1):	1: Video: mjpeg, yuvj420p(pc, bt470bg/unknown/unknown), 500x408 [SAR 89:89 DAR 125:102], 90k tbr, 90k tbn, 90k tbc
+                COMMENT(1):	Cover (front)
+                TITLE(1):	Poison
+
+
+            CHANGES:
+
+            'Comment' should NOT be 'Cover (front)'. Instead there should be:
+            'Picture: Cover (front)' - A Place to Call Home (reprise)
+
+            STREAM# 0 should appear behind DURATION
+            CREATION_DATE is new metadata that doesn't exist to wait for.
+            STREAM# 1 is missing altogether. This gives missing artwork error.
+
+ffprobe OUTPUT for OGG ==========================================================
+
+Input #0, ogg, from '/media/rick/SANDISK128/Music/Compilations/Greatest Hits of the 80’s [Disc #3 of 3]/3-12 Poison.oga':
+  Duration: 00:04:29.16, start: 0.000000, bitrate: 240 kb/s
+    Stream #0:0: Audio: vorbis, 44100 Hz, stereo, fltp, 256 kb/s
+    Metadata:
+      TRACKTOTAL      : 14
+      track           : 12
+      ENCODER         : mserve 3.4.2
+      TITLE           : Poison
+      ARTIST          : Alice Cooper
+      ALBUM           : Greatest Hits of the 80’s [Disc #3 of 3]
+      TRACK_NUMBER    : 12/14
+      ALBUM_ARTIST    : Various Artists
+      COMPOSER        : A. Cooper
+      DATE            : 1989
+      GENRE           : Rock
+      COPYRIGHT       : 2001
+      COMMENT         : Test two comments in OGG
+      DISC_NUMBER     : 3/3
+      CREATION_TIME   : 2023-08-20 17:01:55
+      DISCID          : ba0dcd0e
+      MUSICBRAINZ_DISCID: tjAnC0ReEc.f48DpI_lHjx1VEBA-
+    Stream #0:1: Video: mjpeg, yuvj420p(pc, bt470bg/unknown/unknown), 500x408 [SAR 89:89 DAR 125:102], 90k tbr, 90k tbn, 90k tbc
+    Metadata:
+      comment         : Cover (front)
+      title           : Poison
+
+
+ffprobe OUTPUT for MP3 ==========================================================
+
+Input #0, mp3, from '/media/rick/SANDISK128/Music/Compilations/Greatest Hits of the 80’s [Disc #3 of 3]/3-12 Poison.mp3':
+  Metadata:
+    title           : Poison
+    artist          : Alice Cooper
+    track           : 12/14
+    album           : Greatest Hits of the 80’s [Disc #3 of 3]
+    date            : 1989
+    genre           : Rock
+    composer        : D. Child / J. McCurry / A. Cooper
+    copyright       : 2001
+    creation_time   : 2023-08-19T14:33:15
+    encoded_by      : mserve 3.4.2
+    album_artist    : Various Artists
+    CDDB DiscID     : ba0dcd0e
+    MusicBrainz DiscID: tjAnC0ReEc.f48DpI_lHjx1VEBA-
+    discid          : ba0dcd0e
+    musicbrainz_discid: tjAnC0ReEc.f48DpI_lHjx1VEBA-
+  Duration: 00:04:35.70, start: 0.000000, bitrate: 213 kb/s
+    Stream #0:0: Audio: mp3, 44100 Hz, stereo, s16p, 211 kb/s
+    Stream #0:1: Video: mjpeg, yuvj420p(pc, bt470bg/unknown/unknown), 500x408 [SAR 1:1 DAR 125:102], 90k tbr, 90k tbn, 90k tbc
+    Metadata:
+      title           : Front cover
+      comment         : Cover (front)
+
+ffprobe OUTPUT for MP4 ==========================================================
+
+Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilations/Greatest Hits of the 80’s [Disc #3 of 3]/3-12 Poison.m4a':
+  Metadata:
+    major_brand     : mp42
+    minor_version   : 0
+    compatible_brands: mp42mp41isomiso2
+    creation_time   : 2023-08-19 19:14:07
+    album           : Greatest Hits of the 80’s [Disc #3 of 3]
+    title           : Poison
+    artist          : Alice Cooper
+    track           : 12/14
+    disc            : 3/3
+    date            : 1989
+    compilation     : 1
+    gapless_playback: 0
+    encoder         : mserve 3.4.2
+    copyright       : 2001
+    category        : ba0dcd0e
+    album_artist    : Various Artists
+    keywords        : tjAnC0ReEc.f48DpI_lHjx1VEBA-
+  Duration: 00:04:29.14, start: 0.000000, bitrate: 195 kb/s
+    Stream #0:0(eng): Audio: aac (LC) (mp4a / 0x6134706D), 44100 Hz, stereo, fltp, 191 kb/s (default)
+    Metadata:
+      creation_time   : 2023-08-19 19:14:07
+      handler_name    : SoundHandler
+    Stream #0:1: Video: mjpeg, yuvj420p(pc, bt470bg/unknown/unknown), 500x408 [SAR 1:1 DAR 125:102], 90k tbr, 90k tbn, 90k tbc
+
+
+ffprobe OUTPUT for FLAC =========================================================
+
+Input #0, flac, from '/media/rick/SANDISK128/Music/Compilations/Greatest Hits of the 80’s [Disc #3 of 3]/3-12 Poison.flac':
+  Metadata:
+    TRACKTOTAL      : 14
+    track           : 12
+    ENCODER         : mserve 3.4.2
+    TITLE           : Poison
+    ARTIST          : Alice Cooper
+    ALBUM           : Greatest Hits of the 80’s [Disc #3 of 3]
+    TRACK_NUMBER    : 12/14
+    ALBUM_ARTIST    : Various Artists
+    COMPOSER        : Alice
+    DATE            : 1989
+    GENRE           : Rock
+    COPYRIGHT       : 2001
+    COMMENT         : Test FLAC
+    DISC_NUMBER     : 3/3
+    CREATION_TIME   : 2023-08-20 15:34:01
+    DISCID          : ba0dcd0e
+    MUSICBRAINZ_DISCID: tjAnC0ReEc.f48DpI_lHjx1VEBA-
+  Duration: 00:04:29.16, start: 0.000000, bitrate: 924 kb/s
+    Chapter #0:0: start 0.000000, end 269.160000
+    Metadata:
+      title           : 
+    Chapter #0:1: start 272.466667, end 269.160000
+    Metadata:
+      title           : 
+    Chapter #0:2: start 475.973333, end 269.160000
+    Metadata:
+      title           : 
+    Chapter #0:3: start 687.466667, end 269.160000
+    Metadata:
+      title           : 
+    Chapter #0:4: start 921.306667, end 269.160000
+    Metadata:
+      title           : 
+    Chapter #0:5: start 1151.306667, end 269.160000
+    Metadata:
+      title           : 
+    Chapter #0:6: start 1505.800000, end 269.160000
+    Metadata:
+      title           : 
+    Chapter #0:7: start 1796.133333, end 269.160000
+    Metadata:
+      title           : 
+    Chapter #0:8: start 2060.466667, end 269.160000
+    Metadata:
+      title           : 
+    Chapter #0:9: start 2268.640000, end 269.160000
+    Metadata:
+      title           : 
+    Chapter #0:10: start 2461.133333, end 269.160000
+    Metadata:
+      title           : 
+    Chapter #0:11: start 2740.640000, end 269.160000
+    Metadata:
+      title           : 
+    Chapter #0:12: start 3009.800000, end 269.160000
+    Metadata:
+      title           : 
+    Chapter #0:13: start 3232.800000, end 269.160000
+    Metadata:
+      title           : 
+    Stream #0:0: Audio: flac, 44100 Hz, stereo, s16
+    Stream #0:1: Video: mjpeg, yuvj420p(pc, bt470bg/unknown/unknown), 500x408 [SAR 1:1 DAR 125:102], 90k tbr, 90k tbn, 90k tbc
+    Metadata:
+      comment         : Cover (front)
+      title           : front cover
+
+
+ffprobe OUTPUT for WAV ==========================================================
+
+Input #0, wav, from '/media/rick/SANDISK128/Music/Compilations/Greatest Hits of the 80’s [Disc #3 of 3]/3-12 Poison.wav':
+  Duration: 00:04:29.16, bitrate: 1411 kb/s
+    Stream #0:0: Audio: pcm_s16le ([1][0][0][0] / 0x0001), 44100 Hz, 2 channels, s16, 1411 kb/s
+
+
+==== ffprobe SYNOPSIS  ==========================================================
+
+WAV: 
+Input #0, wav, from '/media/rick/SANDISK128/Music/Compilations/Greatest Hits of the 80’s [Disc #3 of 3]/3-12 Poison.wav':
+  Duration: 00:04:29.16, bitrate: 1411 kb/s
+    Stream #0:0: Audio: pcm_s16le ([1][0][0][0] / 0x0001), 44100 Hz, 2 channels, s16, 1411 kb/s
+
+OGG:
+Input #0, ogg, from '/media/rick/SANDISK128/Music/Big Wreck/Ghosts/13 A Place to Call Home (reprise).oga':
+  Duration: 00:01:07.24, start: 0.000000, bitrate: 303 kb/s
+    Stream #0:0: Audio: vorbis, 44100 Hz, stereo, fltp, 224 kb/s
+    Metadata:
+      DISCID          : 9410610d
+      DATE            : 2014-06-10
+    Stream #0:1: Video: mjpeg, yuvj420p(pc, bt470bg/unknown/unknown), 1425x1425 [SAR 1:1 DAR 1:1], 90k tbr, 90k tbn, 90k tbc
+    Metadata:
+      comment         : Cover (front)
+      title           : A Place to Call Home (reprise)
+
+FLAC:
+Input #0, flac, from '/media/rick/SANDISK128/Music/Compilations/Greatest Hits of the 80’s [Disc #3 of 3]/3-12 Poison.flac':
+  Metadata:
+    TRACKTOTAL      : 14
+    MUSICBRAINZ_DISCID: tjAnC0ReEc.f48DpI_lHjx1VEBA-
+  Duration: 00:04:29.16, start: 0.000000, bitrate: 924 kb/s
+    Chapter #0:0: start 0.000000, end 269.160000
+    Metadata:
+      title           : 
+    Chapter #0:1: start 272.466667, end 269.160000
+    Metadata:
+      title           : 
+    Stream #0:0: Audio: flac, 44100 Hz, stereo, s16
+    Stream #0:1: Video: mjpeg, yuvj420p(pc, bt470bg/unknown/unknown), 500x408 [SAR 1:1 DAR 125:102], 90k tbr, 90k tbn, 90k tbc
+    Metadata:
+      comment         : Cover (front)
+      title           : front cover
+
+MP3:
+Input #0, mp3, from '/media/rick/SANDISK128/Music/Compilations/Greatest Hits of the 80’s [Disc #3 of 3]/3-12 Poison.mp3':
+  Metadata:
+    title           : Poison
+    musicbrainz_discid: tjAnC0ReEc.f48DpI_lHjx1VEBA-
+  Duration: 00:04:35.70, start: 0.000000, bitrate: 213 kb/s
+    Stream #0:0: Audio: mp3, 44100 Hz, stereo, s16p, 211 kb/s
+    Stream #0:1: Video: mjpeg, yuvj420p(pc, bt470bg/unknown/unknown), 500x408 [SAR 1:1 DAR 125:102], 90k tbr, 90k tbn, 90k tbc
+    Metadata:
+      title           : Front cover
+      comment         : Cover (front)
+
+MP4:
+Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilations/Greatest Hits of the 80’s [Disc #3 of 3]/3-12 Poison.m4a':
+  Metadata:
+    major_brand     : mp42
+    keywords        : tjAnC0ReEc.f48DpI_lHjx1VEBA-
+  Duration: 00:04:29.14, start: 0.000000, bitrate: 195 kb/s
+    Stream #0:0(eng): Audio: aac (LC) (mp4a / 0x6134706D), 44100 Hz, stereo, fltp, 191 kb/s (default)
+    Metadata:
+      creation_time   : 2023-08-19 19:14:07
+      handler_name    : SoundHandler
+    Stream #0:1: Video: mjpeg, yuvj420p(pc, bt470bg/unknown/unknown), 500x408 [SAR 1:1 DAR 125:102], 90k tbr, 90k tbn, 90k tbc
+
+
+    1. All types start with: "Input #0, ogg, from '/media/....
+    2. FLAC, MP3 and MP4 follow with: "Metadata:"
+    3. OGG and WAV follow with: "Duration:"
+    4. MP4 and FLAC "Stream #0:1" follow with Audio
+    5. STREAM #0:0 is always audio, STREAM #0:1 is always Video (except WAV)
+
+
+        '''
 
         #print("sys.getsizeof(self.metadata):", sys.getsizeof(self.metadata))
         # size is a couple K. No images included.
@@ -12934,7 +13323,7 @@ class FileControl(FileControlCommonSelf):
         Rating, Genre, Composer, Comment, Hyperlink, Duration, Seconds,
         GaplessPlayback, PlayCount, LastPlayTime, LyricsScore, LyricsTimeIndex 
         PLUS: EncodingFormat, DiscId, MusicBrainzDiscId, OsFileSize, OsAccessTime '''
-        self.Compilation = self.metadata.get('COMPILATION', "0")
+        self.Compilation = self.metadata.get('COMPILATION', None)
         self.AlbumArtist = self.metadata.get('ALBUM_ARTIST', None)
         self.AlbumDate = toolkit.uni_str(
             self.metadata.get('RECORDING_DATE', None))  # Use OGA
@@ -12962,7 +13351,9 @@ class FileControl(FileControlCommonSelf):
         else:
             self.DurationSecs = 0.0  # Note must save in parent
 
-        self.GaplessPlayback = self.metadata.get('GAPLESS_PLAYBACK', "0")
+        self.GaplessPlayback = self.metadata.get('GAPLESS_PLAYBACK', None)
+
+        self.Encoder = self.metadata.get('ENCODER', None)
 
         ''' Aug 18/23 Bug fixed 3 months ago, not in production ffplay 
             https://trac.ffmpeg.org/ticket/9248 '''

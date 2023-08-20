@@ -1595,6 +1595,8 @@ class RipCD:
         c.grid(row=2, column=1, padx=5, sticky=tk.EW)
         ''' Clicking on compilation_var is treated like button click '''
         c.bind("<Button>", self.get_compilation)
+        c.bind("<FocusIn>", self.get_compilation)
+
         tk.Label(self.confirm_frm, text="Album Name:",
                  font=g.FONT).grid(row=3, column=0, padx=5, sticky=tk.W)
         tk.Entry(self.confirm_frm, textvariable=self.album_name_var,
@@ -1622,6 +1624,7 @@ class RipCD:
         gp.grid(row=8, column=1, padx=5, sticky=tk.EW)
         ''' Clicking on gapless_playback is treated like button click '''
         gp.bind("<Button>", self.get_gapless_playback)
+        gp.bind("<FocusIn>", self.get_gapless_playback)
         tk.Label(self.confirm_frm, text="Comments:",
                  font=g.FONT).grid(row=9, column=0, padx=5, sticky=tk.W)
         com = tk.Entry(self.confirm_frm, textvariable=self.comment_var,
@@ -1732,14 +1735,17 @@ class RipCD:
 
     # noinspection PyUnusedLocal
     def get_gapless_playback(self, *args):
-        """ Use AskQuestion to set "1" (yes) or "0" (no) """
+        """ Use AskQuestion to set "1" (yes) or "0" (no)
+            Popup dialog appears for entry when clicked on field but not when
+            tabbed into field.
+        """
         title = "Set Gapless Playback Flag"
         text = "mserve doesn't support Gapless Playback however some music\n"
         text += "players do support it. This option can be useful for other\n"
         text += "music players using the encoded music file.\n\n"
         text += "Use Gapless Playback?"
         answer = message.AskQuestion(self.confirm_top, title, text, align='left',
-                                     thread=self.update_display)
+                                     confirm='no', thread=self.update_display)
         if answer.result == 'yes':
             self.gapless_playback_var.set("1")
         else:
