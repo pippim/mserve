@@ -2030,7 +2030,7 @@ class RipCD:
 
         text = "Launching gstreamer to encode music file. Parameters:\n\n"
         self.info.cast(text + ext_name)
-        print(ext_name)  # to copy text which info.cast doesn't allow yet...
+        #print(ext_name)  # to copy text which info.cast doesn't allow yet...
 
         # ext_name = "sleep 3" # Activate this for speedy loop testing
         self.active_pid = ext.launch_command(ext_name,
@@ -2051,7 +2051,7 @@ class RipCD:
 
         tm = time.localtime(stat.st_mtime)
         local_time = time.strftime('%Y-%m-%d %H:%M:%S', tm)
-        print("self.CreationTime:", self.CreationTime, "local_time:", local_time)
+        #print("self.CreationTime:", self.CreationTime, "local_time:", local_time)
         # Time is OK at this point, but 6 hours ahead when stored...
 
         ''' Add SQL Music Row stub with OS file info but no metadata '''
@@ -2079,22 +2079,17 @@ class RipCD:
             text = "Song file already encoded. Updating file times and size in SQL."
             text += "\nSong: " + self.sqlOsFileName
             text += "\nSQL Music Table Row ID: " + str(self.music_id)
-            print("\n" + text)
             self.info.cast(text)
+
             sql_cmd = "UPDATE Music SET OsAccessTime=?, OsModifyTime=?, \
                 OsChangeTime=?, OsFileSize=? WHERE Id = ?"
-            #r = sql.con.execute(sql_cmd,  # NO DIFFERENCE
             sql.cursor.execute(sql_cmd,  # ORIGINAL NORMAL METHOD
                                (stat.st_atime, stat.st_mtime, stat.st_ctime,
                                 self.song_size, self.music_id))
             sql.con.commit()  # This update not working, times show 1/2 hour ago.
-            #print("using sql.con.execute for test. r = ", r)
-            # <sqlite3.Cursor object at 0x7f9f748c2c00>
-            action = 'edit'
+            action = 'edit'  # History action 'edit'
         else:
-            action = 'init'
-
-            #print("encoding.py sql_add_music() FIRST TIME ADD", last_music_id)
+            action = 'init'  # History action 'init'
 
         sql.hist_add(
             time.time(), self.music_id, g.USER, 'file', action,
@@ -3634,7 +3629,7 @@ if r['title'] != r['release-group']['title']
         x = self.fmt  # Menu bar format radiobutton
         self.scrollbox.insert("end", "Format:\t" + x)
         y = 100  # wav and flac are 100% quality
-        if x == "m4a" or x == "oga":  # "oga" or "m4a" selected?
+        if x == "mp3" or x == "m4a" or x == "oga":
             y = self.quality_var.get()  # Menu bar quality radiobutton
             c = "Rip CD default encoding quality (30% to 100%)"
             sql.save_config('encoding', 'quality', Size=y, Comments=c)

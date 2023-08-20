@@ -75,6 +75,7 @@ warnings.simplefilter('default')  # in future Python versions.
 #       July 16 2023 - Click Artist, Album or Title to open kid3 or nautilus
 #       July 21 2023 - check_missing_artwork() report files missing audio stream.
 #       Aug. 18 2023 - InfoCentre() Banner tooltip erase and rebuild not necessary.
+#       Aug. 19 2023 - Dynamic display_metadata(), fix VU Meter Height on startup.
 
 # noinspection SpellCheckingInspection
 """
@@ -101,6 +102,14 @@ References:
 #           Album Date(2), Genre(1), Disc(3), Track(3), Compilation(3), 
 #           PlayCount(2), LastPlayTime(2), Gapless Playback(3), Playlist #(2), 
 #           CreationTime(4), FileSize(4), Progress(1) (always on bottom)
+
+        ''' Aug 10/23 version 3 SQL columns:
+        OsFileName, OsAccessTime, OsModifyTime, OsChangeTime, OsFileSize,
+        ffMajor, ffMinor, ffCompatible, Title, Artist, Album, Compilation, 
+        AlbumArtist, AlbumDate, FirstDate, CreationTime, DiscNumber, TrackNumber, 
+        Rating, Genre, Composer, Comment, Hyperlink, Duration, Seconds, 
+        GaplessPlayback, PlayCount, LastPlayTime, LyricsScore, LyricsTimeIndex 
+        PLUS: EncodingFormat, DiscId, MusicBrainzDiscId, OsFileSize, OsAccessTime '''
 
 #       CreationTime and FileSize fillers for .wav files with no metadata
 
@@ -430,9 +439,7 @@ CFG_DIVISOR_UOM = "MB"      # Unit of Measure becomes Megabyte
 # Global variables
 RESTART_SLEEP = .3          # Delay for mserve close down - No longer used
 KEEP_AWAKE_MS = 250         # Milliseconds between time checks loc_keep_awake()
-META_DISPLAY_ROWS = 6       # Number of Metadata Rows displayed in frame
-# self.meta_display_rows is used for actual number of rows
-# Search on 'July 18, 2023' to see code impacted by global variable usage.
+META_DISPLAY_ROWS = 15      # Number of Metadata Rows displayed in frame
 SCROLL_WIDTH = 14           # Scroll bar width, July 3, 2023 used to be 12
 MON_FONTSIZE = 12           # Font size for monitor name
 WIN_FONTSIZE = 11           # Font size for Window name
@@ -768,8 +775,6 @@ class PlayCommonSelf:
         self.vu_meter_pid = None            # Linux Process ID for vu_meter.py
         self.play_top_title = None          # Playlist: Xxx Xxx - mserve
         self.play_frm = None                # play_top master frame
-        # July 3, 2023, comment out below. searchable still in comments
-        #self.play_frm_bg = None             # "self.play_resized_art.get pixel((3,"
         self.lyrics_on_right_side = True    # False = lyrics frame on bottom
         self.theme_bg = None                # hex_background color
         self.theme_fg = None                # hex_foreground color
@@ -804,27 +809,36 @@ class PlayCommonSelf:
         self.set_ffplay_sink_WIP = None     # Only one value handled at a time
 
         ''' Metadata Display fields under volume slider '''
-        self.meta_display_rows = None       # Number or rows actually displayed
-        self.song_title_var = None          # Song (Title) name
-        self.song_first_date_var = None     # Song's first year of release
-        self.song_artist_var = None         # Artist name (ellipses)
-        self.song_album_artist_var = None   # 3 Optional Album Artist name
-        self.song_composer_var = None       # 2 Optional Composer (ellipses)
-        self.song_comment_var = None        # 3 Optional Comment (ellipses)
-        self.song_album_var = None          # Album name (ellipses)
-        self.song_album_date_var = None     # 3 Optional Album release date
-        self.song_genre_var = None          # Optional Genre
-        self.song_disc_var = None           # 2 Optional Disc Number
-        self.song_track_var = None          # Track Number
-        self.song_number_var = None         # Playing song number in playlist
-        self.song_progress_var = None       # Seconds (1 decimal) song played
+        self.song_title_var = tk.StringVar()  # song title without # or extension
+        self.song_first_date_var = tk.StringVar()  # Song's first year of release
+        self.song_artist_var = tk.StringVar()  # Artist name (ellipses)
+        self.song_album_artist_var = tk.StringVar()  # Album Artist name
+        self.song_composer_var = tk.StringVar()  # Composer (ellipses)
+        self.song_comment_var = tk.StringVar()  # Optional Comment (ellipses)
+        self.song_album_var = tk.StringVar()  # Album name (ellipses)
+        self.song_album_date_var = tk.StringVar()  # Album release year (copyright)
+        self.song_genre_var = tk.StringVar()  # Genre
+        self.song_disc_var = tk.StringVar()  # Disc Number e.g. "1/1", "2/3"
+        self.song_track_var = tk.StringVar()  # Track Number e.g. "9/12"
+        self.song_number_var = tk.StringVar()   # Playing song number in playlist
+        self.song_progress_var = tk.StringVar()  # mm:ss.d of mm:ss song played
+
+        self.song_compilation = tk.StringVar()  # "1" Yes, "0" No
+        self.song_play_count = tk.StringVar()  # number of times played
+        self.song_last_play_time = tk.StringVar()  # 
+        self.song_gapless_playback = tk.StringVar()  # "1" Yes, "0" No
+        self.song_creation_time = tk.StringVar()  # YYYY-MM-DD HH:MM:SS
+        self.song_access_time = tk.StringVar()  # date ago
+        self.song_file_size = tk.StringVar()  # 99.99 MB
 
         ''' Aug 10/23 version 3 SQL columns:
         OsFileName, OsAccessTime, OsModifyTime, OsChangeTime, OsFileSize,
         ffMajor, ffMinor, ffCompatible, Title, Artist, Album, Compilation, 
         AlbumArtist, AlbumDate, FirstDate, CreationTime, DiscNumber, TrackNumber, 
         Rating, Genre, Composer, Comment, Hyperlink, Duration, Seconds, 
-        GaplessPlayback, PlayCount, LastPlayTime, LyricsScore, LyricsTimeIndex '''
+        GaplessPlayback, PlayCount, LastPlayTime, LyricsScore, LyricsTimeIndex 
+        PLUS: EncodingFormat, DiscId, MusicBrainzDiscId, OsFileSize, OsAccessTime '''
+
         # Play frame VU meters - columns 2 & 3
         self.play_vu_meter_style = None     # 'led' = Use LED rectangles
         self.vu_width = None                # VU Meters (Left & Right channel
@@ -838,8 +852,8 @@ class PlayCommonSelf:
         self.vu_meter_right_hist = None     # can be zero on race condition
 
         # Play frame # 3 (misleading frame number) - column 4
-        self.play_frame3 = None             # tk.Frame(self.play_frm child)
-        self.lyrics_frm = None              # tk.Frame(self.play_frame3 child)
+        self.lyrics_master_frm = None             # tk.Frame(self.play_frm child)
+        self.lyrics_frm = None              # tk.Frame(self.lyrics_master_frm child)
         # The panel dynamically changes depending on Basic Time Index,
         # edit lyrics, webscrape lyrics, fine-tune time index, manual scroll
         self.lyrics_panel_label = None      # tk.Label(self.lyrics_frm,
@@ -851,7 +865,7 @@ class PlayCommonSelf:
         self.lyrics_edit_is_active = False  # song lyrics being edited?
         self.lyrics_train_is_active = False  # Basic time index training
         self.lyrics_train_start_time = None  # When basic training started
-        self.lyrics_score_box = None        # tk.Text(self.play_frame3
+        self.lyrics_score_box = None        # tk.Text(self.lyrics_master_frm
 
         # Four tk.Canvas rounded rectangle buttons: Auto to Manual (a_m), 
         # Time to Manual (t_m), Manual to Auto (m_a) and Manual to Time (M_t):
@@ -949,23 +963,13 @@ class PlayCommonSelf:
         self.mouse_x = None                 # Mouse position at time popup
         self.mouse_y = None                 # window was opened. Screen(x,y)
         self.kid3_window = None             # Window ID returned by xdotool
-        self.fm_window = None         # Window ID returned by xdotool
+        self.fm_window = None               # Window ID returned by xdotool
 
         self.parm = None                    # sys arg parameters called with
         
-        # Location common variables
-        self.loc_top = None                 # Location toplevel
-        self.loc_tree = None                # Tkinter Treeview
-        self.loc_tree_btn1 = None           # ✘  Close
-        self.loc_tree_btn2 = None           # ▶  Test
-        self.loc_tree_btn3 = None           # 🔍 Show location
-        self.loc_tree_btn4 = None           # 🗀 Add location
-        self.loc_tree_btn5 = None           # 🗀 Edit location
-        self.loc_tree_btn6 = None           # 🗀 Forget location
-        self.loc_tree_btn7 = None           # 🔍 Compare
-        self.loc_F4 = None                  # Frame for Location Data Entry
-        self.awake_last_time_check = None
-        self.next_active_cmd_time = None
+        # Keep open host awake variables. Note Locations() can keep awake too.
+        self.awake_last_time_check = None  # time.time()
+        self.next_active_cmd_time = None  # time.time + touchmin * 60
 
         ''' Refresh items - inotify '''
         self.last_inotify_time = None       # now
@@ -977,7 +981,7 @@ class PlayCommonSelf:
 
         ''' Sample middle of song '''
         self.ltp_top = None                 # tk.Toplevel()
-        self.sam_paused_music = None        # We will resume play later
+        self.ltp_paused_music = None        # We will resume play later
 
         ''' Play Chronology '''
         self.chron_tree = None              # ttk.Treeview Playlist Chronology
@@ -1039,7 +1043,6 @@ class PlayCommonSelf:
         ''' Global variables of active children '''
         self.play_top_is_active = False     # Playing songs window open?
         self.vu_meter_first_time = None  # Aug 3/23 Patch for VU meter height
-        self.loc_top_is_active = False      # locations treeview open?
         self.cmp_top_is_active = False      # compare locations open?
         #self.sync_top_is_active = False      # Sync Time Index window open?
         self.mus_top_is_active = False      # View SQL Music open?
@@ -5915,57 +5918,29 @@ class MusicLocationTree(PlayCommonSelf):
         self.play_frm = tk.Frame(self.play_top, borderwidth=g.FRM_BRD_WID,
                                  relief=tk.RIDGE)
         self.play_frm.grid(column=0, row=0, sticky=tk.NSEW)
-        # 5 rows of text labels and string variables auto adjust with weight 1
-        r = META_DISPLAY_ROWS + 1  # July 18, 2023 - Aug 11/23 + 1 for volume
-        # Aug 10/23 - Button Bar used to be on row 3, changed to row 20 today
-        # Unsure how below metadata rows were not in conflict before?
-        ''' Aug 11/23 - Need to call this after option metadata rows are
-                        counted. 
-        '''
-        #for i in range(r):
-        for i in range(10):
-            self.play_frm.grid_rowconfigure(i, weight=1)
         self.play_frm.grid_columnconfigure(2, minsize=50)
+        self.play_frm.grid_rowconfigure(0, weight=1)  # Volume Slider
         ms_font = g.FONT
 
-        ''' Artwork image spanning 5 rows '''
+        ''' Artwork image spanning 20 rows (most are empty) '''
         self.art_width = 100  # Will be overriden by actual width
         self.art_height = 100  # ... and actual height
         self.play_no_art()  # Temporary starting image
         self.art_label = tk.Label(self.play_frm, borderwidth=0,
                                   image=self.play_current_song_art, font=ms_font)
-        #self.art_label.grid(row=0, rowspan=r+1, column=0, sticky=tk.W)
         self.art_label.grid(row=0, rowspan=20, column=0, sticky=tk.W)
         self.art_label.bind("<Button-1>", self.pp_toggle)  # click artwork to pause/play
         # Leave empty row #5 for F3 frame (was row span=5)
 
         ''' Volume Slider https://www.tutorialspoint.com/python/tk_scale.htm '''
-        self.ffplay_slider = tk.Scale(
+        self.ffplay_slider = tk.Scale(  # highlight color doesn't seem to work?
             self.play_frm, orient=tk.HORIZONTAL, tickinterval=0, showvalue=0,
             highlightcolor="Blue", activebackgroun="Gold", troughcolor="Black",
             command=self.set_ffplay_sink, cursor='boat red red')
-        # highlightcolor doesn't seem to work?
-        # self.curr_volume
-        #self.curr_ffplay_volume = 100  # Don't think needed during declaration
-        #self.ffplay_slider.set(self.curr_ffplay_volume)
-
         self.ffplay_slider.grid(row=0, column=1, columnspan=2, padx=5,
                                 sticky=tk.EW)
 
-        ''' Current song display variables '''
-        self.meta_display_rows = META_DISPLAY_ROWS + 1
-        # TODO: self.meta_display_rows conditional for optional vars not None
-        self.song_title_var = self.make_one_song_var("song", 1)  # Was Title
-        self.song_first_date_var = self.make_one_song_var("year", 2)  # Was Title
-        self.song_artist_var = self.make_one_song_var("arist", 3)
-        self.song_album_var = self.make_one_song_var("album", 4)
-        self.song_number_var = self.make_one_song_var("playlist №", 5)  # No.
-        self.song_progress_var = self.make_one_song_var("progress", 6)
-
-        ''' Aug 9/23 SQL columns in version 2 prep for version 3:
-           Artist=?, Album=?, Title=?, Genre=?, TrackNumber=?, \
-           ReleaseDate=?, Seconds=?, Duration=?, DiscNumber=?, Composer        
-
+        ''' Aug 9/23 
         https://soundcharts.com/blog/music-metadata
         https://images.prismic.io/soundcharts/868e0bf5c60017040f5ca7b84ca94ee1606204d5_
         macos-itunes-edit-metadata-how-to-2.jpg?auto=compress,format
@@ -5998,11 +5973,7 @@ class MusicLocationTree(PlayCommonSelf):
         album thumbnail, current song, artist, progress, slider for progress.
         '''
 
-        ''' July 18, 2023 New stuff'''
-        self.song_comment_var = tk.StringVar()  # Optional so change row counts
-
         ''' Controls to resize art to fit frame spanning metadata # rows '''
-        #         self.art_label.grid(row=0, rowspan=r+1, column=0, sticky=tk.W)
         self.play_frm.bind("<Configure>", self.on_resize)
         self.start_w = self.play_frm.winfo_reqheight()
         self.start_h = self.play_frm.winfo_reqwidth()
@@ -6010,31 +5981,28 @@ class MusicLocationTree(PlayCommonSelf):
         ''' VU Meter canvas object spanning META_DISPLAY_ROWS '''
         self.vu_width = 30  # Always stays this value
         self.vu_height = 100  # Will be overriden
-        self.vu_meter_first_time = True  # Patch for VU meter height
-        #self.vu_meter_left, self.vu_meter_left_rect = self.create_vu_meter(r, 3)
-        #self.vu_meter_right, self.vu_meter_right_rect = self.create_vu_meter(r, 4)
+        self.vu_meter_first_time = True  # Patch for VU meter height repainting
         self.vu_meter_left, self.vu_meter_left_rect = self.create_vu_meter(18, 3)
         self.vu_meter_right, self.vu_meter_right_rect = self.create_vu_meter(18, 4)
         self.VU_HIST_SIZE = 6
         self.vu_meter_left_hist = [0.0] * self.VU_HIST_SIZE
         self.vu_meter_right_hist = [0.0] * self.VU_HIST_SIZE
 
-        ''' self.play_frame3: Lyrics Frame - Title & Textbox with scrollbar
+        ''' self.lyrics_master_frm: Lyrics Frame - Title & Textbox with scrollbar
             Further divided into self.lyrics_frm and lyrics_score_box
             May 9, 2023 - Set row & column depending on frame size.
         '''
         PAD_X = 5
 
         self.play_frm.grid_columnconfigure(5, weight=1)  # 0's-COL 5
-        self.play_frame3 = tk.Frame(self.play_frm)
-        #self.play_frame3.grid(row=0, rowspan=r, column=5,  # 0's-ROW = r
-        self.play_frame3.grid(row=0, rowspan=20, column=5,  # 0's-ROW = r
-                              padx=PAD_X, pady=PAD_X, sticky=tk.NSEW)
-        self.play_frame3.grid_rowconfigure(1, weight=1)
-        self.play_frame3.grid_columnconfigure(0, weight=1)
+        self.lyrics_master_frm = tk.Frame(self.play_frm)
+        self.lyrics_master_frm.grid(row=0, rowspan=20, column=5,
+                                    padx=PAD_X, pady=PAD_X, sticky=tk.NSEW)
+        self.lyrics_master_frm.grid_rowconfigure(1, weight=1)
+        self.lyrics_master_frm.grid_columnconfigure(0, weight=1)
 
-        # Define title frame top of play_F3
-        self.lyrics_frm = tk.Frame(self.play_frame3)
+        # Define title frame top of lyrics_master_frm
+        self.lyrics_frm = tk.Frame(self.lyrics_master_frm)
         self.lyrics_frm.grid(row=0, rowspan=1, column=0, sticky=tk.NSEW)
         self.lyrics_frm.grid_rowconfigure(0, weight=0)
         self.lyrics_frm.grid_columnconfigure(0, weight=1)
@@ -6050,33 +6018,29 @@ class MusicLocationTree(PlayCommonSelf):
         #  Manual -> Auto   self.lyrics_panel_scroll_m_a    Manual Scroll
         #  Manual -> Time   self.lyrics_panel_scroll_m_t    Manual Scroll
 
-        rounded_text = "Auto Scrolling"
         tt_text = "Auto Scrolling lyrics is active.\n" + \
                   "Click to scroll lyrics score manually."
         self.lyrics_panel_scroll_a_m =\
             self.create_scroll_button_and_tooltip(
-                rounded_text, tt_text, ms_font=g.FONT)
+                "Auto Scrolling", tt_text, ms_font=g.FONT)
 
-        rounded_text = "Time Scrolling"
         tt_text = "Lyrics line is highlighted using time index.\n" + \
                   "Click to scroll lyrics score manually."
         self.lyrics_panel_scroll_t_m =\
             self.create_scroll_button_and_tooltip(
-                rounded_text, tt_text, ms_font=g.FONT)
+                "Time Scrolling", tt_text, ms_font=g.FONT)
 
-        rounded_text = "Manual Scroll"
         tt_text = "Manual lyrics score scrolling is active.\n" + \
                   "Click to auto scroll lyrics at 1.5x speed."
         self.lyrics_panel_scroll_m_a =\
             self.create_scroll_button_and_tooltip(
-                rounded_text, tt_text, ms_font=g.FONT)
+                "Manual Scroll", tt_text, ms_font=g.FONT)
 
-        rounded_text = "Manual Scroll"
         tt_text = "Manual lyrics score scrolling is active.\n" + \
                   "Click to highlight lyrics using time index."
         self.lyrics_panel_scroll_m_t =\
             self.create_scroll_button_and_tooltip(
-                rounded_text, tt_text, ms_font=g.FONT)
+                "Manual Scroll", tt_text, ms_font=g.FONT)
 
         # Set four rounded rectangles to width of the longest rectangle to
         # prevent the longest rectangle right side showing under shorter ones
@@ -6121,7 +6085,7 @@ class MusicLocationTree(PlayCommonSelf):
 
         # undo=True provides support for Ctrl+Z and Ctrl+Shift+Z (Redo)
         self.lyrics_score_box = scrolledtext.ScrolledText(
-            self.play_frame3, width=30, height=10, padx=3, pady=3, wrap=tk.WORD,
+            self.lyrics_master_frm, width=30, height=10, padx=3, pady=3, wrap=tk.WORD,
             insertbackground='white', font=g.FONT, undo=True)
         self.lyrics_score_box.grid(row=1, column=0, sticky=tk.NSEW)
         self.lyrics_score_box.bind("<1>", self.play_lyrics_left_click)
@@ -6134,7 +6098,7 @@ class MusicLocationTree(PlayCommonSelf):
             grid row is 20 allowing 19 rows for Artwork, Metadata, Lyrics """
         self.build_play_btn_frm()  # Placement varies if Hockey enabled
 
-        ''' F4 Frame for Playlist (Chronology can be hidden) '''
+        ''' Frame for Playlist (Chronology can be hidden) '''
         self.chron_frm = tk.Frame(self.play_top, borderwidth=g.FRM_BRD_WID,
                                   relief=tk.GROOVE)
         #self.chron_frm.configure(background="Black")  # No effect
@@ -6214,6 +6178,108 @@ class MusicLocationTree(PlayCommonSelf):
                 return int(Sink.volume), Sink.sink_no_str
 
         return None, None
+
+    def display_metadata(self):
+        """ Metadata varies from song to song.
+            Using priority system, display up to 15 rows and set weight to 1 """
+
+        control_list = [
+            ("song", self.play_ctl.Title, self.song_title_var, 1),
+            ("year", self.play_ctl.FirstDate, self.song_first_date_var, 1),
+            ("comment", self.play_ctl.Comment, self.song_comment_var, 1),
+            ("artist", self.play_ctl.Artist, self.song_artist_var, 1),
+            ("album", self.play_ctl.Album, self.song_album_var, 1),
+            ("album artist", self.play_ctl.AlbumArtist, self.song_album_artist_var, 1),
+            ("album date", self.play_ctl.AlbumDate, self.song_album_date_var, 1),
+            ("composer", self.play_ctl.Composer, self.song_composer_var, 1),
+            ("genre", self.play_ctl.Genre, self.song_genre_var, 1),
+            ("play count", self.play_ctl.PlayCount, self.song_play_count, 2),
+            ("last played", self.play_ctl.LastPlayTime, self.song_last_play_time, 2),
+            ("disc number", self.play_ctl.DiscNumber, self.song_disc_var, 3),
+            ("track number", self.play_ctl.TrackNumber, self.song_track_var, 3),
+            ("compilation", self.play_ctl.Compilation, self.song_compilation, 4),
+            ("creation time", self.play_ctl.CreationTime, self.song_creation_time, 4),
+            ("gapless playback", self.play_ctl.GaplessPlayback, self.song_gapless_playback, 5),
+            ("last access", self.play_ctl.OsAccessTime, self.song_access_time, 6),
+            ("file size", self.play_ctl.OsFileSize, self.song_file_size, 6),
+            ("playlist №", 999999, self.song_number_var, 7),
+            ("progress", 999999, self.song_progress_var, 7)
+            ]
+
+
+        ''' Erase previous song's labels '''
+        my_children = self.play_frm.winfo_children()  # Get play_frm children
+        for wdg in my_children:  # Iterate over children
+            wr = wdg.grid_info()['row']
+            wc = wdg.grid_info()['column']
+            if wr == 0:
+                continue  # Skip artwork, volume slider, vu meters, lyrics
+            if wc != 1 and wc != 2:
+                continue  # Extra insurance
+            #print("Widget:", type(wdg), "Row:", wr, "Column:", wc)
+            if isinstance(wdg, tk.Label):
+                #print("wdg.destroy():", wdg['text'])
+                wdg.destroy()
+
+        row = 1  # Start at row number 1 (which is really row 2)
+
+        for priority in range(1, 8):  # Loop through 7 priorities
+            for control in control_list:
+                ctl_title, ctl_field, ctl_var, ctl_priority = control
+                if ctl_priority != priority:
+                    continue  # Wrong priority
+
+                if ctl_field is 999999:  # Play № of 99 or Progress MM:SS.D of MM:SS
+                    self.display_meta_row(row, ctl_title, ctl_var)
+                    ctl_var.set("")  # A function will populate when playing
+                    row += 1
+                elif row < META_DISPLAY_ROWS - 2:  # leave two rows for priority 7
+                    if not ctl_field:
+                        continue  # Field value is None, "", 0 or 0.0
+                    if str(ctl_field) == "0" or str(ctl_field) == "1/1":
+                        continue  # If No compilation or disk 1/1, hide it
+                    self.display_meta_row(row, ctl_title, ctl_var)
+                    self.display_meta_var(ctl_field, ctl_var)
+                    row += 1
+
+        for i in range(1, row):  # row is +1 already, stop at last used.
+            self.play_frm.grid_rowconfigure(i, weight=1)  # Populated row
+
+        for i in range(row, 19):  # Stop at 18 because bottom lyrics on 19
+            self.play_frm.grid_rowconfigure(i, weight=0)  # Empty row
+
+        ''' play_frm rows 0-18 artwork, metadata, vu meters, lyrics (on right)
+            row 19 (lyrics on bottom) chron_frm
+            row 20 button bar
+            row 30 chronology 
+        '''
+
+    def display_meta_var(self, fld, var):
+        """ Set tk.StringVar() with fld string contents unless special values.
+            fld previously tested and it is not None, "", 0 or 0.0. """
+        if fld is self.play_ctl.PlayCount:
+            var.set('{:n}'.format(fld))
+        elif fld is self.play_ctl.LastPlayTime:
+            var.set(tmf.ago(self.play_ctl.LastPlayTime))
+        elif fld is self.play_ctl.GaplessPlayback or \
+                fld is self.play_ctl.Compilation:
+            val = 'Yes' if fld == "1" else 'No'
+            var.set(val)
+        elif fld is self.play_ctl.OsAccessTime:
+            var.set(tmf.ago(self.play_ctl.OsAccessTime))
+        elif fld is self.play_ctl.OsFileSize:
+            var.set(toolkit.human_mb(self.play_ctl.OsFileSize))
+        else:
+            # global E_WIDTH
+            E_WIDTH = 32
+            var.set(make_ellipsis(fld, E_WIDTH))
+
+    def display_meta_row(self, row, text, var):
+        """ Display single row """
+        tk.Label(self.play_frm, text=text, font=g.FONT) \
+            .grid(row=row, column=1, sticky=tk.W, padx=5)
+        tk.Label(self.play_frm, textvariable=var,
+                 font=g.FONT).grid(row=row, column=2, sticky=tk.W)
 
     def make_one_song_var(self, text, row):
         """ Make text tkinter label and StringVar() field pair """
@@ -6484,37 +6550,20 @@ class MusicLocationTree(PlayCommonSelf):
         self.vu_meter_right.config(height=100)
         self.play_frm.update_idletasks()  # Artwork resize
 
-        ''' Number of META_DISPLAY_ROWS used for VU meter height '''
-        r = META_DISPLAY_ROWS - 1
-        r = self.meta_display_rows - 1
-        #_x, _y, _width, height = self.play_frm.grid_bbox(1, 0, 1, r)
+        ''' Current height of metadata labels in column 1 '''
         _x, _y, _width, height = self.play_frm.grid_bbox(1, 0, 1, 18)
-
-        ''' Aug 3/23 - VU meter 27 pixels too short on first call '''
-        if self.vu_meter_first_time:
-            self.vu_height = height + 15  # Missing 27 pixels less 12 pix padding
-        else:
-            self.vu_height = height - 12  # Padding for top & bottom vu meters
-
+        self.vu_height = height - 12  # Padding for top & bottom vu meters
         self.vu_height = 1 if self.vu_height < 1 else self.vu_height
         self.vu_meter_left.config(height=self.vu_height)
         self.vu_meter_right.config(height=self.vu_height)
         self.play_vu_meter_blank()  # Fill with self.theme_bg
-        self.vu_meter_first_time = False
 
     def move_lyrics_right(self):
         """ Chronology (playlist) tree visible. Move lyrics score right. """
-        r = META_DISPLAY_ROWS  # July 18, 2023
-        r = self.meta_display_rows  # Aug 10/23 can change with song
-        #self.play_frm.grid_rowconfigure(r, weight=0)  # Lyrics Row will be gone now
         self.play_frm.grid_rowconfigure(19, weight=0)  # Lyrics Row will be gone now
-        # May 9, 2023 - Reset for row 1, column 6 (1's based)
         self.play_frm.grid_columnconfigure(5, weight=1)  # Lyrics in column 5
-        #self.play_frame3.grid(row=0, rowspan=r, column=5, sticky=tk.NSEW)
-        #self.play_frm.grid_rowconfigure(r, weight=0)  # Lyrics gone now
-        self.play_frame3.grid(row=0, rowspan=20, column=5, sticky=tk.NSEW)
-        self.play_frm.grid_rowconfigure(19, weight=0)  # Lyrics gone now
-        # Define title frame top of play_F3
+        self.lyrics_master_frm.grid(row=0, rowspan=20, column=5, sticky=tk.NSEW)
+        # Define title frame
         self.lyrics_frm.grid(row=0, rowspan=1, column=0, sticky=tk.NSEW)
         # song info column narrow as possible for wide lyrics lines
         self.play_frm.grid_columnconfigure(2, minsize=50, weight=0)
@@ -6524,14 +6573,10 @@ class MusicLocationTree(PlayCommonSelf):
     def move_lyrics_bottom(self):
         """ The chronology (playlist) tree is hidden. Move lyrics score down. """
         # May 9, 2023 - Reset for row 6, column 2 (1's based)
-        r = META_DISPLAY_ROWS  # July 18, 2023
-        r = self.meta_display_rows  # Aug 10/23 can change with song
         self.play_frm.grid_columnconfigure(5, weight=0)  # Column 5 gone
-        #self.play_frame3.grid(row=r, rowspan=1, column=1, columnspan=4, sticky=tk.NSEW)
-        #self.play_frm.grid_rowconfigure(r, weight=5)  # Lyrics get more space
-        self.play_frame3.grid(row=19, rowspan=1, column=1, columnspan=4, sticky=tk.NSEW)
+        self.lyrics_master_frm.grid(row=19, rowspan=1, column=1, columnspan=4, sticky=tk.NSEW)
         self.play_frm.grid_rowconfigure(19, weight=5)  # Lyrics get more space
-        # Define title frame top of play_F3
+        # Define title frame
         self.lyrics_frm.grid(row=0, rowspan=1, column=0, sticky=tk.NSEW)
         # song info column wide as possible for wide lyrics lines
         self.play_frm.grid_columnconfigure(2, minsize=400, weight=1)
@@ -7145,10 +7190,6 @@ class MusicLocationTree(PlayCommonSelf):
         if self.last_started != self.ndx:  # Fast clicking Next button?
             return True
 
-        ''' Set current song # of: total song count '''
-        self.song_number_var.set(str(self.ndx + 1) + " of: " +
-                                 str(len(self.saved_selections)))
-
         '''   F A S T   C L I C K I N G   '''
         self.play_top.update_idletasks()
         pav.poll_fades()
@@ -7175,20 +7216,27 @@ class MusicLocationTree(PlayCommonSelf):
             self.play_ctl.close()
             return True  # Treat like fast clicking Next button
 
-        ''' Populate display with metadata using ffprobe '''
+        ''' Populate display with metadata retrieved using ffprobe '''
         ext.t_init("play_one_song - update_sql_metadata()")
         self.update_sql_metadata(self.play_ctl)  # Update SQL Music Table with metadata
-        #global E_WIDTH
-        E_WIDTH = 32
-        # TODO: self.get_ffprobe_metadata() is called by missing_artwork()
-        #       for every song. However .set() is only done here using meta
-        self.song_title_var.set(make_ellipsis(self.play_ctl.Title, E_WIDTH))
-        self.song_first_date_var.set(make_ellipsis(self.play_ctl.FirstDate, E_WIDTH))
-        self.song_artist_var.set(make_ellipsis(self.play_ctl.Artist, E_WIDTH))
-        self.song_album_var.set(make_ellipsis(self.play_ctl.Album, E_WIDTH))
+        ext.t_end('no_print')
+
+        self.play_top.update_idletasks()  # display_metadata taking .5 secs
+        pav.poll_fades()
+
+        ext.t_init("play_one_song - self.display_metadata()")
+        self.display_metadata()
+        ext.t_end('no_print')  # 1st: 0.0018 2nd: 0.0339 3rd: 0.0230 4th: 0.0229
+
+        self.play_top.update_idletasks()  # display_metadata taking .5 secs
+        pav.poll_fades()
+
+        ''' Set current song # of: total song count '''
+        self.song_number_var.set(str(self.ndx + 1) + " of: " +
+                                 str(len(self.saved_selections)))
+
         self.saved_DurationSecs = self.play_ctl.DurationSecs
         self.saved_DurationMin = tmf.mm_ss(self.saved_DurationSecs)
-        ext.t_end('no_print')
 
         '''   F A S T   C L I C K I N G   '''
         self.play_top.update_idletasks()
@@ -7307,6 +7355,11 @@ class MusicLocationTree(PlayCommonSelf):
         ''' Pulse Audio self.sinks_now are freshly updated.
             Check if speech-dispatcher is spamming sound input sinks. '''
         self.check_speech_dispatcher()
+
+        ''' Weird glitch first time with Chronology, vu meter height wrong '''
+        if self.vu_meter_first_time:
+            self.set_vu_meter_height()  # Third time lucky?
+            self.vu_meter_first_time = False
 
         ''' Play song to end, queue next song and close play_ctl '''
         if not self.play_to_end():  # Play entire song unless next/prev, etc.
@@ -8077,7 +8130,7 @@ class MusicLocationTree(PlayCommonSelf):
         # Remove all widgets in top panel
         if self.lyrics_frm:
             self.lyrics_frm.destroy()
-        self.lyrics_frm = tk.Frame(self.play_frame3)
+        self.lyrics_frm = tk.Frame(self.lyrics_master_frm)
         self.lyrics_frm.grid(row=0, row span=1, column=0, sticky=tk.NSEW)
         self.lyrics_frm.grid_rowconfigure(0, weight=0)
         self.lyrics_frm.grid_columnconfigure(0, weight=1)
@@ -9596,7 +9649,7 @@ mark set markName index"
         self.lyrics_panel_hamburger.update_colors(hex_foreground, hex_background)
 
         # Apply color code to Lyrics
-        self.play_frame3.config(bg=hex_background,
+        self.lyrics_master_frm.config(bg=hex_background,
                                 highlightbackground=hex_foreground)
         self.lyrics_score_box.config(bg=hex_background, fg=hex_foreground,
                                      highlightbackground=hex_foreground)
@@ -10024,11 +10077,11 @@ mark set markName index"
         self.ltp_top = tk.Toplevel()  # ltp = lib_tree_play
         self.ltp_top.minsize(g.WIN_MIN_WIDTH, g.WIN_MIN_HEIGHT)
         self.ltp_top_is_active = True
-        self.sam_paused_music = False
+        self.ltp_paused_music = False
 
         if self.pp_state is "Playing":  # Is music playing?
             self.pp_toggle()  # Pause to play sample
-            self.sam_paused_music = True  # We will resume play later
+            self.ltp_paused_music = True  # We will resume play later
 
         pav.fade_out_aliens(1)  # Turn down non-ffplay volumes to 0
 
@@ -10125,15 +10178,14 @@ mark set markName index"
     # noinspection PyUnusedLocal
     def lib_tree_play_close(self, normal=False, *args):  # *args required when lambda used
         """ Close self.ltp_top - Sample random song
-            Can come here twice. Once normally and again with close button.
+            Called when song ends (normal=True) or with close button/Window 'X'
         """
 
         if self.ltp_top_is_active is False:
             return  # We are already closed
 
-        if self.sam_paused_music:  # Did we pause music player?
+        if self.ltp_paused_music:  # Did we pause music player?
             self.pp_toggle()  # Resume playing
-
 
         if normal:
             ''' Ending as song is winding down '''
@@ -10153,7 +10205,7 @@ mark set markName index"
             pav.fade_in_aliens(1)  # Turn back non-ffplay volumes to original
 
         self.ltp_ctl.close()  # Close FileControl(), reset ATIME
-        # self.tt.close(self.ltp_top)  # No tooltips
+        # self.tt.close(self.ltp_top)  # No tooltips defined for ltp yet
         self.ltp_top_is_active = False
 
         if os.path.isfile(TMP_CURR_SAMPLE):
@@ -10373,9 +10425,6 @@ mark set markName index"
             menu.add_command(label="Full playlist unfiltered", font=(None, MED_FONT),
                              command=lambda: self.chron_reverse_filter())
         menu.add_separator()
-        # Future Song/Playlist Notes kept in SQL History
-        #menu.add_command(label="Notes", font=(None, MED_FONT),
-        #                 command=lambda: self.chron_tree_notes(item))
 
         global KID3_INSTALLED, FM_INSTALLED
         KID3_INSTALLED = ext.check_command('kid3')
@@ -10539,38 +10588,16 @@ mark set markName index"
         # List is built numbered backwards with kept items at bottom numbered forwards
         self.populate_chron_tree()  # Now totally rebuild from scratch
         self.song_set_ndx(self.ndx)  # Force play and screen update
-        #print("restoring original self.ndx:", self.ndx)
-
-    def chron_tree_notes(self, Id):
-        """ Edit notes for song using Id number
-        """
-        # Notes kept in SQL History Type = "notes" Action = "playlist"
-        #   SourceMaster = <Tags> SourceDetail = <Notes Body> Comments = ?
-        ''' Height of META_DISPLAY_ROWS used for notes height '''
-        r = META_DISPLAY_ROWS  # July 18, 2023
-        r = self.meta_display_rows  # Aug 10/23 can change with song
-        _x, _y, width, height = self.play_frm.grid_bbox(0, 0, r - 1, r - 1)
-        print("4,4 width, height:", width, height)
-        _x, _y, width, height = self.play_frm.grid_bbox(0, 0, r, r)
-        print("5,5 width, height:", width, height)
-        iid = self.saved_selections[Id - 1]
-        full_path = self.real_path(int(iid))
-        print("full_path:", full_path)  # get_artist _opened
-
-        # Mount screen above current highlighted line. set width to play_frm width - 20
-        # Use scroll bar on right side only. Window height half of self.art_height
 
     def chron_tree_kid3(self, item):
         """ Edit ID tags with kid3
-            Id from song_selections[] vs. treeview Id
-        """
+            Id from song_selections[] vs. treeview Id """
         iid = self.saved_selections[int(item) - 1]  # Create treeview ID
         self.kid3_open(iid)
 
     def chron_tree_fm(self, item):
         """ Open File Manager
-            Id from song_selections[] vs. treeview Id
-        """
+            Id from song_selections[] vs. treeview Id """
         iid = self.saved_selections[int(item) - 1]  # Create treeview ID
         self.fm_open(iid)
 
@@ -12576,7 +12603,8 @@ class FileControlCommonSelf:
         ''' ffMajor, ffMinor, ffCompatible, Title, Artist, Album, Compilation, 
         AlbumArtist, AlbumDate, FirstDate, CreationTime, DiscNumber, TrackNumber,
         Rating, Genre, Composer, Comment, Hyperlink, Duration, Seconds,
-        GaplessPlayback, PlayCount, LastPlayTime, LyricsScore, LyricsTimeIndex '''
+        GaplessPlayback, PlayCount, LastPlayTime, LyricsScore, LyricsTimeIndex 
+        PLUS: EncodingFormat, DiscId, MusicBrainzDiscId, OsFileSize, OsAccessTime '''
         self.DiscNumber = None      # new July 13, 2023 'DISC'
         self.TrackNumber = None     # self.metadata.get('TRACK', "None")
         self.Genre = None           # self.metadata.get('GENRE', "None")
@@ -12589,13 +12617,13 @@ class FileControlCommonSelf:
         self.DiscId = None          # gstreamer adds to MP3 automatically
         self.MusicBrainzDiscId = None  # "       "           "
 
-        ''' Pippim Metadata Add-ons '''
-        self.Rating = None          # self.metadata.get('GENRE', "None")
-        self.Hyperlink = None       # new July 13, 2023
-        self.PlayCount = None       # new July 13, 2023
-        self.LastTimePlayed = None  # new July 13, 2023
-        self.Comment = None         # new July 13, 2023
-        self.Rating = None          # new July 13, 2023
+        ''' mserve SQL Music Table Metadata Extras '''
+        self.Rating = None          # Future Use
+        self.Hyperlink = None       # Future Use
+        self.PlayCount = None       # How many times 80% + was played
+        self.LastPlayTime = None  # Time last played (float)
+        self.OsFileSize = None
+        self.OsAccessTime = None    # Current time if > 80% played
 
         ''' Static variables for music control. '''
         self.action = None          # Action to perform ??? UNDEFINED
@@ -12904,7 +12932,8 @@ class FileControl(FileControlCommonSelf):
         ''' ffMajor, ffMinor, ffCompatible, Title, Artist, Album, Compilation, 
         AlbumArtist, AlbumDate, FirstDate, CreationTime, DiscNumber, TrackNumber,
         Rating, Genre, Composer, Comment, Hyperlink, Duration, Seconds,
-        GaplessPlayback, PlayCount, LastPlayTime, LyricsScore, LyricsTimeIndex '''
+        GaplessPlayback, PlayCount, LastPlayTime, LyricsScore, LyricsTimeIndex 
+        PLUS: EncodingFormat, DiscId, MusicBrainzDiscId, OsFileSize, OsAccessTime '''
         self.Compilation = self.metadata.get('COMPILATION', "0")
         self.AlbumArtist = self.metadata.get('ALBUM_ARTIST', None)
         self.AlbumDate = toolkit.uni_str(
@@ -12954,6 +12983,9 @@ class FileControl(FileControlCommonSelf):
         self.DiscId = toolkit.uni_str(self.metadata.get('DISCID', None))
         self.MusicBrainzDiscId = \
             toolkit.uni_str(self.metadata.get('MUSICBRAINZ_DISCID', None))
+
+        self.OsFileSize = self.stat_start.st_size
+        self.OsAccessTime = self.stat_start.st_atime
 
 
     def check_metadata(self):
@@ -15384,6 +15416,7 @@ def create_files():
         return False
     # Open and Close will create SQL database
     sql.open_db(LCS=lcs)  # sql needs use open_xxx vars in Locations() class
+    sql.set_db_version()  # user_version = 3 as of Aug 19/23.
     sql.close_db()
     # create lc.FNAME_LOCATIONS
     lc.read()  # If no file, creates empty lc.LIST for favorites & last records
