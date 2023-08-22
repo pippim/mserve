@@ -48,7 +48,7 @@ MSERVE_DIR = None       # /home/user/.config/mserve <- historically wrong
 PROGRAM_DIR = None      # Directory where mserve.py is stored.
 TEMP_DIR = None         # Directory for temporary files /run/user/1000 preferred
 
-MSERVE_VERSION = u"3.4.2"  # Unicode for Mutagen
+MSERVE_VERSION = u"3.4.3"  # Get Composers from MusicBrainz
 WIN_MIN_WIDTH = 142     # Same values used by gnome-terminal to prevent window 
 WIN_MIN_HEIGHT = 63     # resizing to shrink too much
 

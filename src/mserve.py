@@ -98,19 +98,9 @@ References:
 #   Miscellaneous
 
 #     TODO:
-#       Revise Metadata display FROM: Playlist #, Artist, Album, Title, Progress
-#       TO: Title(1), Year(1), Comment(1), Artist(1), Album(1), Album Artist(2), 
-#           Album Date(2), Genre(1), Disc(3), Track(3), Compilation(3), 
-#           PlayCount(2), LastPlayTime(2), Gapless Playback(3), Playlist #(2), 
-#           CreationTime(4), FileSize(4), Progress(1) (always on bottom)
 
-        ''' Aug 10/23 version 3 SQL columns:
-        OsFileName, OsAccessTime, OsModifyTime, OsChangeTime, OsFileSize,
-        ffMajor, ffMinor, ffCompatible, Title, Artist, Album, Compilation, 
-        AlbumArtist, AlbumDate, FirstDate, CreationTime, DiscNumber, TrackNumber, 
-        Rating, Genre, Composer, Comment, Hyperlink, Duration, Seconds, 
-        GaplessPlayback, PlayCount, LastPlayTime, LyricsScore, LyricsTimeIndex 
-        PLUS: EncodingFormat, DiscId, MusicBrainzDiscId, OsFileSize, OsAccessTime '''
+#       Ignore Click should perform collapse list. Collapsing already supported
+#           with chevron    
 
 #       CreationTime and FileSize fillers for .wav files with no metadata
 
@@ -6859,8 +6849,10 @@ class MusicLocationTree(PlayCommonSelf):
                  "Possibly the device location is off-line.\n\n" +
                  "Highlight and use <Control>+C to copy name.")
 
+        # Cannot call self.get_refresh_thread because it calls refresh_play_top
+        # which has a corrupted music file that cannot be played.
         message.ShowInfo(self.lib_top, text=quote, align='center', icon='error',
-                         thread=self.get_refresh_thread,
+                         thread=self.refresh_lib_top,
                          title="Invalid music file - mserve")
         self.info.fact(quote, 'error', 'open')
 
@@ -7276,10 +7268,10 @@ class MusicLocationTree(PlayCommonSelf):
             return True  # Treat like fast clicking Next button
 
         if self.play_ctl.invalid_audio:
-            print(self.play_ctl.metadata)
-            self.corrupted_music_file(self.current_song_path)  # No blocking dialog box
+            #print(self.play_ctl.metadata)
             self.play_ctl.close()
-            return False  # TODO: Restore screen? Play next? What to do now?
+            self.corrupted_music_file(self.current_song_path)  # No blocking dialog box
+            return False  # Was causing all kinds of failures when returning False
 
         if self.play_ctl.path is None:
             self.play_ctl.close()
@@ -12925,32 +12917,34 @@ class FileControl(FileControlCommonSelf):
         ''' Create self.metadata{} dictionary 
             oga has 'DURATION' 2nd and 'STREAM #0' 3rd which need to be held
             and then inserted just before 'CREATION_TIME' '''
-        held_duration = None
-        held_stream0 = None
+
+        input_encountered = False
+
         with open(self.TMP_FFPROBE) as f:
             for line in f:
-                print(line.strip("\n"))
                 line = line.rstrip()  # remove \r and \n
-                # print('line:', line)
-                if line.startswith('  configuration:'):
+                #print(line)  # Helpful to debug missed metadata
+
+                if not input_encountered:
+                    if line.startswith('Input #0, '):
+                        input_encountered = True
+                        val = line.split('Input #0, ')[1]
+                        self.metadata['INPUT #0'] = val
                     continue
-                if line.startswith('Input #0, '):
-                    val = line.split('Input #0, ')[1]
-                    self.metadata['INPUT #0'] = val
-                    continue
-                # noinspection PyBroadException
-                try:
+
+                if ':' not in line:
+                    continue  # No key/value pair
+
+                if line.strip().upper().startswith("STREAM #0:"):
+                    (key, val) = half_split(line, ':', 2)  # Split second only
+                else:
                     (key, val) = line.split(':', 1)  # Split first ':' only
-                    # "Stream #0:0: Audio..." -> [STREAM #0]    = "0: Audio..."
-                    # "Stream #0:1: Video..." -> [STREAM #0(1)] = "1: Video..."
-                    # If (key, val) = line.split(':', 2) was used then:
-                    #   "Stream #0:0: Audio..." -> [STREAM #0:0] = "Audio..."
-                    #   "Stream #0:1: Video..." -> [STREAM #0:1] = "Video..."
-                except:
-                    continue  # No ':' on line
 
                 key = key.strip()  # strip leading and trailing whitespace
                 val = val.strip()  # Most keys are indented 2, 4 & 6 spaces.
+
+                if not key or not val:
+                    continue  # blank key or blank value
 
                 ''' gstreamer bug - doubled up MP3 tags '''
                 # For MP3, gstreamer automatically adds: "CDDB DiscID" and "discid"
@@ -12962,55 +12956,14 @@ class FileControl(FileControlCommonSelf):
                     continue
 
                 ''' .m4a limitations for no custom tags - see encoding.py '''
-                # Doesn't work because ffprobe doesn't report these.
-                # Must convert to Mutagen to get tags.  In that case lose
-                # common naming convention that ffprobe uses.
                 if key == 'category':  # Hijack the 'catg' tag for podcast category
                     key = "discid"
                 if key == 'keywords':  # Hijack the 'keyw' tag for podcast keywords
                     key = "musicbrainz_discid"
 
-                ''' override .oga to move lower in encoding section '''
-                if len(self.metadata) == 1 and key.upper() == "DURATION":
-                    held_duration = val
-                    continue
-                if len(self.metadata) == 1 and key.upper() == "STREAM #0":
-                    held_stream0 = val
-                    continue
-
-                if key is not "" and val is not "":
-                    # Convert all keys to upper case for simpler lookups
-                    # Make unique for dictionary - Comment can appear twice.
-                    key_unique = toolkit.unique_key(key.upper(), self.metadata)
-
-                    ''' Fudge for .oga files created with gstreamer '''
-                    if key_unique == "CREATION_TIME" and held_duration:
-                        self.metadata['DURATION'] = held_duration
-                        held_duration = None
-                        if held_stream0:
-                            self.metadata['STREAM #0'] = held_stream0
-                            held_stream0 = None
-
-                    # Key "Stream #0" appears twice
-                    self.metadata[key_unique] = val
-
-        ''' comment below for message.py test threading.RLock() wait_lock: '''
-        # Catch .oga files with no 'CREATION_TIME'
-        if held_duration:
-            self.metadata['DURATION'] = held_duration
-            held_duration = None
-            if held_stream0:
-                self.metadata['STREAM #0'] = held_stream0  # Put in audio stream
-                held_stream0 = None
-
-        if held_stream0:
-            self.metadata['STREAM #0'] = held_stream0  # Put in audio stream
-            print("held_stream0 out of sequence", held_stream0)
-            held_stream0 = None
-            if held_duration:
-                self.metadata['DURATION'] = held_duration
-                print("held_duration out of sequence", held_stream0)
-                held_duration = None
+                # Convert all keys to upper case for simpler lookups
+                key_unique = toolkit.unique_key(key.upper(), self.metadata)
+                self.metadata[key_unique] = val  # Comment can appear twice
 
 
         ''' More .oga out of order in SQL Music Table Viewer: 
@@ -13091,61 +13044,6 @@ Input #0, ogg, from '/media/rick/SANDISK128/Music/Compilations/Greatest Hits of 
       title           : Poison
 
 
-ffprobe OUTPUT for MP3 ==========================================================
-
-Input #0, mp3, from '/media/rick/SANDISK128/Music/Compilations/Greatest Hits of the 80’s [Disc #3 of 3]/3-12 Poison.mp3':
-  Metadata:
-    title           : Poison
-    artist          : Alice Cooper
-    track           : 12/14
-    album           : Greatest Hits of the 80’s [Disc #3 of 3]
-    date            : 1989
-    genre           : Rock
-    composer        : D. Child / J. McCurry / A. Cooper
-    copyright       : 2001
-    creation_time   : 2023-08-19T14:33:15
-    encoded_by      : mserve 3.4.2
-    album_artist    : Various Artists
-    CDDB DiscID     : ba0dcd0e
-    MusicBrainz DiscID: tjAnC0ReEc.f48DpI_lHjx1VEBA-
-    discid          : ba0dcd0e
-    musicbrainz_discid: tjAnC0ReEc.f48DpI_lHjx1VEBA-
-  Duration: 00:04:35.70, start: 0.000000, bitrate: 213 kb/s
-    Stream #0:0: Audio: mp3, 44100 Hz, stereo, s16p, 211 kb/s
-    Stream #0:1: Video: mjpeg, yuvj420p(pc, bt470bg/unknown/unknown), 500x408 [SAR 1:1 DAR 125:102], 90k tbr, 90k tbn, 90k tbc
-    Metadata:
-      title           : Front cover
-      comment         : Cover (front)
-
-ffprobe OUTPUT for MP4 ==========================================================
-
-Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilations/Greatest Hits of the 80’s [Disc #3 of 3]/3-12 Poison.m4a':
-  Metadata:
-    major_brand     : mp42
-    minor_version   : 0
-    compatible_brands: mp42mp41isomiso2
-    creation_time   : 2023-08-19 19:14:07
-    album           : Greatest Hits of the 80’s [Disc #3 of 3]
-    title           : Poison
-    artist          : Alice Cooper
-    track           : 12/14
-    disc            : 3/3
-    date            : 1989
-    compilation     : 1
-    gapless_playback: 0
-    encoder         : mserve 3.4.2
-    copyright       : 2001
-    category        : ba0dcd0e
-    album_artist    : Various Artists
-    keywords        : tjAnC0ReEc.f48DpI_lHjx1VEBA-
-  Duration: 00:04:29.14, start: 0.000000, bitrate: 195 kb/s
-    Stream #0:0(eng): Audio: aac (LC) (mp4a / 0x6134706D), 44100 Hz, stereo, fltp, 191 kb/s (default)
-    Metadata:
-      creation_time   : 2023-08-19 19:14:07
-      handler_name    : SoundHandler
-    Stream #0:1: Video: mjpeg, yuvj420p(pc, bt470bg/unknown/unknown), 500x408 [SAR 1:1 DAR 125:102], 90k tbr, 90k tbn, 90k tbc
-
-
 ffprobe OUTPUT for FLAC =========================================================
 
 Input #0, flac, from '/media/rick/SANDISK128/Music/Compilations/Greatest Hits of the 80’s [Disc #3 of 3]/3-12 Poison.flac':
@@ -13216,6 +13114,59 @@ Input #0, flac, from '/media/rick/SANDISK128/Music/Compilations/Greatest Hits of
       comment         : Cover (front)
       title           : front cover
 
+ffprobe OUTPUT for MP3 ==========================================================
+
+Input #0, mp3, from '/media/rick/SANDISK128/Music/Compilations/Greatest Hits of the 80’s [Disc #3 of 3]/3-12 Poison.mp3':
+  Metadata:
+    title           : Poison
+    artist          : Alice Cooper
+    track           : 12/14
+    album           : Greatest Hits of the 80’s [Disc #3 of 3]
+    date            : 1989
+    genre           : Rock
+    composer        : D. Child / J. McCurry / A. Cooper
+    copyright       : 2001
+    creation_time   : 2023-08-19T14:33:15
+    encoded_by      : mserve 3.4.2
+    album_artist    : Various Artists
+    CDDB DiscID     : ba0dcd0e
+    MusicBrainz DiscID: tjAnC0ReEc.f48DpI_lHjx1VEBA-
+    discid          : ba0dcd0e
+    musicbrainz_discid: tjAnC0ReEc.f48DpI_lHjx1VEBA-
+  Duration: 00:04:35.70, start: 0.000000, bitrate: 213 kb/s
+    Stream #0:0: Audio: mp3, 44100 Hz, stereo, s16p, 211 kb/s
+    Stream #0:1: Video: mjpeg, yuvj420p(pc, bt470bg/unknown/unknown), 500x408 [SAR 1:1 DAR 125:102], 90k tbr, 90k tbn, 90k tbc
+    Metadata:
+      title           : Front cover
+      comment         : Cover (front)
+
+ffprobe OUTPUT for MP4 ==========================================================
+
+Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilations/Greatest Hits of the 80’s [Disc #3 of 3]/3-12 Poison.m4a':
+  Metadata:
+    major_brand     : mp42
+    minor_version   : 0
+    compatible_brands: mp42mp41isomiso2
+    creation_time   : 2023-08-19 19:14:07
+    album           : Greatest Hits of the 80’s [Disc #3 of 3]
+    title           : Poison
+    artist          : Alice Cooper
+    track           : 12/14
+    disc            : 3/3
+    date            : 1989
+    compilation     : 1
+    gapless_playback: 0
+    encoder         : mserve 3.4.2
+    copyright       : 2001
+    category        : ba0dcd0e
+    album_artist    : Various Artists
+    keywords        : tjAnC0ReEc.f48DpI_lHjx1VEBA-
+  Duration: 00:04:29.14, start: 0.000000, bitrate: 195 kb/s
+    Stream #0:0(eng): Audio: aac (LC) (mp4a / 0x6134706D), 44100 Hz, stereo, fltp, 191 kb/s (default)
+    Metadata:
+      creation_time   : 2023-08-19 19:14:07
+      handler_name    : SoundHandler
+    Stream #0:1: Video: mjpeg, yuvj420p(pc, bt470bg/unknown/unknown), 500x408 [SAR 1:1 DAR 125:102], 90k tbr, 90k tbn, 90k tbc
 
 ffprobe OUTPUT for WAV ==========================================================
 
@@ -13291,6 +13242,7 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilatio
     3. OGG and WAV follow with: "Duration:"
     4. MP4 and FLAC "Stream #0:1" follow with Audio
     5. STREAM #0:0 is always audio, STREAM #0:1 is always Video (except WAV)
+    6. OGG and FLAC have "track" and "TRACKTOTAL" auto-added as two fields.
 
 
         '''
@@ -13401,7 +13353,7 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilatio
             "\tDuration:\t" + str(self.Duration) + "\n"
 
         for entry in self.audio:
-            text += "Audio: \t" + entry + "\n"
+            text += "Audio: \t" + entry[6:] + "\n"
 
         self.valid_audio = len(self.audio) > 0
         self.invalid_audio = not self.valid_audio
@@ -13413,20 +13365,13 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilatio
             text += "Audio: \tNOT FOUND !!!\n"
 
         for entry in self.artwork:
-            text += "Video: \t" + entry + "\n"
+            text += "Artwork: \t" + entry[6:] + "\n"
 
         if self.valid_artwork:
-            #artwork_pattern = ("Video:", "Green", "Black"), \
-            #                  ("Artwork:", "Green", "Black")
-            #   File "/home/rick/python/mserve.py", line 14687, in view
-            #     self.zoom(show_close=True)  # Close button appears to close frame
-            #   File "/home/rick/python/mserve.py", line 14777, in zoom
-            #     pattern, fg, bg = entry  # fg + bg color names forms the tag name
-            # ValueError: need more than 2 values to unpack
-            artwork_pattern = ("Video:", "Green", "Black")
+            artwork_pattern = ("Artwork:", "Green", "Black")
         else:
-            artwork_pattern = ("Video:", "Red", "White")
-            text += "Video: \tNOT FOUND !!!\n"
+            artwork_pattern = ("Artwork:", "Red", "White")
+            text += "Artwork: \tNOT FOUND !!!\n"
 
         patterns = [("Title:", "Green", "Black"),
                     ("Artist:", "Green", "Black"),
@@ -15516,6 +15461,13 @@ FADE_OUT_SPAN = 400     # 1/5 second to fade out
 #
 # ==============================================================================
 
+
+def half_split(stg, sep, pos):
+    """ Split string in halves. e.g. position 2 instead of position 1.
+        From: https://stackoverflow.com/a/52008134/6929343
+    """
+    stg = stg.split(sep)
+    return sep.join(stg[:pos]), sep.join(stg[pos:])
 
 
 def play_padded_number(song_number, number_digits, prefix=NUMBER_PREFIX):

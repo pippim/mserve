@@ -36,6 +36,7 @@ warnings.simplefilter('default')  # in future Python versions.
 #       Aug. 17 2023 - Large radio buttons easier to see.
 #       Aug. 18 2023 - Fix nasty SQL bugs bump version to 3.3.13.
 #       Aug. 19 2023 - Add MP3 support and more MP4 tags.
+#       Aug. 20 2023 - Get Composer/Writer/Producer lists from MusicBrainz.
 #
 # ==============================================================================
 # noinspection SpellCheckingInspection
@@ -732,7 +733,7 @@ class RipCD:
         self.encode_album_track_cnt = 0  # Number tracks encoded
         self.encode_album_size = 0  # File size of all songs
         self.music_id = None  # History's matching music ID
-        self.tracknumber = None
+        self.track_number = None
         self.clip_parent = None
         self.gst_encoding = None  # gnome encoding format
         ''' Dropdown Menu defaults '''
@@ -1104,7 +1105,9 @@ class RipCD:
 
             text = "Begin Step 2. Search MusicBrainz for Disc ID: "
             text += str(self.disc.id)
-            text += "\n\nFinished Step 1. Getting Disc ID. Time: "
+            text += "\n\nFinished Step 1. Getting CDDB Free Disc ID: '"
+            text += self.disc.freedb_id
+            text += "'. Time: "
             text += str(self.get_discid_time)
             self.info.cast(text)
 
@@ -1252,7 +1255,8 @@ class RipCD:
     
                 # Download images with 500x500 pixel (gets all parm. 500 ignored now)
                 NO_STDOUT = " > " + g.TEMP_DIR + "mserve_mbz_get2_stdout"
-                ext_name = "python mbz_get2.py " + IPC_PICKLE_FNAME + " 500" + NO_STDOUT
+                ext_name = "python mbz_get2.py " + IPC_PICKLE_FNAME + " 500" + \
+                           NO_STDOUT
                 self.active_pid = ext.launch_command(ext_name,
                                                      toplevel=self.cd_top)
                 # TODO: Status update: getting MusicBrainz Album Artwork with mbz_get2.py.
@@ -2149,10 +2153,10 @@ class RipCD:
             print("gstreamer failed to generate music file. Try again.")
             return False
 
-        # print("self.tracknumber before rip track:", self.tracknumber)
-        self.tracknumber = str(self.rip_current_track) + \
+        # print("self.track_number before rip track:", self.track_number)
+        self.track_number = str(self.rip_current_track) + \
             "/" + str(self.disc.last_track)
-        self.tracknumber = toolkit.uni_str(self.tracknumber)
+        self.track_number = toolkit.uni_str(self.track_number)
 
         if self.fmt == "mp3":
             # https://mutagen.readthedocs.io/en/latest/api/mp3.html#mutagen.mp3.MP3Tags
@@ -2173,6 +2177,7 @@ class RipCD:
             WM/GenreID 	    GenreID 	TCO 	TCON        * Genre
             WM/OriginalReleaseYear 		TOR 	TORY        * AlbumDate
             WM/Picture 		            PIC 	APIC
+            WM/PartOfSet   	      	        	TPOS        * DiscNumber
             WM/TrackNumber 	Track 	    TRK 	TRCK        * TrackNumber
             WM/Year 	    Year 	    TYE 	TYER        * FirstDate
             '''
@@ -2207,8 +2212,10 @@ class RipCD:
                 audio.add(id3.TCOP(encoding=3, text=self.selected_album_date[:4]))
                 # Only use COPYRIGHT above not RELEASE_DATE below
                 #audio.add(id3.TORY(encoding=3, text=self.selected_album_date[:4]))
-            if self.tracknumber:
-                audio.add(id3.TRCK(encoding=3, text=self.tracknumber))
+            if self.DiscNumber:
+                audio.add(id3.TPOS(encoding=3, text=self.DiscNumber))
+            if self.track_number:
+                audio.add(id3.TRCK(encoding=3, text=self.track_number))
             if self.CreationTime:
                 audio.add(id3.TDEN(encoding=3, text=self.CreationTime))
             # For MP3, gstreamer automatically adds: "CDDB DiscID" and "discid"
@@ -2285,8 +2292,8 @@ tvsh – show name
                 # https://stackoverflow.com/a/70563415/6929343
                 str_a, str_b = self.DiscNumber.split("/")
                 audio['disk'] = [(int(str_a), int(str_b))]
-            if self.tracknumber:
-                str_a, str_b = self.tracknumber.split("/")
+            if self.track_number:
+                str_a, str_b = self.track_number.split("/")
                 audio['trkn'] = [(int(str_a), int(str_b))]
             if self.CreationTime:  # ID3.2.4 tag works in Kid 3
                 audio['TDEN'] = self.CreationTime
@@ -2306,7 +2313,7 @@ tvsh – show name
             audio['TITLE'] = self.track_meta_title  # '99 -' and .ext stripped
             audio['ARTIST'] = self.track_artist  # Song artist c/b diff than album
             audio['ALBUM'] = self.selected_album_name  # c/b 'Greatest Hits'
-            audio['TRACK_NUMBER'] = self.tracknumber  # kid3 show 'Track Number'
+            audio['TRACK_NUMBER'] = self.track_number  # kid3 show 'Track Number'
             if self.selected_album_artist:
                 audio['ALBUM_ARTIST'] = self.selected_album_artist  # c/b 'Various'
             if self.track_composer:
@@ -2749,10 +2756,11 @@ if r['title'] != r['release-group']['title']
                 # d['release-group']['title'] = "Greatest Hits of the 80's"
                 # We are looking for "Greatest Hits of the 80's" Disc #3 but
                 # that is in the second release_list dictionary
+                # NOTE: This test is now done in mbz_get1 and results filtered
                 text = "Skipping Release: " + d['title']
                 text += "\nRelease Group: " + d['release-group']['title']
                 self.info.cast(text)
-                continue
+                #continue  # Keep this in list to see if work-relation-list
 
             # Parse medium to get exact disc from multi-disc set.
             disc_found, self.this_disc_number, self.disc_count = \
@@ -2827,8 +2835,9 @@ if r['title'] != r['release-group']['title']
             else:
                 # For Filter mdn_ndx = 0. For Jim Steinem mdm_ndx = 1
                 # Jim Steinem never had CD listing though, until months later
-                mdm_ndx = len(d['medium-list']) - 1
+                mdm_ndx = len(d['medium-list']) - 1  # grabbing last disc
 
+            ''' Aug 20/23 - Lost this in new results with artists-work '''
             found_id = d['medium-list'][mdm_ndx]['disc-list'][0]['id']
             for disc_id in d['medium-list'][mdm_ndx]['disc-list']:
                 if disc_id['id'] == self.mbz_release_id:
@@ -2858,9 +2867,20 @@ if r['title'] != r['release-group']['title']
             for i, track_d in enumerate(tracks_list):
                 recording_d = track_d['recording']
                 song = track_d['recording']['title']  # Becomes out_name
-                first_date = track_d['recording']['first-date'][:4]  # Year only
-
-                song_artist = track_d['recording']['artist-credit-phrase']
+                try:
+                    first_date = track_d['recording']['first-date'][:4]  # Year only
+                except KeyError:
+                    first_date = None
+                song_artist = \
+                    track_d['recording']['artist-credit'][0]['artist']['name']
+                song_artist2 = track_d['artist-credit-phrase']
+                if song_artist != song_artist2:  # Lost cause, hopeless case
+                    print("song_artist:", song_artist)
+                    print("song_artist2:", song_artist2)
+                    # song_artist: The Producers        CORRECT
+                    # song_artist2: The Producer
+                    # song_artist: Harry Lee Summer
+                    # song_artist2: Henry Lee Summer    CORRECT
                 length = recording_d.get('length', '0')  # length in milliseconds
                 duration = int(length) / 1000
                 hhmmss = tmf.mm_ss(duration, rem=None)
@@ -2872,6 +2892,10 @@ if r['title'] != r['release-group']['title']
                 self.track_comment = u""  # This + composer & artist in out_name2
                 self.track_duration = toolkit.uni_str(hhmmss)
                 self.track_no = i + 1
+
+                ''' Scan through ['work-relation-list'] dictionaries '''
+                self.build_composer(track_d['recording'])  # New Aug 21/23
+
                 tree_song_title = \
                     self.build_out_name(self.track_no, self.track_meta_title)
 
@@ -2914,8 +2938,8 @@ if r['title'] != r['release-group']['title']
     """
         PSEUDO PRETTY PRINT:
         
-{u'comment': u'',
- u'thumbnails': {
+    {u'comment': u'',
+     u'thumbnails': {
         u'large': u'http://coverartarchive.org/release/0b69663c-ca24-420f-b7a2-38d314cf6e62/21173090370-500.jpg', 
         u'large-data': u'\x1ah\xfe\xea\xb3\x01\xbb', 
         u'small': u'http://coverartarchive.org/release/0b69663c-ca24-420f-b7a2-38d314cf6e62/21173090370-250.jpg', 
@@ -2923,17 +2947,142 @@ if r['title'] != r['release-group']['title']
         u'250': u'http://coverartarchive.org/release/0b69663c-ca24-420f-b7a2-38d314cf6e62/21173090370-250.jpg', 
         u'1200': u'http://coverartarchive.org/release/0b69663c-ca24-420f-b7a2-38d314cf6e62/21173090370-1200.jpg', 
         u'500': u'http://coverartarchive.org/release/0b69663c-ca24-420f-b7a2-38d314cf6e62/21173090370-500.jpg'},
- u'edit': 56629703, 
- u'image': u'http://coverartarchive.org/release/0b69663c-ca24-420f-b7a2-38d314cf6e62/21173090370.jpg', 
- u'image-data': u'\x1ah\xfe\xea\xb3\x01\xbb', 
- u'back': False, 
- u'id': 21173090370, 
- u'front': False, 
- u'approved': True, 
- u'types': [u'Other']}
+     u'edit': 56629703, 
+     u'image': u'http://coverartarchive.org/release/0b69663c-ca24-420f-b7a2-38d314cf6e62/21173090370.jpg', 
+     u'image-data': u'\x1ah\xfe\xea\xb3\x01\xbb', 
+     u'back': False, 
+     u'id': 21173090370, 
+     u'front': False, 
+     u'approved': True, 
+     u'types': [u'Other']}
 
     """
 
+    def build_composer(self, recording_d):
+        """ Build Composer(s), or Writer(s) or Producer """
+
+        print_track_no = 12  # Print each track until coded and tested.
+
+        composers = []
+        writers = []
+        producers = []
+
+        ''' Sanity Check - recording_d parameter '''
+        try:
+            if self.track_no == print_track_no:
+                print("self.build_composer() is printing details on track number:",
+                      print_track_no)
+                print("recording_d['artist-credit'][0]['artist']['name']",
+                      recording_d['artist-credit'][0]['artist']['name'])
+        except:
+            print("sanity check failed recording_d['artist-credit'][0]")
+            return
+
+        work_relations = recording_d.get('work-relation-list', None)
+        if not work_relations:
+            print("No work_relations for:", self.track_no, "-",
+                  self.track_meta_title)
+            return
+
+        if self.track_no == print_track_no:
+            print("encoding.py self.build_composer() work_relations:",
+                  len(work_relations))
+
+        if len(work_relations) > 1:
+            print("work_relation-list > 1:", len(work_relations),
+                  self.track_meta_title)
+
+        for i, works in enumerate(work_relations):
+
+            work = works.get('work', None)
+            if work is None:
+                print("works at i:", i, "has no ['work'] dictionary.")
+                continue
+
+            artists = work.get('artist-relation-list', None)
+            if artists is None:
+                print("works['work'] at i:", i,
+                      "has no ['artist-relation-list'] list.")
+                continue
+
+            for j, artist in enumerate(artists):
+                artist_name = artist['artist']['name']  # "First Last" name
+                artist_type = artist['artist']['type']  # usually "Person"
+                rels_type = artist['type']
+
+                if self.track_no == print_track_no:
+                    # Print each track one by one until all are coded and tested.
+                    print("artist_name:", artist_name,
+                          "artist_type:", artist_type,
+                          "rels_type:", rels_type)
+
+                if rels_type.lower() == 'composer':
+                    composers.append(artist_name)
+                elif rels_type.lower() == 'writer':
+                    writers.append(artist_name)
+                elif rels_type.lower() == 'producer':
+                    producers.append(artist_name)
+                elif rels_type.lower() == 'lyricist':
+                    pass
+                else:
+                    print("unknown rels_type:", rels_type)
+
+        ''' All processed '''
+        if self.track_no == print_track_no:
+            # Print each track one by one until all are coded and tested.
+            print("composers:", composers,
+                  "writers:", writers,
+                  "producers:", producers)
+        if len(composers) > 0:
+            self.track_composer = self.build_abbreviations(composers)
+        elif len(writers) > 0:
+            self.track_composer = self.build_abbreviations(writers)
+        elif len(prodcuers) > 0:
+            self.track_composer = self.build_abbreviations(prodcuers)
+        else:
+            pass  # Empty handed
+
+        ''' Recording Dictionary (recording_d passed as parameter):
+    "recording": {
+        "artist-credit": [],
+        "artist-credit-phrase": "Tommy Tutone",
+        "id": "04888d33-8325-46b4-9702-4d443a8d3ba7",
+        "length": "226773",
+        "title": "867-5309/Jenny",  #  N O T    A L W A Y S    P R E S E N T
+        "work-relation-list": [
+            {
+                "type": "performance",
+                "work": {
+                    "artist-relation-list": [
+                        {
+                            "artist": {
+                                "id": "be6e2eed-31bd-4568-b6ce-27236eee42a9",
+                                "name": "Alex Call",
+                                "sort-name": "Call, Alex",
+                                "type": "Person"
+                            },
+                            "direction": "backward",
+                            "target": "be6e2eed-31bd-4568-b6ce-27236eee42a9",
+L O O K   A T   M E   ! !   "type": "composer",  
+                            "type-id": "d59d99ea-23d4-4a80-b066-edca32ee158f"
+                        },
+                        {
+                            "artist": {
+        
+        '''
+
+    @staticmethod
+    def build_abbreviations(name_list):
+        """ Full name list to string of "F. Last / F. Last / F. Last..." """
+        abbrev_names = ""
+        for name in name_list:
+            if abbrev_names:
+                abbrev_names += " / "
+            parts = name.split()
+            for part in parts[:-1]:
+                abbrev_names += part[:1] + ". "
+            abbrev_names += parts[-1]
+        return abbrev_names
 
     # inspection SpellCheckingInspection
     def build_out_name(self, track, song):
@@ -2942,12 +3091,12 @@ if r['title'] != r['release-group']['title']
         :param song: "Song Name" no prefix and no suffix
         :returns out_name: Optional Artist Name, composer and comment appended
         """
-        if self.naming == "99 ":  # Doesn't work, default is "99- "
-            track_name_fmt = "{:02} {}"  # format: '01 song name'
+        if self.naming == "99 ":
+            track_name_fmt = "{:02} {}"  # format: '99 Song Name'
         else:  # self.naming == "99 - "
-            track_name_fmt = "{:02} - {}"  # format: '01 - song name'
+            track_name_fmt = "{:02} - {}"  # format: '99 - Song Name'
         out_name = track_name_fmt.format(int(track), song)
-        if self.disc_count > 1:  # '01 song name' -> '2-01 song name'
+        if self.disc_count > 1:  # '99 Song Name' -> '9-99 Song Name'
             out_name = str(self.this_disc_number) + "-" + out_name
         return out_name
 
@@ -3009,7 +3158,8 @@ if r['title'] != r['release-group']['title']
                                     text=d['image'], 
                                     tags=("image_id", "unchecked"))
 
-    def cd_close(self):
+    # noinspection PyUnusedLocal
+    def cd_close(self, *args):
         """ Wrapup """
         global RIP_CD_IS_ACTIVE
         RIP_CD_IS_ACTIVE = False

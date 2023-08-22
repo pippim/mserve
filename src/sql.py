@@ -48,6 +48,19 @@ warnings.simplefilter('default')  # in future Python versions.
 
 ''' TODO:
 
+    SQL version 3 effects bserve.py. It needs upgrading now: 
+
+Traceback (most recent call last):
+  File "/usr/lib/python2.7/lib-tk/Tkinter.py", line 1540, in __call__
+    return self.func(*args)
+  File "/home/rick/bserve/bserve.py", line 1237, in bup_close
+    monitor.save_window_geom('backups', last_backups_geom)
+  File "/home/rick/bserve/monitor.py", line 886, in save_window_geom
+    sql.hist_cursor.execute(sql_cmd, (time.time(), geom, sql.HISTORY_ID))
+OperationalError: no such column: Timestamp
+
+
+
     History Table is very large. After a few months delete history prior
     to cutoff date. Output from mserve.py show_debug() is below:
 
@@ -89,6 +102,7 @@ warnings.simplefilter('default')  # in future Python versions.
     Even though SQLite enables the auto-vacuum mode that triggers the 
     vacuum process automatically with some limitations. It is a good 
     practice to run the VACUUM command manually.
+
 
 '''
 
