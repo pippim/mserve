@@ -15,6 +15,7 @@ from __future__ import with_statement  # Error handling for file opens
 #
 #       June 25 2023 - Use toolkit.uni_str(line)
 #       July 13 2023 - Interface to/from mserve_config.py
+#       Aug. 22 2023 - Temporary files removed on mserve.py close
 #
 # ==============================================================================
 
@@ -87,9 +88,9 @@ import toolkit
 import message
 
 # Web scraping song lyrics IPC file names
-SCRAPE_CTL_FNAME = g.TEMP_DIR + 'mserve.scrape_ctl.json'
-SCRAPE_LIST_FNAME = g.TEMP_DIR + 'mserve.scrape_list.txt'
-SCRAPE_LYRICS_FNAME = g.TEMP_DIR + 'mserve.scrape_lyrics.txt'
+SCRAPE_CTL_FNAME = g.TEMP_DIR + 'mserve_scrape_ctl.json'
+SCRAPE_LIST_FNAME = g.TEMP_DIR + 'mserve_scrape_list.txt'
+SCRAPE_LYRICS_FNAME = g.TEMP_DIR + 'mserve_scrape_lyrics.txt'
 
 # Names list is used in our code for human readable formatting
 NAMES_LIST = ['Metro Lyrics', 'AZ Lyrics', 'Lyrics',

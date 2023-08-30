@@ -310,8 +310,7 @@ class Monitors:
                                    geom.widthp, geom.heightp)
         return self.found_window
 
-        # noinspection PyUnusedLocal
-
+    # noinspection PyUnusedLocal
     def get_all_windows(self):
         """ Jun. 14, 2023 - Build list of all windows. To find those off-screen """
         import gi

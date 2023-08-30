@@ -16,6 +16,7 @@ from __future__ import with_statement  # Error handling for file opens
 #
 #       July 12 2023 - Hooks to mserve_config.py
 #       Aug. 18 2023 - Fix newish function - get_running_apps()
+#       Aug. 22 2023 - remove_group() - remove file groups ending in * (splat)
 #
 #==============================================================================
 
@@ -31,6 +32,7 @@ except ImportError:  # No module named subprocess32
 import errno
 import time
 import datetime
+import glob  # For globbing files in /tmp/mserve_ffprobe*
 
 # Common routines used by many programs put here
 import toolkit
@@ -199,7 +201,7 @@ def launch_command(ext_name, toplevel=None):
         #pid_list_time = t_end('no_print')
         if new_pid != all_pid:
             break  # Skip sleep cycle
-        if sleep_count > 0: # Don't sleep first time through loop
+        if sleep_count > 0:  # Don't sleep first time through loop
             if toplevel is None:
                 time.sleep(.01)  # sleep 10 milliseconds
             else:
@@ -348,8 +350,7 @@ def stat_existing(filename):
 
 def remove_existing(filename):
     """ Remove file if it exists
-        from: https://stackoverflow.com/a/10840586/6929343
-    """
+        from: https://stackoverflow.com/a/10840586/6929343 """
     try:
         os.remove(filename)
         return True
@@ -357,7 +358,24 @@ def remove_existing(filename):
         if e.errno != errno.ENOENT:   # err no.ENO ENT = no such file or directory
             raise   # re-raise exception if a different error occurred
 
+    #print("external.py remove_existing() filename doesn't exist:", filename)
     return False    # File doesn't exist
+
+
+def remove_group(file_group):
+    """ Remove group of file ending in '*' if any exist """
+    count = 0
+    for filename in glob.glob(file_group):
+        #print("file_group:", file_group, "filename:", filename)
+        if remove_existing(filename):
+            count += 1
+        else:
+            print("external.py remove_group() error removing file:\n", filename)
+            print("of file_group:", file_group)
+
+    #print("external.py remove_group() removed count:", count,
+    #      "group:", file_group)
+    return count
 
 
 def join(topdir, bottom):

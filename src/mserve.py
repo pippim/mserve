@@ -21,24 +21,24 @@ warnings.simplefilter('default')  # in future Python versions.
 #
 #       mserve.py (Music Server) - Manage Music in multiple locations
 #
-#       July 26 2020 - Copy from mserve-tmplt. Add thousands.
-#       Sept 20 2020 - Start taking out or replacing 63 root.update()
-#       Sept 23 2020 - Make compare button disappear (entire grid 4 remove)
-#       Nov. 02 2020 - Remove old selection processing for new CheckboxTreeview 
+#       July 26 2020 - Copy from mserve-tmplt. Add thousands of code lines.
+#       Sept 20 2020 - Start taking out or replacing 63 root.update().
+#       Sept 23 2020 - Make compare button disappear (entire grid 4 remove).
+#       Nov. 02 2020 - Remove old selection processing for new CheckboxTreeview.
 #       Dec. 12 2020 - Chrome os doesn't support .grid_remove(). Comment out 15
-#            self.loc_F4.grid_remove()
-#       Dec. 28 2020 - Selected MB is now Song Number Sequence
-#       Jan. 15 2021 - Add vu_meter.py as separate program
-#       Feb. 07 2021 - Add webscrape.py as separate program
-#       Mar. 05 2021 - Add fine-tune time index function (Lyrics Synchronization)
+#            self.loc_F4.grid_remove().
+#       Dec. 28 2020 - Expand Selected MB to include Playlist Song Number.
+#       Jan. 15 2021 - Add vu_meter.py as separate program.
+#       Feb. 07 2021 - Add webscrape.py as separate program.
+#       Mar. 05 2021 - Add fine-tune time index function (Lyrics Synchronization).
 #       Mar. 13 2021 - Read ffplay output for current seconds instead of calc.
-#       May. 02 2021 - mserve.py is now called by 'm' wrapper splash screen
-#       May. 18 2021 - createToolTip() - Hover balloon (Deprecated 8/8/21)
-#       Jun. 14 2021 - Rounded Rectangle Canvas widget
-#       Aug. 08 2021 - New webscrape.py parameters/results via SQL History
-#       Aug. 21 2021 - Revamp tooltips with toolkit.ToolTips
-#       Jan. 18 2022 - Set tooltip location SW, SE, NW or NE of parent widget
-#       Jan. 03 2023 - Shuffle broken when song with no lyrics is playing
+#       May. 02 2021 - mserve.py is now called by 'm' wrapper splash screen.
+#       May. 18 2021 - createToolTip() - Hover balloon (Deprecated 8/8/21).
+#       Jun. 14 2021 - Rounded Rectangle Canvas widget.
+#       Aug. 08 2021 - New webscrape.py parameters/results via SQL History.
+#       Aug. 21 2021 - Revamp tooltips with toolkit.ToolTips().
+#       Jan. 18 2022 - Set tooltip location SW, SE, NW or NE of parent widget.
+#       Jan. 03 2023 - Shuffle broken when song with no lyrics is playing.
 #       May. 07 2023 - sql.FixData to fix times and remove duplicate records.
 #                      View SQL Music and History Tables using filters.
 #       May. 20 2023 - Move Lyrics frame when hiding chronology. Resume song on
@@ -52,17 +52,17 @@ warnings.simplefilter('default')  # in future Python versions.
 #       May. 25 2023 - Extensive performance enhancements over two days.
 #       May. 26 2023 - Set volume to 66% when CBC hockey game on air.
 #       June 01 2023 - Music Location checkboxes batch update to Playlist.
-#       June 03 2023 - Handle <No Album> in lib_tree paths used in SQL tables
+#       June 03 2023 - Handle <No Album> in lib_tree paths used in SQL tables.
 #       June 05 2023 - No location when passing music directory parameter.
 #       June 07 2023 - Many changes. E.G. step_volume() takes list of sinks.
 #       June 09 2023 - tvVolume() class for Hockey. Stanley=Vegas 2, Florida 1.
 #       June 11 2023 - Add TV_BREAK and SOUND. Stanley Cup=Vegas 3, Panthers 1.
 #       June 13 2023 - Develop Playlists() class. Vegas won Stanley Cup! (4-1)
-#       June 18 2023 - Expanding/Collapsing Information Centre. InfoCentre()
+#       June 18 2023 - Expanding/Collapsing Information Centre. InfoCentre().
 #       June 21 2023 - 'M' splash screen disappears as late as possible.
 #       June 23 2023 - Antonia's request to highlight hovered chron_tree row.
 #       June 25 2023 - Check corrupt music files and device off-line.
-#       June 26 2023 - New classes Refresh() and FileControl()
+#       June 26 2023 - New classes Refresh() and FileControl().
 #       June 29 2023 - Restore last access when < 80% of song was played.
 #       July 02 2023 - Temporary filenames Windows/Mac. Enhance artwork.
 #       July 04 2023 - Create FineTune() class. Major bugs worked out.
@@ -76,7 +76,8 @@ warnings.simplefilter('default')  # in future Python versions.
 #       July 21 2023 - check_missing_artwork() report files missing audio stream.
 #       Aug. 18 2023 - InfoCentre() Banner tooltip erase and rebuild not necessary.
 #       Aug. 19 2023 - Dynamic display_metadata(), fix VU Meter Height on startup.
-#       Aug. 20 2023 - SQL Debug + Metadata dictionaries built on ffprobe.
+#       Aug. 20 2023 - View SQL + Metadata dictionaries built on ffprobe.
+#       Aug. 24 2023 - Redirect show_debug() from console to InformationCentre().
 
 # noinspection SpellCheckingInspection
 """
@@ -91,6 +92,7 @@ References:
 #   Playlists
 
 #     BUGS:
+#       Aug 21/23 - bug sometimes two copies of song start at once.
 #       Open playlist, if music was paused, volume is only 25%
 #       Close playlist and use favorites doesn't clear_all_checks
 #       Shuffling Favorites then opening playlist will undo shuffle. Backup!!
@@ -99,23 +101,21 @@ References:
 
 #     TODO:
 
+#       rebuild_lib_tree() doesn't show the song just ripped. Since going
+#       through the trouble, might as well reuse SORTED_LIST2 with new last
+#       access time if it doesn't refresh automatically for old song ripped
+#       again like it should.
+
+#       Restart song isn't checking if play count should be updated.
+
+#       After restart clicked twice start previous song, then click next and
+#           old song starts again however old sink # 1304 isn't found and
+#           volume starts at 25%.
+
+#       For long labels, try: wraplength=250
+
 #       Ignore Click should perform collapse list. Collapsing already supported
 #           with chevron    
-
-#       CreationTime and FileSize fillers for .wav files with no metadata
-
-#       Skip blank metadata. Limit size to 11 rows. There are 7x(1), 5x(2)
-#           and 6x(3). Create ordered list where last priority (1) at bottom:
-#               (Label, var_name, priority)  
-
-#       Zero out 19 row weights and then apply weight 1 to number of rows.
-
-#       Create help buttons for dropdown menu options. Actually Help everywhere!
-
-#       When expanding Artist, if only one Album, then expand it too.
-
-#       Besides Kid3 and Nautilus right click add Google Search. Later
-#       Hyperlink Recipe Baker small sized window to set new Hyperlink column.
 
 #       Chronology filter "this artist" is pulling all compilations
 
@@ -126,11 +126,6 @@ References:
 #       creation time (not birth time which is unused) which is the time it
 #       was copied to the directory and permissions were established. Use
 #       ID3 tag: CREATION_TIME : 2012-08-20 17:06:42
-
-#   Language Conventions - Title should never be labled "song".
-#       Song = Song Title (can have variations E.G. "Live in Paris" at end)
-#              + Song Artist - Cover artists may sing the same Title
-#              + Song Album - Artist can have same title on different albums
 
 #   RENAME VARIABLES:
 #       'self.saved_selections' -> 'self.play_order_iid'
@@ -267,19 +262,19 @@ NOTES:
     File server needs to mount music directory if not mounted already:
         sudo mount -t auto -v /dev/sdb1 /mnt/music
 
-TODO'S:
+LONGER TERM TODO'S:
     In mserve_config.py, verify external commands are in path:
         command -v cp, diff, ffplay, ffprobe, ffmpeg, fusermount, 
             gsettings, gst-launch-1.0, kid3, kill, nautilus, nc, nmap,
             pactl, pgrep, pqiv, ps, ssh, sshfs, stat, touch, 
             wakeonlan, wmctrl, xclip, xdotool, xprop
 
-    Currently setup in mserve.py (dropdown menu options will appear if):
+    In mserve.py, dropdown menu options will appear if:
         global KID3_INSTALLED, FM_INSTALLED
         KID3_INSTALLED = ext.check_command('kid3')
         FM_INSTALLED = ext.check_command(FM_COMMAND)
 
-    Currently setup in location.py (screen fields will appear if):
+    In location.py, input fields appear if:
         self.nmap_installed = ext.check_command('nmap')
         if self.nmap_installed:
             self.nmap_installed = ext.check_command('nc')
@@ -289,18 +284,24 @@ TODO'S:
             self.sshfs_installed = ext.check_command('fusermount')
         self.wakeonlan_installed = ext.check_command('wakeonlan')
 
-    Compare Location - Make background process so music player keeps spinning
+    show_debug() dumps to console. Convert print() to two new methods:
+        debug_fact_header() and debug_fact_line(). They build title and
+        text lines respectively. A third function, fact_output() 
+        calls lcs.out_fact_print(title, text).
+        
+        Define future button (collapsed=True) such that only title is
+            displayed and click on button to expand section (text).
+
+        Revise ShowInfo from stating output in console to:
+            "Debug details in Information Centre and console". 
+
 """
 
 ''' If called by 'm' configuration is OK. Otherwise, check configuration. '''
 import inspect
 import os
 try:
-    filename = inspect.stack()[1][1]  # If there is a parent it is 'm'
-    #print("inspect.stack()[0]:", inspect.stack()[0])
-    #print("inspect.stack()[1]:", inspect.stack()[1])
-    #print("inspect.stack()[2]:", inspect.stack()[2])
-    #(<frame object>, './m', 50, '<module>', ['import mserve\n'], 0)
+    filename = inspect.stack()[1][1]  # If there is a parent, it must be 'm'
     parent = os.path.basename(filename)
     if parent != "m":
         print("mserve.py must be called by 'm' but is called by:", parent)
@@ -312,8 +313,6 @@ except IndexError:  # list index out of range
     if not cfg.main(caller):
         print("mserve not fully installed. Aborting...")
         exit()
-    #else:
-    #    print(caller, "finished call to mserve_config.py with SUCCESS!")
     import global_variables as g  # Added Aug 3/23 as shortcut to below.
     g.init()
 
@@ -335,9 +334,7 @@ except ImportError:  # Python 2
     import tkSimpleDialog as simpledialog
     import ScrolledText as scrolledtext
     PYTHON_VER = "2"
-#print("Python version: ", PYTHON_VER)
-#print('TK Version:', tk.TkVersion)  # https://tkdocs.com/ Nov 2019 ver 8.6
-#
+
 from PIL import Image, ImageTk, ImageDraw, ImageFont
 from ttkwidgets import CheckboxTreeview
 
@@ -358,7 +355,6 @@ try:
     sys.setdefaultencoding('utf8')  # filenames that contain unicode characters
 except NameError:  # name 'reload' is not defined
     pass  # Python 3 already in unicode by default
-#print("Python version:", sys.version)
 
 import shutil
 import json  # For List conversions to SQL
@@ -452,6 +448,7 @@ TMP_FFPROBE = g.TEMP_DIR + "mserve_ffprobe"  # _a3sd24 appended
 TMP_FFMPEG = g.TEMP_DIR + "mserve_ffmpeg.jpg"  # _2h7s6s.jpg appended
 TMP_MBZ_GET1 = g.TEMP_DIR + "mserve_mbz_get1"
 TMP_MBZ_GET2 = g.TEMP_DIR + "mserve_mbz_get2"
+TMP_PRINT_FILE = g.TEMP_DIR + "mserve_print_file"  # _a5sd87 appended
 
 ''' Volume Meter IPC filenames. Change in vu_meter.py too '''
 # Mono output
@@ -460,16 +457,34 @@ VU_METER_FNAME = g.TEMP_DIR + "mserve_vu-meter-mono.txt"
 VU_METER_LEFT_FNAME = g.TEMP_DIR + "mserve_vu-meter-left.txt"
 VU_METER_RIGHT_FNAME = g.TEMP_DIR + "mserve_vu-meter-right.txt"
 
+''' Webscraping lyrics - three files '''
+LYRICS_SCRAPE = g.TEMP_DIR + "mserve_scrape_*"
+
 ''' Mostly all the names. TMP_FFPROBE & TMP_FFMPEG have unique suffixes '''
 ''' VU_METER...FNAME are pipes that can't be removed. '''
-TMP_ALL_NAMES = [TMP_CURR_SONG, TMP_CURR_SAMPLE, TMP_CURR_SYNC,
-                 TMP_FFPROBE+"*", TMP_FFMPEG + "*", VU_METER_FNAME,
-                 VU_METER_LEFT_FNAME, VU_METER_RIGHT_FNAME,
+TMP_ALL_NAMES = [TMP_CURR_SONG, TMP_CURR_SAMPLE, TMP_CURR_SYNC, TMP_FFPROBE+"*",
+                 TMP_FFMPEG + "*", TMP_PRINT_FILE + "*", VU_METER_FNAME,
+                 VU_METER_LEFT_FNAME, VU_METER_RIGHT_FNAME, LYRICS_SCRAPE,
                  lc.FNAME_TEST, lc.TMP_STDOUT+"*", lc.TMP_STDERR+"*"]
 
 # More names added later after lcs is initialized.
 
 ENCODE_DEV = True  # Development encoding.py last disc ID recycled saving 63 secs
+# Keeps mbz_get1 and mbz_get2 pickle parameter pass-back files (saving minute)
+# TMP_MBZ_GET1A = g.TEMP_DIR + "mserve_mbz_get1_releases_json"
+# TMP_MBZ_GET1B = g.TEMP_DIR + "mserve_mbz_get1_recordings_json"
+# TMP_MBZ_GET1C = g.TEMP_DIR + "mserve_mbz_get1_release_by_id_results_json"
+# TMP_MBZ_GET1D = g.TEMP_DIR + "mserve_mbz_get1_releases_with_work_json"
+# TMP_MBZ_GET1E = g.TEMP_DIR + "mserve_mbz_get1_releases_with_dates_json"
+# TMP_MBZ_GET1F = g.TEMP_DIR + "mserve_mbz_get1_release_by_id_error_json"
+# TMP_MBZ_DEBUG = g.TEMP_DIR + "mserve_mbz_get1_dates_list"
+#               = g.TEMP_DIR + "mserve_mbz_get1_stdout
+#                               mserve_mbz_get1_pickle
+#                               mserve_mbz_get2_pickle
+#                               mserve_mbz_get2_stdout
+#  mserve_disc_get_stdout, mserve_encoding_artwork.jpg
+#  mserve_encoding_last_disc, mserve_encoding_pickle, mserve_gst_launch
+
 
 KID3_INSTALLED = False  # Reset just before popup menu created
 KID3_NAME = "Kid3 Audio Tagger"
@@ -746,6 +761,9 @@ class PlayCommonSelf:
         #def __init__(self, toplevel, song_list, sbar_width=14, **kwargs):
 
         self.killer = ext.GracefulKiller()  # Class to shut down
+        self.debug_file = None              # ~/tmp/mserve_print_file_xxxxxxxx
+        self.debug_title = None             # 
+        self.debug_text = None              # ~/tmp/mserve_print_file_xxxxxxxx
         self.close_sleepers_in_progress = False  # Prevent multiple calls
 
         self.play_top = None                # Music player selected songs
@@ -795,7 +813,11 @@ class PlayCommonSelf:
         self.breakpoint = None              # int(self.im.size * self.play/100
 
         ''' Volume slider above Metadata Display fields '''
+        self.slider_frm = None              # Volume slider frame
         self.ffplay_slider = None           # volume slider above metadata vars
+        self.ffplay_mute = None             # LEFT: 🔉 U+F1509
+        self.ffplay_full = None             # RIGHT: 🔊 U+1F50A
+
         self.curr_ffplay_volume = None      # Retrieved from slider adjustments
         self.set_ffplay_sink_WIP = None     # Only one value handled at a time
 
@@ -816,7 +838,7 @@ class PlayCommonSelf:
 
         self.song_compilation = tk.StringVar()  # "1" Yes, "0" No
         self.song_play_count = tk.StringVar()  # number of times played
-        self.song_last_play_time = tk.StringVar()  # 
+        self.song_last_play_time = tk.StringVar()  # stored as float
         self.song_gapless_playback = tk.StringVar()  # "1" Yes, "0" No
         self.song_creation_time = tk.StringVar()  # YYYY-MM-DD HH:MM:SS
         self.song_access_time = tk.StringVar()  # date ago
@@ -835,15 +857,15 @@ class PlayCommonSelf:
         self.vu_width = None                # VU Meters (Left & Right channel
         self.vu_height = None               # width and height in pixels
         self.vu_meter_left = None           # tk.Canvas(self.play_frm...
-        self.vu_meter_left_rect = None  # vu_meter_left.create_rectangle(
+        self.vu_meter_left_rect = None      # vu_meter_left.create_rectangle(
         self.vu_meter_right = None          # tk.Canvas(self.play_frm...
-        self.vu_meter_right_rect = None  # vu_meter_right.create_r
+        self.vu_meter_right_rect = None     # vu_meter_right.create_r
         self.VU_HIST_SIZE = None            # History of six db levels
         self.vu_meter_left_hist = None      # Left & Right channel histories
         self.vu_meter_right_hist = None     # can be zero on race condition
 
         # Play frame # 3 (misleading frame number) - column 4
-        self.lyrics_master_frm = None             # tk.Frame(self.play_frm child)
+        self.lyrics_master_frm = None       # tk.Frame(self.play_frm child)
         self.lyrics_frm = None              # tk.Frame(self.lyrics_master_frm child)
         # The panel dynamically changes depending on Basic Time Index,
         # edit lyrics, webscrape lyrics, fine-tune time index, manual scroll
@@ -913,7 +935,7 @@ class PlayCommonSelf:
         self.resume_song_secs = None        # Position to start playing song
 
         ''' Play Top Button frame (_btn) and Buttons (_button) '''
-        self.play_btn_frm = None            # tk.Frame(self.play_top, bg="Blue"
+        self.play_btn_frm = None            # tk.Frame(self.play_top, bg="LightGrey"
         self.long_running_process = None    # True = remove most buttons
         self.close_button = None            # tk.Button(text="✘ Close
         self.shuffle_button = None          # tk.Button(text=" 🔀 Shuffle",
@@ -1142,7 +1164,10 @@ class MusicLocationTree(PlayCommonSelf):
         self.lib_top.rowconfigure(0, weight=1)
 
         ''' Create frames '''
-        master_frame = tk.Frame(self.lib_top, bg="Olive", relief=tk.RIDGE)
+        # tk.Frame uses small fonts for File/Edit/View menus
+        #master_frame = tk.Frame(self.lib_top, bg="LightGrey", relief=tk.RIDGE)
+        # ttk.Frame doesn't allow bg="LightGrey"
+        master_frame = ttk.Frame(self.lib_top, padding=(5, 5, 5, 0))
         master_frame.grid(sticky=tk.NSEW)
         master_frame.columnconfigure(0, weight=1)
         master_frame.rowconfigure(0, weight=0)  # InfoCentre bar frame
@@ -1318,44 +1343,60 @@ class MusicLocationTree(PlayCommonSelf):
         self.create_pending_frame(master_frame)  # Hides after creation
 
         ''' Treeview Buttons '''
-        frame3 = tk.Frame(master_frame, bg="Blue", bd=2, relief=tk.GROOVE,
-                          borderwidth=g.FRM_BRD_WID)
+        frame3 = tk.Frame(master_frame)
         frame3.grid_rowconfigure(0, weight=1)
         frame3.grid_columnconfigure(0, weight=0)
-        frame3.grid(row=3, column=0, sticky=tk.NW)  # May 28, 2023 was row=2
-
-        ''' ✘ Close Button ✘ ✔ '''
-        self.lib_top.bind("<Escape>", self.close)
-        self.lib_top.protocol("WM_DELETE_WINDOW", self.close)
-        lib_tree_btn1 = tk.Button(frame3, text="✘ Close", width=g.BTN_WID - 2, 
-                                  command=self.close)
-        lib_tree_btn1.grid(row=0, column=0, padx=2)
-        self.tt.add_tip(lib_tree_btn1, anchor="nw",
-                        text="Close mserve and any windows mserve opened.")
+        frame3.grid(row=3, column=0, sticky=tk.E)  # May 28, 2023 was row=2
 
         ''' ▶  Play Button '''
         self.play_text = "▶  Play"  # Appears when play_top is closed
         self.lib_tree_play_btn = tk.Button(
-            frame3, text=self.play_text, width=g.BTN_WID + 2,
-            command=self.play_selected_list)
-        self.lib_tree_play_btn.grid(row=0, column=1, padx=2)
+            frame3, text=self.play_text, width=g.BTN_WID2 + 1,
+            font=g.FONT, command=self.play_selected_list)
+        self.lib_tree_play_btn.grid(row=0, column=0, padx=10, pady=5,
+                                    sticky=tk.E)
         self.tt.add_tip(self.lib_tree_play_btn, "Play favorite songs.",
                         anchor="nw")
 
         ''' Refresh Treeview Button u  1f5c0 🗀 '''
         ''' 🗘  Update differences Button u1f5d8 🗘'''
-        lib_tree_btn3 = tk.Button(frame3, text="🗘 Refresh library", 
-                                  width=g.BTN_WID + 2, command=self.rebuild_lib_tree)
-        lib_tree_btn3.grid(row=0, column=4, padx=2)
-        self.tt.add_tip(lib_tree_btn3, anchor="ne",
+        lib_refresh_btn = tk.Button(frame3, text="🗘 Refresh library", 
+                                    width=g.BTN_WID2 + 2, font=g.FONT, 
+                                    command=self.rebuild_lib_tree)
+        lib_refresh_btn.grid(row=0, column=1, padx=10, pady=5, sticky=tk.E)
+        self.tt.add_tip(lib_refresh_btn, anchor="nw",
                         text="Scan disk for songs added and removed.")
 
         ''' Rip CD Button 🖸 (1f5b8) '''
-        lib_tree_btn4 = tk.Button(frame3, text="🖸  Rip CD", width=g.BTN_WID - 2,
-                                  command=self.rip_cd)
-        lib_tree_btn4.grid(row=0, column=5, padx=2)
-        self.tt.add_tip(lib_tree_btn4, anchor="ne",
-                        text="Convert songs from Audio CD to music files.")
+        lib_rip_cd_btn = tk.Button(frame3, text="🖸  Rip CD", width=g.BTN_WID2 - 4,
+                                   font=g.FONT, command=self.rip_cd)
+        lib_rip_cd_btn.grid(row=0, column=2, padx=10, pady=5, sticky=tk.E)
+        self.tt.add_tip(lib_rip_cd_btn, anchor="nw",
+                        text="Encode songs from Audio CD to music files.")
+
+        ''' Help Button - 
+            https://www.pippim.com/programs/mserve.html#HelpMusicLocationTree '''
+        ''' 🔗 Help - Videos and explanations on pippim.com '''
+
+        help_text = "Open new window in default web browser for\n"
+        help_text += "videos and explanations on using this screen.\n"
+        help_text += "https://www.pippim.com/programs/mserve.html#\n"
+
+        lib_help_btn = tk.Button(
+            frame3, text="🔗 Help", font=g.FONT, width=g.BTN_WID2 - 4,
+            command=lambda: g.web_help("HelpMusicLocationTree"))
+        lib_help_btn.grid(row=0, column=3, padx=10, pady=5, sticky=tk.E)
+        if self.tt:
+            self.tt.add_tip(lib_help_btn, help_text, anchor="ne")
+            
+        ''' ✘ Close Button '''
+        self.lib_top.bind("<Escape>", self.close)
+        self.lib_top.protocol("WM_DELETE_WINDOW", self.close)
+        lib_close_btn = tk.Button(frame3, text="✘ Close", width=g.BTN_WID2 - 4,
+                                  font=g.FONT, command=self.close)
+        lib_close_btn.grid(row=0, column=4, padx=(10, 2), pady=5, sticky=tk.E)
+        self.tt.add_tip(lib_close_btn, anchor="ne",
+                        text="Close mserve and any windows mserve opened.")
 
         ''' Colors for tags '''
         self.ignore_item = None
@@ -1435,71 +1476,73 @@ class MusicLocationTree(PlayCommonSelf):
         #                      1.0078911781
         #                      0.9450080395
         #                      0.9970889091
-        self.lib_top.config(menu=mb)  # This takes a full second to run
-        #self.lib_top['menu'] = mb  # Also takes a full second to run
+        self.lib_top.config(menu=mb)  # Full second to rerun
+        #self.lib_top['menu'] = mb  # Also takes a full second to rerun
         ext.t_end('no_print')
 
+        ''' Option names are referenced for enabling and disabling.
+            Before changing an "option name", search "option name" occurrences. '''
         # File Dropdown Menu
         ext.t_init('self.file_menu = tk.Menu(mb)')
         self.file_menu = tk.Menu(mb, tearoff=0)
-        self.file_menu.add_command(label="New Location", font=(None, MED_FONT),
-                                   command=lcs.new, state=tk.DISABLED)
-        self.file_menu.add_command(label="Open Location and Play", font=(None, MED_FONT),
+        self.file_menu.add_command(label="Open Location and Play", font=g.FONT,
                                    command=lcs.open, state=tk.DISABLED)
+        self.file_menu.add_command(label="New Location", font=g.FONT,
+                                   command=lcs.new, state=tk.DISABLED)
         self.file_menu.add_separator()
 
-        self.file_menu.add_command(label="Open Playlist", font=(None, MED_FONT),
+        self.file_menu.add_command(label="Open Playlist", font=g.FONT,
                                    command=self.playlists.open, state=tk.DISABLED)
-        self.file_menu.add_command(label="New Playlist", font=(None, MED_FONT),
+        self.file_menu.add_command(label="New Playlist", font=g.FONT,
                                    command=self.playlists.new, state=tk.DISABLED)
-        self.file_menu.add_command(label="Save Playlist", font=(None, MED_FONT),
+        self.file_menu.add_command(label="Save Playlist", font=g.FONT,
                                    command=self.write_playlist_to_disk, state=tk.DISABLED)
-        #self.file_menu.add_command(label="Save Playlist As…", font=(None, MED_FONT),
+        #self.file_menu.add_command(label="Save Playlist As…", font=g.FONT,
         #                           command=self.playlists.save_as, state=tk.DISABLED)
-        self.file_menu.add_command(label="Close Playlist (Use Favorites)", font=(None, MED_FONT),
+        self.file_menu.add_command(label="Close Playlist and Use Favorites", font=g.FONT,
                                    command=self.close_playlist, state=tk.DISABLED)
         self.file_menu.add_separator()  # NOTE: UTF-8 3 dots U+2026 …
 
-        #self.file_menu.add_command(label="Save Play and Restart", font=(None, MED_FONT),
+        #self.file_menu.add_command(label="Save Play and Restart", font=g.FONT,
         #                           command=self.restart)
         # Uncomment above if heavy development changes needed for testing, beware:
         # of: SLOWDOWN BUG: https://gitlab.gnome.org/GNOME/gnome-shell/-/issues/2674
         # and: SLOWDOWN BUG: https://gitlab.gnome.org/GNOME/gnome-shell/-/issues/3125
         # The facts are apparent when you restart. To save time, just exit and type 'm'.
 
-        self.file_menu.add_command(label="Save Favorites", font=(None, MED_FONT),
+        self.file_menu.add_command(label="Save Favorites", font=g.FONT,
                                    command=self.write_playlist_to_disk, state=tk.DISABLED)
-        self.file_menu.add_command(label="Exit and CANCEL Pending", font=(None, MED_FONT),
+        self.file_menu.add_command(label="Exit and CANCEL Pending", font=g.FONT,
                                    command=self.exit_without_save, state=tk.DISABLED)
         self.file_menu.add_separator()
 
-        self.file_menu.add_command(label="Save Play and Exit", font=(None, MED_FONT),
+        self.file_menu.add_command(label="Save Play and Exit", font=g.FONT,
                                    command=self.close)
 
-        mb.add_cascade(label="File", menu=self.file_menu, font=(None, MED_FONT))
+        mb.add_cascade(label="File", font=g.FONT, menu=self.file_menu)
         ext.t_end('no_print')  # 0.0009999275
 
         # Edit Dropdown Menu
         ext.t_init('self.edit_menu = tk.Menu(mb)')
         self.edit_menu = tk.Menu(mb, tearoff=0)
-        self.edit_menu.add_command(label="Synchronize Location", font=(None, MED_FONT),
+        self.edit_menu.add_command(label="Synchronize Location", font=g.FONT,
                                    command=lcs.synchronize, state=tk.DISABLED)
-        self.edit_menu.add_command(label="Edit Location", font=(None, MED_FONT),
+        self.edit_menu.add_command(label="Edit Location", font=g.FONT,
                                    command=lcs.edit, state=tk.DISABLED)
-        self.edit_menu.add_command(label="Delete Location", font=(None, MED_FONT),
+        self.edit_menu.add_command(label="Delete Location", font=g.FONT,
                                    command=lcs.delete, state=tk.DISABLED)
         self.edit_menu.add_separator()
-        self.edit_menu.add_command(label="Rename Playlist", font=(None, MED_FONT),
+        self.edit_menu.add_command(label="Rename Playlist", font=g.FONT,
                                    command=self.playlists.rename, state=tk.DISABLED)
-        self.edit_menu.add_command(label="Delete Playlist", font=(None, MED_FONT),
+        self.edit_menu.add_command(label="Delete Playlist", font=g.FONT,
                                    command=self.playlists.delete, state=tk.DISABLED)
         self.edit_menu.add_separator()
         # Volume for Hocker Commercials state will be enabled by get_hockey_state()
-        self.edit_menu.add_command(label="TV Volume for Hockey Commercials",
-                                   font=(None, MED_FONT), state=tk.DISABLED,
+        self.edit_menu.add_command(label="Volume During TV Commercials",
+                                   font=g.FONT, state=tk.DISABLED,
                                    command=self.set_tv_volume)
 
-        mb.add_cascade(label="Edit", menu=self.edit_menu, font=(None, MED_FONT))
+        mb.add_cascade(label="Edit", menu=self.edit_menu, font=g.FONT)
         ext.t_end('no_print')  # 0.0004191399
 
         ext.t_init('self.view_menu = tk.Menu(mb)')
@@ -1507,32 +1550,32 @@ class MusicLocationTree(PlayCommonSelf):
         # View Dropdown Menu
         self.view_menu = tk.Menu(mb, tearoff=0)
         # If adding new view options, bump up variable Enable option from 3 to 4
-        self.view_menu.add_command(label="Information Centre", font=(None, MED_FONT),
+        self.view_menu.add_command(label="Information Centre", font=g.FONT,
                                    command=self.info.view)
-        self.view_menu.add_command(label="View Locations", font=(None, MED_FONT),
+        self.view_menu.add_command(label="View Locations", font=g.FONT,
                                    command=lcs.view, state=tk.DISABLED)
-        self.view_menu.add_command(label="View Playlists", font=(None, MED_FONT),
+        self.view_menu.add_command(label="View Playlists", font=g.FONT,
                                    command=self.playlists.view, state=tk.DISABLED)
         self.play_hockey_allowed = self.get_hockey_state()
         if self.play_hockey_allowed:
             text = "Enable FF/Rewind buttons"  # TODO: Make self.variable names
         else:
             text = "Enable TV Commercial buttons"
-        self.view_menu.add_command(label=text, font=(None, MED_FONT),
+        self.view_menu.add_command(label=text, font=g.FONT,
                                    command=self.toggle_hockey)
         self.view_menu.add_separator()  # If countdown running, don't show options
 
-        self.view_menu.add_command(label="SQL Music Table", font=(None, MED_FONT),
+        self.view_menu.add_command(label="SQL Music Table", font=g.FONT,
                                    command=self.show_sql_music)
-        self.view_menu.add_command(label="SQL History Table", font=(None, MED_FONT),
+        self.view_menu.add_command(label="SQL History Table", font=g.FONT,
                                    command=self.show_sql_hist)
-        self.view_menu.add_command(label="SQL Location Table", font=(None, MED_FONT),
+        self.view_menu.add_command(label="SQL Location Table", font=g.FONT,
                                    command=self.show_sql_location)
         self.view_menu.add_separator()
-        self.view_menu.add_command(label="Debug Information", font=(None, MED_FONT),
+        self.view_menu.add_command(label="Debug Information", font=g.FONT,
                                    command=self.show_debug)
 
-        mb.add_cascade(label="View", menu=self.view_menu, font=(None, MED_FONT))
+        mb.add_cascade(label="View", menu=self.view_menu, font=g.FONT)
         ext.t_end('no_print')  # 0.0006351471
 
         self.enable_lib_menu()
@@ -1564,7 +1607,7 @@ class MusicLocationTree(PlayCommonSelf):
         if self.playlists.open_name:
             # Can close even if pending counts but there will be confirmation inside
             #self.file_menu.entry config("Save Playlist As…", state=tk.NORMAL)
-            self.file_menu.entryconfig("Close Playlist (Use Favorites)", state=tk.NORMAL)
+            self.file_menu.entryconfig("Close Playlist and Use Favorites", state=tk.NORMAL)
 
         if self.get_pending_cnt_total() == 0:
             # If nothing pending can open create new playlist, etc.
@@ -1592,7 +1635,7 @@ class MusicLocationTree(PlayCommonSelf):
         self.file_menu.entryconfig("New Playlist", state=tk.DISABLED)
         self.file_menu.entryconfig("Save Playlist", state=tk.DISABLED)
         #self.file_menu.entry config("Save Playlist As…", state=tk.DISABLED)
-        self.file_menu.entryconfig("Close Playlist (Use Favorites)", state=tk.DISABLED)
+        self.file_menu.entryconfig("Close Playlist and Use Favorites", state=tk.DISABLED)
         self.edit_menu.entryconfig("Rename Playlist", state=tk.DISABLED)
         self.edit_menu.entryconfig("Delete Playlist", state=tk.DISABLED)
         self.view_menu.entryconfig("View Playlists", state=tk.DISABLED)
@@ -3005,11 +3048,13 @@ class MusicLocationTree(PlayCommonSelf):
                              command=lambda: self.fm_open(Id))
 
         menu.add_separator()
-        menu.add_command(label="View Metadata", font=(None, MED_FONT),
+        menu.add_command(label="View Raw Metadata", font=(None, MED_FONT),
                          command=lambda: self.view_metadata(
                              Id, os_filename=os_filename, top=self.lib_top))
-        menu.add_command(label="View SQL Music Row", font=(None, MED_FONT),
-                         command=lambda: self.view_sql_music_id(Id))
+        menu.add_command(label="View SQL Metadata", font=(None, MED_FONT),
+                         command=lambda: 
+                         self.view_sql_music_id(Id, self.play_ctl))
+
         menu.add_separator()
         menu.add_command(label="Ignore click", font=(None, MED_FONT),
                          command=lambda: self.remove_popup_sel())
@@ -3044,14 +3089,15 @@ class MusicLocationTree(PlayCommonSelf):
             self.lib_tree.item(Id, open=False)
         self.wrapup_lib_popup()  # Set color tags and counts
 
-    def view_sql_music_id(self, Id):
+    def view_sql_music_id(self, Id, file_ctl=None):
         """ View SQL Music Row.
         Called from Music Location Tree popup menu and passes os_filename
 
         :param Id: Music Location Tree Id selected.
+        :param file_ctl: self.play_ctl
         """
         music_id = self.get_music_id_for_lib_tree_id(Id)
-        pretty = sql.PrettyMusic(str(music_id))
+        pretty = sql.PrettyMusic(str(music_id), file_ctl=file_ctl)
         """ Create new window top-left of parent window with g.PANEL_HGT padding
 
             Before calling:
@@ -3582,10 +3628,16 @@ class MusicLocationTree(PlayCommonSelf):
         ''' Remove temporary files - NOTE: could simply use /tmp/mserve* '''
         for f in TMP_ALL_NAMES:
             if f.endswith("*"):
-                for splat in glob.glob(f):
-                    os.remove(splat)
+                ext.remove_group(f)
             elif os.path.isfile(f):
                 os.remove(f)
+
+        ''' Encoding (MusicBrainz) development debugging files '''
+        if not ENCODE_DEV:
+            ext.remove_group(g.TEMP_DIR + "mserve_gst_*")
+            ext.remove_group(g.TEMP_DIR + "mserve_mbz_*")
+            ext.remove_group(g.TEMP_DIR + "mserve_disc_*")
+            ext.remove_group(g.TEMP_DIR + "mserve_encoding_*")
 
         ''' Last known window position for music location tree, saved to SQL '''
         last_library_geom = monitor.get_window_geom_string(
@@ -3774,7 +3826,7 @@ class MusicLocationTree(PlayCommonSelf):
                 title="Refresh music library",
                 text="The same " + str(len(SORTED_LIST)) +
                      " songs are in the library.\n\n" +
-                     "No updates have been made to the view.")
+                     "No changes to Music Location Tree.")
             return
         else:
             additions = list(set(SortedList2).difference(SORTED_LIST))
@@ -3807,7 +3859,6 @@ class MusicLocationTree(PlayCommonSelf):
         # Backup files
         shutil.copy(lc.FNAME_LAST_OPEN_STATES, lc.FNAME_LAST_OPEN_STATES + ".bak")
         shutil.copy(lc.FNAME_LAST_SONG_NDX, lc.FNAME_LAST_SONG_NDX + ".bak")
-        # shutil.copy(lc.FNAME_LAST_SELECTIONS, lc.FNAME_LAST_SELECTIONS + ".bak")
         shutil.copy(lc.FNAME_LAST_PLAYLIST, lc.FNAME_LAST_PLAYLIST + ".bak")
 
         SORTED_LIST = SortedList2
@@ -3815,7 +3866,7 @@ class MusicLocationTree(PlayCommonSelf):
         lcs.register_fake_paths(self.fake_paths)
         self.lib_tree.delete(*self.lib_tree.get_children())
         # Copied from __init__
-        dtb = message.DelayedTextBox(title="Building music view",
+        dtb = message.DelayedTextBox(title="Building music location treeview",
                                      toplevel=None, width=1000)
         '''
                     B I G   T I C K E T   E V E N T
@@ -3843,71 +3894,77 @@ class MusicLocationTree(PlayCommonSelf):
                                playlists=self.playlists, info=self.info)
 
     def show_debug(self):
-        """ Debugging - show monitors, tooltips and full metadata
-        """
+        """ Debugging - show machine info, monitors, windows, tooltips 
+            locations, sql, metadata, global variables """
 
-        print("\nglobal_variables.py (g) - Machine Information")
-        print("=============================================\n")
-        print("g.OS_PLATFORM     :", g.OS_PLATFORM)
-        print("g.OS_NAME         :", g.OS_NAME)
-        print("g.OS_VERSION      :", g.OS_VERSION)
-        print("g.OS_RELEASE      :", g.OS_RELEASE)
+        ''' Make TMP names unique for multiple FileControls racing at once '''
+        letters = string.ascii_lowercase + string.digits
+        temp_suffix = (''.join(random.choice(letters) for _i in range(6)))
+        self.debug_file = TMP_PRINT_FILE + "_" + temp_suffix  # def debug
+        self.debug_recreate_file()  # Clear print file, title and text lists
 
-        print("g.USER            :", g.USER)
-        print("g.USER_ID         :", g.USER_ID)
-        print("g.HOME            :", g.HOME)
-        print("g.USER_CONFIG_DIR :", g.USER_CONFIG_DIR)
-        print("g.USER_DATA_DIR   :", g.USER_DATA_DIR)
-        print("g.MSERVE_DIR      :", g.MSERVE_DIR)
-        print("g.PROGRAM_DIR     :", g.PROGRAM_DIR)
-        print("g.TEMP_DIR        :", g.TEMP_DIR)
+        self.debug_header("\nglobal_variables.py (g) - Machine Information")
+        self.debug_detail("g.OS_PLATFORM     :", g.OS_PLATFORM)
+        self.debug_detail("g.OS_NAME         :", g.OS_NAME)
+        self.debug_detail("g.OS_VERSION      :", g.OS_VERSION)
+        self.debug_detail("g.OS_RELEASE      :", g.OS_RELEASE)
 
-        print("Process ID (PID)  :", os.getpid())
-        print("Parent's PID      :", os.getppid())  # Python > 3.2 for Windows
+        self.debug_detail("g.USER            :", g.USER)
+        self.debug_detail("g.USER_ID         :", g.USER_ID)
+        self.debug_detail("g.HOME            :", g.HOME)
+        self.debug_detail("g.USER_CONFIG_DIR :", g.USER_CONFIG_DIR)
+        self.debug_detail("g.USER_DATA_DIR   :", g.USER_DATA_DIR)
+        self.debug_detail("g.MSERVE_DIR      :", g.MSERVE_DIR)
+        self.debug_detail("g.PROGRAM_DIR     :", g.PROGRAM_DIR)
+        self.debug_detail("g.TEMP_DIR        :", g.TEMP_DIR)
 
-        print("\nmon = monitor.Monitors()")
-        print("=============================================\n")
+        self.debug_detail("Python Version    :", sys.version)
+        self.debug_detail('TK Version        :', tk.TkVersion)
+        self.debug_detail("Process ID (PID)  :", os.getpid())
+        self.debug_detail("Parent's PID      :", os.getppid())  # win needs > 3.2
+        self.debug_output()  # self.info.fact() + print()
+
+
+        self.debug_header("\nmon = monitor.Monitors()")
         mon = monitor.Monitors()            # Monitors class list of dicts
 
-        print("mon.screen_width x mon.screen_height:",
-              mon.screen_width, "x", mon.screen_height, "\n")
+        self.debug_detail("mon.screen_width x mon.screen_height:",
+                          mon.screen_width, "x", mon.screen_height, "\n")
 
-        print("Number of monitors - mon.get_n_monitors():", mon.get_n_monitors())
-        print("for m in mon.monitors_list: -- print(' ', m):")
+        self.debug_detail("Number of monitors - mon.get_n_monitors():",
+                          mon.get_n_monitors())
+        self.debug_detail("for m in mon.monitors_list: -- self.debug_detail(' ', m):")
         for m in mon.monitors_list:
-            print(" ", m)
-
-        print('\nPrimary Monitor - mon.primary_monitor:\n  ', mon.primary_monitor)
-
-        print('\nActive Window Tuple -  active_win = mon.get_active_window():')
+            self.debug_detail(" ", m)
+        self.debug_detail('\nPrimary Monitor - mon.primary_monitor:\n  ',
+                          mon.primary_monitor)
+        self.debug_detail('\nActive Window Tuple -  active_win = mon.get_active_window():')
         active_win = mon.get_active_window()  # Get tuple
-        '''
-        Window = namedtuple('Window', 'number, name, x, y, width, height')
-        x_id, window_name, geom.xp, geom.yp, geom.width p, geom.height p) 
-        '''
-        print('  active_win.number   :', active_win.number)
-        print('  active_win. WxH+X+Y :',
-              active_win.width, "x", active_win.height, "+", active_win.x,
-              "x", active_win.y)
-        print('  active_win.name     :', active_win.name[:75])
-        print()
 
-        print("Active Monitor - mon.get_active_monitor():\n  ",
-              mon.get_active_monitor())
-        print()
+        ''' Window = namedtuple('Window', 'number, name, x, y, width, height')
+        x_id, window_name, geom.xp, geom.yp, geom.width p, geom.height p) '''
+        self.debug_detail('  active_win.number   :', active_win.number)
+        self.debug_detail('  active_win. WxH+X+Y :',
+                          active_win.width, "x", active_win.height, "+",
+                          active_win.x, "x", active_win.y)
+        self.debug_detail('  active_win.name     :', active_win.name[:75])
+        self.debug_detail()  # blank line
+        self.debug_detail("Active Monitor - mon.get_active_monitor():\n  ",
+                          mon.get_active_monitor())
+        self.debug_detail()
+        self.debug_detail("sys.getfilesystemencoding()",
+                          sys.getfilesystemencoding())
+        self.debug_output()  # self.info.fact() + print()
 
-        print("sys.getfilesystemencoding()", sys.getfilesystemencoding())
-        #print("os.environ", os.environ)  # Environment is long long long
 
-        print("\nAll Windows (Wnck) - mon.get_all_windows():")
-        print("=============================================\n")
+        self.debug_header("\nAll Windows (Wnck) - mon.get_all_windows():")
         for i, window in enumerate(mon.get_all_windows()):
             ''' Testing desktop - should check each monitor individually '''
             if window.x > mon.screen_width or window.y > mon.screen_height:
                 ''' When second monitor loses power '''
-                print("\nERROR: Window is off screen at x+y:",
-                      window.x, "+", window.y)
-                print("  ", window)
+                self.debug_detail("\nERROR: Window is off screen at x+y:",
+                                  window.x, "+", window.y)
+                self.debug_detail("  ", window)
                 if window.x > mon.screen_width:
                     adj_x = mon.screen_width - window.x - 500
                 else:
@@ -3916,29 +3973,68 @@ class MusicLocationTree(PlayCommonSelf):
                     adj_y = mon.screen_height - window.y - 500
                 else:
                     adj_y = 0
-                print("     Adjust to edge -500 amount:", adj_x, "+", adj_y)
+                self.debug_detail("     Adjust to edge -500 amount:", adj_x, "+", adj_y)
                 new_x = window.x + adj_x
                 new_y = window.y + adj_y
-                print("        New coordinates:", new_x, "+", new_y, "\n")
+                self.debug_detail("        New coordinates:", new_x, "+", new_y, "\n")
                 str_win = str(window.number)  # should remove L in python 2.7.5+
                 int_win = int(str_win)  # https://stackoverflow.com/questions
                 hex_win = hex(int_win)  # /5917203/python-trailing-l-problem
                 # Move window to lower right - 500x500
                 os.popen('xdotool windowmove ' + hex_win + ' ' +
                          str(new_x) + ' ' + str(new_y))
-                # TODO: Gets moved to dead zone where no monitor exists
-                # ERROR: Window is off screen at x+y: 2330 + 3317
-                #    Window(number=81788938L, name='Python 3', x=2330, y=3317, width=1300, height=902)
-                #      Adjust to edge -500 amount: 0 + -577
-                #         New coordinates: 2330 + 2740
                 # TODO: Use shark_move to more accurate original coordinates.
                 #       Currently instantly appears at lower right -500x-500
             else:
-                print(window)
+                self.debug_detail(window)
+        self.debug_output()  # self.info.fact() + print()
 
-        print("\nCURRENT SONG and COMMON VARIABLES")
-        print("=============================================\n")
 
+        self.debug_header("\nTOOLTIPS - tt.line_dump()")
+        lines = self.tt.line_dump()         # Show Tooltips in memory
+        for line in lines:
+            self.debug_detail(line)
+        self.debug_output()
+
+
+        self.debug_header("\nOpened Location")
+        self.debug_detail("lcs.open_code       :", lcs.open_code)
+        self.debug_detail("lcs.open_name       :", lcs.open_name)
+        self.debug_detail("lcs.open_modify_time:", lcs.open_modify_time)
+        self.debug_detail("lcs.open_image_path :", lcs.open_image_path)
+        self.debug_detail("lcs.open_mount_point:", lcs.open_mount_point) 
+        self.debug_detail("lcs.open_topdir     :", lcs.open_topdir)
+        self.debug_detail("lcs.open_host       :", lcs.open_host)
+        self.debug_detail("lcs.open_wakecmd    :", lcs.open_wakecmd)
+        self.debug_detail("lcs.open_testcmd    :", lcs.open_testcmd)
+        self.debug_detail("lcs.open_testrep    :", lcs.open_testrep)
+        self.debug_detail("lcs.open_mountcmd   :", lcs.open_mountcmd)
+        self.debug_detail("lcs.open_touchcmd   :", lcs.open_touchcmd)
+        self.debug_detail("lcs.open_touchmin   :", lcs.open_touchmin)
+        self.debug_detail("lcs.open_comments   :", lcs.open_comments)
+        self.debug_detail("lcs.open_row_id     :", lcs.open_row_id)
+        self.debug_output()
+
+
+        self.debug_header("\nInformation Centre - self.info.dict[]")
+        self.debug_detail("--- KEY ---   --- VALUE ---------------------\n")
+        for key in self.info.dict:
+            pre = ("[" + str(key) + "]").ljust(12) + ":"  # Padded key field
+            if isinstance(self.info.dict[key], list):
+                entries = self.info.dict[key]  # type list is a pattern or trace
+                if len(entries) == 1:  # If zero, drop down to print regular line
+                    self.debug_detail(pre, self.info.dict[key][0])
+                    continue
+                elif len(entries) > 1:  # If zero, drop down to print regular line
+                    self.debug_detail(pre, "list[VALUES] on lines below.")
+                    for entry in entries:
+                        self.debug_detail(entry)
+                    continue
+            self.debug_detail(pre, self.info.dict[key])  # regular field type
+        self.debug_output()
+
+
+        self.debug_header("\nCURRENT SONG and COMMON VARIABLES")
         try:
             song_iid = self.saved_selections[self.ndx]
             song = self.lib_tree.item(song_iid)['text']
@@ -3947,135 +4043,129 @@ class MusicLocationTree(PlayCommonSelf):
             artist_iid = self.lib_tree.parent(album_iid)
             artist = self.lib_tree.item(artist_iid)['text']
 
-            print("self.ndx:", self.ndx, ' | Song iid:', song_iid, " |", song)
-            print("tree values:", self.lib_tree.item(song_iid)['values'])
-            print("Artist iid:", artist_iid, " |", artist,
-                  " | Album iid:", album_iid, " |", album)
-            print("real_path:", self.real_path(int(song_iid)))
+            self.debug_detail("self.ndx   :", self.ndx, ' | Song iid:', song_iid, " |", song)
+            self.debug_detail("tree values:", self.lib_tree.item(song_iid)['values'])
+            self.debug_detail("Artist iid :", artist_iid, " |", artist,
+                              " | Album iid:", album_iid, " |", album)
+            self.debug_detail("real_path  :", self.real_path(int(song_iid)))
         except IndexError:  # list index out of range
-            print("INVALID self.ndx:", self.ndx)
+            self.debug_detail("INVALID self.ndx for CURRENT_SONG:", self.ndx)
 
-        print("len(SORTED_LIST):", len(SORTED_LIST))
-        print('len(self.lib_tree.tag_has("Artist")):',
-              len(self.lib_tree.tag_has("Artist")))
-        print('len(self.lib_tree.tag_has("Album")):',
-              len(self.lib_tree.tag_has("Album")))
-        print('len(self.lib_tree.tag_has("Song")):',
-              len(self.lib_tree.tag_has("Song")))
-        print()
         try:
-            print("self.playlist_paths[0]:", self.playlist_paths[0],
-                  " | self.playlist_paths[-1]:", self.playlist_paths[-1])
-            print("len(self.playlist_paths):", len(self.playlist_paths),
-                  " | sys.get size of(self.playlist_paths):",
-                  sys.getsizeof(self.playlist_paths))
-            print()
-            print("self.saved_selections[0]:", self.saved_selections[0],
-                  " | self.saved_selections[-1]:", self.saved_selections[-1])
-            print("len(self.saved_selections):", len(self.saved_selections),
-                  " | sys.get size of(self.saved_selections):",
-                  sys.getsizeof(self.saved_selections))
-            print()
+            self.debug_detail("self.playlist_paths[0]    :", self.playlist_paths[0])
+            self.debug_detail("self.playlist_paths[-1]   :", self.playlist_paths[-1])
+            self.debug_detail("len(self.playlist_paths)  :", len(self.playlist_paths),
+                              " | sys.get size of(self.playlist_paths):",
+                              sys.getsizeof(self.playlist_paths))
         except IndexError:  # list index out of range
-            print("self.playlist_paths is empty.")
+            self.debug_detail("self.playlist_paths[] is empty.")
+        try:
+            self.debug_detail("self.saved_selections[0]  :", self.saved_selections[0],
+                              " | self.saved_selections[-1]:", self.saved_selections[-1])
+            self.debug_detail("len(self.saved_selections):", len(self.saved_selections),
+                              " | sys.get size of(self.saved_selections):",
+                              sys.getsizeof(self.saved_selections))
+        except IndexError:  # list index out of range
+            self.debug_detail("self.saved_selections[] is empty.")
 
-        print("self.fake_paths[0]:", self.fake_paths[0],
-              " | self.fake_paths[-1]:", self.fake_paths[-1])
-        print("len(self.fake_paths):", len(self.fake_paths),
-              "sys.get size of(self.fake_paths):",
-              sys.getsizeof(self.fake_paths))
-        print()
-        print("self.real_paths[0]:", self.real_paths[0],
-              " | self.real_paths[-1]:", self.real_paths[-1])
-        print("len(self.real_paths):", len(self.real_paths),
-              " | sys.get size of(self.real_paths):",
-              sys.getsizeof(self.real_paths))
-        print()
+        self.debug_detail("self.fake_paths[0]        :", self.fake_paths[0])
+        self.debug_detail("self.fake_paths[-1]       :", self.fake_paths[-1])
+        self.debug_detail("len(self.fake_paths)      :", len(self.fake_paths),
+                          " | sys.get size of(self.fake_paths):",
+                          sys.getsizeof(self.fake_paths))
+        self.debug_detail("self.real_paths[0]        :", self.real_paths[0])
+        self.debug_detail("self.real_paths[-1]       :", self.real_paths[-1])
+        self.debug_detail("len(self.real_paths)      :", len(self.real_paths),
+                          " | sys.get size of(self.real_paths):",
+                          sys.getsizeof(self.real_paths))
+        self.debug_detail()
 
-        print("\nTOOLTIPS - tt.line_dump()")
-        print("====================================\n")
+        self.debug_detail("len(SORTED_LIST) Music Location Songs:",
+                          len(SORTED_LIST))
+        self.debug_detail('len(self.lib_tree.tag_has("Artist")) :',
+                          len(self.lib_tree.tag_has("Artist")))
+        self.debug_detail('len(self.lib_tree.tag_has("Album"))  :',
+                          len(self.lib_tree.tag_has("Album")))
+        self.debug_detail('len(self.lib_tree.tag_has("Song"))   :',
+                          len(self.lib_tree.tag_has("Song")))
+        self.debug_output()
 
-        lines = self.tt.line_dump()         # Show Tooltips in memory
-        print(*lines, sep='\n')
-        print()
 
-        print("\nself.Xxx_ctl = FileControl() instances opened")
-        print("=============================================\n")
-
+        self.debug_header("\nself.Xxx_ctl = FileControl() instances opened")
         if self.play_ctl.metadata is not None:  # FileControl() always here
-            print("\nLast file accessed - 'ffprobe' (self.play_ctl.metadata):")
-            print("--------------------------------------------------------\n")
+            self.debug_detail("Last file accessed - 'ffprobe' (self.play_ctl.metadata):")
+            self.debug_detail("--------------------------------------------------------\n")
             for i in self.play_ctl.metadata:
-                print(i, ":", self.play_ctl.metadata[i])
+                self.debug_detail(i, ":", self.play_ctl.metadata[i])
 
         if self.ltp_ctl and self.ltp_ctl.metadata is not None:
-            print("\nLast file accessed - 'ffprobe' (self.ltp_ctl.metadata):")
-            print("-------------------------------------------------------\n")
+            self.debug_detail("\nLast file accessed - 'ffprobe' (self.ltp_ctl.metadata):")
+            self.debug_detail("-------------------------------------------------------\n")
             for i in self.ltp_ctl.metadata:
-                print(i, ":", self.ltp_ctl.metadata[i])
+                self.debug_detail(i, ":", self.ltp_ctl.metadata[i])
 
         if self.fine_tune and self.fine_tune.time_ctl.metadata is not None:
-            print("\nLast file accessed - 'ffprobe', "
-                  "'(self.fine_tune.time_ctl.metadata):")
-            print("-" * 68 + "\n")
+            self.debug_detail("\nLast file accessed - 'ffprobe', " +
+                              "'(self.fine_tune.time_ctl.metadata):")
+            self.debug_detail("-" * 68 + "\n")
             for i in self.fine_tune.time_ctl.metadata:
-                print(i, ":", self.fine_tune.time_ctl.metadata[i])
+                self.debug_detail(i, ":", self.fine_tune.time_ctl.metadata[i])
 
         if self.mus_ctl and self.mus_ctl.metadata is not None:
-            print("\nLast file accessed - 'ffprobe' (self.mus_ctl.metadata):")
-            print("-------------------------------------------------------\n")
+            self.debug_detail("\nLast file accessed - 'ffprobe' (self.mus_ctl.metadata):")
+            self.debug_detail("-------------------------------------------------------\n")
             for i in self.mus_ctl.metadata:
-                print(i, ":", self.mus_ctl.metadata[i])
+                self.debug_detail(i, ":", self.mus_ctl.metadata[i])
+        self.debug_output()
 
-        print("\nGLOBAL VARIABLES")
-        print("====================================\n")
-        print("START_DIR:", START_DIR, " | START_DIR.count(os.sep):",
-              START_DIR.count(os.sep))
-        print("PRUNED_DIR:", PRUNED_DIR, " | PRUNED_COUNT:", PRUNED_COUNT)
-        print("TV_VOLUME:", TV_VOLUME, " | TV_SOUND:", TV_SOUND)
-        print("TV_BREAK1:", TV_BREAK1, " | TV_BREAK2:", TV_BREAK2)
-        print("REW_FF_SECS:", REW_FF_SECS, " | REW_CUTOFF:", REW_CUTOFF)
 
-        print("pending_apply() debug print flag DPRINT_ON:", DPRINT_ON)
-        print("self.get_pending_cnt_total():", self.get_pending_cnt_total())
+        self.debug_header("\nGLOBAL VARIABLES")
+        self.debug_detail("START_DIR  :", START_DIR, " | START_DIR.count(os.sep):",
+                          START_DIR.count(os.sep))
+        self.debug_detail("PRUNED_DIR :", PRUNED_DIR, " | PRUNED_COUNT:", PRUNED_COUNT)
+        self.debug_detail("TV_VOLUME  :", TV_VOLUME, " | TV_SOUND:", TV_SOUND)
+        self.debug_detail("TV_BREAK1  :", TV_BREAK1, " | TV_BREAK2:", TV_BREAK2)
+        self.debug_detail("REW_FF_SECS:", REW_FF_SECS, " | REW_CUTOFF:", REW_CUTOFF)
+        self.debug_detail("ENCODE_DEV :", ENCODE_DEV)
+        self.debug_detail("self.get_pending_cnt_total():", self.get_pending_cnt_total())
+        self.debug_detail("pending_apply() debug print flag DPRINT_ON:", DPRINT_ON)
+        self.debug_output()
 
-        print("\nOpened Location dictionary that never changes LODICT:")
-        print(LODICT)
 
-        print("\nSQL - Sqlite3 Information")
-        print("====================================\n")
-
-        print("Sqlite3 Version:", sql.sqlite3.sqlite_version, "\n")
+        self.debug_header("\nSQL - Sqlite3 Information")
+        self.debug_detail("Sqlite3 Version:", sql.sqlite3.sqlite_version, "\n")
         rows = sql.con.execute("SELECT * FROM sqlite_master;").fetchall()
-        for row in rows:
-            print(row, "\n")
+        for row in rows:  # create tables and indices information
+            self.debug_detail(row)
+        self.debug_detail()  # Blank line
 
-        # Need SQL version 3.22 for INTO option, current is 3.11
+        # Cannot run vacuum - need SQL version 3.22 for INTO option, current is 3.11
         #sql.con.execute("VACUUM INTO '/run/user/1000/mserve library.db'")
 
         if sql.ofb.blacks is not None:
-            print("\nSQL Blacklisted songs")
-            print("====================================\n")
+            self.debug_detail("\nSQL Blacklisted songs")
+            self.debug_detail("-" * 51, "\n")
             for i, entry in enumerate(sql.ofb.blacks):
-                print(i, ":", entry)
-            print("\nSQL Whitelist substitutes")
-            print("====================================\n")
+                self.debug_detail(i, ":", entry)
+            self.debug_detail("\nSQL Whitelist substitutes")
+            self.debug_detail("-" * 51, "\n")
             for i, entry in enumerate(sql.ofb.whites):
-                print(i, ":", entry)
+                self.debug_detail(i, ":", entry)
 
-        print("\nSQL Table Sizes")
-        print("====================================\n")
+        self.debug_detail("\nSQL Table Sizes")
+        self.debug_detail("-" * 51, "\n")
 
-        self.show_sql_table_size("SQL Location Table", "Location")
-        self.show_sql_table_size("SQL Music Table", "Music")
-        self.show_sql_table_size("SQL History Table", "History")
-        sql.hist_count_type_action('file', 'init')
-        sql.hist_count_type_action('file', 'edit')
-        sql.hist_count_type_action('meta', 'init')
-        sql.hist_count_type_action('meta', 'edit')
-        sql.hist_count_type_action('scrape', 'parm')
-        sql.hist_count_type_action('lyrics', 'scrape')
-        sql.hist_tally_whole()
+        self.debug_show_sql_table_size("SQL Location Table", "Location")
+        self.debug_show_sql_table_size("SQL Music Table", "Music")
+        self.debug_show_sql_table_size("SQL History Table", "History")
+        self.debug_show_sql_type_action('file', 'init')
+        self.debug_show_sql_type_action('file', 'edit')
+        self.debug_show_sql_type_action('meta', 'init')
+        self.debug_show_sql_type_action('meta', 'edit')
+        self.debug_show_sql_type_action('scrape', 'parm')
+        self.debug_show_sql_type_action('lyrics', 'scrape')
+        #sql.hist_tally_whole()  # Prints tons of lines
+        # noinspection SpellCheckingInspection
         ''' To use Virtual Table
         # https://www.sqlite.org/dbstat.html
         try:
@@ -4085,76 +4175,51 @@ class MusicLocationTree(PlayCommonSelf):
             print("Exception class is: ", er.__class__)
             print("SQL wasn't compiled with SQLITE_ENABLE_DBSTAT_VTAB")
         '''
+        self.debug_output()
+
 
         if pav.pulse_is_working:
             ''' Fast method using pulse audio direct interface '''
-            print("\nPulse Audio - sink_input_list (sound sources)")
-            print("="*51, "\n")
+            self.debug_header("\nPulse Audio - vu_pulse_audio.py PulseControl()")
 
+            self.debug_detail("Pulse Audio - sink_input_list (sound sources)")
+            self.debug_detail("-"*51, "\n")
             for sink in pav.pulse.sink_input_list():
-                print("sink:", sink, sink.proplist['application.name'])
+                self.debug_detail("sink:", sink, sink.proplist['application.name'])
 
-            print("\nPulse Audio - sink_list (sound cards)")
-            print("="*51, "\n")
-
+            self.debug_detail("\nPulse Audio - sink_list (sound cards)")
+            self.debug_detail("-"*51, "\n")
             for sink in pav.pulse.sink_list():
-                print("sink:", sink)
+                self.debug_detail("sink:", sink)
 
-            print("\nPulse Audio - source_list (recording)")
-            print("="*51, "\n")
-
+            self.debug_detail("\nPulse Audio - source_list (recording)")
+            self.debug_detail("-"*51, "\n")
             for sink in pav.pulse.source_list():
-                print("sink:", sink)
+                self.debug_detail("sink:", sink)
 
-            print("\nPulse Audio - card_list.profile_list")
-            print("="*51, "\n")
-
+            self.debug_detail("\nPulse Audio - card_list.profile_list")
+            self.debug_detail("-"*51, "\n")
             card = pav.pulse.card_list()[0]
-            print(card.profile_list)
+            self.debug_detail(card.profile_list)
 
-            print("\nPulse Audio - pulse.server_info().default_sink_name")
-            print("="*51, "\n")
+            self.debug_detail("\nPulse Audio - pulse.server_info().default_sink_name")
+            self.debug_detail("-"*51, "\n")
+            self.debug_detail(pav.pulse.server_info().default_sink_name)
 
-            print(pav.pulse.server_info().default_sink_name)
+            self.debug_output()
 
-        #print("\nFrames in self.lib_top (Toplevel) see toolkit.py list_widgets())")
-        # Show frame widgets defined in library. Scan options are: "All", "Toplevel",
-        # "Frame", "Label", "Button", "Treeview", "Scrollbar", "Menu", "Canvas" & "Other"
-        #toolkit.list_widgets(self.lib_top, scan="Frame")  # Too much info. Needs work!
 
-        print("\n\n=======================================")
-        print("\nInformation Centre - self.info.dict[] =\n")
-        print("--- KEY ---\t  --- VALUE ---\n")
-        for key in self.info.dict:
-            if isinstance(self.info.dict[key], list):
-                entries = self.info.dict[key]  # pattern or trace
-                if len(entries) == 1:  # If zero, drop down to print regular line
-                    print("['" + key + "']\t:", self.info.dict[key][0])
-                    continue
-                elif len(entries) > 1:  # If zero, drop down to print regular line
-                    print("['" + key + "']\t: list[VALUES] on lines below.")
-                    for entry in entries:
-                        print(entry)
-                    continue
-                    # Looks ok for regular list like ['source]' but not for ['text']:
+        title = "show_debug() - mserve.py"
+        text = "DEBUG information written to stdout (Standard Output)\n"
+        text += "and to Information Centre (use 'View' dropdown menu)"
+        #message.ShowInfo(self.lib_top, "DEBUG - mserve.py",
+        #                 "DEBUG information written to stdout (Standard Output)",
+        #                 thread=self.get_refresh_thread)
+        #self.info.cast("DEBUG information written to stdout (Standard Output)")
+        lcs.out_cast_show(title, text)
 
-                    # ['text']	: Begin playing song: Moon age Daydream
-                    # Artist:	Guardians of the Galaxy
-                    # Album:	Awesome Mix Vol. 1
-                    # Track:	4/12	Date:	2014	Duration:	00:04:42
-                    # ['patterns']	: None
-
-            print("['" + key + "']\t:", self.info.dict[key])  # regular line
-
-        print("\n=======================================\n")
-
-        message.ShowInfo(self.lib_top, "DEBUG - mserve.py",
-                         "DEBUG information written to Stdout (Standard Output)",
-                         thread=self.get_refresh_thread)
-        self.info.cast("DEBUG information written to Stdout (Standard Output)")
-
-    @staticmethod
-    def show_sql_table_size(title, key, prt=True):
+    # noinspection SpellCheckingInspection
+    def debug_show_sql_table_size(self, title, key, prt=True):
         """ Print table page count and size of all pages. """
 
         sql_cmd = "SELECT count(*) FROM dbstat('main') WHERE name=?;"
@@ -4163,36 +4228,117 @@ class MusicLocationTree(PlayCommonSelf):
             d = dict(sql.cursor.fetchone())
             page_count = d['count(*)']
         except sql.sqlite3.Error as er:
-            print('SQLite error: %s' % (' '.join(er.args)))
-            print("Exception class is: ", er.__class__)
-            print("SQL wasn't compiled with SQLITE_ENABLE_DBSTAT_VTAB")
+            page_count = 0
+            self.debug_detail('SQLite error: %s' % (' '.join(er.args)))
+            self.debug_detail("Exception class is: ", er.__class__)
+            self.debug_detail("SQL wasn't compiled with SQLITE_ENABLE_DBSTAT_VTAB")
 
         sql_cmd = "SELECT sum(pgsize) FROM dbstat WHERE name=?"
         try:
             sql.cursor.execute(sql_cmd, [key])
         except sql.sqlite3.OperationalError as er:
-            print('SQLite error: %s' % (' '.join(er.args)))
-            print("Exception class is: ", er.__class__)
-            print("SQL Error")
+            self.debug_detail('SQLite error: %s' % (' '.join(er.args)))
+            self.debug_detail("Exception class is: ", er.__class__)
+            self.debug_detail("SQL Error")
             return
 
         try:
             d = dict(sql.cursor.fetchone())
             pages_size = d['sum(pgsize)']
         except sql.sqlite3.Error as er:
-            print('SQLite error: %s' % (' '.join(er.args)))
-            print("Exception class is: ", er.__class__)
-            print("SQL wasn't compiled with SQLITE_ENABLE_DBSTAT_VTAB")
+            self.debug_detail('SQLite error: %s' % (' '.join(er.args)))
+            self.debug_detail("Exception class is: ", er.__class__)
+            self.debug_detail("SQL wasn't compiled with SQLITE_ENABLE_DBSTAT_VTAB")
             return
 
-        # Location table only has 1 page so needs extra tab
+        # Location table only has 1 page so needs extra tab to line up size
         tabs = "\t\t" if key == "Location" else "\t"
 
         if prt:
-            print("\t" + title, "\tPage Count:", '{:n}'.format(page_count),
-                  tabs + "Size of all pages:", '{:n}'.format(pages_size))
+            self.debug_detail(title, "\tPage Count:", '{:n}'.format(page_count),
+                              tabs + "Size of all pages:", '{:n}'.format(pages_size))
 
         return page_count, pages_size
+
+    def debug_show_sql_type_action(self, Type, Action):
+        """ Copied from sql.hist_count_type_action() """
+        count = sql.hist_count_type_action(Type, Action, prt=False)
+        prt_type = " | Type='" + Type + "' | Action='" + Action + "' | "
+        self.debug_detail("    " + 'History Table rows:', prt_type,
+                          'count:', '{:n}'.format(count))
+
+    def debug_recreate_file(self, clear_lists=True):
+        """ Create an empty debug file and clear debug lists.
+            Called when show_debug() first starts and by
+            debug_read_print(clear_lists=False). """
+        with open(self.debug_file, mode='w') as file_object:
+            file_object.write("")
+        if clear_lists:
+            self.debug_title = []  # When show_debug() starts up, clear lists
+            self.debug_text = []  # For debug_read_print(), don't clear lists
+
+    def debug_header(self, *args, **kwargs):
+        """ Receive print statement parameters and print to file.
+            Read back print file and add to title list.
+            If underline is True, add 80 * "=" to title list and "\n". """
+        self.debug_print(*args)  # Write to print_file
+        result = self.debug_read_print()  # Read print file (or error messages)
+        if result:  # Should always be a result
+            self.debug_title.append(result)
+
+        ''' Add underlines after heading? '''
+        underline = True  # Default as normally only one header + underline
+        for key, value in kwargs. iteritems():
+            if key == 'underline':
+                underline = value
+        if underline:
+            self.debug_title.append("=" * 90 + "\n\n")
+
+    def debug_detail(self, *args):
+        """ Receive print statement parameters and print to file.
+            Read back print file and add to text list. """
+        self.debug_print(*args)  # Write to print_file
+        result = self.debug_read_print()  # Read print file (or error messages)
+        if result:  # Should always be a result
+            self.debug_title.append(result)
+
+    def debug_print(self, *args):
+        """ Bullet-proof printing to print file """
+        with open(self.debug_file, mode='a') as file_object:
+            try:
+                print(*args, file=file_object)
+            except Exception as err:
+                file_object.write("Printing to file FAILED. " + 
+                                  " Attempting normal print to console.\n")
+                try:
+                    print("Exception:", err)
+                    print("Attempting normal print to console")
+                    print(*args)
+                    file_object.write("Printing to console SUCCEEDED. " +
+                                      " Check console for missed output.\n")
+                except Exception as err:
+                    print("Exception:", err)
+                    print("Normal print to console FAILED TOO!")
+                    file_object.write("Printing failed TWICE. See console.\n")
+
+    def debug_read_print(self):
+        """ Read results printed to file 
+            Empty print_file when done. """
+        with open(self.debug_file, mode='r') as file_object:
+            result = file_object.read()  # read one line with \n at end
+        self.debug_recreate_file(clear_lists=False)  # keep WIP lists in place
+        return result
+
+    def debug_output(self):
+        """ Sent title and text lists to console and self.info.fact(). """
+
+        for t in self.debug_title:
+            print(t, end="")  # do not add "\n" to print stream
+        for t in self.debug_text:
+            print(t, end="")  # do not add "\n" to print stream
+        self.info.fact(''.join(self.debug_title) + ''.join(self.debug_text),
+                       collapsed=True, ms_font="TkFixedFont")
+        self.debug_recreate_file(clear_lists=True)  # Clear title & text lists
 
     # ==============================================================================
     #
@@ -4231,7 +4377,7 @@ class MusicLocationTree(PlayCommonSelf):
         self.mus_top.rowconfigure(0, weight=1)
 
         ''' Create master frame for treeview and buttons '''
-        master_frame = tk.Frame(self.mus_top, bg="olive", relief=tk.RIDGE)
+        master_frame = tk.Frame(self.mus_top, bg="LightGrey", relief=tk.RIDGE)
         master_frame.grid(sticky=tk.NSEW)
         master_frame.columnconfigure(0, weight=1)
         master_frame.rowconfigure(0, weight=1)
@@ -4253,13 +4399,13 @@ class MusicLocationTree(PlayCommonSelf):
         dtb.close()
 
         ''' Treeview Buttons '''
-        frame3 = tk.Frame(master_frame, bg="Blue", bd=2, relief=tk.GROOVE,
+        frame3 = tk.Frame(master_frame, bg="LightGrey", bd=2, relief=tk.GROOVE,
                           borderwidth=g.FRM_BRD_WID)
         frame3.grid_rowconfigure(0, weight=1)
         frame3.grid_columnconfigure(0, weight=0)
         frame3.grid(row=1, column=0, sticky=tk.NW)
 
-        ''' ✘ Close Button ✘ ✔ '''
+        ''' ✘ Close Button '''
         self.mus_top.bind("<Escape>", self.mus_close)
         self.mus_top.protocol("WM_DELETE_WINDOW", self.mus_close)
         self.mus_view_btn1 = tk.Button(frame3, text="✘ Close",
@@ -4662,7 +4808,7 @@ class MusicLocationTree(PlayCommonSelf):
         self.his_top.rowconfigure(0, weight=1)
 
         ''' Create master frame for treeview and buttons '''
-        master_frame = tk.Frame(self.his_top, bg="olive", relief=tk.RIDGE)
+        master_frame = tk.Frame(self.his_top, bg="LightGrey", relief=tk.RIDGE)
         master_frame.grid(sticky=tk.NSEW)
         master_frame.columnconfigure(0, weight=1)
         master_frame.rowconfigure(0, weight=1)
@@ -4684,13 +4830,13 @@ class MusicLocationTree(PlayCommonSelf):
         dtb.close()
 
         ''' Treeview Buttons '''
-        frame3 = tk.Frame(master_frame, bg="Blue", bd=2, relief=tk.GROOVE,
+        frame3 = tk.Frame(master_frame, bg="LightGrey", bd=2, relief=tk.GROOVE,
                           borderwidth=g.FRM_BRD_WID)
         frame3.grid_rowconfigure(0, weight=1)
         frame3.grid_columnconfigure(0, weight=0)
         frame3.grid(row=1, column=0, sticky=tk.NW)
 
-        ''' ✘ Close Button ✘ ✔ '''
+        ''' ✘ Close Button '''
         self.his_top.bind("<Escape>", self.his_close)
         self.his_top.protocol("WM_DELETE_WINDOW", self.his_close)
         self.his_view_btn1 = tk.Button(frame3, text="✘ Close",
@@ -4735,9 +4881,7 @@ class MusicLocationTree(PlayCommonSelf):
         self.his_view.tree.tag_configure('menu_sel', background='Yellow')
 
     def populate_his_tree(self, delayed_textbox):
-        """ Stuff SQL header rows into treeview
-            TODO: Review 'delayed_textbox'. If only used here, define it below.
-        """
+        """ Stuff SQL header rows into treeview """
         sql.hist_cursor.execute("SELECT * FROM History")
         rows = sql.hist_cursor.fetchall()
         if rows:
@@ -4808,9 +4952,7 @@ class MusicLocationTree(PlayCommonSelf):
 
 
     def show_sql_location(self, sbar_width=14):
-        """
-            Open SQL Location treeview. Patterned after show_sql_music()
-        """
+        """ Open SQL Location treeview. Patterned after show_sql_music() """
 
         ''' SQL Location Table View already active? '''
         if self.lcs_top_is_active is True:
@@ -4818,25 +4960,6 @@ class MusicLocationTree(PlayCommonSelf):
             return
 
         location_dict = sql.location_treeview()
-        '''
-        Define Data Dictionary treeview columns for location table.
-        self.scr_code.set(loc_dict['code'])  # Replacement for 'iid'
-        self.scr_name.set(loc_dict['name'])
-        self.scr_modify_time.set(loc_dict['modify_time'])  # New
-        self.scr_image_path.set(loc_dict['image_path'])  # New
-        self.scr_mount_point.set(loc_dict['mount_point'])  # New
-        self.scr_topdir.set(loc_dict['topdir'])
-        self.scr_host.set(loc_dict['host'])
-        self.scr_wakecmd.set(loc_dict['wakecmd'])
-        self.scr_testcmd.set(loc_dict['testcmd'])
-        self.scr_testrep.set(loc_dict['testrep'])
-        self.scr_mountcmd.set(loc_dict['mountcmd'])
-        self.scr_activecmd.set(loc_dict['activecmd'])
-        self.scr_activemin.set(loc_dict['activemin'])
-        self.scr_touchcmd.set(loc_dict['touch_cmd'])  # Replaces 'activecmd'
-        self.scr_touchmin.set(loc_dict['touch_min'])  # Replaces 'activemin'
-        self.scr_comments.set(loc_dict['comments'])  # New
-        '''
         columns = ["code", "name", "topdir", "image_path", "host_name",
                    "comments"]
         toolkit.select_dict_columns(columns, location_dict)
@@ -4859,7 +4982,7 @@ class MusicLocationTree(PlayCommonSelf):
         self.lcs_top.rowconfigure(0, weight=1)
 
         ''' Create master frame for treeview and buttons '''
-        master_frame = tk.Frame(self.lcs_top, bg="olive", relief=tk.RIDGE)
+        master_frame = tk.Frame(self.lcs_top, bg="LightGrey", relief=tk.RIDGE)
         master_frame.grid(sticky=tk.NSEW)
         master_frame.columnconfigure(0, weight=1)
         master_frame.rowconfigure(0, weight=1)
@@ -4881,13 +5004,13 @@ class MusicLocationTree(PlayCommonSelf):
         dtb.close()
 
         ''' Treeview Buttons '''
-        frame3 = tk.Frame(master_frame, bg="Blue", bd=2, relief=tk.GROOVE,
+        frame3 = tk.Frame(master_frame, bg="LightGrey", bd=2, relief=tk.GROOVE,
                           borderwidth=g.FRM_BRD_WID)
         frame3.grid_rowconfigure(0, weight=1)
         frame3.grid_columnconfigure(0, weight=0)
         frame3.grid(row=1, column=0, sticky=tk.NW)
 
-        ''' ✘ Close Button ✘ ✔ '''
+        ''' ✘ Close Button '''
         self.lcs_top.bind("<Escape>", self.lcs_close)
         self.lcs_top.protocol("WM_DELETE_WINDOW", self.lcs_close)
         self.lcs_view_btn1 = tk.Button(frame3, text="✘ Close",
@@ -4983,7 +5106,7 @@ class MusicLocationTree(PlayCommonSelf):
 
             if delayed_textbox.update(dtb_line):
                 # delayed_textbox returns true only when visible otherwise
-                # we are in quiet mode because not enough time has passed.
+                # in quiet mode because not enough time has passed.
                 #dd_view.tree.see(sql_row_id)  # Takes long time
                 #dd_view.tree.update()
                 pass
@@ -4994,8 +5117,7 @@ class MusicLocationTree(PlayCommonSelf):
 
     def mus_button_3_click(self, event):
         """ Right button clicked to drill down on SQL Music treeview line.
-            Left Click and hold on heading allows column to be dragged.
-        """
+            Left Click and hold on heading to drag column and change order. """
         self.view = self.mus_view  # Set self.view to self.his_view or self.mus_view
         self.common_top = self.mus_top
         self.common_button_3(event)
@@ -5012,9 +5134,7 @@ class MusicLocationTree(PlayCommonSelf):
         """ Right button clicked to drill down on SQL Location treeview line.
             Left Click and hold on heading allows column to be dragged.
         """
-        self.view = self.lcs_view  # Set self.view to self.his_view or self.mus_view
-        self.common_top = self.lcs_top
-        self.common_button_3(event)
+        return  # Nothing to display.
 
     def common_button_3(self, event):
         """ Right button clicked in SQL Music, History or Location treeview.
@@ -5097,20 +5217,14 @@ class MusicLocationTree(PlayCommonSelf):
         self.right_click_menu(event, pretty)
 
     def right_click_menu(self, event, pretty):
-        """ Right-clicked treeview line. Popup menu with options:
-
-            - Display Message Metadata
-            - Display Message
-            - Download backup to working directory
-
-        """
+        """ Right-clicked in common treeview. Popup menu """
 
         menu = tk.Menu(root, tearoff=0)
         menu.post(event.x_root, event.y_root)
 
         # If lambda isn't used the command is executed as soon as popup
         # menu is displayed, not when option is chosen.
-        menu.add_command(label="View SQL Table Row", font=(None, g.MED_FONT),
+        menu.add_command(label="View SQL Metadata", font=(None, g.MED_FONT),
                          command=lambda: self.view_sql_row(pretty))
         ''' view_library will trap Music ID = 0 and give message. '''
         menu.add_command(label="Open in library", font=(None, g.MED_FONT),
@@ -5119,7 +5233,7 @@ class MusicLocationTree(PlayCommonSelf):
 
         if self.view == self.mus_view:
             """ SQL Music Table must be opened for view_metadata() """
-            menu.add_command(label="View Metadata", font=(None, g.MED_FONT),
+            menu.add_command(label="View Raw Metadata", font=(None, g.MED_FONT),
                              command=lambda: self.view_metadata(pretty))
             menu.add_separator()
 
@@ -5385,7 +5499,8 @@ class MusicLocationTree(PlayCommonSelf):
         try:
             with open(lc.ENCODE_DEV_FNAME, 'rb') as f:
                 last_disc_contents = pickle.load(f)
-        except:
+        except Exception as err:
+            print("Exception err:", err)  # If reboot [errno 2] file not found
             last_disc_contents = None
         last_disc = None  # For testing save 63 seconds reading discid
         if ENCODE_DEV and last_disc_contents:
@@ -5885,11 +6000,10 @@ class MusicLocationTree(PlayCommonSelf):
                  '''
 
         if self.long_running_process:
-            # TODO: message isn't appearing inside long running process
             title = "Long running process in progress"
-            text += "Cannot start music after long running process started.\n\n"
-            text += "Music playing before long running process will continue "
-            text += "playing during long running."
+            text = "Cannot start music after long running process started.\n\n"
+            text += "Music started before long running process will continue\n"
+            text += "playing."
             message.ShowInfo(self.lib_top, title, text, 'left',
                              thread=self.get_refresh_thread)
             self.info.cast(title + "\n\n" + text)
@@ -5955,15 +6069,10 @@ class MusicLocationTree(PlayCommonSelf):
             ext.launch_command(ext_name, toplevel=self.play_top)
 
         ''' Place Window top-left of parent window with g.PANEL_HGT padding '''
-        # TODO: "Using Playlist: Big List"
-        #xy = (self.lib_top.winfo_x() + g.PANEL_HGT,
-        #      self.lib_top.winfo_y() + g.PANEL_HGT)
         self.play_top.minsize(width=g.BTN_WID * 10, height=g.PANEL_HGT * 10)
-        #self.play_top.geometry('+%d+%d' % (xy[0], xy[1]))
-        # June 1, 2021 new sql history
-        geom = monitor.get_window_geom('playlist')
+        geom = monitor.get_window_geom('playlist')  # June 1, 2021 sql history
         self.play_top.geometry(geom)
-        self.set_title_suffix()
+        self.set_title_suffix()  # Playlist name for title bar
         self.play_top_title = "Playing " + self.title_suffix + " - mserve"
         self.play_top.title(self.play_top_title)
         self.play_top.configure(background="Gray")
@@ -5993,13 +6102,62 @@ class MusicLocationTree(PlayCommonSelf):
         self.art_label.bind("<Button-1>", self.pp_toggle)  # click artwork to pause/play
         # Leave empty row #5 for F3 frame (was row span=5)
 
+
+        ''' Volume Slider Frame '''
+        self.slider_frm = ttk.Frame(self.play_frm, borderwidth=0)
+        self.slider_frm.grid(row=0, column=1, columnspan=2, sticky=tk.EW,
+                             padx=5, pady=(8, 4))
+        self.slider_frm.columnconfigure((0, 2), weight=0)  # speakers
+        self.slider_frm.columnconfigure(1, weight=5)  # Volume Slider
+        self.slider_frm.rowconfigure(0, weight=0)
+
+        '''  self.ffplay_mute  LEFT: 🔉 U+F1509  RIGHT: 🔊 U+1F50A '''
+        self.ffplay_mute = tk.Label(
+            self.slider_frm, borderwidth=0, highlightthickness=0,
+            text="    🔉", justify=tk.CENTER, font=g.FONT)  # justify not working
+        self.ffplay_mute.grid(row=0, column=0, sticky=tk.W)
+        self.ffplay_mute.bind("<Button-1>", lambda _: pav.fade(
+            self.play_ctl.sink, float(pav.get_volume(self.play_ctl.sink)),
+            25, .5, step_cb=self.init_ffplay_slider))
+        # focus in/out aren't working :(
+        self.ffplay_mute.bind("<FocusIn>", lambda _: print("focus in"))
+        self.ffplay_mute.bind("<FocusOut>", lambda _: print("focus out"))
+
+        text = "Speaker with one wave.\n"
+        text += "Click to reduce the volume to 25%.\n"
+        text += "Music keeps play with no sound.\n"
+        text += "You can also click on album art to\n"
+        text += "pause music and reduce the volume."
+        self.tt.add_tip(self.ffplay_mute, tool_type='label',
+                        text=text, anchor="sw")
+
+        '''  self.ffplay_full  RIGHT: 🔊 U+1F50A '''
+        self.ffplay_full = tk.Label(
+            self.slider_frm, borderwidth=0, highlightthickness=0,
+            text="    🔉", font=g.FONT)  # justify not working
+        self.ffplay_full.grid(row=0, column=2)
+        self.ffplay_full.bind("<Button-1>", lambda _: pav.fade(
+            self.play_ctl.sink, float(pav.get_volume(self.play_ctl.sink)),
+            100, .5, step_cb=self.init_ffplay_slider))
+
+        text = "Speaker with three waves.\n"
+        text += "Click to restore the volume to 100%."
+        self.tt.add_tip(self.ffplay_full, tool_type='label',
+                        text=text, anchor="se")
+
         ''' Volume Slider https://www.tutorialspoint.com/python/tk_scale.htm '''
         self.ffplay_slider = tk.Scale(  # highlight color doesn't seem to work?
-            self.play_frm, orient=tk.HORIZONTAL, tickinterval=0, showvalue=0,
+            self.slider_frm, orient=tk.HORIZONTAL, tickinterval=0, showvalue=0,
             highlightcolor="Blue", activebackgroun="Gold", troughcolor="Black",
-            command=self.set_ffplay_sink, cursor='boat red red')
-        self.ffplay_slider.grid(row=0, column=1, columnspan=2, sticky=tk.EW, 
-                                padx=5, pady=(8, 0))
+            command=self.set_ffplay_sink, borderwidth=0, cursor='boat red red')
+        self.ffplay_slider.grid(row=0, column=1, padx=4, ipady=1, sticky=tk.EW)
+
+        text = "Volume slider.\n"
+        text += "Click and drag button to change volume.\n"
+        text += "Click on space left of button to reduce volume.\n"
+        text += "Click on space right of button to increase volume."
+        self.tt.add_tip(self.ffplay_slider, tool_type='label',
+                        text=text, anchor="sc")
 
         ''' Aug 9/23 
         https://soundcharts.com/blog/music-metadata
@@ -6437,6 +6595,12 @@ class MusicLocationTree(PlayCommonSelf):
         self.play_btn_frm.destroy()
         self.play_btn_frm = None  # Extra insurance
         self.build_play_btn_frm()
+
+        ''' Apply current artwork colors to newly built button bar '''
+        self.play_btn_frm.configure(bg=self.theme_bg)
+        toolkit.config_all_buttons(self.play_top, fg=self.theme_bg,
+                                   bg=self.theme_fg)
+
         ''' Lift play_top to see new button frame '''
         self.play_top.lift()
         self.play_on_top = True
@@ -6458,7 +6622,7 @@ class MusicLocationTree(PlayCommonSelf):
             Dynamically create buttons depending on 'play_hockey_allowed'
             Less buttons for long running process. """
         ''' Frame for Buttons '''
-        self.play_btn_frm = tk.Frame(self.play_top, bg="Olive",
+        self.play_btn_frm = tk.Frame(self.play_top, bg="LightGrey",
                                      borderwidth=g.FRM_BRD_WID, relief=tk.GROOVE)
         self.play_btn_frm.grid(row=20, column=0, sticky=tk.NSEW)  # Aug 9/23 was 3
         # Leave empty row #2 for F3 frame (was row=2)
@@ -6515,7 +6679,7 @@ class MusicLocationTree(PlayCommonSelf):
                 # BIG_SPACE = " "         # UTF-8 (2003) aka Em Space
                 # June 17, 2023: Change 🠊 to next track button 23ED ⏭
                 self.next_button = \
-                    tk.Button(self.play_btn_frm, text=" Next ⏭ ", width=g.BTN_WID2 - 5,
+                    tk.Button(self.play_btn_frm, text="Next  ⏭", width=g.BTN_WID2 - 7,
                               command=lambda s=self: s.song_set_ndx('next'))
                 self.next_button.grid(row=0, column=col, padx=2, sticky=tk.W)
                 self.tt.add_tip(self.next_button, "Play next song in playlist.",
@@ -6565,7 +6729,7 @@ class MusicLocationTree(PlayCommonSelf):
                 self.chron_is_hidden = False  # DO THIS ONCE?
                 self.chron_button = tk.Button(
                     self.play_btn_frm, text="🖸 Hide Chronology",
-                    width=g.BTN_WID2 + 5, command=lambda s=self: s.chron_toggle())
+                    width=g.BTN_WID2 + 2, command=lambda s=self: s.chron_toggle())
                 self.chron_button.grid(row=0, column=col, padx=2, sticky=tk.W)
 
                 # TODO: DRY - This text is duplicated in show/hide function
@@ -6645,7 +6809,7 @@ class MusicLocationTree(PlayCommonSelf):
     def create_scroll_button_and_tooltip(self, rounded_text, tt_text, ms_font):
         """ Define a rounded rectangle button and it's tooltip """
         rectangle = img.RoundedRectangle(
-            self.lyrics_frm, rounded_text, 'black', 'white', ms_font=g.FONT,
+            self.lyrics_frm, rounded_text, 'black', 'white', ms_font=ms_font,
             command=self.play_lyrics_toggle_scroll)
 
         # Colors reassigned for each song in set_artwork_colors()
@@ -9689,7 +9853,6 @@ mark set markName index"
         hex_background = img.rgb_to_hex(play_frm_bg)
         dec_foreground = img.contrasting_rgb_color(play_frm_bg)
         hex_foreground = img.rgb_to_hex(dec_foreground)
-        # Consider name self.theme_bg and self.theme_fg
         self.theme_bg = hex_background
         self.theme_fg = hex_foreground
 
@@ -9701,6 +9864,9 @@ mark set markName index"
         toolkit.config_all_buttons(self.play_top, fg=self.theme_bg,
                                    bg=self.theme_fg)
 
+        # Volume slider
+        self.ffplay_slider.config(troughcolor=self.theme_bg)
+
         # Apply color code to canvas rounded button and text
         #self.lyrics_panel_scroll.update_colors(hex_foreground, hex_background)
         self.lyrics_panel_scroll_a_m.update_colors(hex_foreground, hex_background)
@@ -9711,7 +9877,7 @@ mark set markName index"
 
         # Apply color code to Lyrics
         self.lyrics_master_frm.config(bg=hex_background,
-                                highlightbackground=hex_foreground)
+                                      highlightbackground=hex_foreground)
         self.lyrics_score_box.config(bg=hex_background, fg=hex_foreground,
                                      highlightbackground=hex_foreground)
         self.lyrics_score_box.tag_config('highlight', background=hex_foreground,
@@ -10048,7 +10214,7 @@ mark set markName index"
             TV_SOUND = d['SourceDetail']
 
         # Hockey volume can now be changed. Note description must MATCH EXACTLY
-        self.edit_menu.entryconfig("TV Volume for Hockey Commercials", state=tk.NORMAL)
+        self.edit_menu.entryconfig("Volume During TV Commercials", state=tk.NORMAL)
 
         return hockey_state
 
@@ -10324,13 +10490,18 @@ mark set markName index"
         #    tool_type="canvas_button", anchor="nw")
 
         ''' Chronology treeview Colors .tag_configure() '''
-        self.chron_tree.tag_configure('normal', background='Black',
-                                      foreground='Gold')
-        self.chron_tree.tag_configure('chron_sel', background='Gold',
-                                      foreground='Black')
+        # Aug 23/23 - Chron Tree 'normal' tag no longer needed for colors
+        #self.chron_tree.tag_configure('normal', background='Black',
+        #                              foreground='Gold')
+        self.chron_tree.tag_configure('chron_sel', background='ForestGreen',
+                                      foreground='White')
 
         ''' Configure tag for row highlight '''
         self.chron_tree.tag_configure('highlight', background='LightBlue',
+                                      foreground="Black")
+
+        ''' Aug 23/23 - Configure tag for highlight of chron_sel line '''
+        self.chron_tree.tag_configure('highlight_sel', background='Gold',
                                       foreground="Black")
 
         self.chron_tree.bind('<Motion>', self.chron_highlight_row)
@@ -10405,11 +10576,19 @@ mark set markName index"
 
         ''' Remove "normal" or "chron_sel" tag and replace with "highlight" '''
         tags = self.chron_tree.item(item)['tags']
-        if "chron_sel" in tags:
+        if "chron_sel" in tags:  # BRICS + AISUEE = BAR ICE ISSUE
+            # Aug 23/23 - removing chron_sel gives pure highlight color
             toolkit.tv_tag_replace(self.chron_tree, item, "chron_sel", "highlight", strict=True)
             self.chron_last_tag_removed = "chron_sel"
-        elif "normal" in tags:
-            toolkit.tv_tag_replace(self.chron_tree, item, "normal", "highlight", strict=True)
+            # Aug 23/23 - Try adding simply adding 'highlight' instead of replace
+            # tag color stays chron_sel color and highlight color doesn't morph
+            # Consider replacing chron_sel with play_sel and changing leave
+            #toolkit.tv_tag_add(self.chron_tree, item, "highlight")
+            #self.chron_last_tag_removed = "normal"  # Fake to keep chron_sel there
+            pass  # Needs redesign.
+        elif "normal" in tags:  # Aug 23/23 - No longer used for tree colors
+            # Aug 22/23 - remove strict=True because already highlighted
+            toolkit.tv_tag_replace(self.chron_tree, item, "normal", "highlight")
             self.chron_last_tag_removed = "normal"
         else:
             #print("chron_highlight_row() error tags:", tags, type(tags), "item:", item)
@@ -10512,8 +10691,7 @@ mark set markName index"
         menu.unpost()  # Remove popup menu
 
     def chron_tree_play_now(self, item):
-        """ Play song highlighted in chronology treeview.
-        """
+        """ Play song highlighted in chronology treeview. """
         passed_ndx = int(item) - 1
         if self.ndx == passed_ndx:
             self.song_set_ndx('restart')  # Restart playing at beginning
@@ -11148,7 +11326,7 @@ class FineTune:
         # Unbinds for all functions? https://bugs.python.org/issue31485
 
         ''' Frame for Buttons '''
-        self.btn_bar_frm = tk.Frame(self.top, bg="Olive",
+        self.btn_bar_frm = tk.Frame(self.top, bg="LightGrey",
                                     borderwidth=g.FRM_BRD_WID, relief=tk.GROOVE)
         self.btn_bar_frm.grid(row=3, column=0, sticky=tk.NSEW)
 
@@ -12393,8 +12571,8 @@ class tvVolume:
 
         self.top.minsize(width=g.BTN_WID * 10, height=g.PANEL_HGT * 10)
         self.top.geometry('+%d+%d' % (xy[0], xy[1]))
-        self.top.title("TV Volume during Commercials - mserve")
-        self.top.configure(background="Gray")
+        self.top.title("Volume During TV Commercials - mserve")
+        self.top.configure(background="#eeeeee")  # Replace "LightGrey"
         self.top.columnconfigure(0, weight=1)
         self.top.rowconfigure(0, weight=1)
 
@@ -12403,7 +12581,7 @@ class tvVolume:
 
         ''' Create master frame '''
         self.vol_frm = tk.Frame(self.top, borderwidth=g.FRM_BRD_WID,
-                                relief=tk.RIDGE)
+                                relief=tk.RIDGE, bg="#eeeeee")
         self.vol_frm.grid(column=0, row=0, sticky=tk.NSEW)
         self.vol_frm.columnconfigure(0, weight=1)
         self.vol_frm.columnconfigure(1, weight=5)
@@ -12420,52 +12598,74 @@ class tvVolume:
                 "Sometimes the volume of the hockey game is lower than\n" + \
                 "normal and you have the system volume turned up.\n" + \
                 "In this case, you want to set mserve to a lower volume here. \n"
-        tk.Label(self.vol_frm, text=self.text, justify="left", font=ms_font)\
+        tk.Label(self.vol_frm, text=self.text, justify="left", bg="#eeeeee",
+                 font=ms_font)\
             .grid(row=0, column=0, columnspan=3, sticky=tk.W, padx=PAD_X)
 
-        #''' Input fields: TV_BREAK1, TV_BREAK2 and TV_SOUND '''
+        ''' Input fields: TV_BREAK1, TV_BREAK2 and TV_SOUND '''
         self.commercial_secs = tk.IntVar()
         self.intermission_secs = tk.IntVar()
         self.tv_application = tk.StringVar()
-        tk.Label(self.vol_frm, text="Commercial seconds:",
+        tk.Label(self.vol_frm, text="Commercial seconds:", bg="#eeeeee",
                  font=ms_font).grid(row=1, column=0, sticky=tk.W)
         tk.Entry(self.vol_frm, textvariable=self.commercial_secs,
                  font=ms_font).grid(row=1, column=1, sticky=tk.W)
-        tk.Label(self.vol_frm, text="Intermission seconds:",
+        tk.Label(self.vol_frm, text="Intermission seconds:", bg="#eeeeee",
                  font=ms_font).grid(row=2, column=0, sticky=tk.W)
         tk.Entry(self.vol_frm, textvariable=self.intermission_secs,
                  font=ms_font).grid(row=2, column=1, sticky=tk.W)
-        tk.Label(self.vol_frm, text="TV application name:",
+        tk.Label(self.vol_frm, text="TV application name:", bg="#eeeeee",
                  font=ms_font).grid(row=3, column=0, sticky=tk.W)
         tk.Entry(self.vol_frm, textvariable=self.tv_application,
                  font=ms_font).grid(row=3, column=1, sticky=tk.W)
-        #''' TV Volume Slider '''
+
+        ''' Volume During TV Commercials Slider '''
         self.slider = tk.Scale(self.vol_frm, from_=100, to=25, tickinterval=5,
-                               command=self.set_sink)
+                               command=self.set_sink, bg="#eeeeee")
         self.slider.grid(row=0, column=3, rowspan=4, padx=5, pady=5, sticky=tk.NS)
 
-        #''' Close Button '''
-        self.close_button = tk.Button(self.vol_frm, text="✘ Close",
-                                      width=g.BTN_WID2 - 6,
-                                      command=self.close)
-        self.close_button.grid(row=4, column=0, padx=5, pady=5, sticky=tk.W)
+        ''' button frame '''
+        bottom_frm = tk.Frame(self.vol_frm, bg="#eeeeee")
+        bottom_frm.grid(row=10, columnspan=4, pady=(10, 5), sticky=tk.E)
+
+        ''' Apply Button '''
+        self.apply_button = tk.Button(bottom_frm, text="✔ Apply",
+                                      width=g.BTN_WID2 - 6, font=g.FONT,
+                                      command=self.apply)
+        self.apply_button.grid(row=0, column=0, padx=10, pady=5, sticky=tk.E)
         if self.tt:
-            self.tt.add_tip(self.close_button, "Close TV Volume Slider, ignore changes.",
+            self.tt.add_tip(self.apply_button, "Save Volume Slider changes and exit.",
                             anchor="nw")
+        self.top.bind("<Return>", self.apply)  # DO ONLY ONCE?
+
+        ''' Help Button - 
+            https://www.pippim.com/programs/mserve.html#HelpTvVolume '''
+        ''' 🔗 Help - Videos and explanations on pippim.com '''
+
+        help_text = "Open new window in default web browser for\n"
+        help_text += "videos and explanations on using this screen.\n"
+        help_text += "https://www.pippim.com/programs/mserve.html#\n"
+
+        help_btn = tk.Button(
+            bottom_frm, text="🔗 Help", font=g.FONT,
+            width=g.BTN_WID2 - 4, command=lambda: g.web_help("HelpTvVolume"))
+        help_btn.grid(row=0, column=1, padx=10, pady=5, sticky=tk.E)
+        if self.tt:
+            self.tt.add_tip(help_btn, help_text, anchor="ne")
+
+        ''' Close Button '''
+        self.close_button = tk.Button(bottom_frm, text="✘ Close",
+                                      width=g.BTN_WID2 - 6, font=g.FONT,
+                                      command=self.close)
+        self.close_button.grid(row=0, column=2, padx=(10, 5), pady=5, 
+                               sticky=tk.E)
+        if self.tt:
+            self.tt.add_tip(self.close_button, "Close Volume Slider, ignore changes.",
+                            anchor="ne")
         self.top.bind("<Escape>", self.close)  # DO ONLY ONCE?
         self.top.protocol("WM_DELETE_WINDOW", self.close)
 
-        #''' Apply Button '''
-        self.apply_button = tk.Button(self.vol_frm, text="✔ Apply",
-                                      width=g.BTN_WID2 - 6,
-                                      command=self.apply)
-        self.apply_button.grid(row=4, column=3, padx=5, pady=5, sticky=tk.W)
-        if self.tt:
-            self.tt.add_tip(self.apply_button, "Save TV Volume Slider changes and exit.",
-                            anchor="ne")
-        self.top.bind("<Return>", self.apply)  # DO ONLY ONCE?
-
-        #''' Get current volume & Read stored volume '''
+        ''' Get current volume & Read stored volume '''
         self.last_volume, self.last_sink = self.get_volume()  # Reset this value when ending
         if not self.read_vol():
             message.ShowInfo(self.parent, "Initialization of mserve in progress.",
@@ -12593,7 +12793,7 @@ class tvVolume:
 
     # noinspection PyUnusedLocal
     def close(self, *args):
-        """ Close TV Volume Window """
+        """ Close Volume During TV Commercials Window """
         if self.tt:
             self.tt.close(self.top)
         self.top.destroy()
@@ -12601,7 +12801,8 @@ class tvVolume:
 
         ''' Adjust volume for playing mserve song back to starting level '''
         curr_volume, curr_sink = self.get_volume()  # last_sink may have changed
-        if self.last_volume is not None:
+        if curr_volume and self.last_volume:
+            # curr_volume will be None when shutting down.
             pav.fade(curr_sink, curr_volume, self.last_volume, 1)  # 1 second fade
 
     # noinspection PyUnusedLocal
@@ -12678,6 +12879,8 @@ class FileControlCommonSelf:
         self.EncodingFormat = None  # 'wav', 'm4a', 'oga', etc.
         self.DiscId = None          # gstreamer adds to MP3 automatically
         self.MusicBrainzDiscId = None  # "       "           "
+        self.AudioStream = None     # from ffmpeg self.audio[0] when checked
+        self.ArtworkStream = None     # from ffmpeg self.artwork[0] when checked
 
         ''' mserve SQL Music Table Metadata Extras '''
         self.Rating = None          # Future Use
@@ -12737,7 +12940,7 @@ class FileControl(FileControlCommonSelf):
 
         ''' Make TMP names unique for multiple FileControls racing at once '''
         letters = string.ascii_lowercase + string.digits
-        self.temp_suffix = (''.join(random.choice(letters) for i in range(6)))
+        self.temp_suffix = (''.join(random.choice(letters) for _i in range(6)))
         self.TMP_FFPROBE = TMP_FFPROBE + "_" + self.temp_suffix
         self.TMP_FFMPEG = TMP_FFMPEG + "_" + self.temp_suffix + ".jpg"
 
@@ -12866,11 +13069,12 @@ class FileControl(FileControlCommonSelf):
             # Song: /media/rick/SANDISK128/Music/Hello/There/smile.mp3
             m = mutagen.File(self.last_path)
             if m:  # .wav files have no metadata
-                for line in m:
-                    #print("mutagen line:", line)  # keys are in lowercase with _ removed
+                for _line in m:
+                    #print("mutagen line:", _line)  # keys are in lowercase with _ removed
                     pass
-        except:
+        except Exception as err:
             print("Mutagen error on:", self.last_path)
+            print("Exception:", err)
 
         #   File "/home/rick/python/mserve.py", line 12871, in get_metadata
         #     m = mutagen.File(self.last_path)
@@ -12879,9 +13083,9 @@ class FileControl(FileControlCommonSelf):
         #   File "/usr/lib/python2.7/dist-packages/mutagen/_file.py", line 42, in __init__
         #     self.load(filename, *args, **kwargs)
         #   File "/usr/lib/python2.7/dist-packages/mutagen/id3/__init__.py", line 1093, in load
-        #     self.info = self._Info(fileobj, offset)
+        #     self.info = self._Info(file obj, offset)
         #   File "/usr/lib/python2.7/dist-packages/mutagen/mp3.py", line 185, in __init__
-        #     self.__try(fileobj, offset, size - offset, False)
+        #     self.__try(file obj, offset, size - offset, False)
         #   File "/usr/lib/python2.7/dist-packages/mutagen/mp3.py", line 223, in __try
         #     raise HeaderNotFoundError("can't sync to an MPEG frame")
         # HeaderNotFoundError: can't sync to an MPEG frame
@@ -12965,220 +13169,14 @@ class FileControl(FileControlCommonSelf):
                 key_unique = toolkit.unique_key(key.upper(), self.metadata)
                 self.metadata[key_unique] = val  # Comment can appear twice
 
-
-        ''' More .oga out of order in SQL Music Table Viewer: 
-
-            GARBAGE IN:
-                Input #0, ogg, from '/media/rick/SANDISK128/Music/Compilations/Greatest Hits of the 80’s [Disc #3 of 3]/3-12 Poison.oga':
-                  Duration: 00:04:29.16, start: 0.000000, bitrate: 240 kb/s
-                    Stream #0:0: Audio: vorbis, 44100 Hz, stereo, fltp, 256 kb/s
-                    Metadata:
-                      TRACKTOTAL      : 14
-                      track           : 12
-                      ENCODER         : mserve 3.4.2
-                      TITLE           : Poison
-                      ARTIST          : Alice Cooper
-                      ALBUM           : Greatest Hits of the 80’s [Disc #3 of 3]
-                      TRACK_NUMBER    : 12/14
-                      ALBUM_ARTIST    : Various Artists
-                      COMPOSER        : A. Cooper
-                      DATE            : 1989
-                      GENRE           : Rock
-                      COPYRIGHT       : 2001
-                      COMMENT         : Test two comments in OGG
-                      DISC_NUMBER     : 3/3
-                      CREATION_TIME   : 2023-08-20 17:01:55
-                      DISCID          : ba0dcd0e
-                      MUSICBRAINZ_DISCID: tjAnC0ReEc.f48DpI_lHjx1VEBA-
-                    Stream #0:1: Video: mjpeg, yuvj420p(pc, bt470bg/unknown/unknown), 500x408 [SAR 89:89 DAR 125:102], 90k tbr, 90k tbn, 90k tbc
-                    Metadata:
-                      comment         : Cover (front)
-                      title           : Poison
-
-            GARBAGE OUT:
-                DURATION:	00:04:29.16, start: 0.000000, bitrate: 240 kb/s
-                STREAM #0:	0: Audio: vorbis, 44100 Hz, stereo, fltp, 256 kb/s
-                CREATION_TIME:	2023-08-20 17:01:55
-                DISCID:	ba0dcd0e
-                MUSICBRAINZ_DISCID:	tjAnC0ReEc.f48DpI_lHjx1VEBA-
-                STREAM #0(1):	1: Video: mjpeg, yuvj420p(pc, bt470bg/unknown/unknown), 500x408 [SAR 89:89 DAR 125:102], 90k tbr, 90k tbn, 90k tbc
-                COMMENT(1):	Cover (front)
-                TITLE(1):	Poison
-
-
-            CHANGES:
-
-            'Comment' should NOT be 'Cover (front)'. Instead there should be:
-            'Picture: Cover (front)' - A Place to Call Home (reprise)
-
-            STREAM# 0 should appear behind DURATION
-            CREATION_DATE is new metadata that doesn't exist to wait for.
-            STREAM# 1 is missing altogether. This gives missing artwork error.
-
-ffprobe OUTPUT for OGG ==========================================================
-
-Input #0, ogg, from '/media/rick/SANDISK128/Music/Compilations/Greatest Hits of the 80’s [Disc #3 of 3]/3-12 Poison.oga':
-  Duration: 00:04:29.16, start: 0.000000, bitrate: 240 kb/s
-    Stream #0:0: Audio: vorbis, 44100 Hz, stereo, fltp, 256 kb/s
-    Metadata:
-      TRACKTOTAL      : 14
-      track           : 12
-      ENCODER         : mserve 3.4.2
-      TITLE           : Poison
-      ARTIST          : Alice Cooper
-      ALBUM           : Greatest Hits of the 80’s [Disc #3 of 3]
-      TRACK_NUMBER    : 12/14
-      ALBUM_ARTIST    : Various Artists
-      COMPOSER        : A. Cooper
-      DATE            : 1989
-      GENRE           : Rock
-      COPYRIGHT       : 2001
-      COMMENT         : Test two comments in OGG
-      DISC_NUMBER     : 3/3
-      CREATION_TIME   : 2023-08-20 17:01:55
-      DISCID          : ba0dcd0e
-      MUSICBRAINZ_DISCID: tjAnC0ReEc.f48DpI_lHjx1VEBA-
-    Stream #0:1: Video: mjpeg, yuvj420p(pc, bt470bg/unknown/unknown), 500x408 [SAR 89:89 DAR 125:102], 90k tbr, 90k tbn, 90k tbc
-    Metadata:
-      comment         : Cover (front)
-      title           : Poison
-
-
-ffprobe OUTPUT for FLAC =========================================================
-
-Input #0, flac, from '/media/rick/SANDISK128/Music/Compilations/Greatest Hits of the 80’s [Disc #3 of 3]/3-12 Poison.flac':
-  Metadata:
-    TRACKTOTAL      : 14
-    track           : 12
-    ENCODER         : mserve 3.4.2
-    TITLE           : Poison
-    ARTIST          : Alice Cooper
-    ALBUM           : Greatest Hits of the 80’s [Disc #3 of 3]
-    TRACK_NUMBER    : 12/14
-    ALBUM_ARTIST    : Various Artists
-    COMPOSER        : Alice
-    DATE            : 1989
-    GENRE           : Rock
-    COPYRIGHT       : 2001
-    COMMENT         : Test FLAC
-    DISC_NUMBER     : 3/3
-    CREATION_TIME   : 2023-08-20 15:34:01
-    DISCID          : ba0dcd0e
-    MUSICBRAINZ_DISCID: tjAnC0ReEc.f48DpI_lHjx1VEBA-
-  Duration: 00:04:29.16, start: 0.000000, bitrate: 924 kb/s
-    Chapter #0:0: start 0.000000, end 269.160000
-    Metadata:
-      title           : 
-    Chapter #0:1: start 272.466667, end 269.160000
-    Metadata:
-      title           : 
-    Chapter #0:2: start 475.973333, end 269.160000
-    Metadata:
-      title           : 
-    Chapter #0:3: start 687.466667, end 269.160000
-    Metadata:
-      title           : 
-    Chapter #0:4: start 921.306667, end 269.160000
-    Metadata:
-      title           : 
-    Chapter #0:5: start 1151.306667, end 269.160000
-    Metadata:
-      title           : 
-    Chapter #0:6: start 1505.800000, end 269.160000
-    Metadata:
-      title           : 
-    Chapter #0:7: start 1796.133333, end 269.160000
-    Metadata:
-      title           : 
-    Chapter #0:8: start 2060.466667, end 269.160000
-    Metadata:
-      title           : 
-    Chapter #0:9: start 2268.640000, end 269.160000
-    Metadata:
-      title           : 
-    Chapter #0:10: start 2461.133333, end 269.160000
-    Metadata:
-      title           : 
-    Chapter #0:11: start 2740.640000, end 269.160000
-    Metadata:
-      title           : 
-    Chapter #0:12: start 3009.800000, end 269.160000
-    Metadata:
-      title           : 
-    Chapter #0:13: start 3232.800000, end 269.160000
-    Metadata:
-      title           : 
-    Stream #0:0: Audio: flac, 44100 Hz, stereo, s16
-    Stream #0:1: Video: mjpeg, yuvj420p(pc, bt470bg/unknown/unknown), 500x408 [SAR 1:1 DAR 125:102], 90k tbr, 90k tbn, 90k tbc
-    Metadata:
-      comment         : Cover (front)
-      title           : front cover
-
-ffprobe OUTPUT for MP3 ==========================================================
-
-Input #0, mp3, from '/media/rick/SANDISK128/Music/Compilations/Greatest Hits of the 80’s [Disc #3 of 3]/3-12 Poison.mp3':
-  Metadata:
-    title           : Poison
-    artist          : Alice Cooper
-    track           : 12/14
-    album           : Greatest Hits of the 80’s [Disc #3 of 3]
-    date            : 1989
-    genre           : Rock
-    composer        : D. Child / J. McCurry / A. Cooper
-    copyright       : 2001
-    creation_time   : 2023-08-19T14:33:15
-    encoded_by      : mserve 3.4.2
-    album_artist    : Various Artists
-    CDDB DiscID     : ba0dcd0e
-    MusicBrainz DiscID: tjAnC0ReEc.f48DpI_lHjx1VEBA-
-    discid          : ba0dcd0e
-    musicbrainz_discid: tjAnC0ReEc.f48DpI_lHjx1VEBA-
-  Duration: 00:04:35.70, start: 0.000000, bitrate: 213 kb/s
-    Stream #0:0: Audio: mp3, 44100 Hz, stereo, s16p, 211 kb/s
-    Stream #0:1: Video: mjpeg, yuvj420p(pc, bt470bg/unknown/unknown), 500x408 [SAR 1:1 DAR 125:102], 90k tbr, 90k tbn, 90k tbc
-    Metadata:
-      title           : Front cover
-      comment         : Cover (front)
-
-ffprobe OUTPUT for MP4 ==========================================================
-
-Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilations/Greatest Hits of the 80’s [Disc #3 of 3]/3-12 Poison.m4a':
-  Metadata:
-    major_brand     : mp42
-    minor_version   : 0
-    compatible_brands: mp42mp41isomiso2
-    creation_time   : 2023-08-19 19:14:07
-    album           : Greatest Hits of the 80’s [Disc #3 of 3]
-    title           : Poison
-    artist          : Alice Cooper
-    track           : 12/14
-    disc            : 3/3
-    date            : 1989
-    compilation     : 1
-    gapless_playback: 0
-    encoder         : mserve 3.4.2
-    copyright       : 2001
-    category        : ba0dcd0e
-    album_artist    : Various Artists
-    keywords        : tjAnC0ReEc.f48DpI_lHjx1VEBA-
-  Duration: 00:04:29.14, start: 0.000000, bitrate: 195 kb/s
-    Stream #0:0(eng): Audio: aac (LC) (mp4a / 0x6134706D), 44100 Hz, stereo, fltp, 191 kb/s (default)
-    Metadata:
-      creation_time   : 2023-08-19 19:14:07
-      handler_name    : SoundHandler
-    Stream #0:1: Video: mjpeg, yuvj420p(pc, bt470bg/unknown/unknown), 500x408 [SAR 1:1 DAR 125:102], 90k tbr, 90k tbn, 90k tbc
-
-ffprobe OUTPUT for WAV ==========================================================
-
-Input #0, wav, from '/media/rick/SANDISK128/Music/Compilations/Greatest Hits of the 80’s [Disc #3 of 3]/3-12 Poison.wav':
-  Duration: 00:04:29.16, bitrate: 1411 kb/s
-    Stream #0:0: Audio: pcm_s16le ([1][0][0][0] / 0x0001), 44100 Hz, 2 channels, s16, 1411 kb/s
-
+        # noinspection SpellCheckingInspection
+        '''
 
 ==== ffprobe SYNOPSIS  ==========================================================
 
 WAV: 
-Input #0, wav, from '/media/rick/SANDISK128/Music/Compilations/Greatest Hits of the 80’s [Disc #3 of 3]/3-12 Poison.wav':
+Input #0, wav, from '/media/rick/SANDISK128/Music/Compilations/
+                    Greatest Hits of the 80’s [Disc #3 of 3]/3-12 Poison.wav':
   Duration: 00:04:29.16, bitrate: 1411 kb/s
     Stream #0:0: Audio: pcm_s16le ([1][0][0][0] / 0x0001), 44100 Hz, 2 channels, s16, 1411 kb/s
 
@@ -13189,13 +13187,14 @@ Input #0, ogg, from '/media/rick/SANDISK128/Music/Big Wreck/Ghosts/13 A Place to
     Metadata:
       DISCID          : 9410610d
       DATE            : 2014-06-10
-    Stream #0:1: Video: mjpeg, yuvj420p(pc, bt470bg/unknown/unknown), 1425x1425 [SAR 1:1 DAR 1:1], 90k tbr, 90k tbn, 90k tbc
+    Stream #0:1: Video: mjpeg, yuvj420p(pc, bt470bg/unknown/unknown), 1425x1425 [SAR 1:1 DAR 1:1], 90k tbr, 90k tbn,
     Metadata:
       comment         : Cover (front)
       title           : A Place to Call Home (reprise)
 
 FLAC:
-Input #0, flac, from '/media/rick/SANDISK128/Music/Compilations/Greatest Hits of the 80’s [Disc #3 of 3]/3-12 Poison.flac':
+Input #0, flac, from '/media/rick/SANDISK128/Music/Compilations/
+                      Greatest Hits of the 80’s [Disc #3 of 3]/3-12 Poison.flac':
   Metadata:
     TRACKTOTAL      : 14
     MUSICBRAINZ_DISCID: tjAnC0ReEc.f48DpI_lHjx1VEBA-
@@ -13207,25 +13206,27 @@ Input #0, flac, from '/media/rick/SANDISK128/Music/Compilations/Greatest Hits of
     Metadata:
       title           : 
     Stream #0:0: Audio: flac, 44100 Hz, stereo, s16
-    Stream #0:1: Video: mjpeg, yuvj420p(pc, bt470bg/unknown/unknown), 500x408 [SAR 1:1 DAR 125:102], 90k tbr, 90k tbn, 90k tbc
+    Stream #0:1: Video: mjpeg, yuvj420p(pc, bt470bg/unknown/unknown), 500x408 [SAR 1:1 DAR 125:102], 90k tbr, 90k tbn,
     Metadata:
       comment         : Cover (front)
       title           : front cover
 
 MP3:
-Input #0, mp3, from '/media/rick/SANDISK128/Music/Compilations/Greatest Hits of the 80’s [Disc #3 of 3]/3-12 Poison.mp3':
+Input #0, mp3, from '/media/rick/SANDISK128/Music/Compilations/
+                     Greatest Hits of the 80’s [Disc #3 of 3]/3-12 Poison.mp3':
   Metadata:
     title           : Poison
     musicbrainz_discid: tjAnC0ReEc.f48DpI_lHjx1VEBA-
   Duration: 00:04:35.70, start: 0.000000, bitrate: 213 kb/s
     Stream #0:0: Audio: mp3, 44100 Hz, stereo, s16p, 211 kb/s
-    Stream #0:1: Video: mjpeg, yuvj420p(pc, bt470bg/unknown/unknown), 500x408 [SAR 1:1 DAR 125:102], 90k tbr, 90k tbn, 90k tbc
+    Stream #0:1: Video: mjpeg, yuvj420p(pc, bt470bg/unknown/unknown), 500x408 [SAR 1:1 DAR 125:102], 90k tbr, 90k tbn,
     Metadata:
       title           : Front cover
       comment         : Cover (front)
 
 MP4:
-Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilations/Greatest Hits of the 80’s [Disc #3 of 3]/3-12 Poison.m4a':
+Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilations/
+                Greatest Hits of the 80’s [Disc #3 of 3]/3-12 Poison.m4a':
   Metadata:
     major_brand     : mp42
     keywords        : tjAnC0ReEc.f48DpI_lHjx1VEBA-
@@ -13234,7 +13235,7 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilatio
     Metadata:
       creation_time   : 2023-08-19 19:14:07
       handler_name    : SoundHandler
-    Stream #0:1: Video: mjpeg, yuvj420p(pc, bt470bg/unknown/unknown), 500x408 [SAR 1:1 DAR 125:102], 90k tbr, 90k tbn, 90k tbc
+    Stream #0:1: Video: mjpeg, yuvj420p(pc, bt470bg/unknown/unknown), 500x408 [SAR 1:1 DAR 125:102], 90k tbr, 90k tbn,
 
 
     1. All types start with: "Input #0, ogg, from '/media/....
@@ -13246,9 +13247,6 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilatio
 
 
         '''
-
-        #print("sys.getsizeof(self.metadata):", sys.getsizeof(self.metadata))
-        # size is a couple K. No images included.
 
         path_parts = self.path.split(os.sep)  # In case metadata missing song parts
 
@@ -13345,18 +13343,18 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilatio
 
         self.valid_artwork = True if len(self.artwork) > 0 else False
         self.invalid_artwork = not self.valid_artwork
+        self.valid_audio = True if len(self.audio) > 0 else False
+        self.invalid_audio = not self.valid_audio
+
         text = "Title: \t" + self.Title + \
+            " \tYear: \t" + str(self.FirstDate) + \
             "\nArtist: \t" + self.Artist + \
             " \tAlbum: \t" + self.Album + \
-            " \tYear: \t" + str(self.FirstDate) + \
             "\nTrack:\t" + str(self.TrackNumber) + \
             "\tDuration:\t" + str(self.Duration) + "\n"
 
         for entry in self.audio:
-            text += "Audio: \t" + entry[6:] + "\n"
-
-        self.valid_audio = len(self.audio) > 0
-        self.invalid_audio = not self.valid_audio
+            text += "Audio: \t" + entry[7:] + "\n"
 
         if self.valid_audio:
             audio_pattern = ("Audio:", "Green", "Black")
@@ -13365,7 +13363,7 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilatio
             text += "Audio: \tNOT FOUND !!!\n"
 
         for entry in self.artwork:
-            text += "Artwork: \t" + entry[6:] + "\n"
+            text += "Artwork: \t" + entry[7:] + "\n"
 
         if self.valid_artwork:
             artwork_pattern = ("Artwork:", "Green", "Black")
@@ -13374,6 +13372,7 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilatio
             text += "Artwork: \tNOT FOUND !!!\n"
 
         patterns = [("Title:", "Green", "Black"),
+                    ("Year:", "Green", "Black"),
                     ("Artist:", "Green", "Black"),
                     ("Album:", "Green", "Black"),
                     ("Track:", "Green", "Black"),
@@ -13382,6 +13381,10 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilatio
                     audio_pattern,
                     artwork_pattern]
 
+        if self.audio:
+            self.AudioStream = self.audio[0]  # store first stream found
+        if self.artwork:
+            self.ArtworkStream = self.artwork[0]  # store first stream found
         ''' Aug 6/23 - Too annoying, change all to 'fact' for now 
             Aug 16/23 - Change back to cast when invalid audio or no artwork
         '''
@@ -13714,8 +13717,8 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilatio
     def elapsed(self):
         """ How many seconds have elapsed """
         if self.ff_name is None or self.path is None or self.pid == 0:
-            print("FileControl.elapsed() requested when song ended")
-            print("This may screw up percent played calculation.")
+            #print("FileControl.elapsed() requested when song ended")
+            #print("This may screw up percent played calculation.")
             return 0.0
 
         ext.t_init("FileControl.elapsed()")
@@ -13939,7 +13942,7 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilatio
                 float(self.time_played) * 100 / float(self.DurationSecs)
         ''' TODO: get_resume then reset it to zero when done. '''
 
-    def close(self, action=None):
+    def close(self):
         """ When > 80 % of song played (Fast Forward resets to 0%), then set
             last access time to now. When < 80% reset to saved settings when
             file was declared with .new(path)
@@ -14073,8 +14076,9 @@ class PlaylistsCommonSelf:
         self.fld_seconds = None
 
         self.artwork = None  # Not used
-        self.close_button = None
         self.apply_button = None
+        self.help_button = None
+        self.close_button = None
 
 
 class Playlists(PlaylistsCommonSelf):
@@ -14285,6 +14289,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                                  state='readonly', font=ms_font)
         self.fld_name.grid(row=1, column=1, sticky=tk.W, padx=5, pady=5)
         self.scr_name.set("")  # Clear left over from last invocation
+
         ''' Playlist Description is readonly except for 'new' and 'rename' '''
         tk.Label(self.frame, text="Playlist description:",
                  font=ms_font).grid(row=2, column=0, sticky=tk.W, padx=5)
@@ -14293,6 +14298,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             font=ms_font)
         self.fld_description.grid(row=2, column=1, sticky=tk.W, padx=5, pady=5)
         self.scr_description.set("")  # Clear left over from last invocation
+
         ''' Device Location is always readonly '''
         tk.Label(self.frame, text="Device location:",
                  font=ms_font).grid(row=3, column=0, sticky=tk.W, padx=5)
@@ -14308,39 +14314,59 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         #                        command=self.set_sink)
         #self.artwork.grid(row=0, column=3, row span=4, pad x=5, pad y=5, sticky=tk.NS)
 
-        ''' Close Button - NOTE: This calls reset() function !!! '''
-        self.close_button = tk.Button(self.frame, text="✘ Close",
-                                      width=g.BTN_WID2 - 4, command=self.reset)
-        self.close_button.grid(row=4, column=0, padx=5, pady=5, sticky=tk.W)
-        self.tt.add_tip(self.close_button, "Ignore changes and return.",
-                        anchor="nw")
-        self.top.bind("<Escape>", self.reset)
-        self.top.protocol("WM_DELETE_WINDOW", self.reset)
-
         ''' Song Count display only field '''
         tk.Label(self.frame, text="Song Count:",
                  font=ms_font).grid(row=1, column=2, sticky=tk.W, padx=5)
         self.fld_count = tk.Label(self.frame, text="0", font=ms_font)
         self.fld_count.grid(row=1, column=3, sticky=tk.W, padx=5)
+
         ''' Size of Files display only field '''
         tk.Label(self.frame, text="Size of Files:",
                  font=ms_font).grid(row=2, column=2, sticky=tk.W, padx=5)
         self.fld_size = tk.Label(self.frame, text="0", font=ms_font)
         self.fld_size.grid(row=2, column=3, sticky=tk.W, padx=5)
+
         ''' Music Duration display only field '''
         tk.Label(self.frame, text="Music Duration:",
                  font=ms_font).grid(row=3, column=2, sticky=tk.W, padx=5)
         self.fld_seconds = tk.Label(self.frame, text="0", font=ms_font)
         self.fld_seconds.grid(row=3, column=3, sticky=tk.W, padx=5)
+
+        ''' button frame '''
+        bottom_frm = tk.Frame(self.frame)
+        bottom_frm.grid(row=4, columnspan=4, sticky=tk.E)
+
         ''' Apply Button '''
+        close_tt_text = "Close Playlist window."
         if self.state != 'view':
+            close_tt_text = "Discard any changes and close Playlist window."
             action = name.split(" Playlist")[0]
-            self.apply_button = tk.Button(self.frame, text="✔ " + action,
+            self.apply_button = tk.Button(bottom_frm, text="✔ " + action,
                                           width=g.BTN_WID2 - 2, command=self.apply)
-            self.apply_button.grid(row=4, column=3, padx=5, pady=5, sticky=tk.W)
+            self.apply_button.grid(row=0, column=0, padx=10, pady=5, sticky=tk.E)
             self.tt.add_tip(self.apply_button, action + " Playlist and return.",
-                            anchor="ne")
+                            anchor="nw")
             self.top.bind("<Return>", self.apply)
+
+        ''' Help Button - https://www.pippim.com/programs/mserve.html#HelpPlaylists '''
+        help_text = "Open new window in default web browser for\n"
+        help_text += "videos and explanations on using this screen.\n"
+        help_text += "https://www.pippim.com/programs/mserve.html#\n"
+        self.help_button = tk.Button(
+            bottom_frm, text="🔗 Help", font=g.FONT, width=g.BTN_WID2 - 4,
+            command=lambda: g.web_help("HelpPlaylists"))
+        self.help_button.grid(row=0, column=1, padx=10, pady=5, sticky=tk.E)
+        self.tt.add_tip(self.help_button, help_text, anchor="ne")
+
+        ''' Close Button - NOTE: This calls reset() function !!! '''
+        self.close_button = tk.Button(bottom_frm, text="✘ Close",
+                                      width=g.BTN_WID2 - 4, command=self.reset)
+        self.close_button.grid(row=0, column=2, padx=(10, 5), pady=5,
+                               sticky=tk.E)
+        self.tt.add_tip(self.close_button, close_tt_text, anchor="ne")
+        self.top.bind("<Escape>", self.reset)
+        self.top.protocol("WM_DELETE_WINDOW", self.reset)
+
         ''' Refresh screen '''
         if self.top:  # May have been closed above.
             self.top.update_idletasks()
@@ -14376,7 +14402,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         columns = ("detail", "comments", "count", "size", "seconds")
         toolkit.select_dict_columns(columns, history_dict)
         ''' Create treeview frame with scrollbars '''
-        tree_frame = tk.Frame(self.frame, bg="olive", relief=tk.RIDGE)
+        tree_frame = tk.Frame(self.frame, bg="LightGrey", relief=tk.RIDGE)
         tree_frame.grid(sticky=tk.NSEW, columnspan=4)
         tree_frame.columnconfigure(0, weight=1)
         tree_frame.rowconfigure(0, weight=1)
@@ -14972,7 +14998,8 @@ class InfoCentre:
         ''' Track old and new y-axis position to keep same rows displayed '''
         self.old_y_top = self.old_y_end = 0.0
 
-    def new_dict(self, new_type, text, severity=None, action=None, patterns=None):
+    def new_dict(self, new_type, text, severity=None, action=None, patterns=None,
+                 collapsed=False, ms_font=None):
         """
         Create a new dictionary
         :param new_type: 'cast' or 'fact' 
@@ -14980,6 +15007,8 @@ class InfoCentre:
         :param severity: 'info', 'warning', 'error'
         :param action: 'open', 'update', 'add', 'delete', 'rename'
         :param patterns: List of tuples ("search words", FG color, BG color)
+        :param collapsed: When true, text is collapsed and click to expand
+        :param ms_font: Optional font to use. e.g. ("courier", 11) or "TkFixedFont"
         :return now: time dictionary created
         """
         now = time.time()
@@ -14987,20 +15016,22 @@ class InfoCentre:
             OrderedDict([
                 ("time", now), ("source", []), ("type", "cast"),
                 ("severity", "info"), ("action", ""), ("text", ""),
-                ("text_start", ""), ("text_end", ""),
-                ("patterns", []), ("view_time", 0.0)])
+                ("text_start", ""), ("text_end", ""), ("patterns", []),
+                ("collapsed", ""), ("font", ""), ("view_time", now)])
         # time: micro-seconds (epoch) serves as unique key
         # source: program name, class name, print_trace() results
         # type: 'cast', 'fact'
         # severity: 'info', 'warning', 'error'
         # action: 'add', 'update', 'rename', 'delete', 'open'
-        #   NOTE: 'run' is currently considered to be same as 'open'
-        # text: "mserve START-UP:\n\t999 Artists\n\t999 Albums\n\t 9,999 Songs"
-        # text_start: start position within tk.Text widget where text is painted
+        # text: e.g. "Less < 80% played, last access time reset"
+        # text_start: start position within tk.Text widget where text was painted
         # text_end: end position used with start_position to apply patterns
-        #   NOTE: Probably won't be retrieved but useful for debugging.
-        # patterns: [("Added", "white", "green"), ("Deleted", "red", "grey")]
+        # patterns: e.g. [("Added", "white", "green"), ("Deleted", "red", "LightGrey")]
+        # start_collapsed: e.g. True is collapsed, click button to expand.
+        #   start_collapsed is future function.
+        # font: defaults to g.FONT
         # view_time: 0.0 = False. After viewing, some info_type+action deleted
+        #   view_time is future function.
 
         self.dict['type'] = new_type
         # Always delete last three entries from InfoCentre (get_trace, new_dict, cast/fact)
@@ -15030,15 +15061,23 @@ class InfoCentre:
         self.dict['action'] = action
         self.dict['text'] = text
         self.dict['patterns'] = patterns
+        self.dict['collapsed'] = collapsed
+        if font:
+            self.dict['font'] = ms_font
+        else:
+            self.dict['font'] = g.FONT
         return now
 
-    def cast(self, text, severity=None, action=None, patterns=None):
+    def cast(self, text, severity=None, action=None, patterns=None,
+             collapsed=False, ms_font=None):
         """ Briefly display message in expanding/collapsing Information Centre.
 
         :param text: Formatted text (\n, \t, etc.)  for tk.Text widget.
         :param severity: 'info', 'warning', 'error'
         :param action: 'open', 'update', 'add', 'delete', 'rename'
         :param patterns: List of tuples ("search words", FG color, BG color)
+        :param collapsed: When true, text is collapsed and click to expand
+        :param ms_font: Optional font to use. e.g. ("courier", 11) or "TkFixedFont"
         :return: time assigned to information centre entry. """
         ''' 
             PROCESSING STEPS:
@@ -15051,7 +15090,8 @@ class InfoCentre:
             self._close_cb()
             self.tt.poll_tips()
 
-        time_stamp = self.new_dict('cast', text, severity, action, patterns)
+        time_stamp = self.new_dict('cast', text, severity, action, patterns,
+                                   collapsed, ms_font)
         self.list.insert(0, self.dict)  # self.dict stays in memory untouched
 
         ''' If last broadcast is still visible cannot launch another '''
@@ -15059,13 +15099,16 @@ class InfoCentre:
             self.zoom()  # Message broadcast
         return time_stamp  # time_stamp can be used by caller to massage text
 
-    def fact(self, text, severity=None, action=None, patterns=None):
-        """ Record fact that is not broadcast.
+    def fact(self, text, severity=None, action=None, patterns=None,
+             collapsed=False, ms_font=None):
+        """ Record fact without splashing the text.
 
         :param text: Formatted text (\n, \t, etc.)  for tk.Text widget.
         :param severity: 'info', 'warning', 'error'
         :param action: 'open', 'update', 'add', 'delete', 'rename'
         :param patterns: List of tuples ("search words", FG color, BG color)
+        :param collapsed: When true, text is collapsed and click to expand
+        :param ms_font: Optional font to use. e.g. ("courier", 11) or "TkFixedFont"
         :return: time assigned to information centre entry. """
         ''' 
             PROCESSING STEPS:
@@ -15073,7 +15116,8 @@ class InfoCentre:
                 Insert dictionary in list
         '''
 
-        time_stamp = self.new_dict('fact', text, severity, action, patterns)
+        time_stamp = self.new_dict('fact', text, severity, action, patterns,
+                                   collapsed, ms_font)
         self.list.insert(0, self.dict)  # self.dict stays in memory untouched
         return time_stamp  # time_stamp can be used by caller to find dictionary
 
@@ -15102,6 +15146,7 @@ class InfoCentre:
 
         ''' Indicate zoom is active '''
         self.zoom_is_active = True
+        fonts_used = []  # List of fonts used so far
 
         if self.frame:  # This test needed to catch programmer errors
             print("\nInfoCentre.zoom() SECOND defense line breached !!\n")
@@ -15175,8 +15220,9 @@ class InfoCentre:
             line_draw = int(self.width / MON_FONTSIZE * .63)
             text_start = self.text.index("end")  # https://stackoverflow.com/a/19477323/6929343
             self._str_to_text_widget(
-                "─" * line_draw + "┨ " + tmf.ago(read_dict['time']))
-            self._str_to_text_widget(read_dict['text'])
+                "─" * line_draw + "┨ " + tmf.ago(read_dict['time']), g.FONT)
+            text_body_start = self.text.index("end") 
+            self._str_to_text_widget(read_dict['text'], read_dict['font'])
             text_end = self.text.index("end")
 
             ''' Update text_start and text_end without corrupting current self.dict '''
@@ -15187,7 +15233,21 @@ class InfoCentre:
             for entry in read_dict['patterns']:
                 pattern, fg, bg = entry  # fg + bg color names forms the tag name
                 self.text.tag_configure(fg + bg, foreground=fg, background=bg)
-                self.text.highlight_pattern(pattern, fg + bg, start=text_start, end=text_end)
+                self.text.highlight_pattern(pattern, fg + bg,
+                                            start=text_start, end=text_end)
+
+            ''' Font tag configuration each time new self.Text defined '''
+            try:
+                font_ndx = fonts_used.index(read_dict['font'])
+                font_name = "TextFontNdx" + str(font_ndx)
+                #print("FOUND font:", font_name, read_dict['font'])
+            except ValueError:
+                font_name = "TextFontNdx" + str(len(fonts_used))
+                fonts_used.append(read_dict['font'])
+                self.text.tag_configure(font_name, font=read_dict['font'])
+                #print("Adding font:", font_name, read_dict['font'])
+
+            self.text.tag_add(font_name, text_body_start, text_end)
 
             if not show_close:  # No close button is displayed
                 break  # Called by .cast() so only most recent message displayed
@@ -15222,9 +15282,9 @@ class InfoCentre:
         # widget is closed early.
         self.tt.log_event('press', self.widget, 100, 50)  # x=100, y=50
 
-    def _str_to_text_widget(self, text):
+    def _str_to_text_widget(self, text, ms_font):
         """ Line draw border or single text message to tk.Text box """
-        self.text.configure(state="normal")
+        self.text.configure(state="normal", font=ms_font)
         self.text.insert(tk.END, text + "\n")
         self.text.update()  # Is this necessary? Don't know yet...
         self.text.configure(state="disabled")
@@ -15269,7 +15329,8 @@ class InfoCentre:
                '\t\t   In programming, "center" is an action.\n\n' +\
                '\t\t       In this case, "Centre" is a place.'
 
-        self._str_to_text_widget(text)  # Update object self.text with text
+        ''' Aug 26/23 - Not updated to dict['font'] yet '''
+        self._str_to_text_widget(text, g.FONT)  # Update object self.text with text
         # Limitation: 'visible_delay' must be greater than 'fade_out_span'
         self.widget = self.text
         self.tt.add_tip(
@@ -15309,7 +15370,7 @@ FADE_OUT_SPAN = 400     # 1/5 second to fade out
     def _alpha_cb_dev(self, alpha):
         """ Called from Tooltips whenever fading-in or fading-out alpha changes
             Sweeps down over treeview rows down jaggedly. Clicking boxes is
-            easier when in motion. Jagging is visually distracting.
+            easier when in motion. Shaking is visually distracting.
         :param alpha: % fading-in or fading-out from 0.0 to 1.0
         :return: None
         """
@@ -15701,19 +15762,19 @@ def dprint(*args):
 # ==============================================================================
 
 
-def cat3(line, prefix, string):
-    """ Concatenating strings with latin characters has error:
+def cat3(line, prefix, text):
+    """ Concatenating texts with latin characters has error:
 
             UnicodeEncodeError: 'ascii' codec can't encode character
             u'\xc6' in position 0: ordinal not in range(128)
     """
     # noinspection PyBroadException
     try:
-        return line + prefix + string.encode("utf8")
+        return line + prefix + text.encode("utf8")
     except:
         # noinspection PyProtectedMember
         print('cat3() called from:', sys._getframe(1).f_code.co_name,
-              '() Latin character error in:', prefix, string)
+              '() Latin character error in:', prefix, text)
         # noinspection SpellCheckingInspection
         ''' cat3() ... Latin character error in:  🎵  Ænema '''
         return line + prefix + "????????"
@@ -15850,14 +15911,16 @@ def open_files(old_cwd, prg_path, parameters, toplevel=None):
             text += text2
             print('\nmserve.py main() ERROR:\n')
             print(text)  # Print to console and show message on screen at 100, 100
-            message.ShowInfo(root, title=title, text=text, icon='error', root=True)
+            message.ShowInfo(root, title=title, text=text, icon='error',
+                             thread=dummy_thread)
         if ret == 2:
             ''' last location code in SQL History exists but not in Location Table '''
             text = "The last used location not found in SQL Location Table\n\n"
             text += text2
             print('\nmserve.py main() ERROR:\n')
             print(text)  # Print to console and show message on screen at 100, 100
-            message.ShowInfo(root, title=title, text=text, icon='error', root=True)
+            message.ShowInfo(root, title=title, text=text, icon='error',
+                             thread=dummy_thread)
         if ret == 3:
             ''' Top Directory doesn't exist or host is off-line '''
             text = "Top Directory doesn't exist or host is off-line.  Check:\n\t"
@@ -15865,7 +15928,8 @@ def open_files(old_cwd, prg_path, parameters, toplevel=None):
             text += text2
             print('\nmserve.py main() ERROR:\n')
             print(text)  # Print to console and show message on screen at 100, 100
-            message.ShowInfo(root, title=title, text=text, icon='error', root=True)
+            message.ShowInfo(root, title=title, text=text, icon='error',
+                             thread=dummy_thread)
 
     lcs.open_code = 'new'
     lcs.open_name = music_dir
@@ -15905,7 +15969,8 @@ def open_files(old_cwd, prg_path, parameters, toplevel=None):
                    "No songs were found in target directory nor the\n" + \
                    "next three subdirectory levels under the target.\n\n" + \
                    "Verify the directory name and try again."
-            message.ShowInfo(root, title=title, text=text, icon='error', root=True)
+            message.ShowInfo(root, title=title, text=text, icon='error',
+                             thread=dummy_thread)
             #messagebox.showinfo(title=title, message=text)
             #message.ShowInfo(root, title="No music files found.", text=text,
             #                 align='left', icon='error')  # Doesn't work without parent
@@ -15975,7 +16040,7 @@ def main(toplevel=None, cwd=None, parameters=None):
     #result = os.popen("ps aux | grep -v grep | grep python").read().splitlines()
     apps_running = ext.get_running_apps(PYTHON_VER)
     this_pid = os.getpid()  # Don't commit suicide!
-    m_pid = mserve_pid = vu_meter_pid = 0  # Running PID's found later
+    m_pid = mserve_pid = vu_meter_pid = 0  # Running PIDs found later
     ffplay_pid = ext.pid_list("ffplay")  # If more than one, kill the first seen
     ffplay_pid = 0 if len(ffplay_pid) == 0 else ffplay_pid[0]
 
@@ -16010,7 +16075,7 @@ def main(toplevel=None, cwd=None, parameters=None):
         print(title + "\n\n" + text)
         answer = message.AskQuestion(
             root, title=title, text=text, align='left', confirm='no',
-            icon='error', thread=dummy_thread, root=True)
+            icon='error', thread=dummy_thread)
 
         if answer.result != 'yes':
             exit()
@@ -16075,7 +16140,7 @@ def main(toplevel=None, cwd=None, parameters=None):
         text += "\n\n  " + START_DIR
         print(title + "\n\n" + text)
         message.ShowInfo(root, title=title, text=text, align='left', 
-                         icon='error', root=True)
+                         icon='error', thread=dummy_thread)
         # NOTE: Tempting to exit now but need to proceed to select different location.
     ''' Process sorted list to create SQL Music Table '''
     # PROBLEM: Music Table Rows as soon as directory is opened, however

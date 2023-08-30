@@ -97,7 +97,7 @@ class Open:
         ndx = self.textbox.insert(tk.END, msg_line + '\n')
         try:
             self.textbox.see(tk.END)
-        except:
+        except tk.TclError:
             print('message.py update() passed blank string?:', ndx, msg_line)
         self.msg_top.update()
         self.line_cnt += 1  # Message lines displayed so far
@@ -110,8 +110,7 @@ class Open:
 
 def common_code(title, toplevel, width, height):
     """ Mount message textbox window centered in toplevel or at mouse
-        Called by .Open() and .DelayedTextBox()
-    """
+        Called by .Open() and .DelayedTextBox() """
     msg_top = tk.Toplevel()
     msg_top.minsize(g.WIN_MIN_WIDTH, g.WIN_MIN_HEIGHT)
     msg_top.title(title)
@@ -139,8 +138,7 @@ def common_code(title, toplevel, width, height):
 def get_mouse_coordinates():
     """ Get mouse co-ordinates with xdotool:
             $ xdotool getmouselocation
-            x:4490 y:1920 screen:0 window:65011722
-    """
+            x:4490 y:1920 screen:0 window:65011722 """
     command_line_list = ['xdotool', 'getmouselocation']
 
     pipe = sp.Popen(command_line_list, stdout=sp.PIPE, stderr=sp.PIPE)
@@ -163,8 +161,7 @@ def get_mouse_coordinates():
 
 class DelayedTextBox:
     """ Delay opening text box for short running process.
-        Don't display every line for long running process.
-    """
+        Don't display every line for long running process. """
 
     def __init__(self, title="Status", toplevel=None, width=600, height=400,
                  startup_delay=2, frame_rate=30):
@@ -203,7 +200,7 @@ class DelayedTextBox:
             system will lag while textbox updates.
 
         :param msg_line: Text for display
-        :return: 
+        :return: True when message not skipped and displayed in textbox.
         """
         self.line_cnt += 1                  # Message lines encountered so far
         now = time.time()                   # Current time
@@ -218,15 +215,13 @@ class DelayedTextBox:
                 #print("=" * 80)
                 self.mounted = True         # Signal that Textbox is mounted
                 
-                # turn on text box for editing, user can change too for period
+                # turn on text box editing "normal" mode, to insert lines
                 self.textbox.configure(state="normal")
                 for old_line in self.old_lines: 
-                    # Loop through suppressed lines and display now. Note we
-                    # are not honouring frame rate here and may be flooding
-                    # the screen
+                    # Loop through suppressed lines and insert all.
                     self.textbox.insert(tk.END, old_line + '\n')
 
-                # turn pff text box for editing, we and user cannot change text
+                # turn off text box for editing, cannot change text
                 self.textbox.configure(state="disabled")
                 self.old_lines = []         # Delete old list
 
@@ -245,7 +240,7 @@ class DelayedTextBox:
             self.next_update = now + self.update_interval
             return True                     # We updated text box
 
-        # TODO: We are getting 100 messages dropped from gmail api because it is
+        # TODO: 100 messages dropped from gmail api because it is
         #       1 second between batches of 100.
         return False
 
@@ -303,9 +298,11 @@ class AskCommonSelf:
         elif callable(thread):
             self.thread = thread    # The thread runs whilst waiting for button click
         else:
-            #print("message.py, AskCommonSelf, invalid thread= passed:", thread)
+            #print("message.py, AskCommonSelf(), invalid thread= passed:", thread)
             #toolkit.print_trace()
             self.thread = None
+        #print("message.py, AskCommonSelf(), thread= passed:", thread)
+        #print("message.py, AskCommonSelf(), self.thread:", self.thread)
         self.text = text            # data (text lines) for text box
         self.textbox = None         # Textbox widget
         self.icon = icon            # Warning, Error, Info, Question icons
@@ -320,12 +317,16 @@ class AskCommonSelf:
             self.string_width = string_width
         else:
             self.string_width = 28  # Size of string .Entry variable
-        self.result = None          # Defined in simpledialog already
 
-        # Shared functions - if None is passed this will exit right away.
+        # self.result defined here for pycharm syntax highlighting
+        self.result = None          # Defined in simpledialog() class
+
+        #print("message.py, AskCommonSelf() WAIT_LOCK:", WAIT_LOCK)
         if WAIT_LOCK:
             self.thread = None  # Force function to quit right away
-            # Hopefully self.info.cast() and/or print() was run
+            # Another window is up, cannot run a second.
+
+        # Shared functions - if None is passed this will exit right away.
         self.wait_window = wait_window_func
 
 
@@ -335,11 +336,13 @@ class ShowInfo(simpledialog.Dialog, AskCommonSelf):
         https://docs.python.org/3/library/dialog.html
     """
     def __init__(self, parent=None, title=None, text=None, align='center',
-                 thread=None, confirm='no', icon='info', root=None):
+                 thread=None, confirm='no', icon='info', _root=None):
 
         AskCommonSelf.__init__(self, parent, title=title, text=text, confirm=confirm,
                                align=align, thread=thread, icon=icon)
         simpledialog.Dialog.__init__(self, parent, title=title)
+
+        # Experimental code August 2023 that didn't work
         #if root:
         #    ''' When using root window message s/b centered  '''
         #    mon = monitor.Monitors()
@@ -381,6 +384,12 @@ class ShowInfo(simpledialog.Dialog, AskCommonSelf):
         self.bind("<Escape>", self.ok)  # ShowInfo has no "Cancel" button
 
         box.pack()
+
+    def ok(self, _event=None):
+        """ Clear global WAIT_LOCK for followup AskQuestion() calls """
+        global WAIT_LOCK
+        WAIT_LOCK = False  # Only one message can be waiting at once, else chaos
+        self.cancel()  # Resides in SimpleDialog() class. Closes ShowInfo window
 
 
 # data_w_l(), set_icon_image(), wait_window_func(), # body_func()
@@ -440,6 +449,7 @@ wait_lock = threading.RLock()  # Not working in wait_window_func()
 from threading import Thread  # try in __init__
 
 
+# noinspection SpellCheckingInspection
 def wait_window_func(self):
     """ Even with no thread passed, this allows other windows to remain
         updating graphic animations at 30 fps
@@ -575,7 +585,7 @@ def body_func(self):
         self.icon.pack(fill="both", padx=5, pady=15)
 
     self.textbox = tk.Text(self, width=width, font=g.FONT)
-    self.textbox.pack(fill="both", padx=5, expand=True)  # Aug 9/23 add padx
+    self.textbox.pack(fill="both", padx=5, expand=True)  # Aug 9/23 add pad x
 
     # Populate the textbox with justification and height
     textbox(self.textbox, f_text, self.align, lines)
@@ -591,10 +601,17 @@ class AskQuestion(simpledialog.Dialog, AskCommonSelf):
         BUGS:
         April 24, 2023 - When 'no' click was returning: 139944643864048.139944641065544
         June 18, 2023  - When 'yes' clicked self.result = 'None' - thread was none !
+        Aug 27/23 - 'yes' returning <type None>, 'no' returning 'no'.
+        Aug 29/23 - First time used immediately returns 'None' even though window
+            stays up. Second time used yes/no returned properly after click.
+            Problem caused by previous ShowInfo leaving WAIT_LOCK = True
+            Fix problem in ShowInfo() but None will still be returned when ShowInfo
+                called when AskQuestion is waiting input. Can happen when refresh
+                automatically sends messages to user.
     """
 
     def __init__(self, parent, title=None, text=None, confirm='yes',
-                 align='center', thread=None, icon='warning', root=None):
+                 align='center', thread=None, icon='warning', _root=None):
 
         AskCommonSelf.__init__(self, parent, title=title, text=text, confirm=confirm,
                                align=align, thread=thread, icon=icon)
@@ -670,9 +687,12 @@ TclError: grab failed: another application has grab
 
         try:
             self.apply()  # There is no apply() for AskQuestion or ShowInfo
+            #print("self.apply")  # Aug 27/23 - gets called when "OK" clicked
         finally:
-            self.cancel()
-        self.result = "yes"
+            self.cancel()  # Aug 27/23 - gets called when "OK" clicked
+            # print("self.cancel, self.result", self.result)
+        self.result = "yes"  # Aug 27/23 - gets called when "OK" clicked
+        #print("self.ok, self.result", self.result)  # "yes"
 
     def cancel(self, _event=None):
         """ Cancel button clicked. """
@@ -682,7 +702,7 @@ TclError: grab failed: another application has grab
         if self.parent is not None:
             self.parent.focus_set()
         self.result = "no"
-        self.destroy()
+        self.destroy()  # Called by self.OK as well to destroy window
 
 
 class AskString(simpledialog.Dialog, AskCommonSelf):
@@ -694,7 +714,7 @@ class AskString(simpledialog.Dialog, AskCommonSelf):
 
     def __init__(self, parent, title=None, text=None, confirm='no',
                  align='center', thread=None, icon='question', string=None,
-                 string_width=None, root=None):
+                 string_width=None, _root=None):
 
         AskCommonSelf.__init__(self, parent, title=title, text=text, confirm=confirm,
                                align=align, thread=thread, icon=icon,
@@ -808,11 +828,11 @@ class AskDirectory(filedialog.Directory, AskCommonSelf):
 
         USAGE for normal class:
         root.directory = filedialog.askdirectory(
-            initialdir=start, parent=parent, title=title)
+            initial dir=start, parent=parent, title=title)
     """
 
-    def __init__(self, parent=None, title=None, initialdir=None,
-                 thread=None, root=None):
+    def __init__(self, parent=None, title=None, initial=None,
+                 thread=None, _root=None):
 
         AskCommonSelf.__init__(self, parent, title=title, thread=thread)
 
@@ -821,8 +841,8 @@ class AskDirectory(filedialog.Directory, AskCommonSelf):
         # filedialog.askdirectory.__init__(self, parent, title=title,
         #  Above: return Directory(**options).show()
         filedialog.Directory.__init__(self, parent, title=title,
-                                      initialdir=initialdir).show()
-        # commondialog.Dialog.__init__(self, parent, title=title)
+                                      initialdir=initial).show()
+        # common dialog.Dialog.__init__(self, parent, title=title)
         # if root:
         #    ''' When using root window message s/b centered  '''
         #    mon = monitor.Monitors()

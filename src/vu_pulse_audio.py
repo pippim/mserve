@@ -16,6 +16,7 @@ from __future__ import with_statement  # Error handling for file opens
 #
 #       July 07 2023 - Enhanced code converted from mserve.py
 #       July 12 2023 - Interface to/from mserve_config.py
+#       Aug. 23 2023 - get_volume() return 25.0 when sink not found.
 #
 # ==============================================================================
 """
@@ -320,7 +321,7 @@ AttributeError: 'module' object has no attribute 'pulsectl'
                 return Sink.volume
 
         self.info.cast(who + "unable to find sink#: " + sink_no_str)
-        return None
+        return 25.0  # returning None breaks callers
 
     def set_volume(self, target_sink, percent):
         """ Set volume and return time required to do it

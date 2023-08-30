@@ -60,6 +60,7 @@ WIN_FONTSIZE = 11       # Font size for Window name
 MED_FONT = 10           # Medium Font size
 
 FONT = (None, MON_FONTSIZE)  # Current font setting for mserve
+FONT14 = (None, LARGE_FONT)  # Make UTF-8 speakers a little arger
 
 BTN_WID = 17            # Width for buttons on main window
 BTN_WID2 = 15           # Width for buttons on play window
@@ -137,7 +138,7 @@ def init(caller=None):
         
         for `roaming profiles <http://bit.ly/9yl3b6>`_ but that is another story.
         
-        On Linux (and other Unices) the dir, according to the `XDG
+        On Linux (and other Unixes) the dir, according to the `XDG
         spec <http://standards.freedesktop.org/basedir-spec/basedir-spec-latest.html>`_, is::
         
             ~/.local/share/<AppName>

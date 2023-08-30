@@ -98,7 +98,7 @@ FNAME_LAST_PLAYLIST    = MSERVE_DIR + "last_playlist"        # Songs selected fo
 
 # Files in /tmp/
 FNAME_TEST             = g.TEMP_DIR + "mserve_test"  # Test if host up
-
+FNAME_TEST_NMAP        = g.TEMP_DIR + "mserve_test_nmap"  # Test if host up
 # There can be two open at once so unlike other global variables this is never
 # replaced. It is simply used as base for creating new variable.
 FNAME_MOD_TIME        = MSERVE_DIR + "modification_time"
@@ -620,9 +620,16 @@ class ModTime:
         # print('Initializing iid:',iid,'dict:',self.loc_dict)
 
         # Does location support modification timestamping?
-        testfile = ext.join(self.topdir, "test19630518")
-        with open(testfile, "w") as text_file:
-            text_file.write("Test Modification Time")
+        testfile = ext.join(self.topdir, "mserve_test_time")
+        try:
+            with open(testfile, "w") as text_file:
+                text_file.write("Test Modification Time")
+        except Exception as err:
+            # IOError: [Errno 5] Input/output error: '/mnt/music/mserve_test_time'
+            print("Exception:", err)  # Host was off-line when encountered
+            self.allows_mtime = False
+            return
+
         before_touch = os.stat(testfile).st_mtime
         os.popen("touch -m -t 196305180000 " + testfile)
         after_touch = os.stat(testfile).st_mtime
@@ -815,6 +822,7 @@ class LocationsCommonSelf:
         ''' Input Window and fields '''
         self.main_top = None  # tk.Toplevel
         self.main_frame = None  # tk.Frame inside self.main_top
+        self.btn_frame = None  # tk.Frame inside main_frame
         self.loc_view = None  # tk.Treeview managed by Data Dictionary
         self.no_locations_label = None  # When no locations are on file
         self.tree_frame = None
@@ -830,7 +838,7 @@ class LocationsCommonSelf:
         self.apply_button = None  # Apply changes to SQL Location Table Row
 
         ''' Test Window and fields '''
-        self.called_from_main_top = False  # Was test called from main_top?
+        self.called_from_main_top = None  # Was test called from main_top?
         self.test_top = None  # tk.Toplevel to Test Host from mserve.py
         self.test_frame = None  # tk.Frame holding self.test_scroll_frame & details
         self.test_scroll_frame = None  # tk.Frame holding CustomScrolledText
@@ -886,7 +894,7 @@ class LocationsCommonSelf:
 
         ''' Make TMP names unique for multiple OS jobs running at once '''
         letters = string.ascii_lowercase + string.digits
-        self.temp_suffix = (''.join(random.choice(letters) for i in range(6)))
+        self.temp_suffix = (''.join(random.choice(letters) for _i in range(6)))
         self.TMP_STDOUT = TMP_STDOUT + "_" + self.temp_suffix
         self.TMP_STDERR = TMP_STDERR + "_" + self.temp_suffix
 
@@ -965,7 +973,6 @@ class Locations(LocationsCommonSelf):
 
         ''' External Commands Installed? Flags '''
         self.nmap_installed = False  # Set in display_main_window()
-        self.nmap_installed = False
         self.ssh_installed = False
         self.sshfs_installed = False  # includes fusermount test
         self.wakeonlan_installed = False
@@ -1039,6 +1046,8 @@ class Locations(LocationsCommonSelf):
 
         ''' Common Top configuration, icon and main_top master frame '''
         self.main_frame = self.make_display_frame(self.main_top)
+        self.btn_frame = tk.Frame(self.main_frame)
+        self.btn_frame.grid(row=14, columnspan=3, sticky=tk.E)
 
         ''' Instructions when no locations have been created yet. '''
         if not self.text:  # If text wasn't passed as a parameter use default
@@ -1102,17 +1111,17 @@ class Locations(LocationsCommonSelf):
             text += "Music will keep playing but some buttons will be disabled. "
             self.out_fact_show(title, text, align='left')
 
-
     def make_main_close_button(self):
         """ Added by main window, removed by testing. """
         ''' Close Button - After selecting location, changes to "✘ Cancel" '''
         self.main_close_button = tk.Button(
-            self.main_frame, text="✘ Close", font=g.FONT,
+            self.btn_frame, text="✘ Close", font=g.FONT,
             width=g.BTN_WID2 - 4, command=self.reset)
-        self.main_close_button.grid(row=14, column=0, padx=5, pady=5, sticky=tk.W)
+        self.main_close_button.grid(row=14, column=3, padx=(10, 5), pady=5,
+                                    sticky=tk.E)
         if self.tt:
             self.tt.add_tip(self.main_close_button, "Ignore changes and return.",
-                            anchor="nw")
+                            anchor="ne")
         self.main_top.bind("<Escape>", self.reset)
         self.main_top.protocol("WM_DELETE_WINDOW", self.reset)
 
@@ -1122,19 +1131,25 @@ class Locations(LocationsCommonSelf):
         ''' Help Button - https://www.pippim.com/programs/mserve.html#locations '''
         ''' 🔗 Help - Videos and explanations on pippim.com '''
 
+        if self.state == 'synchronize':
+            help_id = "HelpSynchronizeLocation"
+        else:
+            help_id = "HelpLocations"
         help_text = "Open new window in default web browser for\n"
         help_text += "videos and explanations on using this screen.\n"
         help_text += "https://www.pippim.com/programs/mserve.html#\n"
 
         self.main_help_button = tk.Button(
-            self.main_frame, text="🔗 Help", font=g.FONT,
-            width=g.BTN_WID2 - 4, command=lambda: g.web_help("HelpLocations"))
-        self.main_help_button.grid(row=14, column=1, padx=5, pady=5, sticky=tk.W)
+            self.btn_frame, text="🔗 Help", font=g.FONT,
+            width=g.BTN_WID2 - 4, command=lambda: g.web_help(help_id))
+        self.main_help_button.grid(row=14, column=2, padx=10, pady=5, sticky=tk.E)
         if self.tt:
-            self.tt.add_tip(self.main_help_button, help_text, anchor="nw")
+            self.tt.add_tip(self.main_help_button, help_text, anchor="ne")
 
     def display_test_window(self):
-        """ Mount test host window """
+        """ Mount test host window when not using Playlist Maintenance Window
+            Called from within mserve.py
+        """
         self.test_top = tk.Toplevel()  # Locations top level
         mon = monitor.Monitors()
         act_mon = mon.get_active_monitor()
@@ -1145,6 +1160,8 @@ class Locations(LocationsCommonSelf):
 
         ''' Common Top configuration, icon and Test Host master frame '''
         self.test_frame = self.make_display_frame(self.test_top)
+        self.btn_frame = tk.Frame(self.test_frame)
+        self.btn_frame.grid(row=14, columnspan=3, sticky=tk.E)
 
         ''' Create frame for test host scrolled text box '''
         self.make_test_box(self.test_frame)
@@ -1157,20 +1174,18 @@ class Locations(LocationsCommonSelf):
         self.input_active = False  # Screen fields are 'readonly'
 
         ''' Close Button - calls test_close_window() to wrap up '''
-        self.make_test_close_button(self.test_frame)
+        self.make_test_close_button()
 
         ''' Help Button - https://www.pippim.com/programs/mserve.html#
                           Optional-Remote-Host-Support '''
-        self.make_test_help_button(self.test_frame)
+        self.make_test_help_button()
         self.test_top.update_idletasks()  # Not powerful enough?
         self.test_top.update()  # More power !
 
     def make_test_box(self, frame):
         """ Can be in main_top or test_top """
         ''' Create frame for test scrolled text box '''
-        #print("frame:", frame, "self.main_frame:", self.main_frame,
-        #      "self.test_frame:", self.test_frame)
-        self.test_scroll_frame = tk.Frame(frame, bg="olive", relief=tk.RIDGE)
+        self.test_scroll_frame = tk.Frame(frame, bg="LightGrey", relief=tk.RIDGE)
         self.test_scroll_frame.grid(row=0, column=0, sticky=tk.NSEW, columnspan=4)
         self.test_scroll_frame.columnconfigure(0, weight=1)
         self.test_scroll_frame.rowconfigure(0, weight=1)
@@ -1194,33 +1209,47 @@ class Locations(LocationsCommonSelf):
         # Fix Control+C  https://stackoverflow.com/a/64938516/6929343
         self.test_box.bind("<Button-1>", lambda event: self.test_box.focus_set())
 
-    def make_test_close_button(self, frame):
+    def make_test_close_button(self):
         """ Can be called for new test_top or to replace existing main_top """
         ''' Close Button - calls test_close_window() to wrap up '''
         self.test_close_button = tk.Button(
-            frame, text="✘ Close Test Results", font=g.FONT,
+            self.btn_frame, text="✘ Close Test Results", font=g.FONT,
             width=g.BTN_WID2 + 6, command=self.test_close_window)
-        self.test_close_button.grid(row=14, column=0, padx=5, pady=5, sticky=tk.W)
+        self.test_close_button.grid(row=0, column=3, padx=(10, 5), pady=5,
+                                    sticky=tk.E)
         if not self.called_from_main_top:  # no main_top, so escape closes test_top
             self.test_top.bind("<Escape>", self.test_close_window)
             self.test_top.protocol("WM_DELETE_WINDOW", self.test_close_window)
         if self.tt:  # During early boot toolkit.Tooltips() is still 'None'
             self.tt.add_tip(self.test_close_button, "End test of Host: " +
-                            self.act_host, anchor="nw")
+                            self.act_host, anchor="ne")
 
-    def make_test_help_button(self, frame):
-        """ Can be called for new test_top or to replace existing main_top """
+    def make_test_help_button(self):
+        """ Can be called for new test_top or to replace existing main_top
+            BUG: Aug 29/23 - when called from main_top, tooltip not found errors
+                But close button tooltip works?
+
+                Could be previous "🔗 Help" grid removed is conflict?
+                Rename to ""🔗 Help Test" to debug if this is the case. YES
+
+                This doesn't happen when a window with a close button calls
+                another window with a close button? etc.
+
+                Apparently two button with the same text on one tk.TopLevel()
+                breaks tt.tooltips()?
+
+        """
         ''' Help Button - https://www.pippim.com/programs/mserve.html#
                           Optional-Remote-Host-Support '''
         help_text = "Open new window in default web browser for\n"
         help_text += "videos and explanations on using this screen.\n"
         help_text += "https://www.pippim.com/programs/mserve.html#\n"
         self.test_help_button = tk.Button(
-            frame, text="🔗 Help", font=g.FONT,
-            width=g.BTN_WID2 - 4, command=lambda: g.web_help("HelpTestHost"))
-        self.test_help_button.grid(row=14, column=1, padx=5, pady=5, sticky=tk.W)
+            self.btn_frame, text="🔗 Help Test", font=g.FONT,
+            width=g.BTN_WID2, command=lambda: g.web_help("HelpTestHostStatus"))
+        self.test_help_button.grid(row=0, column=2, padx=10, pady=5, sticky=tk.E)
         if self.tt:  # During early boot toolkit.Tooltips() is still 'None'
-            self.tt.add_tip(self.test_help_button, help_text, anchor="nw")
+            self.tt.add_tip(self.test_help_button, help_text, anchor="ne")
 
 
     @staticmethod
@@ -1258,17 +1287,19 @@ class Locations(LocationsCommonSelf):
             call again without rebooting mserve.
         '''
         self.nmap_installed = ext.check_command('nmap')
-        #self.nmap_installed = False  # Test
         if self.nmap_installed:
             ''' Command 'nc' also required to quickly check if host is up '''
             self.nmap_installed = ext.check_command('nc')
         self.ssh_installed = ext.check_command('ssh')
-        #self.ssh_installed = False  # Test
         self.sshfs_installed = ext.check_command('sshfs')
         if self.sshfs_installed:
             self.sshfs_installed = ext.check_command('fusermount')
-        #self.sshfs_installed = False  # Test
         self.wakeonlan_installed = ext.check_command('wakeonlan')
+
+        ''' TEST: Remove comments to force screen fields off. '''
+        #self.nmap_installed = False  # Test
+        #self.ssh_installed = False  # Test
+        #self.sshfs_installed = False  # Test
         #self.wakeonlan_installed = False  # Test
 
         ''' Artwork image spanning 4 rows '''
@@ -1332,10 +1363,6 @@ class Locations(LocationsCommonSelf):
         self.fld_comments = self.one_loc_var(
             "Optional Comments", self.scr_comments, "")
 
-        ''' Image path doesn't appear on test window
-            July 28, 2023 causes corruption if two windows hae different fields.
-        if mode:
-        '''
         self.fld_image_path = self.one_loc_var(
             "Optional picture of Location", self.scr_image_path, "")
 
@@ -1378,19 +1405,20 @@ class Locations(LocationsCommonSelf):
                 return  # Button already created
             # print("self.scr_wakecmd.get():", self.scr_wakecmd.get())
             self.test_host_button = tk.Button(
-                self.main_frame, text="🔍 Test Host Wakeup", font=g.FONT,
+                self.btn_frame, text="🔍 Test Host Wakeup", font=g.FONT,
                 width=g.BTN_WID2 + 4, command=lambda: self.test_common(self.main_top))
-            self.test_host_button.grid(row=14, column=2, padx=5, pady=5, sticky=tk.W)
+            self.test_host_button.grid(row=14, column=1, padx=10, pady=5, 
+                                       sticky=tk.E)
             if self.tt:
                 self.tt.add_tip(self.test_host_button,
                                 "Test command to wake up Host.", anchor="ne")
-            self.called_from_main_top = True  # main_top calling test, no test_top
+            #self.called_from_main_top = True  # main_top calling test, no test_top
         elif self.test_host_button:
             ''' No wakeup command. Destroy button created earlier. '''
             self.tt.close(self.test_host_button)
             self.test_host_button.destroy()
             self.test_host_button = None  # Destroying doesn't set to 'None' for testing
-            self.called_from_main_top = False  # no main_top, so create test_top
+            #self.called_from_main_top = False  # no main_top, so create test_top
 
     def populate_loc_tree(self):
         """ Use custom Data Dictionary routines for managing treeview. """
@@ -1401,7 +1429,7 @@ class Locations(LocationsCommonSelf):
         toolkit.select_dict_columns(columns, location_dict)
 
         ''' Create treeview frame with scrollbars '''
-        self.tree_frame = tk.Frame(self.main_frame, bg="olive", relief=tk.RIDGE)
+        self.tree_frame = tk.Frame(self.main_frame, bg="LightGrey", relief=tk.RIDGE)
         self.tree_frame.grid(row=0, column=0, sticky=tk.NSEW, columnspan=4)
         self.tree_frame.columnconfigure(0, weight=1)
         self.tree_frame.rowconfigure(0, weight=1)
@@ -1531,12 +1559,15 @@ class Locations(LocationsCommonSelf):
             # TclError: invalid command name ".139778335789568.139778088451752.139778088448656"
             pass
 
-        ''' Test Host doesn't have a location introduction line '''
+        ''' Playlist Maintenance Window has a location introduction line '''
         if top_name == self.main_top:
             self.format_intro_line()  # Format introduction line
 
+        ''' fields that are always present '''
         self.scr_name.set(self.act_name)
         self.scr_topdir.set(self.act_topdir)
+        self.scr_comments.set(self.act_comments)
+        self.scr_image_path.set(self.act_image_path)
 
         ''' If Test Host fields not defined, no scr_ fields exist '''
         if self.fld_host:  # nmap and nc installed?
@@ -1554,41 +1585,9 @@ class Locations(LocationsCommonSelf):
         if self.fld_touchcmd:  # Is ssh installed?
             self.scr_touchcmd.set(self.act_touchcmd)
             self.scr_touchmin.set(self.act_touchmin)
-        self.scr_comments.set(self.act_comments)
-
-        #if top_name == self.main_top:  # No self.scr_image_path on self.test_frame
-        self.scr_image_path.set(self.act_image_path)  # New
 
     def enable_input(self):
-        """ Turn on input fields for 'new' and 'edit'
-
-            THOUGHTS about scr_mount_point variable:
-
-            From this answer:https://stackoverflow.com/a/4453715/6929343
-            def find_mount_point(path):
-                path = os.path.abspath(path)
-                while not os.path.ismount(path):
-                    path = os.path.dirname(path)
-                return path
-
-            After getting mount point can find out there are no files or
-            directories and know nothing is mounted yet.
-            Use the 100/10 test described below. Or will mount test file
-            walking back through invalid paths?
-
-            When FileControl.stat_start is called it will generate an error
-             if file system is not mounted. Errno 2.
-
-            Open last location can have 'New' button if the old mount
-            point is fine. Or an 'Edit' button if TopDir has changed. When
-            changing TopDir close music player if current location. Rename
-            all favorites with new TopDir. What if some files don't exist
-            in new TopDir?
-
-            If locations defined default to open. If no locations only
-            'New' button is available.
-
-        """
+        """ Turn on input fields for 'new' and 'edit' modes. """
         self.input_active = True
         self.fld_name['state'] = 'normal'  # Allow input
 
@@ -1668,14 +1667,15 @@ class Locations(LocationsCommonSelf):
             text = "Missing!"
 
         self.apply_button = tk.Button(
-            self.main_frame, text="✔ " + text, font=g.FONT,
+            self.btn_frame, text="✔ " + text, font=g.FONT,
             width=g.BTN_WID2 - 2, command=self.apply)
-        self.apply_button.grid(row=14, column=3, padx=5, pady=5, sticky=tk.W)
+        self.apply_button.grid(row=14, column=0, padx=10, pady=5, sticky=tk.E)
         self.main_top.bind("<Return>", self.apply)
         self.main_close_button['text'] = "✘ Cancel"
         ''' toolkit.Tooltips() guaranteed to be active for Apply button '''
+        # Aug 29/23 - used to be: "Synchronize Location and update records."
         self.tt.add_tip(self.apply_button, text + 
-                        " Location and update records.", anchor="ne")
+                        " Location and Update.", anchor="nw")
 
     def format_intro_line(self):
         """ Format introduction line
@@ -2022,7 +2022,27 @@ class Locations(LocationsCommonSelf):
         self.display_main_window("Delete Location")
 
     def synchronize(self):
-        """ Called by lib_top Edit Menubar 'Synchronize Location' """
+        """ Called by lib_top Edit Menubar 'Synchronize Location'
+        Click Synchronize Button:
+            Warning message appears that it is remote host, but nothing happens
+            Run Test Host which wakes up successfully
+        Then Click Synchronize Button again:
+            Test is run a second time when it should have been run first time
+            Now locks up because:
+                # File "/home/rick/python/location.py", line 3151, in apply
+                #     self.cmp_build_toplevel(sbar_width=14)
+                # File "/home/rick/python/location.py", line 3207, in cmp_build_toplevel
+                #     self.cmp_keep_awake()
+                # File "/home/rick/python/location.py", line 3346, in cmp_keep_awake
+                #     test_passed = self.test_host_up()  # Quick & dirty nc test
+                # File "/home/rick/python/location.py", line 2517, in test_host_up
+                #     toolkit.print_trace()
+                # File "/home/rick/python/toolkit.py", line 87, in print_trace
+                #     for line in traceback.format_stack():
+                # location.py Locations() test_host_up() blank host name. cmp_keep_awake
+                # Remote Host Disconnected!
+                # Dell Inspiron 17R SE 7720 File Server is off-line. Shutting down... 
+        """
         LocationsCommonSelf.__init__(self)  # Define self. variables
         self.state = 'synchronize'
         self.display_main_window("Synchronize Location")
@@ -2061,6 +2081,7 @@ class Locations(LocationsCommonSelf):
     #       Locations() Processing - SQL Database Access
     #
     # ==============================================================================
+
 
     @staticmethod
     def build_fake_locations():
@@ -2140,8 +2161,8 @@ class Locations(LocationsCommonSelf):
             Uses self.open_xxx variables !
         """
         if compare:
-            sql.save_config('location', 'last', self.cmp_code, self.cmp_name,
-                            self.cmp_topdir, Comments="Last location opened.")
+            sql.save_config('location', 'last', self.act_code, self.act_name,
+                            self.act_topdir, Comments="Last location opened.")
         else:
             sql.save_config('location', 'last', self.open_code, self.open_name,
                             self.open_topdir, Comments="Last location opened.")
@@ -2518,16 +2539,20 @@ class Locations(LocationsCommonSelf):
             ''' Return False when not a host and parent will test for topdir '''
             return False  #
 
-    def test_host_up(self):
+    def test_host_up(self, host=None):
         """ Simply test if host is up and return True or False
             Only called from mserve.py to check if connection still up.
             Always use self.open_xxx and never self.act_xxx fields which
             can be changed in Maintenance.
+
+            When called from Synchronize Location host=self.act_host
         """
-        if self.open_host:
+        if not host:
+            host = self.open_host  # Cannot use in parameters. gets init error
+        if host:
             ''' nc returns 0 if host is on-line '''
             #print(ext.t(time.time()), "test_host_up()")
-            result = os.system("nc -z " + self.open_host + " 22 > /dev/null")
+            result = os.system("nc -z " + host + " 22 > /dev/null")
             # Above waits for command to end 0.003 seconds when host up
             # If a long suspend and host went down its a few seconds.
             # A once good host suddenly disconnected takes 37 seconds
@@ -2557,10 +2582,14 @@ class Locations(LocationsCommonSelf):
 
             Called internally from self.main_top -> self.test_host_button.
 
-        :param toplevel: 'toplevel' can be 'main_top' that test window fully covers. 
-            'toplevel' can be 'root' and then window centered on active monitor.
+        :param toplevel: 'toplevel' can be 'main_top' used for test.
+            'toplevel' can be 'root', then new window is created.
         :param run_nmap: If 'nc' was used for quick test, no need to run 'nmap'.
             Also display_test_window() was already done. """
+
+        ''' Simple method to set self.called_from_main_top '''
+        self.called_from_main_top = toplevel == self.main_top
+        #print("simple self.called_from_main_top:", self.called_from_main_top)
 
         ''' Perform fastest test for mserve.py open_and_play_callback() '''
         if not self.called_from_main_top and not self.act_host:
@@ -2571,12 +2600,189 @@ class Locations(LocationsCommonSelf):
                     self.open_sshfs_used = True  # better than nothing...
                 return True  # Probably not even a host.
 
+        # noinspection SpellCheckingInspection, Pep8CodingStyleViolationW605
+        ''' extraordinary notes on sshfs not mounting on Android 10
+
+Mobile Phone Host
+
+Try three USB cables and the third will allow data transfer
+
+USB option doesn't say it's charger only setting
+
+Click and select File Transfer
+
+A new volume will show up in Nautilus left pane
+
+Use Nautilus to copy your music files from local storage to your phone
+
+See mount points. First is CD, second is the phone:
+
+``` bash
+/run/user/1000/gvfs$ ll
+total 0
+dr-x------  4 rick rick   0 Aug 19 22:30 ./
+drwx------ 12 rick rick 800 Aug 27 17:05 ../
+drwx------  1 rick rick   0 Dec 31  1969 cdda:host=sr0/
+dr-x------  1 rick rick   0 Dec 31  1969 mtp:host=%5Busb%3A001%2C009%5D/
+```
+
+Install Banana Studio SSH/SFTP on port 2222. Optionally setup user.
+
+Create local mount point: /mnt/phone
+
+Change local directory pointing to phone:
+
+``` bash
+rick@alien:/run/user/1000/gvfs/mtp:host=%5Busb%3A001%2C009%5D$ cdd
+────────────────────────────────────────────────────────────────────────────────────────────
+rick@alien:/run/user/1000/gvfs/mtp:host=%5Busb%3A001%2C009%5D/SD card$ cdd
+────────────────────────────────────────────────────────────────────────────────────────────
+rick@alien:/run/user/1000/gvfs/mtp:host=%5Busb%3A001%2C009%5D/SD card/Music$ 
+```
+
+Log into your router: 
+https://www.highspeedinternet.com/resources/how-to-log-in-to-your-router
+
+Assign static IP address:
+https://business.shaw.ca/support/business-router-settings-dhcp-reservation
+
+Q&A: https://askubuntu.com/a/1179873/307523
+
+Debug SSHFS error "Connection reset by peer" add -oedebug option:
+
+Use guest account with no password for testing
+
+
+Look at Banana SSH/SFTP Users screen for ssh where both internal and external
+are assigned to use directory name you can't list:
+
+``` bash
+ 2|:/storage/emulated/0 $ cd /storage/4A21-0000/
+
+:/storage/4A21-0000 $ ls
+Alarms  DCIM     Movies Notifications Podcasts  
+Android Download Music  Pictures      Ringtones 
+
+1|:/storage/4A21-0000 $ ls Music   
+10cc             My Chemical Romance
+3 Doors Down     Nancy Sinatra                   
+   (... SNIP ...)
+Mr. Scruff      last_song_ndx       
+  
+:/storage/4A21-0000 $ cd Music
+:/storage/4A21-0000/Music $ 
+
+# Next line keeps connection alive
+
+:/storage/4A21-0000/Music $ while : ; do ls last_song_ndx ; sleep 60 ; done
+last_song_ndx
+
+        
+```
+
+sshfs is broken connecting to phone running SSH/SFTP server:
+
+``` bash
+
+LATEST ATTEMPT password is 1234:
+
+$ echo 1234 | sshfs -odebug,sshfs_debug,loglevel=debug -o password_stdin -p 2222 
+rick@phone:/storage/4A21-0000/Music /mnt/phone
+SSHFS version 2.5
+FUSE library version: 2.9.4
+nullpath_ok: 0
+nopath: 0
+utime_omit_ok: 0
+executing <ssh> <-x> <-a> <-oClearAllForwardings=yes> <-ologlevel=debug> 
+<-oPort=2222> <-oNumberOfPasswordPrompts=1> <-2> <rick@phone> <-s> <sftp>
+debug1: Reading configuration data /etc/ssh/ssh_config
+debug1: /etc/ssh/ssh_config line 19: Applying options for *
+debug1: Connecting to phone [192.168.0.11] port 2222.
+debug1: Connection established.
+debug1: identity file /home/rick/.ssh/id_rsa type 1
+debug1: key_load_public: No such file or directory
+debug1: identity file /home/rick/.ssh/id_rsa-cert type -1
+debug1: key_load_public: No such file or directory
+debug1: identity file /home/rick/.ssh/id_dsa type -1
+debug1: key_load_public: No such file or directory
+debug1: identity file /home/rick/.ssh/id_dsa-cert type -1
+debug1: key_load_public: No such file or directory
+debug1: identity file /home/rick/.ssh/id_ecdsa type -1
+debug1: key_load_public: No such file or directory
+debug1: identity file /home/rick/.ssh/id_ecdsa-cert type -1
+debug1: key_load_public: No such file or directory
+debug1: identity file /home/rick/.ssh/id_ed25519 type -1
+debug1: key_load_public: No such file or directory
+debug1: identity file /home/rick/.ssh/id_ed25519-cert type -1
+debug1: Enabling compatibility mode for protocol 2.0
+debug1: Local version string SSH-2.0-OpenSSH_7.2p2 Ubuntu-4ubuntu2.10
+debug1: Remote protocol version 2.0, remote software version SSH Server - Banana Studio
+debug1: no match: SSH Server - Banana Studio
+debug1: Authenticating to phone:2222 as 'rick'
+debug1: SSH2_MSG_KEXINIT sent
+debug1: SSH2_MSG_KEXINIT received
+debug1: kex: algorithm: ecdh-sha2-nistp256
+debug1: kex: host key algorithm: ssh-rsa
+debug1: kex: server->client cipher: aes128-ctr MAC: hmac-sha2-256 compression: none
+debug1: kex: client->server cipher: aes128-ctr MAC: hmac-sha2-256 compression: none
+debug1: sending SSH2_MSG_KEX_ECDH_INIT
+debug1: expecting SSH2_MSG_KEX_ECDH_REPLY
+debug1: Server host key: ssh-rsa SHA256:3mNL574rJyHCOGm1e7Upx4NHXMg/YnJJzq+jXhdQQxI
+debug1: Host '[phone]:2222' is known and matches the RSA host key.
+debug1: Found key in /home/rick/.ssh/known_hosts:6
+debug1: rekey after 4294967296 blocks
+debug1: SSH2_MSG_NEWKEYS sent
+debug1: expecting SSH2_MSG_NEWKEYS
+debug1: SSH2_MSG_NEWKEYS received
+debug1: rekey after 4294967296 blocks
+debug1: SSH2_MSG_SERVICE_ACCEPT received
+debug1: Authentications that can continue: password,keyboard-interactive
+debug1: Next authentication method: keyboard-interactive
+Password authentication
+debug1: Authentication succeeded (keyboard-interactive).
+Authenticated to phone ([192.168.0.11]:2222).
+debug1: channel 0: new [client-session]
+debug1: Entering interactive session.
+debug1: pledge: network
+debug1: Sending environment.
+debug1: Sending env LANG = en_CA.UTF-8
+debug1: Sending subsystem: sftp
+Server version: 3
+debug1: client_input_channel_req: channel 0 rtype exit-status reply 0
+debug1: channel 0: free: client-session, nchannels 1
+debug1: fd 0 clearing O_NONBLOCK
+Transferred: sent 1960, received 1752 bytes, in 0.1 seconds
+Bytes per second: sent 15449.5, received 13810.0
+debug1: Exit status 0
+remote host has disconnected
+
+Extra insurance Ubuntu Firewall allow port 2222, Use:
+
+``` bash
+sudo ufw allow 2222
+```
+
+sshfs was discontinued in 2022. NFS is an option:
+https://android.stackexchange.com/questions/200867/how-to-mount-nfs-on-android-with-correct-permissions
+
+        
+        
+        '''
+
         ''' If using Test Button, validate_location() sets self.act_xxx vars '''
         if self.called_from_main_top and not self.validate_location():
             return False  # Called from main_top and error given to user to fix
 
-        ''' We have more complicated situation where remote / host is used. '''
+        ''' At this point, remote host is used. '''
         display_test = run_nmap and not self.called_from_main_top
+        #print("test_common() calling test_init(display_test):", display_test)
+        '''
+        ERROR:
+            display_test is true called from view() main_top after synchronize run
+            display_test is false called from view() main_top normally
+            display_test is false called from synchronize() test host
+            display_test is false called from synchronize() synchronize button
+        '''
         self.test_init(toplevel, display_test)  # Open delayed text box
 
         if run_nmap:
@@ -2605,7 +2811,7 @@ class Locations(LocationsCommonSelf):
                 text += self.act_wakecmd
                 self.test_show(text, pattern=self.act_wakecmd)
 
-                ''' Launch wakeup command (don't use && sleep 4). '''
+                ''' Launch wakeup command (don't use '&& sleep 4' anymore). '''
                 os.popen(self.act_wakecmd)
 
         ''' Keep testing host until it is awake '''
@@ -2740,6 +2946,12 @@ class Locations(LocationsCommonSelf):
         ''' if 'nc' previously run test window already up.
             if self.test_called_from_main = True then using main_top variables. 
         '''
+        if toplevel == self.main_top:
+            if display_test:
+                print("location.py test_init(): display_test is True!!!")
+        elif not display_test:
+            print("location.py test_init(): display_test is False!!!")
+
         if display_test:
             ''' Careful here... Check call chain before revisions... '''
             #print(ext.t(time.time()), "mounting display_test_window")
@@ -2761,10 +2973,10 @@ class Locations(LocationsCommonSelf):
                 self.apply_button.grid_remove()
             #self.main_top.update()
             ''' test box will replace treeview '''
-            self.make_test_box(self.main_frame)  # Appears bottom of main_frame?
+            self.make_test_box(self.main_frame)  # Replaces treeview
             ''' new buttons replace grid_remove '''
-            self.make_test_close_button(self.main_frame)
-            self.make_test_help_button(self.main_frame)
+            self.make_test_close_button()
+            self.make_test_help_button()
             self.main_top.update()
 
         text = 'Initial test to see if host: ' + self.act_host + ' is connected.'
@@ -2778,8 +2990,9 @@ class Locations(LocationsCommonSelf):
         if self.called_from_main_top:  # main_top exists, so test_top not needed
             ''' Remove test window overrides and restore original main window '''
             if self.tt:
-                self.tt.close(self.test_close_button)
-                self.tt.close(self.test_help_button)
+                if self.tt.check(self.test_close_button):
+                    self.tt.close(self.test_close_button)
+                    self.tt.close(self.test_help_button)
             self.test_close_button.destroy()
             self.test_help_button.destroy()
             self.test_scroll_frame.destroy()
@@ -2798,15 +3011,15 @@ class Locations(LocationsCommonSelf):
                 self.apply_button.grid()
             self.main_top.update()
         else:
-            self.test_top.destroy()
+            self.test_top.destroy()  # What about tooltips? - There are none
             self.test_top = None  # Destroying doesn't set to 'None'
 
     def test_nmap(self, toplevel):
         """ Run the nmap command when 'nc' command has not been run. """
         ''' nmap returns results in lumps '''
-        if os.path.exists(FNAME_TEST):
-            os.remove(FNAME_TEST)
-        cmd = "nmap -Pn " + self.act_host + " 2>&1 > " + FNAME_TEST + " &"
+        if os.path.exists(FNAME_TEST_NMAP):
+            os.remove(FNAME_TEST_NMAP)
+        cmd = "nmap -Pn " + self.act_host + " 2>&1 > " + FNAME_TEST_NMAP + " &"
         os.popen(cmd)
         text = "\nUsing 'nmap' (Network Mapper) to test if: "
         text += self.act_host + " is connected."
@@ -2814,10 +3027,10 @@ class Locations(LocationsCommonSelf):
         self.test_show("Command: " + cmd, pattern="nmap -Pn " + self.act_host)
 
         text = "\nWaiting for 'nmap' output results to appear in: "
-        text += FNAME_TEST + "\n"
+        text += FNAME_TEST_NMAP + "\n"
         self.test_show(text, pattern="'nmap'")
         limit = 300  # 30 second time limit. dell takes 6.5 seconds
-        string = ""
+        text = ""
         start = time.time()
         self.test_show("Dummy Line to replace")
         for i in range(limit):
@@ -2825,21 +3038,21 @@ class Locations(LocationsCommonSelf):
                               "'nmap' results shown below")
             # noinspection PyBroadException
             try:
-                string = ext.read_into_string(FNAME_TEST)
+                text = ext.read_into_string(FNAME_TEST_NMAP)
             except:
                 continue  # File hasn't appeared yet
-            if "Nmap done:" in string:
+            if "Nmap done:" in text:
                 break
 
         ''' Check nmap results '''
-        host_is_up = "(1 host up)" in string
-        host_is_awake = "22/tcp open" in string  # what if more spaces? Use re
+        host_is_up = "(1 host up)" in text
+        host_is_awake = "22/tcp open" in text  # what if more spaces? Use re
         self.test_host_was_asleep = not host_is_awake  # Can do this better...
         if limit == 0:
             self.test_show("\n'nmap' FAILED! 10 second timeout exceeded.",
                            pattern="'nmap' FAILED!")
         else:
-            self.test_show(string, pattern="(1 host up)")
+            self.test_show(text, pattern="(1 host up)")
 
         return host_is_up, host_is_awake
 
@@ -3020,27 +3233,16 @@ class Locations(LocationsCommonSelf):
     def cmp_build_toplevel(self, sbar_width=14):
         """ Compare target location songs to build treeview of differences.
 
-            Source is current LODICT, Target it selected by user here
+            Source is self.open_code, Target is self.act_code.
 
-            After comparison, we can:
+            After comparison:
                 - Set modification time (mtime) of target to match source
                 - Set modification time (mtime) of source to match target
                 - Copy files from source to target maintaining mtime
                 - Copy files from target to source maintaining mtime
 
             NOTE: Doesn't export or import songs
-                  Android doesn't allow setting mod time so track in mserve
-
-            TODO:
-
-            Compare locations can be setup like RipCD () class where generating
-            list is done in background, and it generates a pickle while ps_active
-            is polled. Button to cancel is active with status message in
-            ScrolledText stating work in progress.
-
-            When ps_active is done, text updated with filenames and actions.
-            Button appears to update. """
-
+                  Android doesn't allow setting mod time so track in mserve """
 
         ''' Wake up host as required and keep awake '''
         if self.act_host:
@@ -3051,10 +3253,27 @@ class Locations(LocationsCommonSelf):
                 self.main_top, title, text, confirm='no', icon='info',
                 thread=self.get_thread_func)
             self.info.cast(title + "\n\n" + text + "\n\n\t\t" +
-                           "Answer was: " + answer.result, 'warning')
+                           "Answer was: " + str(answer.result), 'warning')
             if answer.result != "yes":
+                #print("answer not yes", answer.result)
                 return  # Let sleeping dogs lie
+            #self.called_from_main_top = True  # Added Aug 28/23
+            #print("answer yes, calling test_common_self.main_top")
+            ''' Problems in test_common:
+                    Help button is not assigned tooltip properly
+                    Close test results button stays up after test host
+                    clicking close test results:
+                    # Exception in Tkinter callback
+                    # Traceback (most recent call last):
+                    #   File "/usr/lib/python2.7/lib-tk/Tkinter.py", line 1540, in __call__
+                    #     return self.func(*args)
+                    #   File "/home/rick/python/location.py", line 2979, in test_close_window
+                    #     self.test_top.destroy()
+                    # AttributeError: 'NoneType' object has no attribute 'destroy'
+            '''
             if not self.test_common(self.main_top):
+                # Aug 28/23 - def test_common( returned false and did nothing
+                #self.called_from_main_top = False  # Added Aug 28/23
                 return  # Refuses to connect to host
             if self.act_touchcmd:
                 self.cmp_keep_awake_is_active = True
@@ -3078,7 +3297,7 @@ class Locations(LocationsCommonSelf):
         img.taskbar_icon(self.cmp_top, 64, 'white', 'lightskyblue', 'black')
 
         ''' Create frames '''
-        master_frame = tk.Frame(self.cmp_top, bg="olive", relief=tk.RIDGE)
+        master_frame = tk.Frame(self.cmp_top, bg="LightGrey", relief=tk.RIDGE)
         master_frame.grid(sticky=tk.NSEW)
         master_frame.columnconfigure(0, weight=1)
         master_frame.rowconfigure(0, weight=1)
@@ -3131,18 +3350,33 @@ class Locations(LocationsCommonSelf):
         self.cmp_tree.configure(xscrollcommand=h_scroll.set)
         '''
         ''' Frame3 for Treeview Buttons '''
-        self.cmp_btn_frm = tk.Frame(master_frame, bg="Blue", bd=2, relief=tk.GROOVE,
+        self.cmp_btn_frm = tk.Frame(master_frame, bg="LightGrey", bd=2, relief=tk.GROOVE,
                                     borderwidth=g.BTN_BRD_WID)
         self.cmp_btn_frm.grid_rowconfigure(0, weight=1)
         self.cmp_btn_frm.grid_columnconfigure(0, weight=1)
-        self.cmp_btn_frm.grid(row=1, column=0, sticky=tk.NW)
+        self.cmp_btn_frm.grid(row=1, column=0, sticky=tk.E)
+
+        ''' Help Button - https://www.pippim.com/programs/mserve.html#HelpSynchronizeActions
+                          Optional-Remote-Host-Support '''
+        help_text = "Open new window in default web browser for\n"
+        help_text += "videos and explanations on using this screen.\n"
+        help_text += "https://www.pippim.com/programs/mserve.html#\n"
+        self.cmp_help_button = tk.Button(
+            self.cmp_btn_frm, text="🔗 Help", font=g.FONT,
+            width=g.BTN_WID2 - 4, command=lambda: g.web_help("HelpSynchronizeActions"))
+        self.cmp_help_button.grid(row=0, column=1, padx=10, pady=5, sticky=tk.E)
+
+        # Aug 28/23 newly added help button, there are no tooltips used in window
+        #if self.tt:  # During early boot toolkit.Tooltips() is still 'None'
+        #    self.tt.add_tip(self.cmp_help_button, help_text, anchor="ne")
 
         ''' ✘ Close Button '''
         self.cmp_top.bind("<Escape>", self.cmp_close)
         self.cmp_top.protocol("WM_DELETE_WINDOW", self.cmp_close)
         self.cmp_close_btn = tk.Button(self.cmp_btn_frm, text="✘ Close",
                                        width=g.BTN_WID - 4, command=self.cmp_close)
-        self.cmp_close_btn.grid(row=0, column=0, padx=2)
+        self.cmp_close_btn.grid(row=0, column=2, padx=(10, 5), pady=5,
+                                sticky=tk.E)
         ''' Create Treeview. If no differences it gives message '''
         if not self.cmp_populate_tree():
             self.cmp_close()  # Files are identical
@@ -3153,9 +3387,11 @@ class Locations(LocationsCommonSelf):
         self.update_differences_btn = tk.Button(
             self.cmp_btn_frm, width=g.BTN_WID + 12, command=self.cmp_update_files,
             text="🗘  Update " + '{:,}'.format(self.cmp_found) + " differences")
-        self.update_differences_btn.grid(row=0, column=1, padx=2)
+        self.update_differences_btn.grid(row=0, column=0, padx=10, pady=5,
+                                         sticky=tk.E)
 
         if self.cmp_top_is_active is False:
+            #self.called_from_main_top = False  # Added Aug 28/23
             return
         self.cmp_tree.update_idletasks()
 
@@ -3181,7 +3417,7 @@ class Locations(LocationsCommonSelf):
         self.awake_last_time_check = time.time()
         if self.awake_last_time_check > self.next_active_cmd_time:
             ''' Test if Host still connected before sending touch command '''
-            test_passed = self.test_host_up()  # Quick & dirty nc test
+            test_passed = self.test_host_up(host=self.act_host)  # Quick & dirty nc test
             if not self.cmp_keep_awake_is_active:
                 return  # Shutting down now
             if test_passed is False:
@@ -3245,7 +3481,7 @@ class Locations(LocationsCommonSelf):
             self.act_touchmin = 10
         self.act_touchmin = 10 if self.act_touchmin < 2 else self.act_touchmin
         mill = int(self.act_touchmin * 60 * 1000)  # convert to milliseconds
-        print("mill:", mill)
+        print("location.py cmp_keep_awake() main_top.after - mill:", mill)
         self.main_top.after(mill, self.cmp_keep_awake)  # cmp_top may close early
 
     # *args reported as unused, but is required for binding <Escape> to cmp_close()
@@ -3262,6 +3498,7 @@ class Locations(LocationsCommonSelf):
                 self.tt.close(self.cmp_top)  # Close tooltips under top level
         self.cmp_top.destroy()  # Close the treeview window
         self.cmp_top = None
+        #self.called_from_main_top = False  # Added Aug 28/23 - for test_common
         return True
 
     def cmp_populate_tree(self):
@@ -3286,8 +3523,8 @@ class Locations(LocationsCommonSelf):
         #target_dir_sep = self.cmp_target_dir.count(os.sep) - 1
         self.src_mt = ModTime(self.open_code)
         self.trg_mt = ModTime(self.act_code)
-        print("self.src_mt.allows_mtime:", self.src_mt.allows_mtime)
-        print("self.trg_mt.allows_mtime:", self.trg_mt.allows_mtime)
+        #print("self.src_mt.allows_mtime:", self.src_mt.allows_mtime)
+        #print("self.trg_mt.allows_mtime:", self.trg_mt.allows_mtime)
 
         LastArtist = LastAlbum = CurrAlbumId = CurrArtistId = ""
         self.cmp_found = 0
@@ -3421,6 +3658,8 @@ class Locations(LocationsCommonSelf):
                 "Timestamp Trg -> Src" - Prevents future checks
                 "Timestamp Src -> Trg" - Prevents future checks """
 
+        action = ""  # to make pycharm happy
+
         ''' Build real song path from fake_path and stat '''
         src_path = self.real_from_fake_path(fake_path)
         src_stat = os.stat(src_path)  # os.stat provides file attributes
@@ -3483,11 +3722,11 @@ class Locations(LocationsCommonSelf):
                 text += "  - action   :  " + action + "\n"
                 text += "  - src_path :  " + src_path + "\n"
                 text += "  - trg_path :  " + trg_path + "\n"
-                text += "  - src_size :  " + src_size + "\n"
-                text += "  - trg_size :  " + trg_size + "\n"
-                text += "  - src_time :  " + src_time + "\n"
-                text += "  - trg_time :  " + trg_time + "\n"
-                text += "  - trg_size :  " + trg_size + "\n\n"
+                text += "  - src_size :  " + str(src_size) + "\n"
+                text += "  - trg_size :  " + str(trg_size) + "\n"
+                text += "  - src_time :  " + str(src_time) + "\n"
+                text += "  - trg_time :  " + str(trg_time) + "\n"
+                text += "  - trg_size :  " + str(trg_size) + "\n\n"
                 text += "Was another job running? Contact www.pippim.com"
                 self.out_cast_show_print(title, text, 'error', align="left")
                 action = "OOPS"
@@ -3556,7 +3795,10 @@ class Locations(LocationsCommonSelf):
                 return  # Already know closing down
 
             ''' 1. Highlight command being run '''
-            self.cmp_tree.see(iid)
+            ''' Shutting down? '''
+            if not self.cmp_top_is_active:
+                return
+            self.cmp_tree.see(iid)  # tree.see() crashes when window is closed
             if last_sel_iid:
                 toolkit.tv_tag_remove(self.cmp_tree, last_sel_iid, 'cmp_sel')
             toolkit.tv_tag_add(self.cmp_tree, iid, 'cmp_sel')
@@ -3576,7 +3818,8 @@ class Locations(LocationsCommonSelf):
                 copy_time_so_far += time.time() - start_time
                 copy_size_so_far += float(size)  # Total size of all files copied
                 percent = float(100.0 * copy_size_so_far / all_sizes)
-                #progress_var.set(percent)  # No good when timestamps
+                if True is False:
+                    progress_var.set(percent)  # No good - timestamps are short.
             if not self.fast_refresh():  # No sleep after should only take few ms
                 return
 

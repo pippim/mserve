@@ -22,7 +22,7 @@ from __future__ import with_statement       # Error handling for file opens
 #       Apr. 15 2023 - Move in normalize_tcl() from bserve.py for mserve.py.
 #       Jun. 15 2023 - New Tooltip anchor "sc" South Centered for banner_btn
 #       July 11 2023 - Delete unused methods to simplify mserve_config.py
-#       Aug. 15 2023 - 'menu' tooltips appear on top left mon. Add self.menu_tuple.
+#       Aug. 15 2023 - Fix 'menu' tooltips on left monitor with self.menu_tuple
 #
 #==============================================================================
 
@@ -563,14 +563,14 @@ class CustomScrolledText(scrolledtext.ScrolledText):
             import ScrolledText as scrolledtext  # Python 2
 
 
-    example:
-
-    text = CustomScrolledText()
-    text.tag_configure("red", foreground="#ff0000")
-    text.highlight_pattern("this should be red", "red")
-
-    The highlight_pattern method is a simplified python
-    version of the tcl code at http://wiki.tcl.tk/3246
+        EXAMPLE:
+    
+            text = CustomScrolledText()
+            text.tag_configure("red", foreground="#ff0000")
+            text.highlight_pattern("this should be red", "red")
+        
+            The highlight_pattern method is a simplified python
+            version of the tcl code at http://wiki.tcl.tk/3246
     """
 
     def __init__(self, *args, **kwargs):
@@ -642,8 +642,8 @@ class DictTreeview:
         columns to display, the order of the columns and in the future
         filtering which rows are displayed for tree.insert() operations.
     """
-    def __init__(self, tree_dict, toplevel, master_frame, show='headings', columns=(),
-                 sbar_width=12, highlight_callback=None):
+    def __init__(self, tree_dict, toplevel, master_frame, show='headings', 
+                 columns=(), sbar_width=12, highlight_callback=None):
 
         self.toplevel = toplevel
         self.master_frame = master_frame    # Master frame for treeview frame
@@ -1189,7 +1189,7 @@ class SearchText:
         self.find_op = find_op
         self.callback = callback  # E.G. missing_artwork_callback
         self.tt = tt  # ToolTIps
-        self.get_thread_func = thread  # myserve.py self.get_refresh_thread
+        self.get_thread_func = thread  # mserve.py self.get_refresh_thread
         # print('column:', column, 'find_str:', find_str)
 
         self.frame = None  # frame for input
@@ -1308,9 +1308,9 @@ class SearchText:
         print("\nself.view:", self.view,
               "\nself.toplevel:", self.toplevel,
               "\nself.tree:", self.tree,
-              #"\nlen(self.tree.get_children()):", len(self.tree.get_children()),
+              #"\n len(self.tree.get_children()):", len(self.tree.get_children()),
               #   File "/home/rick/python/toolkit.py", line 1296, in dump_vars
-              #     "\nlen(self.tree.get_children()):", len(self.tree.get_children()),
+              #     "\n len(self.tree.get_children()):", len(self.tree.get_children()),
               #   File "/usr/lib/python2.7/lib-tk/ttk.py", line 1195, in get_children
               #     self.tk.call(self._w, "children", item or '') or ())
               # TclError: invalid command name ".140320456140848.140320057982560.140320064991816.140320064991888"
@@ -1906,7 +1906,7 @@ class CommonTip:
         self.normal_text_color = None   # self.widget.itemcget(...)       # 26
         self.normal_button_color = None  # .itemcget("button_color"...)   # 27
         self.anchor = None              # tooltip anchor point on widget  # 28
-        self.menu_tuple = None              # Optional parent needed for 'menu' # 29
+        self.menu_tuple = None          # tool_type 'menu' controls       # 29
 
                                         # 'piggy_back' below with # 30 to # 33
         self.pb_alpha = None            # Update 'piggy_back' with alpha percent
@@ -2265,7 +2265,7 @@ class ToolTips(CommonTip):
 
         self.widget = widget                # .140599674917592.140599679077192.140599679077336
         self.text = text                    # "This button \n does that."
-        self.tool_type = tool_type          # 'button' or 'canvas_button' or 'menu'
+        self.tool_type = tool_type          # button/canvas_button/label/menu/piggy
         self.menu_tuple = menu_tuple        # E.G. (self.cd_top, 200, 50)
         self.pb_alpha = pb_alpha            # Piggy-back callback when alpha changes
         self.pb_leave = pb_leave            # Piggy-back callback when mouse leaves widget
@@ -2345,6 +2345,7 @@ class ToolTips(CommonTip):
                                    outline=self.normal_button_color)
             self.widget.itemconfig("text_color", fill=self.normal_text_color)
 
+    # noinspection PyUnusedLocal
     def poll_tips(self):
         """ Check for fading in new tooltip and/or fading out current tooltip """
         self.now = time.time()          # Current time
@@ -2535,48 +2536,20 @@ class ToolTips(CommonTip):
 
         if self.tool_type == 'menu':
             ''' Menu objects have no parent and no widget _winfo(). '''
-            # For menu bars the x & y is way off to 0,0
-            # https://stackoverflow.com/a/47855128/6929343
-            #parent = self.widget.master.master
-            # Aug 15/23 encoding.py cd_top takes too far back past lib_top
-            # to root which appears to have been opened on top-left monitor
-            # before it was moved to top-right monitor.
-            #parent = self.widget.master  # Still on top-left monitor
-            parent = self.widget  # still on top-left monitor
-            # https://stackoverflow.com/a/27161829/6929343
-            #from Tkinter import Widget
-            #parent = self.widget.winfo_parent()
-            #parent = Widget._nametowidget(parent)
-            #x = parent.winfo_rootx() + self.widget.winfo_width()
-            #y = parent.winfo_rooty() + self.widget.winfo_height()
             parent, menu_x, menu_y = self.menu_tuple
             x = parent.winfo_rootx() + menu_x
             y = parent.winfo_rooty() + menu_y
-            #print("'menu_tuple' tooltip x, y:", x, y)  # 4730 1310
             mouse_x = x + self.widget.winfo_reqwidth()
-            self.current_mouse_xy = (mouse_x, y)  # Reassign out of widget coords
-            #print("self.current_mouse_xy:", self.current_mouse_xy)
-            #print("parent.winfo_rootx():", parent.winfo_rootx())  # 4179
-            #print("parent.winfo_rooty():", parent.winfo_rooty())  # 1049
-            #print("winfo_reqwidth():", self.widget.winfo_reqwidth())  # 479
-            #print("winfo_reqheight():", self.widget.winfo_reqheight())  # 242
-            #print("self.widget.winfo_width():", self.widget.winfo_width())  # 1
-            #print("self.widget.winfo_height():", self.widget.winfo_height())  # 1
-            # Format menu left edge first item 18, 23
-            # Format menu bottom right 404, 115
-            # Quality menu left edge first item 7, 18
-            # Quality menu 70% option 1/3 in: 123, 140
-            # Quality menu bottom right 471, 231
-            # Naming menu left edge first item 7, 18
-            # Naming menu bottom right 256, 57
+            self.current_mouse_xy = (mouse_x, y)  # Reassign out of widget co-ords
 
         # Invert tooltip colors from current widget album art colors.
         #if self.tool_type is not 'canvas_button':  # comment June 15/23
+        # What about 'label'?
         if self.tool_type is 'button' or self.tool_type is 'menu':
             self.fg = self.widget["background"]
             self.bg = self.widget["foreground"]
         else:
-            self.fg = None  # canvas button has no coloring
+            self.fg = None  # 'canvas_button' has no coloring.  'label' and
             self.bg = None  # 'piggy-back' will also come here
 
         #self.tip_window = tw = tk.Toplevel(self.widget)  # Original weird code...

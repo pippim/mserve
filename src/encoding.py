@@ -37,18 +37,25 @@ warnings.simplefilter('default')  # in future Python versions.
 #       Aug. 18 2023 - Fix nasty SQL bugs bump version to 3.3.13.
 #       Aug. 19 2023 - Add MP3 support and more MP4 tags.
 #       Aug. 20 2023 - Get Composer/Writer/Producer lists from MusicBrainz.
+#       Aug. 22 2023 - Don't download images over 4 mb.
 #
 # ==============================================================================
 # noinspection SpellCheckingInspection
 """
 TODO:
 
-    If only 1 release passes filtration, mark checkbox for Album Date, Tracks and
-        middle artwork resolution.
-    Don't bother downloading images over 4 MB e.g. Greatest Hits of the 80's has
-        file over 10 MB which wastes time as it can never be encoded to .oga as
-        it takes 10 seconds to ffprobe.
+    After setting 'Genre' at Album level, override for tracks.  Build into
+        out_name2 as first field. Add into treeview values.
 
+    If only 1 MBZ release passes filtration, automatically mark the checkboxes 
+        for Album Date, Tracks and the bottom artwork resolution.
+
+    During ShowInfo and AskQuestion, display default make_image artwork to make
+        it obvious. Restore unrotated artwork after button click.
+
+    Recent WAIT_LOCK changes in message.py are causing last ShowInfo() to
+        disappear as soon as it is displayed and rip window closes.
+        
 NOTES:
 
     Hijack the m4a 'catg' tag from podcast category for "discid"
@@ -180,7 +187,6 @@ class RipCD:
         self.rip_ctl = rip_ctl  # FileControl()
         self.lcs = lcs  # location.py Locations() instance
         RIP_CD_IS_ACTIVE = True  # Shared with mserve
-        #self.topdir = LODICT['topdir']  # What if there is no location dict?
         self.topdir = lcs.open_topdir  # What if it's a new location?
         self.caller_disc = caller_disc  # Development reuse last disc ID
 
@@ -189,7 +195,9 @@ class RipCD:
         self.edit_frm = None
         self.edit_cancel_btn = None
         self.edit_proceed_btn = None
+        self.edit_help_btn = None
         self.edit_title_var = tk.StringVar()  # Can't change for display
+        self.edit_genre_var = tk.StringVar()
         self.edit_artist_var = tk.StringVar()
         self.edit_first_date_var = tk.StringVar()
         self.edit_composer_var = tk.StringVar()
@@ -200,6 +208,7 @@ class RipCD:
         self.confirm_frm = None
         self.confirm_cancel_btn = None
         self.confirm_proceed_btn = None
+        self.confirm_help_btn = None
         ''' match: self.selected_album_artist -> self.selected_gapless_playback '''
         self.album_artist_var = tk.StringVar()
         self.compilation_var = tk.StringVar()
@@ -239,6 +248,7 @@ class RipCD:
 
         # Meta - Values stored in treeview track iid
         self.track_meta_title = None  # Title with NO 'disc-track-' & NO .ext
+        self.track_genre = None  # deep search used
         self.track_artist = None  # Different than album_artist
         self.track_first_date = None  # deep search used
         self.track_composer = None  # Probably in MBZ
@@ -283,31 +293,35 @@ class RipCD:
         img.taskbar_icon(self.cd_top, 64, 'white', 'lightskyblue', 'black')
 
         ''' Create master frame '''
-        master_frame = ttk.Frame(self.cd_top, padding=(3, 3, 12, 12))
-        master_frame.grid(column=0, row=0, sticky=tk.NSEW)
-        tk.Grid.rowconfigure(master_frame, 0, weight=1)
-        tk.Grid.columnconfigure(master_frame, 0, weight=1)
-
+        self.master_frame = ttk.Frame(self.cd_top, padding=(3, 3, 12, 12))
+        self.master_frame.grid(column=0, row=0, sticky=tk.NSEW)
+        self.master_frame.rowconfigure(0, weight=2)  # artwork & top pane
+        # Ironically more weight above (2) makes it half the size of below (1)
+        self.master_frame.rowconfigure(1, weight=1)  # bottom pane musicbrainz
+        self.master_frame.columnconfigure(0, weight=1)  # artwork column right chopped
+        self.master_frame.columnconfigure(1, weight=3)  # bottom pane musicbrainz
+        self.master_frame.columnconfigure(0, weight=1)  # artwork
         ''' frame1 - artwork and selections formatted for ripping. '''
-        frame1 = ttk.Frame(master_frame, borderwidth=g.BTN_BRD_WID,
+        frame1 = ttk.Frame(self.master_frame, borderwidth=g.BTN_BRD_WID,
                            padding=(2, 2, 2, 2), relief=tk.RIDGE)
         frame1.grid(column=0, row=0, sticky=tk.NSEW)
+        frame1.rowconfigure(0, weight=1)  # without this art gets 50px top padding
+        frame1.columnconfigure(1, weight=1)  # scrollbox
 
         ''' Artwork image row 0, column 0 '''
-        self.art_width = 375
-        self.art_height = 375
+        self.art_width = 250
+        self.art_height = 250
         self.using_cd_image = None  # Used in make_default_art()
         self.original_art = None  # Used in make_default_art()
         self.resized_art = None  # Used in make_default_art()
         self.cd_song_art = None  # Used in make_default_art()
-        self.make_default_art()
+        self.make_default_art()  # Build artwork of cd stock image
         self.cd_art_label = tk.Label(frame1, image=self.cd_song_art, font=g.FONT)
-        self.cd_art_label.grid(row=0, column=0, sticky=tk.W)
-        #self.cd_art_label.update()  Makes artwork tiny
+        self.cd_art_label.grid(row=0, column=0, sticky=tk.NSEW)
 
         ''' Controls to resize image to fit frame '''
-        self.start_w = frame1.winfo_reqheight()
-        self.start_h = frame1.winfo_reqwidth()
+        self.start_w = 1
+        self.start_h = 1
         frame1.bind("<Configure>", self.on_resize)
         
         ''' Scrollable textbox to show selections / ripping status '''
@@ -353,13 +367,10 @@ class RipCD:
         self.scrollbox.insert("end", text)
         self.scrollbox.grid(row=0, column=1, padx=3, pady=3, sticky=tk.NSEW)
         self.info.cast(text)
-        tk.Grid.rowconfigure(frame1, 0, weight=1)
-        tk.Grid.columnconfigure(frame1, 1, weight=1)
         self.scrollbox.tag_config('red', foreground='Red')
         self.scrollbox.tag_config('green', foreground='Green')
         self.scrollbox.tag_config('yellow', foreground='Yellow')
         self.scrollbox.tag_config('orange', foreground='Orange')
-        #self.scrollbox.config(tabs=("28m", "56m", "106m"))  # Aug 16/23 grew wider?
         self.scrollbox.config(tabs=("22m", "50m", "100m"))  # Aug 16/23 grew wider?
 
         # https://hexcolor.co/hex/1b851b
@@ -385,16 +396,17 @@ class RipCD:
         self.mbAuthorization = sql.Authorization(
             self.cd_top, "MusicBrainz", http, text, tt=self.tt)
 
-        ''' frame2 - Treeview Listbox '''
-        frame2 = ttk.Frame(master_frame, borderwidth=g.BTN_BRD_WID,
+        ''' frame2 - MusicBrainz Results Treeview Listbox '''
+        frame2 = ttk.Frame(self.master_frame, borderwidth=g.BTN_BRD_WID,
                            relief=tk.RIDGE)
         frame2.grid(row=1, column=0, columnspan=2, sticky=tk.NSEW)
 
         ''' Treeview List Box, Columns and Headings '''
         self.cd_tree = CheckboxTreeview(  # Duration & First Date columns displayed
-            frame2, columns=("Meta Title", "Artist", "First Date", "Composer",
-                             "Comment", "Duration", "Track №"), height=20, selectmode="none",
-            show=('tree', 'headings'))
+            frame2, columns=("Meta Title", "Genre", "Artist", "First Date",
+                             "Composer", "Comment", "Duration", "Track №"),
+            height=20, selectmode="none", show=('tree', 'headings'))
+
         self.cd_tree["displaycolumns"] = ("Duration", "First Date")
         self.cd_tree.column("#0", width=900, stretch=tk.YES)
         self.cd_tree.heading("#0", text="MusicBrainz Listings (Right click on " +
@@ -433,23 +445,12 @@ class RipCD:
         self.selected_compilation = u"0"  # "1" or "0" for pseudo True/False flag.
         self.selected_album_name = None  # Album name to use on all tracks.
         self.selected_album_date = u""  # Album Date
+        self.selected_genre = u""  # Aug 25, 2023 - Genre
         self.selected_composer = u""  # July 13, 2023 - Used to be unused country
         self.selected_comment = u""  # July 13, 2023 - new variable
         self.selected_disc_number = u""
         self.selected_genre = u""  # Manually entered. Not in Musicbrainz 2023
         self.selected_gapless_playback = u"0"  # "1" or "0" for pseudo True/False flag.
-        '''
-        Need 1 to 1 selected_xxx for:
-        self.album_artist_var = tk.StringVar()
-        self.compilation_var = tk.StringVar()
-        self.album_name_var = tk.StringVar()
-        self.album_date_var = tk.StringVar()
-        self.composer_var = tk.StringVar()
-        self.comment_var = tk.StringVar()
-        self.disc_number_var = tk.StringVar()
-        self.genre_var = tk.StringVar()
-        self.gapless_playback_var = tk.StringVar()
-        '''
 
         # Selected songs are accessed via "checked" tag in treeview
         self.our_parent = None  # Umm...
@@ -466,38 +467,28 @@ class RipCD:
         self.cd_tree.tag_configure("tristate", image=self.checkboxes[1])
         self.cd_tree.tag_configure("checked", image=self.checkboxes[2])
 
-        """ Already called in parent using ttk.style() applies here too.
-        ''' Create images for open, close and empty '''
-        width = row_height-9
-        self.triangles = []             # list to prevent Garbage Collection
-        img.make_triangles(self.triangles, width, 'black', 'grey')
-        """
-
         ''' Treeview Scrollbars '''
-        # Create a vertical scrollbar linked to the frame.
         v_sbar = tk.Scrollbar(frame2, width=sbar_width)
         v_sbar.pack(side=tk.RIGHT, fill=tk.Y)
 
         ''' Treeview Buttons '''
-        frame3 = ttk.Frame(master_frame, relief=tk.GROOVE,
-                           borderwidth=g.BTN_BRD_WID)
-        # frame3.grid(row=2, column=0, sticky=tk.NW)
-        # pad x & pad y below have no effect???
-        frame3.grid(row=2, column=0, padx=2, pady=2, sticky=tk.NW)
+        frame3 = ttk.Frame(self.master_frame)
+        frame3.grid(row=2, column=0, padx=5, pady=(10, 0), sticky=tk.E)
 
         ''' ✘ Close Button - Always visible '''
         self.cd_top.bind("<Escape>", self.cd_close)
         self.cd_top.protocol("WM_DELETE_WINDOW", self.cd_close)
-        self.cd_tree_btn1 = tk.Button(frame3, text="✘ Close",
-                                      width=g.BTN_WID - 2, command=self.cd_close)
-        self.cd_tree_btn1.grid(row=0, column=0, padx=2)
+        self.cd_close_btn = tk.Button(frame3, text="✘ Close", font=g.FONT,
+                                      width=g.BTN_WID - 6, command=self.cd_close)
+        self.cd_close_btn.grid(row=0, column=4, padx=(10, 0))
         text = "Close Rip CD window(s) but leave other mserve windows open."
-        self.tt.add_tip(self.cd_tree_btn1, text=text, anchor='nw')
+        self.tt.add_tip(self.cd_close_btn, text=text, anchor='ne')
 
         ''' ▶  Rip Button - Validates songs and images are selected '''
         self.cd_tree_btn2 = tk.Button(
-            frame3, text="▶  Rip Disc", width=g.BTN_WID, command=self.rip_cd)
-        self.cd_tree_btn2.grid(row=0, column=1, padx=2)
+            frame3, text="▶  Rip Disc", width=g.BTN_WID - 4,
+            font=g.FONT, command=self.rip_cd)
+        self.cd_tree_btn2.grid(row=0, column=0, padx=10)
         text = \
             "First select songs on CD to rip. Then select artwork from\n" + \
             "available sources or insert new artwork from clipboard.\n" + \
@@ -508,30 +499,45 @@ class RipCD:
         self.tt.add_tip(self.cd_tree_btn2, text=text, anchor='nw')
 
         ''' 📋 Clipboard image - 📋 (u+1f4cb) Must be valid image format '''
-        self.cd_tree_btn3 = tk.Button(
-            frame3, text="📋  Clipboard image", width=g.BTN_WID + 4,
-            command=self.image_from_clipboard)
-        self.cd_tree_btn3.grid(row=0, column=2, padx=2)
-        self.cd_tree_btn3.forget()
+        self.cd_clip_btn = tk.Button(
+            frame3, text="📋  Clipboard Image", width=g.BTN_WID + 1,
+            font=g.FONT, command=self.image_from_clipboard)
+        self.cd_clip_btn.grid(row=0, column=1, padx=10)
+        self.cd_clip_btn.forget()
         self.image_from_clipboard_count = 0
         self.clipboard_images = []
         text = \
-            "In your browser navigate to sites containing album cover\n" + \
-            "artwork such as Amazon, Wikipedia, Musicbrainz, etc.\n" + \
+            "In your browser, navigate to sites containing album cover\n" + \
+            "artwork. For example, Amazon, Wikipedia, Google, etc.\n" + \
             "Right click on images and copy to clipboard. Then return\n" + \
-            'here and insert image using "📋  Clipboard image" button'
-        self.tt.add_tip(self.cd_tree_btn3, text=text, anchor='nw')
+            'here and insert the image with the "📋  Clipboard image" button'
+        self.tt.add_tip(self.cd_clip_btn, text=text, anchor='nw')
 
         ''' ?  Review Button - Validates Artist, Album, Date, Composer, etc. '''
-        self.cd_tree_btn4 = tk.Button(
-            frame3, text="?  Override", width=g.BTN_WID, command=self.wait_confirm_tags)
-        self.cd_tree_btn4.grid(row=0, column=3, padx=2)
+        self.cd_override_btn = tk.Button(
+            frame3, text="?  Override", width=g.BTN_WID - 4,
+            font=g.FONT, command=self.wait_confirm_tags)
+        self.cd_override_btn.grid(row=0, column=2, padx=10)
         text = \
             "Override Musicbrainz Information\n" + \
             "Change spelling of Artist and Album Names.\n" + \
             "Set Compilation and Gapless Playback flags.\n" + \
             "Enter Composer, Album Date, Genre."
-        self.tt.add_tip(self.cd_tree_btn4, text=text, anchor='ne')
+        self.tt.add_tip(self.cd_override_btn, text=text, anchor='ne')
+
+        ''' Help Button - https://www.pippim.com/programs/mserve.html#HelpEncoding '''
+        ''' 🔗 Help - Videos and explanations on pippim.com '''
+
+        help_text = "Open new window in default web browser for\n"
+        help_text += "videos and explanations on using this screen.\n"
+        help_text += "https://www.pippim.com/programs/mserve.html#\n"
+
+        self.cd_help_btn = tk.Button(
+            frame3, text="🔗 Help", font=g.FONT,
+            width=g.BTN_WID2 - 5, command=lambda: g.web_help("HelpEncoding"))
+        self.cd_help_btn.grid(row=0, column=3, padx=2)
+        if self.tt:
+            self.tt.add_tip(self.cd_help_btn, help_text, anchor="ne")
 
         ''' Menu bars: Format, Quality, Naming, Target '''
         # https://anzeljg.github.io/rin2/book2/2405/docs/tkinter/menu-coptions.html
@@ -780,11 +786,11 @@ class RipCD:
         # images use ratio of original width/height to new width/height
         # w_scale = float(event.width) / self.start_w
         h_scale = float(event.height) / self.start_h
+        w_scale = h_scale
 
         # Override maintain square by factoring width equally on height change
-        w_scale = h_scale
-        self.art_width = int(w_scale) - 8  # Awkward
-        self.art_height = int(h_scale) - 8
+        self.art_width = int(w_scale) - 20  # Aug 28/23 was - 8
+        self.art_height = int(h_scale) - 20
         self.art_width = 100 if self.art_width < 1 else self.art_width
         self.art_height = 100 if self.art_height < 1 else self.art_height
 
@@ -877,15 +883,10 @@ class RipCD:
         self.edit_frm.columnconfigure(1, weight=5)
 
         ''' Instructions '''
-        text = "\nWhen song differences are entered for Artist Name, Composer\n"
-        text += "and/or Comment, they are used instead of the album defaults.\n\n"
-        text += "The Song Title is reformatted when the music file is created.\n"
-        text += 'A "-" between track number and name is added when the "Naming\n'
-        text += 'Option" is "99 -". If "Naming Option" is "99 ", then no dash.\n'
-        text += 'Filename extension is automatically appended. Verify changes\n'
-        text += 'to the real filename in the red "Files:" section in top frame.\n\n'
+        text = "\nWhen song differences are entered for Genre, Artist Name,\n"
+        text += "Composer, and/or Comment, they override the album defaults.\n\n"
         text += "The First Date field is searched in MusicBrainz. If it can't be\n"
-        text += "found, the Album Date is used as a default and you can change it.\n"
+        text += "found, it default's to the Album Date and it should be changed.\n"
         tk.Label(self.edit_frm, text=text, justify='left', font=g.FONT).grid(
             row=0, column=0, columnspan=2, padx=5, pady=5, sticky=tk.W)
         tk.Label(self.edit_frm, text="Song Title:",
@@ -900,18 +901,24 @@ class RipCD:
                  font=g.FONT).grid(row=3, column=0, padx=5, pady=5, sticky=tk.W)
         tk.Entry(self.edit_frm, textvariable=self.edit_first_date_var,
                  font=g.FONT).grid(row=3, column=1, padx=5, pady=5, sticky=tk.EW)
-        tk.Label(self.edit_frm, text="Composer:",
+        tk.Label(self.edit_frm, text="Genre:",
                  font=g.FONT).grid(row=4, column=0, padx=5, pady=5, sticky=tk.W)
-        tk.Entry(self.edit_frm, textvariable=self.edit_composer_var,
+        tk.Entry(self.edit_frm, textvariable=self.edit_genre_var,
                  font=g.FONT).grid(row=4, column=1, padx=5, pady=5, sticky=tk.EW)
-        tk.Label(self.edit_frm, text="Comment:",
+        tk.Label(self.edit_frm, text="Composer:",
                  font=g.FONT).grid(row=5, column=0, padx=5, pady=5, sticky=tk.W)
-        tk.Entry(self.edit_frm, textvariable=self.edit_comment_var,
+        tk.Entry(self.edit_frm, textvariable=self.edit_composer_var,
                  font=g.FONT).grid(row=5, column=1, padx=5, pady=5, sticky=tk.EW)
+        tk.Label(self.edit_frm, text="Comment:",
+                 font=g.FONT).grid(row=6, column=0, padx=5, pady=5, sticky=tk.W)
+        tk.Entry(self.edit_frm, textvariable=self.edit_comment_var,
+                 font=g.FONT).grid(row=6, column=1, padx=5, pady=5, sticky=tk.EW)
 
         ''' Set screen variables '''
         self.get_track_from_tree(self.cd_tree_iid)
-        # song_composer was never retrieved from MusicBrainz Work Relationship
+        # genre was never retrieved from MusicBrainz
+        if self.track_genre == "":  # set to "" during init
+            self.track_genre = self.selected_genre
         if self.track_composer == "":  # set to "" during init
             self.track_composer = self.selected_composer
         if self.track_comment == "":  # set to "" during init
@@ -919,15 +926,21 @@ class RipCD:
         self.edit_title_var.set(self.track_meta_title)
         self.edit_artist_var.set(self.track_artist)
         self.edit_first_date_var.set(self.track_first_date)
+        self.edit_genre_var.set(self.track_genre)
         self.edit_composer_var.set(self.track_composer)
         self.edit_comment_var.set(self.track_comment)
         self.edit_top.update_idletasks()
 
+        ''' button frame '''
+        bottom_frm = tk.Frame(self.edit_frm)
+        bottom_frm.grid(row=10, columnspan=2, sticky=tk.E)
+
         ''' Go Back Button '''
-        self.edit_cancel_btn = tk.Button(self.edit_frm, text="✘ Go Back",
-                                         width=g.BTN_WID2 - 6,
+        self.edit_cancel_btn = tk.Button(bottom_frm, text="✘ Go Back",
+                                         width=g.BTN_WID2 - 6, font=g.FONT,
                                          command=self.edit_cancel)
-        self.edit_cancel_btn.grid(row=10, column=0, padx=5, pady=5, sticky=tk.W)
+        self.edit_cancel_btn.grid(row=0, column=3, padx=(10, 5), pady=5,
+                                  sticky=tk.W)
         if self.tt:
             self.tt.add_tip(self.edit_cancel_btn, "Return to main selection window.",
                             anchor="sw")
@@ -935,16 +948,31 @@ class RipCD:
         self.edit_top.protocol("WM_DELETE_WINDOW", self.edit_cancel)
 
         ''' Save Button '''
-        self.edit_proceed_btn = tk.Button(self.edit_frm, text="✔ Save",
-                                          width=g.BTN_WID2 - 6,
+        self.edit_proceed_btn = tk.Button(bottom_frm, text="✔ Save",
+                                          width=g.BTN_WID2 - 6, font=g.FONT,
                                           command=self.edit_save)
-        self.edit_proceed_btn.grid(row=10, column=1, padx=5, pady=5,
-                                   sticky=tk.E)
+        self.edit_proceed_btn.grid(row=0, column=2, padx=10, pady=5,
+                                   sticky=tk.W)
         if self.tt:
             self.tt.add_tip(self.edit_proceed_btn, 
                             "Save changes and return to main selection window.",
                             anchor="se")
         self.edit_top.bind("<Return>", self.edit_save)
+
+        ''' Help Button - 
+            https://www.pippim.com/programs/mserve.html#HelpEncodingTrackEdit '''
+        ''' 🔗 Help - Videos and explanations on pippim.com '''
+
+        help_text = "Open new window in default web browser for\n"
+        help_text += "videos and explanations on using this screen.\n"
+        help_text += "https://www.pippim.com/programs/mserve.html#\n"
+
+        self.edit_help_btn = tk.Button(
+            bottom_frm, text="🔗 Help", font=g.FONT,
+            width=g.BTN_WID2 - 4, command=lambda: g.web_help("HelpEncodingTrackEdit"))
+        self.edit_help_btn.grid(row=0, column=1, padx=10, pady=5, sticky=tk.E)
+        if self.tt:
+            self.tt.add_tip(self.edit_help_btn, help_text, anchor="se")
 
 
         if self.edit_top:  # May have been closed above.
@@ -966,6 +994,7 @@ class RipCD:
         # self.track_duration and self.track_no was initialized during read
         old_first_date = self.track_first_date
         self.track_meta_title = toolkit.uni_str(self.edit_title_var.get())
+        self.track_genre = toolkit.uni_str(self.edit_genre_var.get())
         self.track_artist = toolkit.uni_str(self.edit_artist_var.get())
         self.track_first_date = toolkit.uni_str(self.edit_first_date_var.get())
         self.track_composer = toolkit.uni_str(self.edit_composer_var.get())
@@ -984,29 +1013,26 @@ class RipCD:
     def get_track_from_tree(self, tree_iid):
         """ Get song details for give treeview item iid """
         values = self.cd_tree.item(tree_iid, 'values')
-        ''' WHEN INSERTED: 
-            new_values = (self.track_meta_title, self.track_artist, 
-                  self.track_first_date, self.track_composer,
-                  self.track_comment, self.track_duration, self.track_no) '''
         self.track_meta_title = values[0]
-        self.track_artist = values[1]  # diff than album_artist for compilations
-        self.track_first_date = values[2][:4]  # year portion only
-        self.track_composer = values[3]  # Manually set, not in MBZ
-        self.track_comment = values[4]  # Manually set, not in MBZ
-        self.track_duration = values[5]  # string HH:MM:SS (0: trimmed)
-        self.track_no = values[6]  # Integer track number
+        self.track_genre = values[1]  # Manually set, not in MBZ
+        self.track_artist = values[2]  # diff than album_artist for compilations
+        self.track_first_date = values[3][:4]  # year portion only
+        self.track_composer = values[4]  # Manually set, not in MBZ
+        self.track_comment = values[5]  # Manually set, not in MBZ
+        self.track_duration = values[6]  # string HH:MM:SS (0: trimmed)
+        self.track_no = values[7]  # Integer track number
 
     def set_track_to_tree(self, tree_iid):
         """ Set song details to passed treeview item iid """
-        new_values = (self.track_meta_title, self.track_artist, 
+        new_values = (self.track_meta_title, self.track_genre, self.track_artist,
                       self.track_first_date, self.track_composer,
                       self.track_comment, self.track_duration, self.track_no)
         self.cd_tree.item(tree_iid, values=new_values)  # New values
         tree_song_title = \
             self.build_out_name(int(self.track_no), self.track_meta_title)
         out_name2 = self.build_out_name2(  # Append: | Artist | Composer
-            tree_song_title, self.track_artist, self.track_composer,
-            self.track_comment)
+            tree_song_title, self.track_genre, self.track_artist,
+            self.track_composer, self.track_comment)
         self.cd_tree.item(tree_iid, text=out_name2)  # New text line
 
     # ==============================================================================
@@ -1267,8 +1293,8 @@ class RipCD:
             # TODO: .grid() not working - button is always visible.
             # These buttons should be turned on after Medium selected
             #self.cd_tree_btn2.grid()  # Rip Disc button
-            #self.cd_tree_btn3.grid()  # Image from clipboard button
-            #self.cd_tree_btn4.grid()  # ? Override button
+            #self.cd_clip_btn.grid()  # Image from clipboard button
+            #self.cd_override_btn.grid()  # ? Override button
             #self.cd_top.title("Select CD song titles and cover art - mserve")
 
             # Our last program has just finished. Get dictionary results
@@ -1558,34 +1584,14 @@ class RipCD:
             text = "\nFinal review before CD encoding starts.\n\n"
         else:
             text = "\nOverride Album Level variables that filter down to each\n"
-            text += "Track on the Album. Track level unique values left alone."
+            text += "Track on the Album. Track level unique values are not effected.\n\n"
         text += "The Genre is not provided by MusicBrainz. Enter it below.\n" + \
-            "Verify correct spelling/capitalization of Artist and Album names.\n" + \
-            "Verify accuracy of Album Date and Album's default Composer(s).\n" + \
-            "If a compilation, Artist Name is forced to 'Various Artists'\n" + \
-            "and the 1st sub-directory is forced to '" + os.sep + "Compilations'.\n" + \
-            "Currently, 'Gapless Playback' has no effect in mserve.\n\n" + \
-            "When overrides are applied, tracks matching the old value are given\n" + \
-            "the new value. If track doesn't have old value it stays the same.\n\n" + \
-            "After override, tracks can be given a unique Artist Name, First Date,\n" + \
-            "Composer and Comment. Right click on any track to set uniqueness.\n\n"
-
-        ''' Fields designated with * will update tracks matching old value 
-            if self.track_artist == old_artist:  # careful here
-                self.track_artist = self.selected_album_artist
-            if self.track_first_date == old_date:  # careful here
-                self.track_first_date = self.selected_album_date
-                # Separate column # in treeview isn't updated.
-            if self.track_composer == old_composer:
-                self.track_composer = self.selected_composer
-            if self.track_comment == old_comment:
-                self.track_comment = self.selected_comment
-        '''
+            "Click the 'Help' button for instructions.\n\n"
 
         if final:
-            text += "Once 'Proceed' is clicked, there is no going back.\n"
+            text += "Once 'Proceed' is clicked, CD Encoding (Ripping) starts.\n"
         else:
-            text += "When 'Save' is clicked, selected songs are changed.\n"
+            text += "When 'Save' is clicked, Album Tracks defaults are updated.\n"
         tk.Label(self.confirm_frm, text=text, justify="left", font=g.FONT)\
             .grid(row=0, column=0, columnspan=2, sticky=tk.W, padx=PAD_X)
         tk.Label(self.confirm_frm, text="Album Artist:",
@@ -1613,7 +1619,7 @@ class RipCD:
                  font=g.FONT).grid(row=5, column=0, padx=5, sticky=tk.W)
         tk.Entry(self.confirm_frm, textvariable=self.composer_var,
                  font=g.FONT).grid(row=5, column=1, padx=5, sticky=tk.EW)
-        tk.Label(self.confirm_frm, text="Genre:",
+        tk.Label(self.confirm_frm, text="Genre*:",
                  font=g.FONT).grid(row=6, column=0, padx=5, sticky=tk.W)
         tk.Entry(self.confirm_frm, textvariable=self.genre_var,
                  font=g.FONT).grid(row=6, column=1, padx=5, sticky=tk.EW)
@@ -1646,11 +1652,15 @@ class RipCD:
         self.genre_var.set(self.selected_genre)
         self.gapless_playback_var.set(self.selected_gapless_playback)
 
+        ''' button frame '''
+        bottom_frm = tk.Frame(self.confirm_frm)
+        bottom_frm.grid(row=10, columnspan=2, sticky=tk.E)
         ''' Go Back Button '''
-        self.confirm_cancel_btn = tk.Button(self.confirm_frm, text="✘ Go Back",
-                                            width=g.BTN_WID2 - 6,
+        self.confirm_cancel_btn = tk.Button(bottom_frm, text="✘ Go Back",
+                                            width=g.BTN_WID2 - 6, font=g.FONT,
                                             command=self.confirm_cancel)
-        self.confirm_cancel_btn.grid(row=10, column=0, padx=5, pady=5, sticky=tk.W)
+        self.confirm_cancel_btn.grid(row=0, column=3, padx=(10, 5), pady=5,
+                                     sticky=tk.E)
         if self.tt:
             self.tt.add_tip(self.confirm_cancel_btn, "Return to main selection window.",
                             anchor="sw")
@@ -1659,10 +1669,10 @@ class RipCD:
 
         if final:
             ''' Proceed Button '''
-            self.confirm_proceed_btn = tk.Button(self.confirm_frm, text="✔ Proceed",
-                                                 width=g.BTN_WID2 - 6,
+            self.confirm_proceed_btn = tk.Button(bottom_frm, text="✔ Proceed",
+                                                 width=g.BTN_WID2 - 6, font=g.FONT,
                                                  command=self.confirm_proceed)
-            self.confirm_proceed_btn.grid(row=10, column=1, padx=5, pady=5,
+            self.confirm_proceed_btn.grid(row=0, column=0, padx=10, pady=5,
                                           sticky=tk.E)
             if self.tt:
                 self.tt.add_tip(self.confirm_proceed_btn, "Save changes and begin encoding.",
@@ -1670,10 +1680,10 @@ class RipCD:
             self.confirm_top.bind("<Return>", self.confirm_proceed)
         else:
             ''' Save Button '''
-            self.confirm_proceed_btn = tk.Button(self.confirm_frm, text="✔ Save",
-                                                 width=g.BTN_WID2 - 6,
+            self.confirm_proceed_btn = tk.Button(bottom_frm, text="✔ Save",
+                                                 width=g.BTN_WID2 - 6, font=g.FONT,
                                                  command=self.confirm_save)
-            self.confirm_proceed_btn.grid(row=10, column=1, padx=5, pady=5,
+            self.confirm_proceed_btn.grid(row=0, column=0, padx=10, pady=5,
                                           sticky=tk.E)
             if self.tt:
                 self.tt.add_tip(self.confirm_proceed_btn, 
@@ -1681,16 +1691,31 @@ class RipCD:
                                 anchor="se")
             self.confirm_top.bind("<Return>", self.confirm_save)
 
+        ''' Help Button - 
+            https://www.pippim.com/programs/mserve.html#HelpEncodingAlbumOverride '''
+        ''' 🔗 Help - Videos and explanations on pippim.com '''
+
+        help_text = "Open new window in default web browser for\n"
+        help_text += "videos and explanations on using this screen.\n"
+        help_text += "https://www.pippim.com/programs/mserve.html#\n"
+
+        self.confirm_help_btn = tk.Button(
+            bottom_frm, text="🔗 Help", font=g.FONT,
+            width=g.BTN_WID2 - 4, command=lambda: g.web_help("HelpEncodingAlbumOverride"))
+        self.confirm_help_btn.grid(row=0, column=1, padx=10, pady=5, sticky=tk.E)
+        if self.tt:
+            self.tt.add_tip(self.confirm_help_btn, help_text, anchor="se")
 
         if self.confirm_top:  # May have been closed above.
             self.confirm_top.update_idletasks()
 
     def apply_override_to_tracks(
-            self, old_artist, old_date, old_composer, old_comment):
+            self, old_genre, old_artist, old_date, old_composer, old_comment):
         """ Put new Album defaults into old tree items """
         if old_artist == self.selected_album_artist and \
                 old_composer == self.selected_composer and \
                 old_comment == self.selected_comment and \
+                old_genre == self.selected_genre and \
                 old_date == self.selected_album_date:
             return  # No changes
 
@@ -1700,6 +1725,9 @@ class RipCD:
             self.get_track_from_tree(track_id)  # track values
             ''' If old values same, set to new values '''
             track_changed = False
+            if self.track_genre == old_genre:
+                self.track_genre = self.selected_genre
+                track_changed = True
             if self.track_artist == old_artist:  # careful here
                 self.track_artist = self.selected_album_artist
                 track_changed = True
@@ -1768,6 +1796,7 @@ class RipCD:
             Save changes if not blank. 
             Too late to loop back so give error message blanks ignored.
         """
+        old_genre = self.selected_genre
         old_artist = self.selected_album_artist
         old_date = self.selected_album_date
         old_composer = self.selected_composer
@@ -1787,10 +1816,10 @@ class RipCD:
         self.selected_disc_number = self.confirm_non_blank(
             "Disc Number", self.disc_number_var, self.selected_disc_number)
         self.selected_genre = self.confirm_non_blank(
-            "Album Artist", self.genre_var, self.selected_genre)
+            "Genre", self.genre_var, self.selected_genre)
         # Gapless Playback treated like button invoking message.AskQuestion()
         self.apply_override_to_tracks(
-            old_artist, old_date, old_composer, old_comment)
+            old_genre, old_artist, old_date, old_composer, old_comment)
         self.show_selections()
         self.confirm_cancel(*args)  # Just to remove window
         return True  # Could return False to abort ripping
@@ -2059,8 +2088,8 @@ class RipCD:
         dt = datetime.datetime.fromtimestamp(stat.st_mtime)
         self.CreationTime = dt.strftime('%Y-%m-%d %H:%M:%S')  # This is correct 2nd time
 
-        tm = time.localtime(stat.st_mtime)
-        local_time = time.strftime('%Y-%m-%d %H:%M:%S', tm)
+        #tm = time.localtime(stat.st_mtime)
+        #local_time = time.strftime('%Y-%m-%d %H:%M:%S', tm)
         #print("self.CreationTime:", self.CreationTime, "local_time:", local_time)
         # Time is OK at this point, but 6 hours ahead when stored...
 
@@ -2074,7 +2103,7 @@ class RipCD:
         sql.con.commit()
         last_music_id = sql.cursor.lastrowid
 
-        #print("\nencoding.py sql_add_music() last_music_id:", last_music_id)
+        #print("\n encoding.py sql_add_music() last_music_id:", last_music_id)
         # returning last history # 20,659 when no music (already exists)
 
         ''' Check if song existed previously in SQL. '''
@@ -2206,8 +2235,8 @@ class RipCD:
                 audio.add(id3.TYER(encoding=3, text=self.track_first_date[:4]))
             if self.track_comment:
                 audio.add(id3.COMM(encoding=3, text=self.track_comment))
-            if self.selected_genre:
-                audio.add(id3.TCON(encoding=3, text=self.selected_genre))
+            if self.track_genre:
+                audio.add(id3.TCON(encoding=3, text=self.track_genre))
             if self.selected_album_date:
                 audio.add(id3.TCOP(encoding=3, text=self.selected_album_date[:4]))
                 # Only use COPYRIGHT above not RELEASE_DATE below
@@ -2280,8 +2309,8 @@ tvsh – show name
                 audio['\xa9day'] = self.track_first_date
             if self.track_comment:
                 audio['\xa9cmt'] = self.track_comment
-            if self.selected_genre:
-                audio['\xa9gen'] = self.selected_genre
+            if self.track_genre:
+                audio['\xa9gen'] = self.track_genre
             if self.selected_album_date:
                 audio['cprt'] = self.selected_album_date
             if self.selected_compilation:
@@ -2320,8 +2349,8 @@ tvsh – show name
                 audio['COMPOSER'] = self.track_composer
             if self.track_first_date:  # first_date
                 audio['DATE'] = self.track_first_date  # song first release date
-            if self.selected_genre:
-                audio['GENRE'] = self.selected_genre
+            if self.track_genre:
+                audio['GENRE'] = self.track_genre
             if self.selected_album_date:
                 audio['COPYRIGHT'] = self.selected_album_date  # album copyright
             if self.track_comment:
@@ -2743,7 +2772,6 @@ if r['title'] != r['release-group']['title']
 
     def populate_cd_tree(self):
         """ Paint the release selection treeview """
-
         sep = "  |  "  # Note length of separator = 5 below
 
         for ndx, d in enumerate(self.release_list):
@@ -2875,17 +2903,19 @@ if r['title'] != r['release-group']['title']
                     track_d['recording']['artist-credit'][0]['artist']['name']
                 song_artist2 = track_d['artist-credit-phrase']
                 if song_artist != song_artist2:  # Lost cause, hopeless case
-                    print("song_artist:", song_artist)
-                    print("song_artist2:", song_artist2)
+                    #print("song_artist:", song_artist)
+                    #print("song_artist2:", song_artist2)
                     # song_artist: The Producers        CORRECT
                     # song_artist2: The Producer
                     # song_artist: Harry Lee Summer
                     # song_artist2: Henry Lee Summer    CORRECT
+                    pass
                 length = recording_d.get('length', '0')  # length in milliseconds
                 duration = int(length) / 1000
                 hhmmss = tmf.mm_ss(duration, rem=None)
 
                 self.track_meta_title = toolkit.uni_str(song)
+                self.track_genre = u""  # This + artist & comment in out_name2
                 self.track_artist = toolkit.uni_str(song_artist)
                 self.track_first_date = toolkit.uni_str(first_date)
                 self.track_composer = u""  # This + artist & comment in out_name2
@@ -2900,12 +2930,12 @@ if r['title'] != r['release-group']['title']
                     self.build_out_name(self.track_no, self.track_meta_title)
 
                 out_name2 = self.build_out_name2(  # Append: | Artist | Composer
-                    tree_song_title, self.track_artist, self.track_composer,
-                    self.track_comment)
+                    tree_song_title, self.track_genre, self.track_artist, 
+                    self.track_composer, self.track_comment)
 
                 self.cd_tree.insert(
                     medium_id, "end", text=out_name2, tags=("track_id", "unchecked"),
-                    values=(self.track_meta_title, self.track_artist, 
+                    values=(self.track_meta_title, self.track_genre, self.track_artist, 
                             self.track_first_date, self.track_composer,
                             self.track_comment, self.track_duration, self.track_no))
 
@@ -2924,8 +2954,9 @@ if r['title'] != r['release-group']['title']
                 self.cd_tree_insert_image(rel_id, d['id'], opened, image_list,
                                           first_time)
                 # first_time = False
-            except Exception as err:
-                print(err)
+            except Exception as _err:
+                #print("encoding.py Error on 'image_list = entry['images']'")
+                #print(_err)  # 'image-data'
                 continue  # Remove this line to see following error:
                 # No JSON object could be decoded
                 # print(entry)   # Can't do, image-data too large for screen
@@ -2961,11 +2992,11 @@ if r['title'] != r['release-group']['title']
     def build_composer(self, recording_d):
         """ Build Composer(s), or Writer(s) or Producer """
 
-        print_track_no = 12  # Print each track until coded and tested.
+        print_track_no = 99  # Print matching track number details.
 
-        composers = []
-        writers = []
-        producers = []
+        composers = []  # List of composer names - first choice if exists
+        writers = []  # list of writer names - second choice if exists
+        producers = []  # list of producer names - last choice if exists
 
         ''' Sanity Check - recording_d parameter '''
         try:
@@ -2980,8 +3011,8 @@ if r['title'] != r['release-group']['title']
 
         work_relations = recording_d.get('work-relation-list', None)
         if not work_relations:
-            print("No work_relations for:", self.track_no, "-",
-                  self.track_meta_title)
+            #print("No work_relations for:", self.track_no, "-",
+            #      self.track_meta_title)
             return
 
         if self.track_no == print_track_no:
@@ -3025,6 +3056,7 @@ if r['title'] != r['release-group']['title']
                 elif rels_type.lower() == 'lyricist':
                     pass
                 else:
+                    # Add unknowns above like 'assistant', 'engineer', etc.
                     print("unknown rels_type:", rels_type)
 
         ''' All processed '''
@@ -3045,7 +3077,7 @@ if r['title'] != r['release-group']['title']
         ''' Recording Dictionary (recording_d passed as parameter):
     "recording": {
         "artist-credit": [],
-        "artist-credit-phrase": "Tommy Tutone",
+        "artist-credit-phrase": "Tommy Tu tone",
         "id": "04888d33-8325-46b4-9702-4d443a8d3ba7",
         "length": "226773",
         "title": "867-5309/Jenny",  #  N O T    A L W A Y S    P R E S E N T
@@ -3100,25 +3132,29 @@ L O O K   A T   M E   ! !   "type": "composer",
             out_name = str(self.this_disc_number) + "-" + out_name
         return out_name
 
-    def build_out_name2(self, out_name, art, comp, comm):
+    def build_out_name2(self, out_name, genre, art, comp, comm):
         """ Add ' | artist: Artist Name ' and ' | composer: Composer Name'
             to treeview detail line. Repeatedly called as Artist Name,
             Composer Name and Comment are changed.
         :param out_name: "D-99 Song Name" or "D-99 - Song Name"
+        :param genre: track_genre
         :param art: track_artist
         :param comp: track_composer
         :param comm: track_comment
         :returns out_name2: Optional Artist Name and Composer appended
         """
         out_name2 = out_name
-        artist = art if len(art) <= 15 else art[:12] + "..."  # Max 15 chars
-        composer = comp if len(comp) <= 15 else comp[:12] + "..."  # Max 15 chars
-        comment = comm if len(comm) <= 15 else comm[:12] + "..."  # Max 15 chars
-        if art != self.selected_album_artist:  # Highlight track diff from album
+        if genre != self.selected_genre:  # Highlight track genre diff from album
+            genre = genre if len(genre) <= 15 else genre[:12] + "..."  # Max 15 chars
+            out_name2 += "  | genre: " + genre
+        if art != self.selected_album_artist:  # Highlight track album artist
+            artist = art if len(art) <= 15 else art[:12] + "..."  # Max 15 chars
             out_name2 += "  | artist: " + artist
-        if comp != self.selected_composer:  # Highlight track diff from album
+        if comp != self.selected_composer:  # Highlight track composer diff
+            composer = comp if len(comp) <= 15 else comp[:12] + "..."  # Max 15 chars
             out_name2 += "  | composer: " + composer
-        if comm != self.selected_comment:  # Highlight track diff from album
+        if comm != self.selected_comment:  # Highlight track comment diff
+            comment = comm if len(comm) <= 15 else comm[:12] + "..."  # Max 15 chars
             out_name2 += "  | comment: " + comment
         return out_name2
 
@@ -3143,18 +3179,21 @@ L O O K   A T   M E   ! !   "type": "composer",
                     # TODO: When size is 14 no file was downloaded
                     # size = str(len(d['thumbnails']['small-data']))
                     size = "{:,}".format(len(d['thumbnails']['small-data']))
-                    self.cd_tree.insert(self.our_parent, "end", values=size,
+                    values = ("", "", "", "", "", "", size, "")
+                    self.cd_tree.insert(self.our_parent, "end", values=values,
                                         text=d['thumbnails']['small'],
                                         tags=("image_id", "unchecked"))
                 if 'large' in d['thumbnails']:
                     # size = str(len(d['thumbnails']['large-data']))
                     size = "{:,}".format(len(d['thumbnails']['large-data']))
-                    self.cd_tree.insert(self.our_parent, "end", values=size,
+                    values = ("", "", "", "", "", "", size, "")
+                    self.cd_tree.insert(self.our_parent, "end", values=values,
                                         text=d['thumbnails']['large'],
                                         tags=("image_id", "unchecked"))
             if 'image' in d:
                 size = "{:,}".format(len(d['image-data']))
-                self.cd_tree.insert(self.our_parent, "end", values=size,
+                values = ("", "", "", "", "", "", size, "")
+                self.cd_tree.insert(self.our_parent, "end", values=values,
                                     text=d['image'], 
                                     tags=("image_id", "unchecked"))
 
@@ -3352,8 +3391,7 @@ L O O K   A T   M E   ! !   "type": "composer",
             return
 
     def process_unchecked(self, item):
-        """ We just unchecked the item, use self.unselect on tag
-        """
+        """ We just unchecked the item, use self.unselect on tag """
 
         tags = self.cd_tree.item(item)['tags']
 
@@ -3481,9 +3519,10 @@ L O O K   A T   M E   ! !   "type": "composer",
                   when song is played. """
         # Get our image entry
         image_name = self.cd_tree.item(Id, 'text')
-        image_size = self.cd_tree.item(Id, 'values')[0]
+        image_size = self.cd_tree.item(Id, 'values')[6]  # Duration
         int_size = image_size.replace(",", "")  # American integer display
-        int_size = int(int_size.replace('.', ''))  # European integer display
+        int_size = int_size.replace('.', '')  # European integer display
+        int_size = int(int_size)  # String to int
         ''' TODO: Make 2 MB a global variable. Option to put image in dir. '''
         if select and int_size > 2 * 1000 * 1000:  # If selecting image
             title = "Image file over 2 MB (" + image_size + ")"
@@ -3813,17 +3852,6 @@ L O O K   A T   M E   ! !   "type": "composer",
             # first field E.G. "Genre: " becomes "Genre:\t"
             compounded = compounded.replace(": ", ":\t", 1)
             self.scrollbox.insert("end", compounded + "\n")
-        ''' Old format of one per line
-        if self.selected_album_date:  # Album Date (Not First Date)
-            self.scrollbox.insert("end", "Date:\t" +
-                                  self.selected_album_date + "\n")
-        if self.selected_genre:  # Genre
-            self.scrollbox.insert("end", "Genre:\t" +
-                                  self.selected_genre + "\n")
-        if self.selected_composer:  # Default Composer
-            self.scrollbox.insert("end", "Composer:\t" +
-                                  self.selected_composer + "\n")
-        '''
         self.selected_tracks = 0  # Number tracks selected
         if self.selected_medium:  # Was this medium selected?
             # Remove " |  Disc ID: .." from end it's added later

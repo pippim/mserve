@@ -63,15 +63,18 @@ BLUE, GREEN, RED = ((0, 0, 255), (0, 255, 0), (255, 0, 0))
 
 
 class Point(object):
+    """ Used by make_image() """
     def __init__(self, x, y):
         self.x, self.y = x, y
 
     @staticmethod
     def from_point(other):
+        """ Used by make_image() """
         return Point(other.x, other.y)
 
 
 class Rect(object):
+    """ Used by make_image() """
     def __init__(self, x1, y1, x2, y2):
         minx, max_x = (x1, x2) if x1 < x2 else (x2, x1)
         miny, max_y = (y1, y2) if y1 < y2 else (y2, y1)
@@ -80,6 +83,7 @@ class Rect(object):
 
     @staticmethod
     def from_points(p1, p2):
+        """ Used by make_image() """
         return Rect(p1.x, p1.y, p2.x, p2.y)
 
     def __str__(self):
@@ -106,6 +110,7 @@ def gradient_color(min_val, max_val, val, color_palette):
 
 
 def hor_gradient(draw, rect, color_func, color_palette):
+    """ Used by make_image() """
     min_val, max_val = 1, len(color_palette)
     delta = max_val - min_val
     for x in range(rect.min.x, rect.max.x+1):
@@ -116,6 +121,7 @@ def hor_gradient(draw, rect, color_func, color_palette):
 
 
 def vert_gradient(draw, rect, color_func, color_palette):
+    """ Used by make_image() """
     min_val, max_val = 1, len(color_palette)
     delta = max_val - min_val
     for y in range(rect.min.y, rect.max.y+1):
@@ -174,8 +180,7 @@ def make_image(text, image_w=200, image_h=200):
 
 
 def ruler_image(image_w=800, image_h=10):
-    """ Make image of blue, green, red overlapping gradients horizontally
-    """
+    """ Make image of blue, green, red overlapping gradients horizontally """
     color_palette = [BLUE, GREEN, RED]
     region = Rect(0, 0, image_w, image_h)
     img_x, img_y = region.max.x+1, region.max.y+1
@@ -297,6 +302,7 @@ def shift_image(img_name, direction, width, height, percent):
     return new_image
 
 
+# noinspection PyTypeChecker
 def make_checkboxes(hgt, out_c, fill_c, chk_c):
 
     """ Create CheckboxTreeview(); 'unchecked', 'checked' and 'tristate'
@@ -445,6 +451,7 @@ def triangle_raw_images(hgt, out_c, fill_c):
 
 
 def set_font_style():
+    """ Globally set font style of widgets """
 
     # Used by get_dir, save_items and load_items
     # Nov 15, 2020 copy from mserve to encoding,py to try in tkSimpleDialog
@@ -565,7 +572,7 @@ def m_circle_splash_image(hgt, out_c, fill_c, text_c, char='M'):
     im_a_blur = im_a.filter(ImageFilter.GaussianBlur(4))
 
     im_rgba = im_open.copy()
-    #im_rgba.putalpha(im_a)                 # Non-blurred circle edge
+    #im_rgba.put alpha(im_a)                 # Non-blurred circle edge
     im_rgba.putalpha(im_a_blur)
     im_rgba_crop = im_rgba.crop((hgt_off, hgt_off, end_off, end_off))
     im_rgba_crop.save("m.png")
@@ -614,17 +621,8 @@ def taskbar_icon(toplevel, hgt, out_c, fill_c, text_c, char='M'):
     im_open.save("mserve.png", "PNG")
     # Above can be skipped when mserve.png already exists
     png_img = tk.Image("photo", file="mserve.png")
+    # noinspection PyProtectedMember
     toplevel.tk.call('wm', 'iconphoto', toplevel._w, png_img)
-#    toplevel.iconphoto(True, png_img)
-    # im_open.save("mserve.gif","GIF")
-    # gif_img = tk.PhotoImage(file="mserve.gif")
-    # toplevel.tk.call('wm', 'iconphoto', toplevel._w, gif_img)
-    # Must wrap bytes in file io
-    # https://pillow.readthedocs.io/en/5.1.x/reference/Image.html
-    # t_file = io.BytesIO(im_open)
-    # original_art = Image.open(t_file)
-    # del t_file              # Delete object to save memory
-    # toplevel.tk.call('wm', 'iconphoto', root._w, im_open)
 
 
 def mmm_taskbar_icon(toplevel, hgt, out_c, fill_c, m1c, m2c, m3c):
@@ -674,16 +672,8 @@ def mmm_taskbar_icon(toplevel, hgt, out_c, fill_c, m1c, m2c, m3c):
 
     im_open.save("mserve.png", "PNG")
     png_img = tk.Image("photo", file="mserve.png")
+    # noinspection PyProtectedMember
     toplevel.tk.call('wm', 'iconphoto', toplevel._w, png_img)
-    # im_open.save("mserve.gif","GIF")
-    # gif_img = tk.PhotoImage(file="mserve.gif")
-    # toplevel.tk.call('wm', 'iconphoto', toplevel._w, gif_img)
-    # Must wrap bytes in file io
-    # https://pillow.readthedocs.io/en/5.1.x/reference/Image.html
-    # t_file = io.BytesIO(im_open)
-    # original_art = Image.open(t_file)
-    # del t_file              # Delete object to save memory
-    # toplevel.tk.call('wm', 'iconphoto', root._w, im_open)
 
 
 class RoundedButton(tk.Canvas):
@@ -712,6 +702,7 @@ class RoundedButton(tk.Canvas):
         rad = 2 * corner_radius
 
         def shape():
+            """ Set corner rounding """
             self.create_polygon(
                 (padding, height - corner_radius - padding, padding,
                  corner_radius + padding, padding + corner_radius, padding,
@@ -897,27 +888,24 @@ class RoundedRectangle(RoundedButton):
         self.itemconfig("button_color", fill=button_color, outline=button_color)
         self.itemconfig("text_color", fill=text_color)
 
+    # noinspection PyMethodOverriding
     def lift(self, aboveThis=None):
         """ Deal with bug in tkinter raising canvas window:
-            https://stackoverflow.com/a/55559387/6929343
-        """
+            https://stackoverflow.com/a/55559387/6929343 """
         self.tk.call('raise', self._w, aboveThis)
 
 
 def canvas_text_bbox_size(text, ms_font):
     """ Calculate width and height of canvas text)
-        From: 3https://stackoverflow.com/a/19971213/692934
+        From: https://stackoverflow.com/a/19971213/692934
     """
     scratch = tk.Canvas()
     sample = scratch.create_text((0, 0), text=text, font=ms_font)
     x0, y0, x1, y1 = scratch.bbox(sample)
-    #print('_x0, _y0, x1, y1:', x0, y0, x1, y1)
-    #width = x1 - x0
-    #height = y1 - y0
-    #print('width, height:', width, height)
     return x1 - x0, y1 - y0   # x1 = width, y1 = height
 
 
+# noinspection SpellCheckingInspection
 class GoneFishing:
     """ Transform music player into shark silhouette that goes fishing for man
 
@@ -1470,6 +1458,7 @@ active-plugins "['core', 'composite', 'opengl', 'regex', 'mousepoll',
 
         self.src_was_below = None
 
+    # noinspection SpellCheckingInspection
     def trg_check_full_screen(self):
         """  The target window can stay maximized for undecorated windows only. We need to get
              "always on top" (above) state, Maximized Vertically and Maximized Horizontally
@@ -1495,7 +1484,10 @@ active-plugins "['core', 'composite', 'opengl', 'regex', 'mousepoll',
                 bitmap id # to use for icon: 0x3201c91
                 bitmap id # of mask for icon: 0x3201c97
                 window id # of group leader: 0x3200001
-        _NET_WM_ALLOWED_ACTIONS(ATOM) = _NET_WM_ACTION_MOVE, _NET_WM_ACTION_RESIZE, _NET_WM_ACTION_STICK, _NET_WM_ACTION_MINIMIZE, _NET_WM_ACTION_MAXIMIZE_HORZ, _NET_WM_ACTION_MAXIMIZE_VERT, _NET_WM_ACTION_FULLSCREEN, _NET_WM_ACTION_CLOSE, _NET_WM_ACTION_CHANGE_DESKTOP, _NET_WM_ACTION_ABOVE, _NET_WM_ACTION_BELOW
+        _NET_WM_ALLOWED_ACTIONS(ATOM) = _NET_WM_ACTION_MOVE, _NET_WM_ACTION_RESIZE,
+        _NET_WM_ACTION_STICK, _NET_WM_ACTION_MINIMIZE, _NET_WM_ACTION_MAXIMIZE_HORZ,
+        _NET_WM_ACTION_MAXIMIZE_VERT, _NET_WM_ACTION_FULLSCREEN, _NET_WM_ACTION_CLOSE,
+        _NET_WM_ACTION_CHANGE_DESKTOP, _NET_WM_ACTION_ABOVE, _NET_WM_ACTION_BELOW
         WM_WINDOW_ROLE(STRING) = "browser"
         _NET_WM_BYPASS_COMPOSITOR(CARDINAL) = 2
         XdndAware(ATOM) = BITMAP
@@ -1522,10 +1514,14 @@ active-plugins "['core', 'composite', 'opengl', 'regex', 'mousepoll',
                 window gravity: NorthWest
         WM_PROTOCOLS(ATOM): protocols  WM_DELETE_WINDOW, WM_TAKE_FOCUS, _NET_WM_PING, _NET_WM_SYNC_REQUEST
         WM_CLASS(STRING) = "Navigator", "Firefox"
-        WM_ICON_NAME(COMPOUND_TEXT) = "After Bakhmut, Is Russia Still Advancing? Col Daniel Davis - YouTube — Mozilla Firefox"
-        _NET_WM_ICON_NAME(UTF8_STRING) = "After Bakhmut, Is Russia Still Advancing? Col Daniel Davis - YouTube — Mozilla Firefox"
-        WM_NAME(COMPOUND_TEXT) = "After Bakhmut, Is Russia Still Advancing? Col Daniel Davis - YouTube — Mozilla Firefox"
-        _NET_WM_NAME(UTF8_STRING) = "After Bakhmut, Is Russia Still Advancing? Col Daniel Davis - YouTube — Mozilla Firefox"
+        WM_ICON_NAME(COMPOUND_TEXT) = "After Bakhmut, Is Russia Still Advancing?
+        Col Daniel Davis - YouTube — Mozilla Firefox"
+        _NET_WM_ICON_NAME(UTF8_STRING) = "After Bakhmut, Is Russia Still Advancing?
+        Col Daniel Davis - YouTube — Mozilla Firefox"
+        WM_NAME(COMPOUND_TEXT) = "After Bakhmut, Is Russia Still Advancing?
+        Col Daniel Davis - YouTube — Mozilla Firefox"
+        _NET_WM_NAME(UTF8_STRING) = "After Bakhmut, Is Russia Still Advancing?
+        Col Daniel Davis - YouTube — Mozilla Firefox"
 
         """
 
@@ -1622,6 +1618,7 @@ active-plugins "['core', 'composite', 'opengl', 'regex', 'mousepoll',
 
     @staticmethod
     def refresh_gtk():
+        """ Required occasionally """
         # Doesn't seem to work as static:
         #   global name 'refresh_gtk' is not defined
         while Gtk.events_pending():
@@ -1644,6 +1641,7 @@ def gtk_screenshot(x, y, width, height):
     Gdk.threads_init()  # From: https://stackoverflow.com/questions/15728170/
 
     def refresh_gtk():
+        """ Required occasionally """
         while Gtk.events_pending():
             Gtk.main_iteration()
 
@@ -1653,11 +1651,11 @@ def gtk_screenshot(x, y, width, height):
 
     root_window = Gdk.get_default_root_window()
 
-    # pb = Gdk.pixbuf_get_from_window(root_window, *src_geom)
+    # pb = Gdk.pix buf_get_from_window(root_window, *src_geom)
     pb = Gdk.pixbuf_get_from_window(root_window, x,
-        y, width, height)
+                                    y, width, height)
     win_pixels = pb.read_pixel_bytes().get_data()  # Screenshot source
-    #src_img = Image.frombytes('RGB', (src_geom[2], src_geom[3]), win_pixels,
+    #src_img = Image.from bytes('RGB', (src_geom[2], src_geom[3]), win_pixels,
     src_img = Image.frombytes('RGB', (width, height), win_pixels,
                               'raw', 'RGB', pb.get_rowstride(), 1)
 
@@ -1670,7 +1668,7 @@ def create_text(x1, y1, **kwargs):
     for i in range (monitors_cnt):
         monitor = monitors[i * MON_CNT : i * MON_CNT + MON_CNT ]
         # Calculate positions for this monitor
-        x1, y1, x2, y2 = scale_dtop (monitor[MON_X], monitor[MON_Y], \
+        x1, y1, x2, y2 = scale_d top (monitor[MON_X], monitor[MON_Y], \
                                      monitor[MON_W], monitor[MON_H])[0:4]
         # Rectangle left, top, right, bottom
         create_rectangle(x1, y1, x2, y2, wallpaper=i)
@@ -1683,11 +1681,10 @@ def create_text(x1, y1, **kwargs):
 
 
     """
+    thick = 0
     if 'thick' in kwargs:
         thick = kwargs.pop('thick')
-        if thick > 5 : thick = 0
-    else :
-        thick = 0
+        thick = 0 if thick > 5 else thick
 
     if 'shadow_fill' in kwargs:
         shadow_fill = kwargs.pop('shadow_fill')

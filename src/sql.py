@@ -46,6 +46,7 @@ warnings.simplefilter('default')  # in future Python versions.
 #
 #==============================================================================
 
+# noinspection SpellCheckingInspection
 ''' TODO:
 
     SQL version 3 effects bserve.py. It needs upgrading now: 
@@ -129,7 +130,7 @@ import re
 import json
 import time
 import datetime
-from collections import namedtuple, OrderedDict
+from collections import OrderedDict
 
 # dist-package?
 import sqlite3
@@ -297,7 +298,7 @@ def open_db(LCS=None):
     con = sqlite3.connect(FNAME_LIBRARY)
 
     # MUSIC TABLE
-    """ Version 3 - Note times are in UTC as returned by os.stat() """
+    """ Version 3 """
     con.execute(
         "create table IF NOT EXISTS Music(Id INTEGER PRIMARY KEY, " +
         "OsFileName TEXT, OsAccessTime FLOAT, OsModifyTime FLOAT, " +
@@ -385,13 +386,13 @@ def initial_schema(conn):
     # install initial schema
     # ...
 
-def ugrade_1_2(conn):
+def upgrade_1_2(conn):
     # modify schema, alter data, etc.
 
 # map target schema version to upgrade step from previous version
 upgrade_steps = {
     1: initial_schema,
-    2: ugrade_1_2,
+    2: upgrade_1_2,
 }
 
 def check_upgrade(conn):
@@ -404,7 +405,9 @@ def check_upgrade(conn):
     '''
     user_cursor = con.execute("PRAGMA user_version;")
     user_version = user_cursor.fetchone()[0]
-    #print("SQL database user_version:", user_version)
+    if user_version != int(g.MSERVE_VERSION[:1]):
+        print("SQL database incompatible user_version:", user_version)
+        print("Contact www.pippim.com for details")
 
     con.row_factory = sqlite3.Row
     cursor = con.cursor()
@@ -443,6 +446,7 @@ def set_db_version(version=3):
     con.commit()
 
 
+# noinspection SpellCheckingInspection
 def convert_to_database3():
     """ Read database format 2 and create database format 3
         Backup ~/.local/share/library.db
@@ -540,8 +544,8 @@ def convert_to_database3():
         CreationTime = row['CreationTime']
         if CreationTime is None:
             ''' What if creation time in metadata is earlier? '''
-            frmt_date = datetime.datetime.utcfromtimestamp(OsModifyTime).\
-                strftime("%Y-%m-%d %H:%M:SS")
+            #frmt_date = datetime.datetime.utcfromtimestamp(OsModifyTime).\
+            #    strftime("%Y-%m-%d %H:%M:SS")
             # CreationTime = OsModifyTime FORMAT YYYY-MM-DD HH:MM:SS
             pass
         ''' (OsFileName, OsAccessTime, OsModifyTime, OsChangeTime,  
@@ -716,7 +720,7 @@ def open_new_db():
         Consider storing extra FFMPEG Metadata:
             major_brand     : M4A 
             minor_version   : 0
-            compatible_brands: M4A mp42isom
+            compatible_brands: M4A mp42i som
 
     '''
     ''' ID3 TAGS https://exiftool.org/TagNames/ID3.html '''
@@ -940,6 +944,8 @@ def get_lyrics(key):
 def increment_last_play(full_path):
     """ Increment Play Count and update current time to Last Play Time
         using full filename path """
+    # pycharm doesn't like PRUNED_DIR type 'None', expected 'Sized'
+    # noinspection PyTypeChecker
     key = full_path[len(PRUNED_DIR):]  # Create OsFileName (base path)
     d = ofb.Select(key)
     if d is None:
@@ -1051,6 +1057,8 @@ def update_metadata(fc, commit=True):
     elif fc.Artist == NO_ALBUM_STR or fc.Album == NO_ALBUM_STR:
         return False  # <No Album> placeholder skipped
 
+    # pycharm doesn't like PRUNED_DIR type 'None', expected 'Sized'
+    # noinspection PyTypeChecker
     key = fc.path[len(PRUNED_DIR):]  # Create OsFileName (base path)
     d = ofb.Select(key)
     if d is None:
@@ -1301,7 +1309,6 @@ def hist_add_time_index(key, time_list):
         Action = 'edit'
         print('sql.hist_add_time_index(key) edit time, init:', key, HISTORY_ID)
         hist_cursor.execute("SELECT * FROM History WHERE Id = ?", [HISTORY_ID])
-        d = dict(hist_cursor.fetchone())
         try:
             d = dict(hist_cursor.fetchone())
         except TypeError:  # TypeError: 'NoneType' object is not iterable:
@@ -2033,9 +2040,9 @@ class Webscrape:
         ==========================   COPY from webscrape.py   =========================
             
         # Web scraping song lyrics IPC file names
-        SCRAPE_CTL_FNAME    = g.TEMP_DIR + "mserve.scrape_ctl.json'
-        SCRAPE_LIST_FNAME   = g.TEMP_DIR + "mserve.scrape_list.txt'
-        SCRAPE_LYRICS_FNAME = g.TEMP_DIR + "mserve.scrape_lyrics.txt'
+        SCRAPE_CTL_FNAME    = g.TEMP_DIR + "mserve_scrape_ctl.json'
+        SCRAPE_LIST_FNAME   = g.TEMP_DIR + "mserve_scrape_list.txt'
+        SCRAPE_LYRICS_FNAME = g.TEMP_DIR + "mserve_scrape_lyrics.txt'
         
         # Names list is used in our code for human readable formatting
         NAMES_LIST =   ['Metro Lyrics',     'AZ Lyrics',        'Lyrics',
@@ -2105,7 +2112,7 @@ class PrettyMusic:
         Also called from Music Location Tree popup menu for music file.
     """
 
-    def __init__(self, sql_row_id, calc=None):
+    def __init__(self, sql_row_id, calc=None, file_ctl=None):
         """ 
             Build a pretty dictionary with user friendly field names
             Values are from current treeview row for SQL Row. See note above.
@@ -2124,10 +2131,10 @@ class PrettyMusic:
 
         # List of part section headings at part_start[] list above
         self.part_names = ['SQL and Operating System Information',
-                           'SQL Metadata Subset (After song played once)',
+                           'SQL Metadata Subset (more when song playing)',
                            'Lyrics score (usually after Webscraping)',
-                           'History Time - Row Number      ' +
-                           ' | Type | Action | Master | Detail | Target | Comments',
+                           'History Time - Row Number       | Type | Action' +
+                           ' | Master | Detail | Target | Comments',
                            'Metadata modified']
         # List of part colors - applied to key names in that part
         self.part_color = ['red', 'blue', 'green', 'red', 'blue']
@@ -2161,7 +2168,7 @@ class PrettyMusic:
         self.dict['Artist'] = sql_format_value(d['Artist'])
         self.dict['Album'] = sql_format_value(d['Album'])
         if d['Compilation']:
-            self.dict['Compilation'] = sql_format_value(d['Compilation'])
+            self.dict['Compilation'] = 'Yes' if d['Compilation'] == "1" else 'No'
         if d['AlbumArtist']:
             self.dict['Album Artist'] = sql_format_value(d['AlbumArtist'])
         if d['AlbumDate']:
@@ -2197,13 +2204,32 @@ class PrettyMusic:
         if d['PlayCount']:
             self.dict['Play Count'] = sql_format_value(d['PlayCount'])
         if d['LastPlayTime']:
-            self.dict['Last Play Time'] = sql_format_value(d['LastPlayTime'])
+            self.dict['Last Play Time'] = sql_format_date(d['LastPlayTime'])
         if d['ffMajor']:
             self.dict['Major Version'] = sql_format_value(d['ffMajor'])
         if d['ffMinor']:
             self.dict['Minor Version'] = sql_format_value(d['ffMinor'])
         if d['ffCompatible']:
             self.dict['Compatible Brands'] = sql_format_value(d['ffCompatible'])
+
+        ''' If file_ctl passed, path is not none, and matches, use extra data '''
+        # pycharm doesn't like PRUNED_DIR type 'None', expected 'Sized'
+        # noinspection PyTypeChecker
+        if file_ctl and file_ctl.path and \
+                file_ctl.path[len(PRUNED_DIR):] == d['OsFileName']:
+            if file_ctl.Encoder:
+                self.dict['Encoder'] = file_ctl.Encoder
+            if file_ctl.EncodingFormat:
+                self.dict['Encoding Format'] = file_ctl.EncodingFormat
+            if file_ctl.AudioStream:
+                self.dict['Audio Stream'] = file_ctl.AudioStream[:80]
+            if file_ctl.ArtworkStream:
+                self.dict['Artwork Stream'] = file_ctl.ArtworkStream[:80]
+            if file_ctl.DiscId:
+                self.dict['CDDB Disc ID'] = file_ctl.DiscId
+            if file_ctl.MusicBrainzDiscId:
+                self.dict['MusicBrainz ID'] = file_ctl.MusicBrainzDiscId
+
         self.part_start.append(len(self.dict))
 
         if d["LyricsTimeIndex"] is None:
@@ -2217,6 +2243,8 @@ class PrettyMusic:
             for i, line in enumerate(lyrics.splitlines()):
                 # If time index exists, put value in front of lyric line
                 try:
+                    # pycharm doesn't like time_index_list, unexpected type str
+                    # noinspection PyStringFormat
                     self.dict["{:.2f}".format(time_index_list[i])] = line
                 except (IndexError, ValueError):
                     # IndexError: list index out of range
@@ -2238,7 +2266,7 @@ class PrettyMusic:
                 " | " + str(row['Target']) + " | " + str(row['Comments'])
 
         if self.calc is not None:
-            ''' TODO: extra ffprobe metadata not stored in SQL Music Table. e.g.: 
+            ''' TODO: Run 'ffprobe' for more metadata: 
                       Encoder Settings
                       Encoding Time
                       Free DiscId
@@ -2249,6 +2277,7 @@ class PrettyMusic:
 
 def pretty_no_blank_dict(key):
     """ If key's value not None, return formatted value """
+    print("pretty_no_blank_dict(key)", key)
     pass
 
 
@@ -3209,8 +3238,8 @@ class FixData:
         self.print_summary("del_music_ids() History", fix_list)
         self.print_summary("del_music_ids() Music", del_list)
 
-        # Variable was never used:
-        if print_all is None:
+        # pycharm things print_all was never used:
+        if True is False:
             print("print_all", print_all)
 
         self.wrapup(update)
@@ -3220,6 +3249,7 @@ class FixData:
         # Backup database before updating
         self.backup(update)
 
+        print_all = None
         fix_list = list()
 
         hist_cursor.execute("SELECT * FROM History")
@@ -3292,6 +3322,10 @@ class FixData:
                     print(sql, "\n", (detail, comment, key))
                     self.sql_cmd_error = True
                 pass
+
+        # pycharm things print_all was never used:
+        if True is False:
+            print("print_all", print_all)
 
         # Print count total lines
         self.print_summary("fix_parm_scrape()", fix_list)
@@ -3387,8 +3421,7 @@ class FixData:
                 print("Step 5 for :", row['Id'])
 
             if not found_ok:
-                print("fix_meta_edit() not found:")
-                print(self.make_pretty_line(d))
+                print("fix_meta_edit() not found for music id:", row['MusicId'])
 
             if self.test:
                 continue  # Skip over update
@@ -3621,6 +3654,8 @@ class FixData:
             :param row is only used for error messages
         """
 
+        epoch = 0.0
+
         try:
             time_obj = time.strptime(utc_date_str)
             # Check to ensure date in comments is prior to cutoff date
@@ -3684,15 +3719,15 @@ class FixData:
             print("Test Run Only - NO UPDATES TO:", FNAME_LIBRARY)
         print("=" * 80)
 
-    def print_summary(self, parent, dict_list):
+    def print_summary(self, caller, dict_list):
         """ Print summary """
-        print('\nsql.py FixData() ' + parent + ' Sub-Totals')
+        print('\nsql.py FixData() ' + caller + ' Sub-Totals')
         for d in dict_list:
             if d['Count'] > 0:
                 # Thousands of records so only print groups updated
                 print(" ", self.make_pretty_line(d))
 
-        print('\nsql.py FixData() ' + parent + ' Summary Counts')
+        print('\nsql.py FixData() ' + caller + ' Summary Counts')
         print('  rows_count   :', self.rows_count)
         print('  rows_changed :', self.rows_changed)
         print('  fix_count    :', self.fix_count)  # May be multiple fixes/row
