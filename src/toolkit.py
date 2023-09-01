@@ -527,7 +527,21 @@ def tv_tag_replace(tv, iid, old, new, strict=False):
 
 def tv_tag_remove(tv, iid, old, strict=False):
     """ Treeview tag function """
-    tags = tv.item(iid)['tags']
+    try:
+        tags = tv.item(iid)['tags']
+    except tk.TclError:
+        # Aug 31/23 - error when synchronize locations finishes up:
+        #   File "/home/rick/python/location.py", line 3981, in cmp_update_files
+        #     toolkit.tv_tag_remove(self.cmp_tree, last_sel_iid, 'cmp_sel')
+        #   File "/home/rick/python/toolkit.py", line 530, in tv_tag_remove
+        #     tags = tv.item(iid)['tags']
+        #   File "/usr/lib/python2.7/lib-tk/ttk.py", line 1353, in item
+        #     return _val_or_dict(self.tk, kw, self._w, "item", item)
+        #   File "/usr/lib/python2.7/lib-tk/ttk.py", line 299, in _val_or_dict
+        #     res = tk.call(*(args + options))
+        # TclError: wrong # args: should be ".139900134771528.139900142151368.
+        # 139900142151584.139900142150936 item item ?option ?value??..."
+        return False
     if old in tags:
         tags.remove(old)
         tv.item(iid, tags=tags)
@@ -2124,7 +2138,10 @@ class ToolTips(CommonTip):
             print('Tooltips.set_tip_plan() self.log_nt widget NOT FOUND!:',
                   self.log_nt)
             print('search_widget for above:', search_widget)
-            print("search_widget['text']:", search_widget['text'])
+            try:
+                print("search_widget['text']:", search_widget['text'])
+            except tk.TclError:
+                print("Probably shutting down...")
             return
             # Could exit now and save second test
         

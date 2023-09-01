@@ -596,10 +596,11 @@ class ModTime:
         If not utilize timestamp file to get last modification time.
     """
 
-    def __init__(self, code):
+    def __init__(self, code, fast_refresh=None):
         self.change_cnt = 0         # Number of songs where new time changed
         self.delete_cnt = 0         # Number of songs deleted because time changed
         self.new_cnt = 0            # Number of songs added with old & new time
+        self.mod_dict = {}          # Dictionary stored as pickle in mserve/L009
         ''' Using iid as code need to get topdir without modifying self.act_xxx
             Split read_location() into two parts w/ get_sql_row(Code) returns d 
         '''
@@ -621,19 +622,33 @@ class ModTime:
 
         # Does location support modification timestamping?
         testfile = ext.join(self.topdir, "mserve_test_time")
-        try:
-            with open(testfile, "w") as text_file:
-                text_file.write("Test Modification Time")
-        except Exception as err:
-            # IOError: [Errno 5] Input/output error: '/mnt/music/mserve_test_time'
-            print("Exception:", err)  # Host was off-line when encountered
-            self.allows_mtime = False
-            return
+        for i in range(100):
+            try:
+                with open(testfile, "w") as text_file:
+                    text_file.write("Test Modification Time")
+                print("location.py ModTime __init__(): Loop count:", i + 1)
+                break  # Success
+            except Exception as err:
+                # IOError: [Errno 5] Input/output error: '/mnt/music/mserve_test_time'
+                if i == 99:
+                    print("Exception:", err)  # Host was off-line when encountered
+                    print("location.py ModTime __init__(): Looped 100 times Host is off-line")
+                    self.allows_mtime = False
+                    return
+            if fast_refresh:
+                fast_refresh(tk_after=True)  # Update play_top animations
+            else:
+                time.sleep(.1)
 
         before_touch = os.stat(testfile).st_mtime
         os.popen("touch -m -t 196305180000 " + testfile)
         after_touch = os.stat(testfile).st_mtime
-        os.remove(testfile)
+        try:
+            os.remove(testfile)
+        except Exception as err:
+            print("Exception:", err)
+            print("File:", testfile, "not found.")
+            print("location.py ModTime __init__(): File should have existed.")
 
         if before_touch == after_touch:
             self.allows_mtime = False
@@ -643,13 +658,22 @@ class ModTime:
             #print("Top dir allows timestamps:",self.topdir)
             return
 
-        # TODO: Temporary list until read/write done
-        self.mod_dict = {}
-        # Initialize dictionary if modification_time file already exists
+        # Initialize dictionary with previous modification_time file results
         if os.path.isfile(self.filename):
             with open(self.filename, 'rb') as filehandle:
                 # read the data as binary data stream
                 self.mod_dict = pickle.load(filehandle)
+
+        if True is True:
+            return  # skip debug stuff below
+
+        print("location.py ModTime() len(self.mod_dict):", len(self.mod_dict))
+        i = 0
+        for key in self.mod_dict:
+            print(key, self.mod_dict[key])  # Print first 10 key/values
+            i += 1
+            if i > 10:
+                break
         return
 
     def get(self, path, mtime):
@@ -885,12 +909,14 @@ class LocationsCommonSelf:
         self.cmp_found = None  # Number of files goes into differences button
         self.command_list = []  # List of tuples: (iid, command_str)
         self.cmp_command_list = []  # iid,command_str,src_to_trg,src_time,trg_time
-        self.cmp_return_code = None  # Indicate how update failed
+        self.cmp_return_code = 0  # Indicate how update failed
         self.src_mt = None  # Source modification time using ModTime() class
         self.trg_mt = None  # Target modification time using ModTime() class
         self.cmp_trg_missing = []  # Source files not found in target location
         self.cmp_msg_box = None  # message.Open()
         self.last_fast_refresh = 0.0  # Calling refresh many times.
+        self.start_long_running = None  # To control mserve playing buttons
+        self.end_long_running = None  # To control mserve playing buttons
 
         ''' Make TMP names unique for multiple OS jobs running at once '''
         letters = string.ascii_lowercase + string.digits
@@ -2021,7 +2047,7 @@ class Locations(LocationsCommonSelf):
         self.state = 'delete'
         self.display_main_window("Delete Location")
 
-    def synchronize(self):
+    def synchronize(self, start_long_running, end_long_running):
         """ Called by lib_top Edit Menubar 'Synchronize Location'
         Click Synchronize Button:
             Warning message appears that it is remote host, but nothing happens
@@ -2045,6 +2071,8 @@ class Locations(LocationsCommonSelf):
         """
         LocationsCommonSelf.__init__(self)  # Define self. variables
         self.state = 'synchronize'
+        self.start_long_running = start_long_running
+        self.end_long_running = end_long_running
         self.display_main_window("Synchronize Location")
 
     def view(self):
@@ -2299,12 +2327,18 @@ class Locations(LocationsCommonSelf):
             new_wakecmd = self.scr_wakecmd.get().strip()
         if self.fld_testcmd:  # Is ssh installed?
             new_testcmd = self.scr_testcmd.get().strip()
-            new_testrep = self.scr_testrep.get()
+            try:
+                new_testrep = self.scr_testrep.get()
+            except ValueError:
+                new_testrep = 0  # A blank was entered
         if self.fld_mountcmd:  # Is sshfs installed?
             new_mountcmd = self.scr_mountcmd.get().strip()
         if self.fld_touchcmd:  # Is ssh installed?
             new_touchcmd = self.scr_touchcmd.get().strip()
-            new_touchmin = self.scr_touchmin.get()
+            try:
+                new_touchmin = self.scr_touchmin.get()
+            except ValueError:
+                new_touchmin = 0  # A blank was entered
         ''' Other "regular" tkinter scr_ variables. '''
         new_comments = self.scr_comments.get().strip()
         if self.fld_image_path:  # Doesn't exist on test window
@@ -2568,7 +2602,7 @@ class Locations(LocationsCommonSelf):
                   sys._getframe(1).f_code.co_name)
             return False
 
-    def test_common(self, toplevel, run_nmap=True):
+    def test_common(self, toplevel, run_nmap=True, called_from_sync=False):
         """ Validate Host Connect. 
 
             In simple form, check that local machine's top directory exists. 
@@ -2585,7 +2619,8 @@ class Locations(LocationsCommonSelf):
         :param toplevel: 'toplevel' can be 'main_top' used for test.
             'toplevel' can be 'root', then new window is created.
         :param run_nmap: If 'nc' was used for quick test, no need to run 'nmap'.
-            Also display_test_window() was already done. """
+            Also display_test_window() was already done.
+        :param called_from_sync: True if synchronize() is caller. """
 
         ''' Simple method to set self.called_from_main_top '''
         self.called_from_main_top = toplevel == self.main_top
@@ -2676,7 +2711,6 @@ Mr. Scruff      last_song_ndx
 
 :/storage/4A21-0000/Music $ while : ; do ls last_song_ndx ; sleep 60 ; done
 last_song_ndx
-
         
 ```
 
@@ -2765,7 +2799,51 @@ sudo ufw allow 2222
 sshfs was discontinued in 2022. NFS is an option:
 https://android.stackexchange.com/questions/200867/how-to-mount-nfs-on-android-with-correct-permissions
 
+
+
+
+# Install Google Play Medha Wifi FTP Server
+
+Port defaults to 2221
+
+``` bash
+sudo ufw allow 2221
+```
+
+Mount directory:
+
+    curlftpfs -o user=android:android phone:2221 /mnt/phone  (OWNED BY ROOT)
+    curlftpfs -o uid=1000,gid=1000,umask=0022,user=android:android phone:2221 /mnt/phone
+
+
+See: https://github.com/JackSlateur/curlftpfs/blob/master/README
+
+Start sync at 10:44 pm finish 12:13am (90 minutes)
+
+    All files have wrong timestamp so diff takes 1 second for every song.
+
+    Some interesting error messages:
+    
+# diff: /mnt/phone//Arcade Fire/Funeral/01 Neighborhood #1 (Tunnels).m4a: Permission denied
+# diff: /mnt/phone//Arcade Fire/Funeral/02 Neighborhood #2 (Laika).m4a: Permission denied
+# diff: /mnt/phone//Arcade Fire/Funeral/04 Neighborhood #3 (Power Out).m4a: Permission denied
+# diff: /mnt/phone//Arcade Fire/Funeral/05 Neighborhood #4 (7 Kettles).m4a: Permission denied
+# diff: /mnt/phone//Bachman-Turner Overdrive/The Definitive Collection/13 Lookin' Out For #1.m4a: Permission denied
         
+From: https://github.com/JackSlateur/curlftpfs/blob/master/README
+
+Note
+========
+
+This is _not_ the official project, which can be found there:
+http://curlftpfs.sourceforge.net/
+I just added some code the correctly handle filename which contains
+url-special chars (actually, just # and %) by url-encoding them :
+ % -> %25
+ # -> %23
+Using that, curl will not translate them, and will target the correct
+filename.
+
         
         '''
 
@@ -2773,7 +2851,7 @@ https://android.stackexchange.com/questions/200867/how-to-mount-nfs-on-android-w
         if self.called_from_main_top and not self.validate_location():
             return False  # Called from main_top and error given to user to fix
 
-        ''' At this point, remote host is used. '''
+        ''' If nmap requested and called from test mount the display. '''
         display_test = run_nmap and not self.called_from_main_top
         #print("test_common() calling test_init(display_test):", display_test)
         '''
@@ -2881,7 +2959,7 @@ https://android.stackexchange.com/questions/200867/how-to-mount-nfs-on-android-w
                     self.open_sshfs_used = True
                 else:
                     self.open_sshfs_used = False
-            return self.test_success()
+            return self.test_success(called_from_sync)
 
         ''' sshfs host's music top directory to local mount point '''
         mountcmd = self.act_mountcmd.strip()
@@ -2928,7 +3006,7 @@ https://android.stackexchange.com/questions/200867/how-to-mount-nfs-on-android-w
         ''' Host is up and directory mounted. Check if TopDir has subdirs '''
         if os.path.exists(self.act_topdir) and \
                 len(os.listdir(self.act_topdir)) > 0:
-            return self.test_success()  # Finally we're good to go!
+            return self.test_success(called_from_sync)  # Finally we're good to go!
         else:
             if os.path.exists(self.act_topdir):
                 text = "Music Top Directory exists, but it is empty:"
@@ -2961,7 +3039,7 @@ https://android.stackexchange.com/questions/200867/how-to-mount-nfs-on-android-w
             self.test_top.update()
 
         if self.called_from_main_top:
-            ''' Called from main_top using 'Test Host' button '''
+            ''' Called from main_top using 'Test Host' or 'Synchronize' button '''
             if self.no_locations_label:
                 self.no_locations_label.grid_remove()
             else:
@@ -2990,8 +3068,10 @@ https://android.stackexchange.com/questions/200867/how-to-mount-nfs-on-android-w
         if self.called_from_main_top:  # main_top exists, so test_top not needed
             ''' Remove test window overrides and restore original main window '''
             if self.tt:
+                # Buttons can disappear when synchronize location cancelled
                 if self.tt.check(self.test_close_button):
                     self.tt.close(self.test_close_button)
+                if self.tt.check(self.test_help_button):
                     self.tt.close(self.test_help_button)
             self.test_close_button.destroy()
             self.test_help_button.destroy()
@@ -3082,7 +3162,10 @@ https://android.stackexchange.com/questions/200867/how-to-mount-nfs-on-android-w
         """ Refresh last test_box line with .1 second updates
             Credit: https://stackoverflow.com/a/53639572/6929343 """
         now = time.time()
-        last_insert = self.test_box.tag_ranges("last_insert")
+        try:
+            last_insert = self.test_box.tag_ranges("last_insert")
+        except tk.TclError:
+            last_insert = ("end", "end")
         self.test_box.delete(last_insert[0], last_insert[1])
         self.test_box.tag_remove("last_insert", "1.0", "end")
         secs = '{0:.1f}'.format(now - start)
@@ -3105,7 +3188,7 @@ https://android.stackexchange.com/questions/200867/how-to-mount-nfs-on-android-w
         return os.path.exists(self.act_topdir) and \
             len(os.listdir(self.act_topdir)) > 0
 
-    def test_success(self):
+    def test_success(self, called_from_sync):
         """ End test with success """
         success = "\nHost successfully accessed. Click 'Close Test Results' button."
         self.test_show(success, pattern="'Close Test Results'")
@@ -3117,6 +3200,13 @@ https://android.stackexchange.com/questions/200867/how-to-mount-nfs-on-android-w
             else:
                 self.open_sshfs_used = False
             self.test_close_window()  # main_top allows reviewing results
+
+        if self.called_from_main_top and called_from_sync:
+            self.test_close_window()  # synchronize in progres
+            self.test_host_button.grid_remove()
+            if self.apply_button:
+                self.apply_button.grid_remove()
+
         return True
 
     def test_failure(self):
@@ -3271,13 +3361,16 @@ https://android.stackexchange.com/questions/200867/how-to-mount-nfs-on-android-w
                     #     self.test_top.destroy()
                     # AttributeError: 'NoneType' object has no attribute 'destroy'
             '''
-            if not self.test_common(self.main_top):
+            if not self.test_common(self.main_top, called_from_sync=True):
                 # Aug 28/23 - def test_common( returned false and did nothing
                 #self.called_from_main_top = False  # Added Aug 28/23
+                # def test_common
                 return  # Refuses to connect to host
             if self.act_touchcmd:
                 self.cmp_keep_awake_is_active = True
                 self.cmp_keep_awake()
+
+        self.start_long_running()  # Remove mserve full playlist buttons
 
         ''' Create Compare Locations top window - self.cmp_top '''
         self.cmp_top = tk.Toplevel()
@@ -3287,7 +3380,11 @@ https://android.stackexchange.com/questions/200867/how-to-mount-nfs-on-android-w
               self.main_top.winfo_y() + g.PANEL_HGT)
         self.cmp_top.minsize(width=g.BTN_WID * 10, height=g.PANEL_HGT * 4)
         self.cmp_top.geometry('%dx%d+%d+%d' % (1800, 500, xy[0], xy[1]))  # 500 pix high
-        self.cmp_target_dir = self.act_topdir  # The "other" location
+        if self.open_topdir.endswith(os.sep):  # the "source" location
+            self.open_topdir = self.opentop_dir[:-1]
+        self.cmp_target_dir = self.act_topdir  # The "other/target" location
+        if self.cmp_target_dir.endswith(os.sep):
+            self.cmp_target_dir = self.cmp_target_dir[:-1]
         title = "Compare Locations - SOURCE: " + self.open_topdir + \
                 " - TARGET: " + self.cmp_target_dir
         self.cmp_top.title(title)
@@ -3488,6 +3585,9 @@ https://android.stackexchange.com/questions/200867/how-to-mount-nfs-on-android-w
     # noinspection PyUnusedLocal 
     def cmp_close(self, *args):
         """ Close Compare location treeview """
+
+        self.end_long_running()  # Restore mserve full playlist buttons
+
         if self.cmp_keep_awake_is_active:  # Keeping remote host awake?
             self.cmp_keep_awake_is_active = False  # Has 10 minute wakeup cycle
         if not self.cmp_top_is_active:
@@ -3506,16 +3606,6 @@ https://android.stackexchange.com/questions/200867/how-to-mount-nfs-on-android-w
         """ Add Artist, Album and Song to treeview self.cmp_tree.
             Similar to add_items() in Music Location Tree
 
-            TODO: Rest of mserve is unresponsive while this is running.
-                  Take all compare location code and make new python module
-                  called compare.py imported as cmp
-
-            It takes 1.5 hour to stat 4,000 songs on phone mounted on sshfs
-            over Wi-Fi. Speed up with: https://superuser.com/questions/344255/
-            faster-way-to-mount-a-remote-file-system-than-sshfs
-
-            -o auto_cache,reconnect,defer_permissions
-            -o Ciphers=aes128-ctr -o Compression=no
         :returns True: When locations are different
         """
         # How many path separators '/' are there in source and target?
@@ -3523,6 +3613,8 @@ https://android.stackexchange.com/questions/200867/how-to-mount-nfs-on-android-w
         #target_dir_sep = self.cmp_target_dir.count(os.sep) - 1
         self.src_mt = ModTime(self.open_code)
         self.trg_mt = ModTime(self.act_code)
+
+        ''' TODO: Put these values on screen, perhaps in location test '''
         #print("self.src_mt.allows_mtime:", self.src_mt.allows_mtime)
         #print("self.trg_mt.allows_mtime:", self.trg_mt.allows_mtime)
 
@@ -3532,14 +3624,11 @@ https://android.stackexchange.com/questions/200867/how-to-mount-nfs-on-android-w
         ext.t_init("Build compare target")
         ''' Traverse fake_paths created by mserve.py make_sorted_list() '''
         for i, fake_path in enumerate(self.fake_paths):
-            self.cmp_top.update()  # Allow close button to abort right away
-            ''' Have to stop animations while walking
-            thr = self.get_thread_func()
-            if thr:
-                thr(tk_after=True)  # Save 20 ms or so
-                # When sleep is False, playing next song causes termination
-                # When sleep is True, playing next song causes termination :(
-            '''
+            if not self.cmp_top_is_active:
+                return False  # Closing down, False indicates no differences
+
+            self.fast_refresh(tk_after=False)  # Update play_top animations
+
             # split song /mnt/music/Artist/Album/Song.m4a into variable names
             groups = fake_path.split(os.sep)
             Artist = str(groups[start_dir_sep + 1])
@@ -3547,17 +3636,25 @@ https://android.stackexchange.com/questions/200867/how-to-mount-nfs-on-android-w
             Song = str(groups[start_dir_sep + 3])
 
             if Artist != LastArtist:
-                CurrArtistId = self.cmp_tree.insert("", "end", text=Artist,
-                                                    tags=("Artist",), open=True)
+                try:
+                    CurrArtistId = self.cmp_tree.insert(
+                        "", "end", text=Artist, tags=("Artist",), open=True)
+                except tk.TclError:
+                    return False  # close button
                 LastArtist = Artist
                 LastAlbum = ""  # Force subtotal break for Album
 
             if Album != LastAlbum:
-                CurrAlbumId = self.cmp_tree.insert(CurrArtistId, "end",
-                                                   text=Album, tags=("Album",))
+                try:
+                    CurrAlbumId = self.cmp_tree.insert(
+                        CurrArtistId, "end", text=Album, tags=("Album",))
+                except tk.TclError:
+                    return False  # close button
                 LastAlbum = Album
+                self.cmp_top.update_idletasks()  # Allow close button to abort
 
-            if self.cmp_top_is_active is False:
+
+            if not self.cmp_top_is_active:
                 return False  # Closing down, False indicates no differences
 
             ''' Compare two files '''
@@ -3593,6 +3690,7 @@ https://android.stackexchange.com/questions/200867/how-to-mount-nfs-on-android-w
                                          float(src_time), float(trg_time)),
                                  tags=("Song",))
             self.cmp_tree.see(str(i))
+            self.cmp_top.update_idletasks()  # Allow close button to abort
             self.cmp_found += 1
 
             if self.cmp_top_is_active is False:
@@ -3634,11 +3732,39 @@ https://android.stackexchange.com/questions/200867/how-to-mount-nfs-on-android-w
     def compare_path_pair(self, fake_path):
         """ Called when inserting in treeview and after copy/touch command.
 
+            NOTE:
+                First sync is 8,261 seconds 2 hours 18 minutes for
+                3,800 songs 'diff'.
+
+                Second sync is 1 minute for
+
+            TOOD:
+
+                First time retries all sync. Cancel and start again for
+                modTime to kick in.
+
+                Disable Next button in playlist player by calling:
+
+                    def start_long_running_process(self):
+                        self.long_running_process = True
+                        self.play_btn_frm.grid_forget()
+                        self.build_play_btn_frm()
+
+                    def end_long_running_process(self):
+                        self.long_running_process = False
+                        self.play_btn_frm.grid_forget()
+                        self.build_play_btn_frm()
+
             FOR TESTING: Run bash script 'test-for-sync.sh' to change files
                          in ~/Music/Compilations
 
+                         Use Kid3 on song to change some metadata
+
+            RETURNS:
+
             return action, src_path, src_size, src_time, \
                 trg_path, trg_size, trg_time
+
             WHERE:
                 src_path = self.open_topdir + real bottom path
                 trg_path = self.act_topdir + real bottom path
@@ -3650,6 +3776,7 @@ https://android.stackexchange.com/questions/200867/how-to-mount-nfs-on-android-w
                 "Same" - within 2 seconds so no action required (hidden)
                 "Error: Size different, time same" - Don't know copy direction
                 "Error: contents different, time same" -    "   "   "   "
+                "Error: Permission denied from 'diff' command"
                 "OOPS" - programming error that should never happen (hidden)
                 "Copy Trg -> Src (Size)" - Based on size difference
                 "Copy Src -> Trg (Size)" - Based on size difference
@@ -3676,7 +3803,7 @@ https://android.stackexchange.com/questions/200867/how-to-mount-nfs-on-android-w
         trg_size = trg_stat.st_size
         trg_time = float(trg_stat.st_mtime)
 
-        ''' Android not updating modification time, keep track ourselves '''
+        ''' When Android not updating modification time, keep track ourselves '''
         src_time = self.src_mt.get(src_path, src_time)
         trg_time = self.trg_mt.get(trg_path, trg_time)
         time_diff = abs(src_time - trg_time)  # time diff between src & trg
@@ -3696,11 +3823,31 @@ https://android.stackexchange.com/questions/200867/how-to-mount-nfs-on-android-w
                 action = "Copy Src -> Trg (Size)"
             else:
                 action = "Error: Size different, time same"
+            return action, src_path, src_size, src_time, \
+                trg_path, trg_size, trg_time
 
-        elif os.system('diff -q ' + '"' + src_path + '"' + ' ' +
-                       '"' + trg_path + '" 1>/dev/null'):
+        self.run_one_command(
+            'diff -s ' + '"' + src_path + '" "' + trg_path + '"', src_size)
+        ''' Permission denied - Do nothing, just report and skip copy '''
+        if self.cmp_return_code != 0:
+            action = "Error: Permission denied on 'diff' check"
+            #print("\nError on file:", trg_path)
+            print(action, "return code:", self.cmp_return_code, "\n")
+            self.cmp_return_code = 0  # Reset so doesn't force end
+            return action, src_path, src_size, src_time, \
+                trg_path, trg_size, trg_time
+
+        # Get stdout contents STDOUT from 'diff' command
+        out = self.get_file_data(self.TMP_STDOUT)
+        if not out.strip().endswith(" are identical"):  # TODO: Horrible testing stdout
+            print("out:", out)
+
             ''' Size same but contents different - Copy newer file to older '''
             if src_time < trg_time:
+                action = "Copy Trg -> Src (Diff)"
+
+                ''' Size same but contents different - Copy newer file to older '''
+            elif src_time < trg_time:
                 action = "Copy Trg -> Src (Diff)"
             elif src_time > trg_time:
                 action = "Copy Src -> Trg (Diff)"
@@ -3861,7 +4008,10 @@ https://android.stackexchange.com/questions/200867/how-to-mount-nfs-on-android-w
         ''' Summary message '''
         missing_count = len(self.cmp_trg_missing)
         elapsed = time.time() - all_start_time
-        speed = float(all_sizes) / copy_time_so_far
+        if copy_time_so_far:
+            speed = float(all_sizes) / copy_time_so_far
+        else:
+            speed = 0.0
 
         print("commands:", command_count, "\tsize:", all_sizes,
               "\telapsed:", '{:n}'.format(round(copy_time_so_far, 3)),
@@ -3898,21 +4048,22 @@ https://android.stackexchange.com/questions/200867/how-to-mount-nfs-on-android-w
                 self.cmp_return_code = 2  # Indicate how update failed
             return self.fast_refresh()  # Give little time slice to other threads
         else:
-            ''' Copy writes to stdout and takes .01 second / MB '''
-            return self.wait_for_cp_verbose(command, size)
+            ''' Copy writes to stdout and takes .01 second / MB 
+                'diff' over Wifi FTP Server takes .16 second / MB  '''
+            return self.wait_for_cmd_output(command, size)
 
-    def wait_for_cp_verbose(self, command, size):
+    def wait_for_cmd_output(self, command, size):
         """ Wait for cp (copy) command to complete
             Check cmp_top_is_active at top of each loop.
             Maximum time for STDOUT or STDERR to appear is 10 seconds. """
 
         ''' Build full command with stdout & stderr appended '''
-        command += " 1>" + self.TMP_STDOUT
-        command += " 2>" + self.TMP_STDERR
+        command += " 1>" + self.TMP_STDOUT  # mserve_stdout_5sh18d
+        command += " 2>" + self.TMP_STDERR  # mserve_stderr_5sh18d
         start_time = time.time()
         result = os.popen(command + " &").read().strip()
         if len(result) > 4:
-            print("wait_for_cp_verbose() os.popen() unknown result:", result)
+            print("wait_for_cmd_output() os.popen() unknown result:", result)
             self.cmp_return_code = 3  # Indicate how update failed
             return False
 
@@ -3920,29 +4071,35 @@ https://android.stackexchange.com/questions/200867/how-to-mount-nfs-on-android-w
         while True:
             loop_count += 1
             elapsed = time.time() - start_time
-            if elapsed > 10.0:
-                print("wait_for_cp_verbose() 10 second time-out")
+            if elapsed > 60.0:  # Aug 31/23 WiFi change 10.0 to 60.0 for `diff`
+                # Loops: 270,211 	Size: 8,090,133 	Elapsed sec: 25.513 	Speed (MB/s): 0.317
+                # Loops: 94,729 	Size: 4,726,205 	Elapsed sec: 9.85 	Speed (MB/s): 0.48
+                print("wait_for_cmd_output() 60 second time-out")
                 ''' TODO: Test host(s) and set down flags '''
                 self.cmp_return_code = 4  # Indicate how update failed
                 return False
 
             ''' stdout and stderr may be created with no information yet '''
-            out = self.get_data(self.TMP_STDOUT)
-            err = self.get_data(self.TMP_STDERR)
+            out = self.get_file_data(self.TMP_STDOUT)
+            err = self.get_file_data(self.TMP_STDERR)
             if len(out) == 0 and len(err) == 0:
-                # False = 50 loops, True = 8 loops
-                if not self.fast_refresh(tk_after=False):
+                # 'cp' over ethernet, False = 50 loops, True = 8 loops
+                # 'diff' over Wifi, False = 30k to 100k loops, single-Core 100%
+                # 'diff' over Wifi, False = 5k to 20k loops, single-Core 50%
+                if not self.fast_refresh(tk_after=True):
                     return False
                 continue  # No files or empty files
 
-            speed = float(size) / elapsed
-            print("loops:", loop_count, "\tsize:", size,
-                  "\telapsed:", '{:n}'.format(round(elapsed, 3)),
-                  "\tspeed:", '{:n}'.format(round(speed, 3)))
+            ''' TODO: Record test results and cmp_return_code to audit log. '''
+            speed = float(size) / elapsed / 1000000.0
+            print("Loops:", '{:n}'.format(loop_count),
+                  "\tSize:", '{:n}'.format(size),
+                  "\tElapsed sec:", '{:n}'.format(round(elapsed, 3)),
+                  "\tSpeed (MB/s):", '{:n}'.format(round(speed, 3)))
 
             ''' stdout or stderr have been populated by cp command '''
             if len(err) > 0:
-                print("cp errors reported:", err)
+                print("'diff -s' or 'cp -v' errors reported below:\n", err)
                 if len(out) > 0:
                     print("cp verbose reported too!:", out)
                 self.cmp_return_code = 5
@@ -3951,7 +4108,7 @@ https://android.stackexchange.com/questions/200867/how-to-mount-nfs-on-android-w
                 return True
 
     @staticmethod
-    def get_data(f):
+    def get_file_data(f):
         """ Get data from STDOUT or STDERR """
         data = ""
         if os.path.isfile(f):
@@ -4008,6 +4165,9 @@ https://android.stackexchange.com/questions/200867/how-to-mount-nfs-on-android-w
                 values=(src_ftime, trg_ftime, src_fsize, trg_fsize, action,
                                     float(src_time), float(trg_time)), '''
         action = self.cmp_tree.item(iid)['values'][4]  # 6th treeview column
+        if action.startswith("Error:"):  # Modification time unknown.
+            return True  # True = looks like command built so action displayed
+
         src_time = self.cmp_tree.item(iid)['values'][5]
         trg_time = self.cmp_tree.item(iid)['values'][6]
         """ Set REAL paths for source and target """
@@ -4030,8 +4190,6 @@ https://android.stackexchange.com/questions/200867/how-to-mount-nfs-on-android-w
             command_str = u"cp --preserve=timestamps --verbose"
         elif action.startswith("Timestamp "):  # Is it a timestamp?
             command_str = u"touch -m -r"
-        elif action.startswith("Error:"):  # Modification time unknown.
-            return True  # True = looks like command built so action displayed
         else:  # None of above? - ERROR!
             title = "location.py Locations.build_command_list()"
             text = "Programming error. 'action' is not 'Copy' or 'Timestamp':\n\n"
@@ -4049,8 +4207,7 @@ https://android.stackexchange.com/questions/200867/how-to-mount-nfs-on-android-w
 
         return True
 
-    @staticmethod
-    def cmp_decipher_arrow(action, src_path, trg_path):
+    def cmp_decipher_arrow(self, action, src_path, trg_path):
         """ Flip src_path (full_path) and trg_path (full_path2) around """
         if "Trg -> Src" in action:
             return trg_path, src_path

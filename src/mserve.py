@@ -78,6 +78,7 @@ warnings.simplefilter('default')  # in future Python versions.
 #       Aug. 19 2023 - Dynamic display_metadata(), fix VU Meter Height on startup.
 #       Aug. 20 2023 - View SQL + Metadata dictionaries built on ffprobe.
 #       Aug. 24 2023 - Redirect show_debug() from console to InformationCentre().
+#       Aug. 31 2023 - refresh_play_top() queuing next song was replaying song.
 
 # noinspection SpellCheckingInspection
 """
@@ -92,7 +93,6 @@ References:
 #   Playlists
 
 #     BUGS:
-#       Aug 21/23 - bug sometimes two copies of song start at once.
 #       Open playlist, if music was paused, volume is only 25%
 #       Close playlist and use favorites doesn't clear_all_checks
 #       Shuffling Favorites then opening playlist will undo shuffle. Backup!!
@@ -255,8 +255,6 @@ ERROR OVERRIDE - https://github.com/quodlibet/mutagen/issues/499:
     File "/usr/lib/python2.7/dist-packages/mutagen/id3/__init__.py", line 600, in __save_frame
       framedata = frame._writeData()
   AttributeError: 'unicode' object has no attribute '_writeData'
-
-
 
 NOTES:
     File server needs to mount music directory if not mounted already:
@@ -1525,8 +1523,10 @@ class MusicLocationTree(PlayCommonSelf):
         # Edit Dropdown Menu
         ext.t_init('self.edit_menu = tk.Menu(mb)')
         self.edit_menu = tk.Menu(mb, tearoff=0)
-        self.edit_menu.add_command(label="Synchronize Location", font=g.FONT,
-                                   command=lcs.synchronize, state=tk.DISABLED)
+        self.edit_menu.add_command(
+            label="Synchronize Location", font=g.FONT, state=tk.DISABLED,
+            command=lambda: lcs.synchronize(self.start_long_running_process,
+                                            self.end_long_running_process))
         self.edit_menu.add_command(label="Edit Location", font=g.FONT,
                                    command=lcs.edit, state=tk.DISABLED)
         self.edit_menu.add_command(label="Delete Location", font=g.FONT,
@@ -6606,7 +6606,10 @@ class MusicLocationTree(PlayCommonSelf):
         self.play_on_top = True
 
     def start_long_running_process(self):
-        """ Remove buttons from play_top that freeze process """
+        """ Remove buttons from play_top that freeze process
+            TODO: synchronize locations displays "Hide" instead of "Show"
+                  and tooltip is invalid with search widget errors.
+        """
         self.long_running_process = True
         self.play_btn_frm.grid_forget()
         self.build_play_btn_frm()
@@ -6635,6 +6638,7 @@ class MusicLocationTree(PlayCommonSelf):
             button_list = ["Close", "Shuffle", "Prev", "Rew", "PP", "FF", "Next", "Chron"]
 
         if self.long_running_process:
+            ''' 'Next' button stops music from playing. '''
             button_list = ["Close", "PP", "Chron"]
 
         for col, name in enumerate(button_list):
@@ -6726,24 +6730,24 @@ class MusicLocationTree(PlayCommonSelf):
                                 " seconds ahead.", anchor="se")
             elif name == "Chron":
                 ''' Show/Hide Chronology (Playlist) toggle button (Frame 4) '''
-                self.chron_is_hidden = False  # DO THIS ONCE?
+                if self.chron_is_hidden is None:
+                    self.chron_is_hidden = False  # Initialization
                 self.chron_button = tk.Button(
-                    self.play_btn_frm, text="🖸 Hide Chronology",
+                    self.play_btn_frm, text="placeholder",
                     width=g.BTN_WID2 + 2, command=lambda s=self: s.chron_toggle())
                 self.chron_button.grid(row=0, column=col, padx=2, sticky=tk.W)
-
-                # TODO: DRY - This text is duplicated in show/hide function
-                ''' July 31, 2023 - disappearing tooltip 
-                    self.tt.set_text(self.chron_button, text2) the cause?
-                '''
-                text = "Hide the scrollable playlist below and\n" + \
-                       "double the size of spinning artwork."
+                text = "placeholder"
                 self.tt.add_tip(self.chron_button, text, anchor="se")
+                self.set_chron_button_text()
             else:
                 print("mserve.py build_play_btn_frm() Bad button name:", name)
 
         if self.pp_state is "Paused":  # Initially defined as if playing
             self.set_pp_button_text()  # Button text reflects match play/pause state
+
+        if self.chron_is_hidden:
+            ''' Toggle tooltip window position above/below buttons '''
+            self.toggle_chron_tt_positions()
 
     def on_resize(self, event):
         """ Resize image and VU Meters when frame size changes """
@@ -7679,16 +7683,14 @@ class MusicLocationTree(PlayCommonSelf):
         self.lib_tree.set(iid, 'Access', f_time)
 
     def play_to_end(self):
-        """
-        Play single song, refreshing screen 30 fps with refresh_play_top()
+        """ Play single song, refreshing screen 30 fps with refresh_play_top()
 
         Called from:
             play_one_song() to start a new song
             Indirectly called by refresh_play_top() when it calls play_one_song()
                 when song ends during long running process like update metadata
-            pp_toggle() to resume song after pausing
+            pp_toggle() to resume song after pausing """
 
-        """
         while True:
             ''' Call:
              m.main()
@@ -7828,8 +7830,9 @@ class MusicLocationTree(PlayCommonSelf):
             # Music has stopped playing and code below has been run once because
             # self.play_ctl.path has been run
             self.play_ctl.close()   # Update last song's last access time
+            self.song_set_ndx_just_run = False  # Aug 31/23 - same song repeats
             self.queue_next_song()  # Queue up next song in list
-            self.song_set_ndx_just_run = True  # So queue doesn't repeat...
+            #self.song_set_ndx_just_run = True  # So queue doesn't repeat...
             # Called by def play_to_end which is waiting for song to end
             # by checking self.last_started != self.ndx and then pid == 0.
             # play to end was called by def play_one_song
@@ -10979,22 +10982,36 @@ mark set markName index"
             self.chron_frm.grid()  # Restore hidden grid
             self.move_lyrics_right()  # Lyrics score right of VU meters
             self.chron_is_hidden = False  # Chronology no longer hidden
-            text = "🖸 Hide Chronology"
-            text2 = "Hide the scrollable playlist below\n" +\
-                    "double the size of spinning artwork."
-
         else:  # Hide chronology (playlist)
             self.chron_frm.grid_remove()  # Hide grid but remember options
             self.move_lyrics_bottom()  # Lyrics score under VU meters
             self.chron_is_hidden = True  # Chronology is now hidden
+
+        self.set_chron_button_text()
+        ''' Toggle tooltip window position above/below buttons '''
+        self.toggle_chron_tt_positions()
+
+        self.play_chron_highlight(self.ndx, True)  # Required after shuffle songs
+        self.chron_frm.update_idletasks()
+
+    def set_chron_button_text(self):
+        """ Called by toggle_chron(), long_running_process() and begin play """
+
+        if self.chron_is_hidden:
             text = "🖸 Show Chronology"
             text2 = "Show last three songs played,\n" +\
                     "current song, and future six\n" +\
                     "songs in playlist."
+        else:  # Hide chronology (playlist)
+            text = "🖸 Hide Chronology"
+            text2 = "Hide the scrollable playlist below\n" +\
+                    "double the size of spinning artwork."
 
         self.chron_button['text'] = text
         self.tt.set_text(self.chron_button, text2)
-        ''' Toggle tooltip window position above/below buttons '''
+
+    def toggle_chron_tt_positions(self):
+        """ Called by toggle_chron(), and build_play_btn_frm()) """
         self.tt.toggle_position(self.close_button)
         self.tt.toggle_position(self.shuffle_button)
         self.tt.toggle_position(self.pp_button)
@@ -11007,9 +11024,6 @@ mark set markName index"
             self.tt.toggle_position(self.rew_button)
             self.tt.toggle_position(self.ff_button)
         self.tt.toggle_position(self.chron_button)
-
-        self.play_chron_highlight(self.ndx, True)  # Required after shuffle songs
-        self.chron_frm.update_idletasks()
 
 
 # ==============================================================================
