@@ -61,6 +61,7 @@ import shutil
 import pickle
 import time
 import datetime
+import ftplib  # Communicate with FTP server
 import random  # For Locations() make_temp
 import string  # For Locations() make_temp
 from collections import OrderedDict
@@ -89,19 +90,19 @@ FNAME_LIBRARY          = MSERVE_DIR + "library.db"  # Opened every session
 FNAME_LIBRARY_NEW      = MSERVE_DIR + "library_new.db"  # Rarely used
 
 # Path modified when opened to be: USER_DATA_DIR/mserve/L999/
-FNAME_LAST_OPEN_STATES = MSERVE_DIR + "last_open_states"     # Expanded/Collapsed song list
-FNAME_LAST_SONG_NDX    = MSERVE_DIR + "last_song_ndx"        # Last song played in list
+FNAME_LAST_OPEN_STATES = MSERVE_DIR + "last_open_states"  # Open/Closed song list
+FNAME_LAST_SONG_NDX    = MSERVE_DIR + "last_song_ndx"  # Last song played in list
 # May 25 2021 -  last_selections corrupted by refresh_lib_tree()
 # Jun 05 2023 -  last_selections DEPRECATED
-FNAME_LAST_SELECTIONS  = MSERVE_DIR + "last_selections"      # Shuffled play order of songs
-FNAME_LAST_PLAYLIST    = MSERVE_DIR + "last_playlist"        # Songs selected for playing
+FNAME_LAST_SELECTIONS  = MSERVE_DIR + "last_selections"  # Shuffled play order of songs
+FNAME_LAST_PLAYLIST    = MSERVE_DIR + "last_playlist"  # Songs selected for playing
+FNAME_MOD_TIME         = MSERVE_DIR + "modification_time"  # Android phone times
 
 # Files in /tmp/
-FNAME_TEST             = g.TEMP_DIR + "mserve_test"  # Test if host up
-FNAME_TEST_NMAP        = g.TEMP_DIR + "mserve_test_nmap"  # Test if host up
 # There can be two open at once so unlike other global variables this is never
 # replaced. It is simply used as base for creating new variable.
-FNAME_MOD_TIME        = MSERVE_DIR + "modification_time"
+FNAME_TEST              = g.TEMP_DIR + "mserve_test"  # Test if host up
+FNAME_TEST_NMAP         = g.TEMP_DIR + "mserve_test_nmap"  # Test if host up
 
 ''' Temporary files also defined in mserve.py '''
 TMP_STDOUT = g.TEMP_DIR + "mserve_stdout"  # _g7gh75 appended Defined mserve.py
@@ -111,10 +112,9 @@ TMP_STDERR = g.TEMP_DIR + "mserve_stderr"  # _u4rt5m appended Defined mserve.py
 IPC_PICKLE_FNAME = g.TEMP_DIR + "mserve_encoding_pickle"
 ENCODE_DEV_FNAME = g.TEMP_DIR + "mserve_encoding_last_disc"
 
-''' Global variables
-'''
-LIST = []                           # List of DICT entries
-DICT = {}                           # Location dictionary
+''' Global variables '''
+LIST = []  # List of DICT entries - DEPRECATED August 2023
+DICT = {}  # Location dictionary - DEPRECATED August 2023
 
 
 def create_subdirectory(iid):
@@ -177,14 +177,11 @@ def rename_location_filenames(iid, old):
 
 def rnm_one_filename(old_fname, iid, old):
     """ rename on directory name
-
-        TODO: Check if file/path exists before renaming
-
-    """
+        TODO: Check if file/path exists before renaming """
     old_fname.replace(os.sep + "mserve" + os.sep + old + os.sep,
                       os.sep + "mserve" + os.sep + iid + os.sep)
 
-    return old_fname    # Assume failure
+    return old_fname  # Assume failure
 
 
 def read():
@@ -211,39 +208,10 @@ if os.path.isfile(FNAME_LOCATIONS):
 
 def write():
     """ Save LIST with DICT to disk """
-    # April 25, 2023 - Why does this work when LIST is not global?
     with open(FNAME_LOCATIONS, "wb") as f:
         # store the data as binary data stream
-        pickle.dump(LIST, f)                      # Save locations list
+        pickle.dump(LIST, f)  # Save locations list of dictionaries
         f.close()
-
-
-def unpickle_list(filename):
-
-    """ generic open and unpickling to use everywhere:
-
-            https://stackoverflow.com/questions/33307623/
-                python-exception-safe-pickle-use/33308573
-
-        NOT TESTED!
-
-    """
-    
-    try:
-        with open(filename, 'rb') as filehandle:
-            # read the data as binary data stream
-            return pickle.load(filehandle)
-    except pickle.UnpicklingError:
-        # normal, somewhat expected
-        return []
-    except (AttributeError,  EOFError, ImportError, IndexError) as e:
-        # secondary errors
-        print(traceback.format_exc(e))
-        return []
-    except Exception as e:
-        # everything else, possibly fatal
-        print(traceback.format_exc(e))
-        return []
 
 
 def insert(iid="", name="", topdir="", host="", wakecmd="", testcmd="",
@@ -590,10 +558,76 @@ def get_dir(parent, title, start):
     return root.directory       # July 7, 2021 - used to be in brackets, didn't test
 
 
+def ftp_login():
+    """ Future FTP stuff
+        Need Error checking on every FTP transaction:
+
+
+exception ftplib.error_reply
+
+    Exception raised when an unexpected reply is received from the server.
+
+exception ftplib.error_temp
+
+    Exception raised when an error code signifying a temporary error (response codes in the range 400–499) is received.
+
+exception ftplib.error_perm
+
+    Exception raised when an error code signifying a permanent error (response codes in the range 500–599) is received.
+
+exception ftplib.error_proto
+
+    Exception raised when a reply is received from the server that does not fit the response specifications of the File Transfer Protocol, i.e. begin with a digit in the range 1–5.
+
+ftplib.all_errors
+
+    The set of all exceptions (as a tuple) that methods of FTP instances may raise as a result of problems with the FTP connection (as opposed to programming errors made by the caller). This set includes the four exceptions listed above as well as OSError and EOFError.
+
+    """
+
+    ftp = ftplib.FTP()
+    ftp.connect('phone', 2221)
+    ftp.login('android', 'android')
+    print("ftp.getwelcome():", ftp.getwelcome())
+
+    def walk(path, all):
+        """ walk the path """
+        files = []
+        ftp.dir(path, files.append)  # callback = files.append(line)
+        # Filename could be any position on line so can't use line[52:] below
+        # dr-x------   3 user group            0 Aug 27 16:32 Compilations
+        for f in files:
+            line = ' '.join(f.split())  # compress multiple whitespace to one space
+            parts = line.split()  # split on one space
+            size = parts[4]
+            # Date format is either: MMM DD hh:mm or MMM DD  YYYY or MMM DD YYYY
+            date3 = parts[7] + " "  # doesn't matter if the size is same as YEAR
+            # No shortcut ' '.join(parts[8:]) - name could have had double space
+            name = f.split(date3)[1]
+            if f.startswith("d"):  # directory?
+                new_path = path + name + os.sep
+                walk(new_path, all)  # back down the rabbit hole
+            else:
+                # /path/to/filename.ext <SIZE>
+                all.append(path + name + " <" + size.strip() + ">")
+
+    all_files = []
+    ext.t_init('walk(os.sep, all_files):')
+    walk(os.sep, all_files)  # 41 seconds
+    ext.t_end('print')
+    print("len(all_files):", len(all_files))  # 4,074 files incl 163 + 289 subdirs
+    for i in range(10):
+        print(all_files[i])
+    return all_files
+
+
 class ModTime:
     """ Open list of modification times
         Analyze location to see if 'touch -m -r src_path trg_path' works.
         If not utilize timestamp file to get last modification time.
+
+        Problem when kid3 updates metadata on phone no way to see it...
+
     """
 
     def __init__(self, code, fast_refresh=None):
@@ -794,16 +828,15 @@ class LocationsCommonSelf:
         self.act_wakecmd = None  # Name added to pycharm spelling dictionary
         self.act_testcmd = None
         self.act_testrep = None
-        self.act_mountcmd = None
+        self.act_mountcmd = None  # Can be sshfs, curlftpfs or FTP
         self.act_touchcmd = None  # Replaces activecmd
         self.act_touchmin = None  # Replaces activemin
         self.act_comments = None
-        self.act_row_id = None  # Location record number
+        self.act_row_id = None  # Location SQL Primary Key
 
-        ''' Internal location Code: L001  +
-            | Top Directory last modified: <time>  +
-            | Mount Point: /mnt/Music, etc. 
-            | Free: 99,999 MB of 999,999 MB 
+        ''' fld_intro = "Code: L001  +
+                        | Last modified: <time>  +
+                        | Free: 99,999 MB of 999,999 MB" 
         '''
         self.fld_intro = None  # Formatted: fld_code + fld_modify_time
         self.total_bytes = None  # Size of filesystem in bytes
@@ -1599,6 +1632,9 @@ class Locations(LocationsCommonSelf):
         if self.fld_host:  # nmap and nc installed?
             self.scr_host.set(self.act_host)
         if self.fld_wakecmd:  # Is wakeonlan installed?
+            if "ftp_login()" in self.act_wakecmd:
+                files = ftp_login()  # Just to see what it looks like
+                # Returns
             self.scr_wakecmd.set(self.act_wakecmd)
             # Only main screen will turn on the Test Host button.
             if top_name == self.main_top:
@@ -2241,7 +2277,7 @@ class Locations(LocationsCommonSelf):
         self.act_touchcmd = d['HostTouchCmd']
         self.act_touchmin = d['HostTouchMinutes']
         self.act_comments = d['Comments']
-        self.act_row_id = d['Id']  # Location record number
+        self.act_row_id = d['Id']  # Location SQL Primary Key
 
     def make_open_from_sql_dict(self, d):
         """ Make 'Open' location fields from SQL Location Table Row """
@@ -2259,7 +2295,7 @@ class Locations(LocationsCommonSelf):
         self.open_touchcmd = d['HostTouchCmd']
         self.open_touchmin = d['HostTouchMinutes']
         self.open_comments = d['Comments']
-        self.open_row_id = d['Id']  # Location record number
+        self.open_row_id = d['Id']  # Location SQL Primary Key
 
     @staticmethod
     def code_to_ndx(code):
@@ -2319,6 +2355,9 @@ class Locations(LocationsCommonSelf):
 
         ''' Retrieve name and description from tkinter scr_ variables. '''
         new_name = self.scr_name.get().strip()
+        if new_name.endswith(os.sep):
+            new_name = new_name[:-1]  # Directory picker appends slash at end
+            self.scr_name.set(new_name)
         new_topdir = self.scr_topdir.get().strip()
         ''' Retrieve optional remote host from tkinter scr_ variables. '''
         if self.fld_host:  # nmap and nc installed?
@@ -3381,7 +3420,7 @@ filename.
         self.cmp_top.minsize(width=g.BTN_WID * 10, height=g.PANEL_HGT * 4)
         self.cmp_top.geometry('%dx%d+%d+%d' % (1800, 500, xy[0], xy[1]))  # 500 pix high
         if self.open_topdir.endswith(os.sep):  # the "source" location
-            self.open_topdir = self.opentop_dir[:-1]
+            self.open_topdir = self.open_topdir[:-1]
         self.cmp_target_dir = self.act_topdir  # The "other/target" location
         if self.cmp_target_dir.endswith(os.sep):
             self.cmp_target_dir = self.cmp_target_dir[:-1]
@@ -4093,7 +4132,7 @@ filename.
             ''' TODO: Record test results and cmp_return_code to audit log. '''
             speed = float(size) / elapsed / 1000000.0
             print("Loops:", '{:n}'.format(loop_count),
-                  "\tSize:", '{:n}'.format(size),
+                  "\tSize:", size,  # size is unicode, not int
                   "\tElapsed sec:", '{:n}'.format(round(elapsed, 3)),
                   "\tSpeed (MB/s):", '{:n}'.format(round(speed, 3)))
 
@@ -4112,12 +4151,8 @@ filename.
         """ Get data from STDOUT or STDERR """
         data = ""
         if os.path.isfile(f):
-            #print("f exists:", f)
-            # When tk_after = True, print occurs 8 times over .15 before data
-            # When tk_after = False it's more like 50 times
             with open(f, 'r') as fh:
                 data = fh.read()
-                fh.close()
         return data
 
     def update_mod_times(self, src_to_trg, src_path, src_time, trg_path, trg_time):

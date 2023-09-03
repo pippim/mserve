@@ -79,6 +79,8 @@ warnings.simplefilter('default')  # in future Python versions.
 #       Aug. 20 2023 - View SQL + Metadata dictionaries built on ffprobe.
 #       Aug. 24 2023 - Redirect show_debug() from console to InformationCentre().
 #       Aug. 31 2023 - refresh_play_top() queuing next song was replaying song.
+#       Sep. 02 2023 - Begin libftp substitute to curlftpfs.
+#       Sep. 03 2023 - Begin pylrc (synchronized lyrics) for other music players. 
 
 # noinspection SpellCheckingInspection
 """
@@ -122,10 +124,13 @@ References:
 #       FileControl.zoom() _alpha_cb() that covers instead of pushing tree down
 #       FineTune.sync() divide last duration time to zero duration lines
 
-#       Fix file modification time which will make it greater than
-#       creation time (not birth time which is unused) which is the time it
-#       was copied to the directory and permissions were established. Use
-#       ID3 tag: CREATION_TIME : 2012-08-20 17:06:42
+#       Investigate viability of libftp.FTP() to replace `curlftpfs`.
+
+#       Generate .lrc file for Musicolet on Android. New package 'mserve/pylrc'
+
+#   UPGRADE:
+#       When watching lyrics time scrolling and you notice time is out of sync,
+#           need quick click action button to pause and fix 2 seconds ago...
 
 #   RENAME VARIABLES:
 #       'self.saved_selections' -> 'self.play_order_iid'
@@ -232,9 +237,9 @@ REQUIRES:
     sudo apt-get update
     sudo apt-get install python-tkcalendar
 
-    FOR FUTURE Python 2.7 ttkthemes (Python 3 can use current version of ttkthemes):
-    pip install -U setuptools
-    python2 -m pip install ttkthemes==2.4.0
+    Python 2.7 copy of ttkwidgets is stored directly in .../mserve/ttkwidgets
+    Python 2.7 copy of pyaudio is stored directly in .../mserve/pulsectl
+    Python 2.7 copy of pylrc is stored directly in .../mserve/pylrc
 
 ERROR OVERRIDE - https://github.com/quodlibet/mutagen/issues/499:
     File "/usr/lib/python2.7/dist-packages/mutagen/flac.py", line 597, in write
@@ -377,7 +382,10 @@ locale.setlocale(locale.LC_ALL, '')  # Use '' for auto locale selecting
 # Dist-packages
 import notify2              # send inotify over python-dbus
 import numpy as np          # For image processing speed boost
-import mutagen              # Get easy tags
+
+# Dist-packages copied underneath .../mserve/ directory
+import mutagen              # Get easy tags instead of ffprobe - testing stage
+import pylrc                # synchronized lyrics
 
 # mserve modules
 import global_variables as g
@@ -449,11 +457,9 @@ TMP_MBZ_GET2 = g.TEMP_DIR + "mserve_mbz_get2"
 TMP_PRINT_FILE = g.TEMP_DIR + "mserve_print_file"  # _a5sd87 appended
 
 ''' Volume Meter IPC filenames. Change in vu_meter.py too '''
-# Mono output
-VU_METER_FNAME = g.TEMP_DIR + "mserve_vu-meter-mono.txt"
-# Stereo output (Left and Right)
-VU_METER_LEFT_FNAME = g.TEMP_DIR + "mserve_vu-meter-left.txt"
-VU_METER_RIGHT_FNAME = g.TEMP_DIR + "mserve_vu-meter-right.txt"
+VU_METER_FNAME = g.TEMP_DIR + "mserve_vu-meter-mono.txt"  # Mono output
+VU_METER_LEFT_FNAME = g.TEMP_DIR + "mserve_vu-meter-left.txt"  # Stereo Left
+VU_METER_RIGHT_FNAME = g.TEMP_DIR + "mserve_vu-meter-right.txt"  # Stereo Right
 
 ''' Webscraping lyrics - three files '''
 LYRICS_SCRAPE = g.TEMP_DIR + "mserve_scrape_*"
@@ -493,6 +499,8 @@ FM_INSTALLED = False  # Reset just before popup menu created
 FM_NAME = "Nautilus File Manager"  # No HDPI required.  Change to FM_NAME
 FM_COMMAND = "nautilus"
 FM_WIN_SIZE = "1000x600"  # Window size changed after program starts
+
+LRC_INSTALLED = True  # Sep 3/23 - experimental .lrc file generation
 
 # Kill application.name: speech-dispatcher, application.process.id: 5529
 DELETE_SPEECH = True  # Kill speech dispatcher which has four threads each boot.
@@ -1707,14 +1715,21 @@ class MusicLocationTree(PlayCommonSelf):
 
     def handle_lib_top_focus(self, _event):
         """
-            When tvVolume() Slider or Playlists() windows are active,
-            always stays above Music Location (lib_top).
+            When tvVolume() Slider, Playlists(), Locations(),
+            FineTune(), or ltp AKA Sample Song windows are active,
+            move them above Music Location Tree (lib_top).
 
             Credit: https://stackoverflow.com/a/44615104/6929343
 
         :param _event: Ignored
         :return: None
         """
+
+        ''' Since lib_top took focus, reset play button text '''
+        self.play_on_top = False
+        self.set_lib_tree_play_btn()
+
+
         if self.tv_vol and self.tv_vol.top:
             self.tv_vol.top.focus_force()  # Get focus
             self.tv_vol.top.lift()  # Raise in stacking order
@@ -1723,7 +1738,7 @@ class MusicLocationTree(PlayCommonSelf):
             self.playlists.top.focus_force()  # Get focus
             self.playlists.top.lift()  # Raise in stacking order
 
-        elif lcs.main_top:
+        elif lcs.main_top:  # Location Maintenance Window
             lcs.main_top.focus_force()  # Get focus
             lcs.main_top.lift()  # Raise in stacking order
 
@@ -1737,11 +1752,7 @@ class MusicLocationTree(PlayCommonSelf):
 
         ''' Sampling random song in lib_tree '''
         if self.ltp_top_is_active:
-            self.lib_tree_play_lift()  # Raise in stacking order
-
-        ''' Since lib_top is known to have focus can reset self.lib_tree_play_btn '''
-        self.play_on_top = False
-        self.set_lib_tree_play_btn()
+            self.lib_tree_play_lift()  # Focus and raise in stacking order
 
     def refresh_lib_top(self, tk_after=True):
         """ Wait until clicks to do something in lib_tree (like play music)
@@ -3011,6 +3022,9 @@ class MusicLocationTree(PlayCommonSelf):
         if FM_INSTALLED:
             menu.add_command(label="Open " + FM_NAME, font=(None, MED_FONT),
                              command=lambda: self.fm_open(Id))
+        if LRC_INSTALLED:
+            menu.add_command(label="Make .lrc file", font=(None, MED_FONT),
+                             command=lambda: self.lrc_make(Id))
         menu.add_separator()
 
         menu.add_command(label="Ignore click", font=(None, MED_FONT),
@@ -3046,6 +3060,9 @@ class MusicLocationTree(PlayCommonSelf):
         if FM_INSTALLED:
             menu.add_command(label="Open " + FM_NAME, font=(None, MED_FONT),
                              command=lambda: self.fm_open(Id))
+        if LRC_INSTALLED:
+            menu.add_command(label="Make .lrc file", font=(None, MED_FONT),
+                             command=lambda: self.lrc_make(Id))
 
         menu.add_separator()
         menu.add_command(label="View Raw Metadata", font=(None, MED_FONT),
@@ -3541,6 +3558,39 @@ class MusicLocationTree(PlayCommonSelf):
         """ Open File Manager (Nautilus) for Artist, Album or Music File """
         trg_path = self.make_variable_path(Id)
         self.run_and_move_window(trg_path, FM_COMMAND, FM_WIN_SIZE)
+
+    def lrc_make(self, Id):
+        """ Make song_name.lrc file with synchronized lyrics """
+        trg_path = self.make_variable_path(Id)
+        print("Make .lrc file for:", trg_path)
+        """ From developer:
+        
+        import pylrc
+
+        lrc_file = open('example.lrc')
+        lrc_string = ''.join(lrc_file.readlines())
+        lrc_file.close()
+        
+        subs = pylrc.parse(lrc_string)
+        for sub in subs:
+            sub.shift(minutes=1, seconds=13, milliseconds=325) # offset by 01:13.325
+        
+        srt = subs.toSRT() # convert lrc to srt string
+        
+        lrc_string = subs.toLRC() # convert to lrc string
+
+        """
+        lrc_file = open('example.lrc')
+        lrc_string = ''.join(lrc_file.readlines())
+        lrc_file.close()
+
+        subs = pylrc.parse(lrc_string)
+        for sub in subs:
+            sub.shift(minutes=1, seconds=13, milliseconds=325)  # offset by 01:13.325
+
+        srt = subs.toSRT()  # convert lrc to srt string
+
+        lrc_string = subs.toLRC()  # convert to lrc string
 
     # ==============================================================================
     #
@@ -5879,7 +5929,8 @@ class MusicLocationTree(PlayCommonSelf):
                     ''' Force Play No. blank - erase 'Adding' and 'Deleting' '''
                     self.lib_tree.set(Song, "Selected", "")
         self.lib_top.update_idletasks()
-        ext.t_end('print')  # 0.33 for 1500 selections
+        ext.t_end('no_print')  # 0.33 for 1500 selections
+        # 0.1857478619  for 3 selections out of 3826 songs
 
     def clear_item_check_and_open(self, iid, force_close=False):
         """
@@ -6730,10 +6781,11 @@ class MusicLocationTree(PlayCommonSelf):
                                 " seconds ahead.", anchor="se")
             elif name == "Chron":
                 ''' Show/Hide Chronology (Playlist) toggle button (Frame 4) '''
+                text = "placeholder"
                 if self.chron_is_hidden is None:
                     self.chron_is_hidden = False  # Initialization
                 self.chron_button = tk.Button(
-                    self.play_btn_frm, text="placeholder",
+                    self.play_btn_frm, text=text,
                     width=g.BTN_WID2 + 2, command=lambda s=self: s.chron_toggle())
                 self.chron_button.grid(row=0, column=col, padx=2, sticky=tk.W)
                 text = "placeholder"
@@ -9623,8 +9675,8 @@ mark set markName index"
                 self.fine_tune and self.fine_tune.top_is_active:
             return
 
-        print('EDIT LYRICS:', self.play_ctl.Artist, self.play_ctl.Album,
-              self.play_ctl.Title)
+        #print('EDIT LYRICS:', self.play_ctl.Artist, self.play_ctl.Album,
+        #      self.play_ctl.Title)
 
         self.play_lyrics_remove_highlights()
 
@@ -9702,7 +9754,7 @@ mark set markName index"
         """
         # Set cursor position in text box
         self.edit_current_cursor = self.lyrics_score_box.index(tk.INSERT)
-        print('current_cursor:', self.edit_current_cursor)
+        #print('current_cursor:', self.edit_current_cursor)
         # text.mark_set("insert", "%d.%d" % (line + 1, column + 1))
         self.lyrics_score_box.unbind("<Control-Key-a>")
         self.lyrics_score_box.unbind("<Control-Key-A>")
@@ -15847,7 +15899,25 @@ def open_files(old_cwd, prg_path, parameters, toplevel=None):
         use default location directory. If no default location directory,
         use the startup directory when 'm' or 'mserve.py' was called. If that
         directory doesn't contain music, or subdirectories with music then
-        prompt for a music directory. If prompt cancelled then exit. """
+        prompt for a music directory. If prompt cancelled then exit.
+
+        TODO: First time opening phone location asks for directory already there
+              Two scans of a few minutes
+              Then M stays open with no status for a few minutes.
+              Then a few minutes to build Music Location Tree.
+
+              Add three songs, apply playlist OK. When save favorites error:
+                  "location.py Locations.save_mserve_location()
+                   -Error reading location: new"
+
+              Same error above when save play & exiting mserve.
+
+              Second time opening phone location one scan of a few minutes.
+              Then M stays open with no status for a few minutes.
+              Then a few minutes to build Music Location Tree.
+              Now able to save favorites ok
+
+        """
     global root  # named when main() called by 'm' splash screen
     global SORTED_LIST  # os.walk() results: artist/album/songs
     global START_DIR  # Music directory. E.G. "/home/USER/Music
