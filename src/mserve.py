@@ -80,7 +80,8 @@ warnings.simplefilter('default')  # in future Python versions.
 #       Aug. 24 2023 - Redirect show_debug() from console to InformationCentre().
 #       Aug. 31 2023 - refresh_play_top() queuing next song was replaying song.
 #       Sep. 02 2023 - Begin libftp substitute to curlftpfs.
-#       Sep. 03 2023 - Begin pylrc (synchronized lyrics) for other music players. 
+#       Sep. 03 2023 - Make .lrc (synchronized lyrics) for other music players.
+#       Sep. 06 2023 - Use walk_list and size_dict from FTP test host at start.
 
 # noinspection SpellCheckingInspection
 """
@@ -95,24 +96,22 @@ References:
 #   Playlists
 
 #     BUGS:
-#       Open playlist, if music was paused, volume is only 25%
-#       Close playlist and use favorites doesn't clear_all_checks
+
 #       Shuffling Favorites then opening playlist will undo shuffle. Backup!!
 
 #   Miscellaneous
 
 #     TODO:
 
+#       Similar to below, high priority to crawl FTP server to find new
+#       songs and delete old songs. Unlike below this is done one directory
+#       at a time with callback on every filename such that refresh can be
+#       called every 10 ms or whatever.
+
 #       rebuild_lib_tree() doesn't show the song just ripped. Since going
 #       through the trouble, might as well reuse SORTED_LIST2 with new last
 #       access time if it doesn't refresh automatically for old song ripped
 #       again like it should.
-
-#       Restart song isn't checking if play count should be updated.
-
-#       After restart clicked twice start previous song, then click next and
-#           old song starts again however old sink # 1304 isn't found and
-#           volume starts at 25%.
 
 #       For long labels, try: wraplength=250
 
@@ -124,9 +123,7 @@ References:
 #       FileControl.zoom() _alpha_cb() that covers instead of pushing tree down
 #       FineTune.sync() divide last duration time to zero duration lines
 
-#       Investigate viability of libftp.FTP() to replace `curlftpfs`.
-
-#       Generate .lrc file for Musicolet on Android. New package 'mserve/pylrc'
+#       More libftp.FTP() enhancements.
 
 #   UPGRADE:
 #       When watching lyrics time scrolling and you notice time is out of sync,
@@ -239,7 +236,6 @@ REQUIRES:
 
     Python 2.7 copy of ttkwidgets is stored directly in .../mserve/ttkwidgets
     Python 2.7 copy of pyaudio is stored directly in .../mserve/pulsectl
-    Python 2.7 copy of pylrc is stored directly in .../mserve/pylrc
 
 ERROR OVERRIDE - https://github.com/quodlibet/mutagen/issues/499:
     File "/usr/lib/python2.7/dist-packages/mutagen/flac.py", line 597, in write
@@ -385,7 +381,6 @@ import numpy as np          # For image processing speed boost
 
 # Dist-packages copied underneath .../mserve/ directory
 import mutagen              # Get easy tags instead of ffprobe - testing stage
-import pylrc                # synchronized lyrics
 
 # mserve modules
 import global_variables as g
@@ -529,8 +524,8 @@ first song inserted when the default would be the last song inserted.
 '''
 
 # Select music files only, no artwork
-# TODO: Deep scan with python-magic to read each file for song type
-FILE_TYPES = [".mp3", ".m4a", ".mp4", ".wma", ".oga", ".ogg", ".flac", ".wav", ".PCM"]
+# Moved to g.MUSIC_FILE_TYPES
+# FILE_TYPES = [".mp3", ".m4a", ".mp4", ".wma", ".oga", ".ogg", ".flac", ".wav", ".PCM"]
 NO_ART_STR = "No Artwork"
 #PAUSED_STR = "|| Paused"  # < July 4, 2023 paused ImageDraw() text
 # Unicode Character 'DOUBLE VERTICAL BAR' (U+23F8):  ⏸  # Too small
@@ -590,8 +585,23 @@ def make_sorted_list(start_dir, toplevel=None, idle=None, check_only=False):
         Use DelayedTextBox for status updates on long-running processes
         which doesn't appear if process shorter than a second.
 
-        When check_only just ensure /Artist/Album/at least one song
-        bail out after two songs """
+        When check_only just ensure /Artist/Album/ levels have at least
+        ten songs.
+
+        TODO:
+            for lcs.open_host don't walk directory tree, because it takes
+            over a minute for 3,800 songs using FTP over Wifi.
+
+            Inside location directory is ".../mserve/L999/last_sorted_list
+            Open file and use it to build skeleton sorted list without
+            last access times. Last play time still appears and applies for
+            all locations.   
+
+            send info.fact() message and begin long running update with
+            FTP list files one directory at a time with callback for each
+            file/directory instigating play top or lib top refresh.
+        
+        """
 
     ''' If system argument 1 is for random directory, we have no last location.
         It may not point to a music topdir, rather an Artist or Album. A single
@@ -607,11 +617,12 @@ def make_sorted_list(start_dir, toplevel=None, idle=None, check_only=False):
     global PRUNED_COUNT  # No topdir. Started pointing at artist or album.
     global PRUNED_DIR    # The real topdir. E.G. = '../' or '../../'
 
+    who = "mserve.py make_sorted_list() - "
     if NEW_LOCATION:
         # print('WIP:', start_dir, "may point to topdir, Artist or Album")
         pass
 
-    # print('make_sorted_list() toplevel:',toplevel,'idle:',idle)
+    #print(who + 'toplevel:',toplevel,'idle:',idle)
     work_list = []
     dtb = message.DelayedTextBox(title="Scanning music directories",
                                  toplevel=toplevel, width=1000)
@@ -629,10 +640,23 @@ def make_sorted_list(start_dir, toplevel=None, idle=None, check_only=False):
     # What's the difference between unicode() and .encode('utf-8')?
     #   https://stackoverflow.com/questions/643694/
     #   what-is-the-difference-between-utf-8-and-unicode
-    for subdir, dirs, files in os.walk(start_dir, topdown=True):
+    #print(who + "lcs.open_ftp:", lcs.open_ftp)
+    if lcs.open_ftp:
+        #print("mserve.py make_sorted_list() This is an FTP host")
+        orig_list = ext.read_from_json(lc.FNAME_WALK_LIST)
+        walk_list = []
+        for lin in orig_list:
+            sfx, subdirs, files = lin
+            walk_list.append((os.path.join(lcs.open_topdir, sfx), subdirs, files))
+    else:
+        # Sep 5/23 - convert os.walk() to list in prep for using fake_paths_sizes
+        walk_list = list(os.walk(start_dir, topdown=True))
 
-        ''' Limit search to files in 2 levels (/Artist/Album) '''
+    for subdir, dirs, files in walk_list:
+        ''' subdir + files[i] = full path.  dirs are ignored '''
+
         curr_depth = subdir.count(os.sep) - start_dir.count(os.sep)
+        ''' Limit search to files in 2 levels (/Artist/Album) '''
         if curr_depth == 2:
             # Sanity check - delete directories below TopDir/Artist/Album/
             del dirs[:]
@@ -654,29 +678,35 @@ def make_sorted_list(start_dir, toplevel=None, idle=None, check_only=False):
                     # print('make_sorted_list() next sleeping at:', next_check)
                     idle_loops += 1
 
-            # Take sub-path /Artist/Album/Song.xxx and build full path
+            # Take sub-path /Artist/Album + Song.xxx and build full path
             full_path = os.path.join(subdir, f)
 
             ''' July 13, 2023 - Test code from new sql.update_metadata2() '''
             # File and Directory names with ":", "?", "/" and "." replaced with "_"
             parts = full_path.split(os.sep)
-            artist = parts[-3]
-            album = parts[-2]
-            title = parts[-1]
-            legal_artist = ext.legalize_dir_name(artist)
-            legal_album = ext.legalize_dir_name(album)
-            legal_title = ext.legalize_song_name(title)
-            if legal_artist != artist or \
-                    legal_album != album or \
-                    legal_title != title:
-                print("illegal names:", legal_artist, legal_album, legal_title)
+            try:
+                artist = parts[-3]
+                album = parts[-2]
+                title = parts[-1]
+                legal_artist = ext.legalize_dir_name(artist)
+                legal_album = ext.legalize_dir_name(album)
+                legal_title = ext.legalize_song_name(title)
+                if legal_artist != artist or \
+                        legal_album != album or \
+                        legal_title != title:
+                    print("illegal names:", legal_artist, legal_album, legal_title)
+            except IndexError:
+                pass  # Skip legality test of files in root directory
 
             # There are depths with no files so must recalculate current depth
             #curr_depth = full_path.count(os.sep) - start_dir.count(os.sep)
             dtb.update(full_path)
-            # Valid songs are regular files with known extensions
-            if os.path.isfile(full_path) and \
-                    os.path.splitext(f)[1] in FILE_TYPES:
+            if os.path.splitext(f)[1].lower() not in g.MUSIC_FILE_TYPES:
+                ''' TODO: .lrc files should be tracked stored in a list '''
+                continue  # Not a music file
+
+            # If FTP used don't waste time checking curlftpfs for ".isfile"
+            if lcs.open_ftp or os.path.isfile(full_path):
                 # Count song occurrences at this level
                 work_level = full_path.count(os.sep) - start_dir.count(os.sep)
                 depth_count[work_level] += 1
@@ -1143,10 +1173,14 @@ class MusicLocationTree(PlayCommonSelf):
                                      toplevel=None, width=1000)
         self.ndx = 0  # Start song index
         self.play_from_start = True  # We start as normal
-        self.fake_paths = song_list  # May contain /<No Artist>/<No Album>
+        # self.fake_paths = song_list = SORTED_LIST = make_sorted_list(START_DIR)
+        self.fake_paths = song_list  # Contains /<No Artist>/<No Album> fakes
         lcs.register_fake_paths(self.fake_paths)
         self.real_paths = []  # stripped out <No Artist> and <No Album>
-        # self.fake_paths = song_list = SORTED_LIST = make_sorted_list(START_DIR)
+
+        self.size_dict = {}
+        if lcs.open_ftp:
+            self.size_dict = ext.read_from_json(lc.FNAME_SIZE_DICT)
 
         self.lib_top = tk.Toplevel()
         self.lib_top_is_active = True
@@ -1183,7 +1217,6 @@ class MusicLocationTree(PlayCommonSelf):
         # noinspection SpellCheckingInspection
         self.banner_frm = tk.Frame(master_frame, bg="SkyBlue3", height=7)
         self.banner_frm.grid(row=0, column=0, sticky=tk.NSEW)
-        self.banner_btn = None  # will be built in next line
         self.build_banner_btn()  # Create thin horizontal ruler w/tooltip
 
         ''' CheckboxTreeview Frame '''
@@ -1243,8 +1276,8 @@ class MusicLocationTree(PlayCommonSelf):
         self.lib_tree["padding"] = (10, 0, 10, 10)  # left, top, right, bottom
 
         ''' Expanding/collapsing information centre Frame - PART II of II '''
-        self.info = InfoCentre(self.lib_top, self.lib_tree, self.banner_frm,
-                               self.banner_btn, self.build_banner_btn, self.tt)
+        self.info = InfoCentre(self.lib_top, self.lib_tree,
+                               self.banner_frm, self.tt)
 
         pav.registerInfoCentre(self.info)  # Wasn't available earlier
         lcs.register_info(self.info)  # Assign in Locations() class
@@ -1429,18 +1462,17 @@ class MusicLocationTree(PlayCommonSelf):
                 break
 
     def build_banner_btn(self):
-        """ Called from init in MusicLocationTree() class and InfoCentre() class """
+        """ Called from init in MusicLocationTree() class """
         # Use lambda because self.info.view() hasn't been defined yet.
-        self.banner_btn = tk.Button(self.banner_frm, height=0, bg="SkyBlue3",
-                                    fg="black", command=lambda: self.info.view())
-        self.banner_btn.place(height=7, width=7000)  # ...height of 7 override
-        ''' July 31, 2023 tooltip disappears '''
+        banner_btn = tk.Button(self.banner_frm, height=0, bg="SkyBlue3",
+                               fg="black", command=lambda: self.info.view())
+        banner_btn.place(height=7, width=7000)  # ...height of 7 override
         text = "▼ ▲ ▼ ▲  Expanding/Collapsing Information Centre  ▲ ▼ ▲ ▼ \n\n" +\
             "Click this ruler line and it expands to a large frame.\n\n" +\
             "Actions are displayed with the most recent at the top.\n\n" +\
             "You can also access using the 'View' Dropdown Menu and\n" +\
             "selecting the 'Information Centre option."
-        self.tt.add_tip(self.banner_btn, text=text, anchor="sc",
+        self.tt.add_tip(banner_btn, text=text, anchor="sc",
                         visible_span=1000, extra_word_span=100,
                         visible_delay=150, fade_out_span=149)
 
@@ -1714,21 +1746,18 @@ class MusicLocationTree(PlayCommonSelf):
         self.load_last_selections()
 
     def handle_lib_top_focus(self, _event):
-        """
-            When tvVolume() Slider, Playlists(), Locations(),
+        """ When tvVolume() Slider, Playlists(), Locations(),
             FineTune(), or ltp AKA Sample Song windows are active,
             move them above Music Location Tree (lib_top).
 
             Credit: https://stackoverflow.com/a/44615104/6929343
 
         :param _event: Ignored
-        :return: None
-        """
+        :return: None """
 
         ''' Since lib_top took focus, reset play button text '''
         self.play_on_top = False
         self.set_lib_tree_play_btn()
-
 
         if self.tv_vol and self.tv_vol.top:
             self.tv_vol.top.focus_force()  # Get focus
@@ -2241,16 +2270,12 @@ class MusicLocationTree(PlayCommonSelf):
         self.pending_remove_grid()
 
     def populate_lib_tree(self, delayed_textbox):
-
         """ Add Artist, Album and Song to treeview listbox.
             Set tags "Artist", "Album" or "Song".
             Initialize artists expanded and albums collapsed.
-            All songs are NOT selected. They will be selected LATER.
+            All songs are NOT selected. They will be selected LATER. """
 
-            NOTE: With cell phone, dtb() may be mounted and every 30 frames
-                  the current artist/album is displayed.
-        """
-
+        who = "mserve.py populate_lib_tree() - "
         LastArtist = ""
         LastAlbum = ""
         CurrAlbumId = ""  # When there are no albums?
@@ -2259,7 +2284,7 @@ class MusicLocationTree(PlayCommonSelf):
 
         start_dir_sep = START_DIR.count(os.sep) - 1  # Number of / separators
         global PRUNED_COUNT
-        # print('PRUNED_COUNT:', PRUNED_COUNT)
+        # print(who + 'PRUNED_COUNT:', PRUNED_COUNT)
         start_dir_sep = start_dir_sep - PRUNED_COUNT
 
         for i, os_name in enumerate(self.fake_paths):
@@ -2330,9 +2355,38 @@ class MusicLocationTree(PlayCommonSelf):
                 self.lib_tree.see(CurrArtistId)
                 self.lib_tree.update()
 
+            ''' FTP override - cannot stat every file. Take size from list.
+                Use sql last play time if it exists.
+                If song never played then use lowest of sql creation time, 
+                or sql last access time or sql last modified time.
+            '''
             # os.stat gives us all of file's attributes
-            stat = os.stat(full_path)
-            size = stat.st_size
+
+            ''' TODO: Get size from size_dict '''
+            play_time = 0.0
+            d = sql.ofb.Select(full_path[len(PRUNED_DIR):])
+            if d:
+                play_time = d['LastPlayTime']
+            if lcs.open_ftp:
+                size = self.size_dict.get(full_path, 0)
+                if not play_time and d:
+                    play_time = d['OsAccessTime']
+            else:
+                try:
+                    stat = os.stat(full_path)  # Get file attributes
+                    size = stat.st_size
+                    if not play_time:
+                        play_time = stat.st_atime
+                except OSError:
+                    print(who + "Could not stat:", full_path)
+                    continue
+
+            if size < g.MUSIC_MIN_SIZE:
+                str_size = '{:n}'.format(g.MUSIC_MIN_SIZE)
+                print(who + "Skipping file less than:", str_size,
+                      "bytes. Filename below:")
+                print("-", full_path)
+
             self.tree_col_range_add(CurrAlbumId, 5, [size, 1])
             self.tree_col_range_add(CurrArtistId, 5, [size, 1])
             self.tree_title_range_add(5, [size, 1])  # update title bar
@@ -2340,12 +2394,12 @@ class MusicLocationTree(PlayCommonSelf):
             fsize = '{:n}'.format(round(converted, g.CFG_DECIMAL_PLACES))
 
             # Format date as "Abbreviation - 99 Xxx Ago"
-            ftime = tmf.ago(float(stat.st_atime), seconds=True)
+            ftime = tmf.ago(float(play_time), seconds=True)
 
             ''' Add the song '''
             self.lib_tree.insert(
                 CurrAlbumId, "end", iid=str(i), text=Song, tags=("Song", "unchecked"),
-                values=(ftime, fsize, '', float(stat.st_atime), stat.st_size, 1, 0, 0, 0, 0))
+                values=(ftime, fsize, '', float(play_time), size, 1, 0, 0, 0, 0))
             self.tree_col_range_replace(str(i), 6, [1, 0, 0, 0, 0])
             self.lib_tree.tag_bind(str(i), '<Motion>', self.lib_highlight_row)
 
@@ -2353,8 +2407,7 @@ class MusicLocationTree(PlayCommonSelf):
 
     @staticmethod
     def lib_highlight_row(event):
-        """ Cursor hovering over row highlights it in light blue
-        """
+        """ Cursor hovering over row highlights it in light blue """
         tree = event.widget
         item = tree.identify_row(event.y)
         tree.tk.call(tree, "tag", "remove", "highlight")
@@ -2362,9 +2415,7 @@ class MusicLocationTree(PlayCommonSelf):
 
     @staticmethod
     def lib_leave_row(event):
-        """
-        Un-highlight row just left
-        """
+        """ Un-highlight row just left """
         tree = event.widget
         tree.tk.call(tree, "tag", "remove", "highlight")
 
@@ -3106,13 +3157,19 @@ class MusicLocationTree(PlayCommonSelf):
             self.lib_tree.item(Id, open=False)
         self.wrapup_lib_popup()  # Set color tags and counts
 
-    def view_sql_music_id(self, Id, file_ctl=None):
+    def view_sql_music_id(self, Id, file_ctl=None, top=None):
         """ View SQL Music Row.
         Called from Music Location Tree popup menu and passes os_filename
+        
+        file_ctl is NOT modified ! If the song is the same, then data is used.
 
         :param Id: Music Location Tree Id selected.
         :param file_ctl: self.play_ctl
+        :param top: self.lib_top default when none, else self.play_top probably
+        :returns None:
         """
+        if not top:
+            top = self.lib_top
         music_id = self.get_music_id_for_lib_tree_id(Id)
         pretty = sql.PrettyMusic(str(music_id), file_ctl=file_ctl)
         """ Create new window top-left of parent window with g.PANEL_HGT padding
@@ -3139,8 +3196,7 @@ class MusicLocationTree(PlayCommonSelf):
         """
 
         # Requires override to def create_window
-        self.create_window("SQL Music Row - mserve", 1400, 975,
-                           top=self.lib_top)
+        self.create_window("SQL Music Row - mserve", 1400, 975, top=top)
         pretty.scrollbox = self.scrollbox
         sql.tkinter_display(pretty)
 
@@ -3560,37 +3616,80 @@ class MusicLocationTree(PlayCommonSelf):
         self.run_and_move_window(trg_path, FM_COMMAND, FM_WIN_SIZE)
 
     def lrc_make(self, Id):
-        """ Make song_name.lrc file with synchronized lyrics """
-        trg_path = self.make_variable_path(Id)
-        print("Make .lrc file for:", trg_path)
-        """ From developer:
+        """ Make song_name.lrc file with synchronized lyrics
         
-        import pylrc
+            Requires view_sql_metadata() functionality:
+            
+            self.view_sql_music_id(Id, self.play_ctl)
+            
+            https://en.wikipedia.org/wiki/LRC_(file_format)
 
-        lrc_file = open('example.lrc')
-        lrc_string = ''.join(lrc_file.readlines())
-        lrc_file.close()
-        
-        subs = pylrc.parse(lrc_string)
-        for sub in subs:
-            sub.shift(minutes=1, seconds=13, milliseconds=325) # offset by 01:13.325
-        
-        srt = subs.toSRT() # convert lrc to srt string
-        
-        lrc_string = subs.toLRC() # convert to lrc string
+            [ar:Lyrics artist]
+            [al:Album where the song is from]
+            [ti:Lyrics (song) title]
+            [au:Creator of the Songtext]
+            [length:How long the song is]
+            [by:Creator of the LRC file]
 
+            [offset:+/- Overall timestamp adjustment in milliseconds,
+                + shifts time up, - shifts down i.e. a positive value
+                causes lyrics to appear sooner, a negative value causes
+                them to appear later]
+
+            [re:The player or editor that created the LRC file]
+            [ve:version of program]
+
+            [00:12.00]Get up each morning
+            [00:15.30]Some more lyrics ...
+            [03:45.30]Then go to bed
         """
-        lrc_file = open('example.lrc')
-        lrc_string = ''.join(lrc_file.readlines())
-        lrc_file.close()
+        trg_path = self.make_variable_path(Id)
+        trg_base, trg_ext = trg_path.rsplit(u".", 1)
+        lrc_path = toolkit.uni_str(trg_base) + u'.lrc'
 
-        subs = pylrc.parse(lrc_string)
-        for sub in subs:
-            sub.shift(minutes=1, seconds=13, milliseconds=325)  # offset by 01:13.325
+        music_id = self.get_music_id_for_lib_tree_id(Id)
+        pretty = sql.PrettyMusic(str(music_id), file_ctl=self.play_ctl)
 
-        srt = subs.toSRT()  # convert lrc to srt string
+        if pretty.synchronized < 0.8:
+            title = "Song not synchronized"
+            text = "Song must be at least 80% synchronized to make .lrc file\n\n"
+            text += "Current synchronized percentage is: "
+            text += '{0:.2f}'.format(pretty.synchronized)
+            lcs.out_cast_show(title, text, 'error')
+            return
 
-        lrc_string = subs.toLRC()  # convert to lrc string
+        lrc_list = list()
+        lrc_list.append(u"[ar:" + pretty.dict['Artist'] + u"]")
+        lrc_list.append(u"[al:" + pretty.dict['Album'] + u"]")
+        lrc_list.append(u"[ti:" + pretty.dict['Title'] + u"]")
+        lrc_list.append(u"[length:" + tmf.mm_ss(float(pretty.dict['Seconds'])) + u"]")
+        lrc_list.append(u"[re:mserve]")
+        lrc_list.append(u"[ve:" + g.MSERVE_VERSION + u"]")  # unicode to string
+
+        # For lyrics lines, see def sql.tkinter_display(pretty)
+        curr_level = 2  # dictionary part containing indexed lyrics score
+        curr_level_name = pretty.part_names[curr_level]
+        curr_start = pretty.part_start[curr_level]
+        curr_end = 9999999  # Default no next section
+        if len(pretty.part_start) > curr_level:
+            curr_end = pretty.part_start[curr_level + 1] - 1
+        for i, key in enumerate(pretty.dict):  # ordered dict
+            if curr_start <= i <= curr_end:
+                lrc_list.append(key + pretty.dict[key])
+
+        ext.write_from_list(lrc_path, lrc_list)
+
+        title = u".lrc file created"
+        text = u"Synchronized lyrics have been written to the file:\n\n"
+        text += lrc_path
+        lcs.out_cast_show(title, text)
+
+        if True is False:
+            print(u"Make .lrc file for:", trg_path)
+            print("Extracting lyrics from dictionary level:", curr_level_name)
+            print("curr_start:", curr_start, "curr_end:", curr_end)
+            for line in lrc_list:
+                print(line)
 
     # ==============================================================================
     #
@@ -3628,7 +3727,18 @@ class MusicLocationTree(PlayCommonSelf):
 
     def close_sleepers(self):
         """ COMMON CODE for restart and quit
-            Close loc_keep_awake() first as it has .25-second sleep cycle """
+            Close loc_keep_awake() first as it has .25-second sleep cycle 
+
+            TODO: Review to close mount or leave open?
+                
+                $ fusermount -u /mnt/phone
+    
+                $ ll /mnt/phone
+                total 8
+                drwxrwxrwx 2 rick rick 4096 Oct  6  2019 ./
+                drwxr-xr-x 9 root root 4096 Jun 11 08:26 ../
+
+        """
         if self.close_sleepers_in_progress:
             print("duplicate call to close_sleepers() !!!")
             return  # Multiple threads can call close() -> close_sleepers()
@@ -3730,7 +3840,8 @@ class MusicLocationTree(PlayCommonSelf):
         lcs.save_mserve_location(code)
 
         ''' Next top directory to startup '''
-        self.parm = topdir
+        #self.parm = topdir  # Can no longer use matching on topdir
+        self.parm = code  # Sep 5/23 - topdir appears twice, L001 and L005
         self.restart_new_parameters(self)
 
     # noinspection PyUnusedLocal
@@ -3739,7 +3850,8 @@ class MusicLocationTree(PlayCommonSelf):
         self.close_sleepers()  # Shut down running functions
         root.destroy()
 
-        print('Restarting with new music library:', self.parm)
+        print('mserve.py restart_new_parameters() - Restarting',
+              'with new music library:', self.parm)
         ''' Replace existing, or append first parameter with music directory '''
         if len(sys.argv) > 1:
             sys.argv[1] = self.parm
@@ -4723,9 +4835,8 @@ class MusicLocationTree(PlayCommonSelf):
             REMINDER:
             self.meta_scan = encoding.MetaScan(self.mus_top, self.get_refresh_thread)
 
-            am values: mus_view.tree values for current row being processed
         :param Id: Treeview Id
-        :param values: Treeview column values
+        :param values: mus_view.tree values for current row being processed
         :return: True if artwork exists, False if not or if different location
         """
 
@@ -4751,6 +4862,20 @@ class MusicLocationTree(PlayCommonSelf):
         if legal_part3 != parts[2]:
             print("over-legalized parts[2]", legal_part3)
 
+        ''' Sep 6/23 - Duplicate size check in lib_populate_tree '''
+        os_file_size = self.mus_view.column_value(values, 'os_file_size')
+        if os_file_size < g.MUSIC_MIN_SIZE:
+            # Not a valid music file
+            str_size = '{:n}'.format(g.MUSIC_MIN_SIZE)
+            ''' Show in Delayed Text Box but Control+C not working for copy. '''
+            self.missing_artwork_dtb.update(
+                "3) File size < " + str_size + " bytes: " + os_filename)
+            self.meta_scan.total_scanned += 1
+            self.meta_scan.missing_audio += 1
+            toolkit.tv_tag_add(self.mus_view.tree, Id, 'no_audio')
+            return True  # Keep in treeview
+
+        ''' Must call first to populate file_ctl() class static variables '''
         if not self.mus_ctl.new(PRUNED_DIR + os_filename):  # get metadata
             # .new() returns False when file doesn't exist at this location
             self.missing_artwork_dtb.update("2) Other Location: " +
@@ -5456,16 +5581,17 @@ class MusicLocationTree(PlayCommonSelf):
         bs_font = (None, g.MON_FONTSIZE)  # bs = bserve, ms = mserve
 
         ''' Scrollable textbox to show selections / ripping status '''
-        Quote = ("Retrieving SQL data.\n" +
-                 "If this screen can be read, there is a problem.\n\n" +
-                 "TIPS:\n\n" +
-                 "\tRun in Terminal: 'm' and check for errors.\n\n" +
-                 "\twww.pippim.com\n\n")
+        text = ("Retrieving SQL data.\n" +
+                "If this screen can be read, there is a problem.\n\n" +
+                "TIPS:\n\n" +
+                "\tRun in Terminal: 'm' and check for errors.\n\n" +
+                "\twww.pippim.com\n\n")
 
         # Text padding not working: https://stackoverflow.com/a/51823093/6929343
         self.scrollbox = toolkit.CustomScrolledText(
             frame1, state="normal", font=bs_font, borderwidth=15, relief=tk.FLAT)
-        self.scrollbox.insert("end", Quote)
+        self.scrollbox.configure(background="#eeeeee")  # Replace "LightGrey"
+        self.scrollbox.insert("end", text)
         self.scrollbox.grid(row=0, column=1, padx=3, pady=3, sticky=tk.NSEW)
         tk.Grid.rowconfigure(frame1, 0, weight=1)
         tk.Grid.columnconfigure(frame1, 1, weight=1)
@@ -5490,9 +5616,7 @@ class MusicLocationTree(PlayCommonSelf):
         """ Add up sizes and count number of rows.
 
             Display results in info message.
-            view = self.his_view or self.mus_view
-
-        """
+            view = self.his_view or self.mus_view """
 
         total_size = 0
         row_count = 0
@@ -7137,7 +7261,7 @@ class MusicLocationTree(PlayCommonSelf):
             self.filter_song_set_ndx(seq)
         elif seq == 'prev':
             if self.current_song_secs > float(REW_CUTOFF):
-                # TODO: After 12 seconds, change text from "Previous" to "Restart"
+                ''' TODO: Ensure LastPlayTime and PlayCount updated '''
                 self.song_set_ndx('restart')  # Was > 12 seconds so restart
                 # Recursive call above comes back here
                 return
@@ -7151,7 +7275,6 @@ class MusicLocationTree(PlayCommonSelf):
             else:
                 self.ndx += 1  # Next song
         elif seq == 'restart':
-            '''   F A S T   C L I C K I N G   '''
             # Restarting same song. Fake the last song to pass new tests
             if self.ndx == 0:
                 self.last_started = 1  # On first so pretend next
@@ -7177,8 +7300,9 @@ class MusicLocationTree(PlayCommonSelf):
 
             TODO: chron_tree will support filtering playlist with:
                     1) Songs with time index (synchronized lyrics)
-                    2) Songs for specific artist
-                    3) Songs over 5 minutes long
+                    1) Songs with no time index (unsynchronized)
+                    3) Songs for specific artist
+                    4) Songs over 5 minutes long
                 When filtered other songs are detached from treeview.
                 When clicking next/previous and hitting detached song,
                     preform recursive call with same operation.
@@ -7222,12 +7346,18 @@ class MusicLocationTree(PlayCommonSelf):
         if self.play_ctl.sink is not "":
             if self.play_ctl.state == "start":
                 if fade_then_kill:
+                    ''' Sep 6/23 - Simple method would be: 
+                            curr_vol = pav.get_volume(self.play_ctl.sink)
+                            pav.fade(self.play_ctl.sink, curr_vol, 0.0, 1,
+                                     ext.kill_pid_running, self.play_ctl.pid)
+                        New song starts at same time so hold fields used.
+                    '''
                     ''' a little debugging. each song start vol 25, 20, 8, 2, 1, 0... 
                         July 12, 2023 - Next song on '''
-                    hold_sink = (self.play_ctl.sink + '.')[:-1]
+                    hold_sink = (self.play_ctl.sink + '.')[:-1]  # break link
                     #print("\n fade_then_kill - hold_sink:",
                     #      hold_sink, id(hold_sink), id(self.play_ctl.sink))
-                    hold_pid = self.play_ctl.pid + 1 - 1
+                    hold_pid = self.play_ctl.pid + 1 - 1  # break link
                     #print("hold_pid:", hold_pid, id(hold_pid), id(self.play_ctl.pid))
                     curr_vol = pav.get_volume(hold_sink)
                     if curr_vol is not None:
@@ -7235,6 +7365,7 @@ class MusicLocationTree(PlayCommonSelf):
                         #print("hold_vol:", hold_vol)
                         self.play_ctl.pid = 0  # Stop play_ctl from killing
                         if hold_pid != 0:
+                            # Background process fades music, keep executing
                             pav.fade(hold_sink, hold_vol, 0.0, 1,
                                      ext.kill_pid_running, hold_pid)
                     else:
@@ -7814,9 +7945,8 @@ class MusicLocationTree(PlayCommonSelf):
                 self.prev_button['text'] = self.prev_button_text
                 self.tt.set_text(self.prev_button, "Restart song at beginning.")
 
-                ''' Aug 9/23 experiment 2 - Debug if ShowInfo init freezes 
-                # FIXED with lib_top.update_idletasks()
-                # After FIX keep here for quick testing on program startup
+                ''' 
+                # Quick test ShowInfo on program startup
                 text = "Hello World !\n\n"
                 text += "\tOne Tab\tTab 2\n"
                 text += "\t\tDouble Tab\tAnother Tab"
@@ -10732,6 +10862,19 @@ mark set markName index"
             menu.add_command(label="Open " + FM_NAME, font=(None, MED_FONT),
                              command=lambda: self.chron_tree_fm(item))
         menu.add_separator()
+
+        Id = item  # For copied code below
+        os_filename = self.real_paths[int(Id)]
+        # view_sql_metadata
+        menu.add_command(label="View Raw Metadata", font=(None, MED_FONT),
+                         command=lambda: self.view_metadata(
+                             Id, os_filename=os_filename, top=self.play_top))
+        menu.add_command(label="View SQL Metadata", font=(None, MED_FONT),
+                         command=lambda: self.view_sql_music_id(
+                             Id, self.play_ctl, top=self.play_top))
+
+        menu.add_separator()
+
         menu.add_command(label="Ignore click", font=(None, MED_FONT),
                          command=lambda: self.close_chron_popup(menu, item))
 
@@ -13113,14 +13256,22 @@ class FileControl(FileControlCommonSelf):
             TODO: Huge time lag with .oga image of 10 MB inside 30 MB file.
         """
 
+        who = "mserve.py get_metadata() - "
         self.metadata = OrderedDict()
 
         ''' Is host down? '''
         if lcs.host_down:
             return
 
+        #print(who + "Calling ffprobe.")
         ext.t_init("FileControl.get_metadata() - ffprobe")
+        ''' Problem ffprobe -xerror will crash on good files '''
+        ''' Problem ffprobe without -xerror will crash on bad files 
+            https://stackoverflow.com/questions/77054846/
+            looking-for-ffprobe-ffmpeg-xerror-err-detect-that-works        
+        '''
         cmd = 'ffprobe ' + '"' + self.last_path + '"' + ' 2>' + self.TMP_FFPROBE
+        #print(who + "cmd=", cmd)
         result = os.popen(cmd).read().strip()
         ext.t_end('no_print')
         # ffprobe on good files: 0.0858271122 0.0899128914 0.0877139568
@@ -13129,6 +13280,7 @@ class FileControl(FileControlCommonSelf):
         # 3-12 - Poison.oga (30 MB with 10 MB image) : 10.9 seconds !!!
         # 3-12 - Poison.oga using kid3 < 1 second
 
+        #print(who + "Calling mutagen.")
         ext.t_init("FileControl.get_metadata() - mutagen")
         try:
             # Song: Heart/GreatestHits/17 Rock and Roll (Live).m4a
@@ -13190,10 +13342,11 @@ class FileControl(FileControlCommonSelf):
 
         input_encountered = False
 
+        #print(who + "Calling open(self.TMP_FFPROBE)")
         with open(self.TMP_FFPROBE) as f:
             for line in f:
                 line = line.rstrip()  # remove \r and \n
-                #print(line)  # Helpful to debug missed metadata
+                #print(who + "line:", line)
 
                 if not input_encountered:
                     if line.startswith('Input #0, '):
@@ -13573,8 +13726,8 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilatio
         # noinspection SpellCheckingInspection
         ext.t_init("'ffmpeg -nostdin -y -vn -an -r 1 -i '")
         # noinspection SpellCheckingInspection
-        cmd = 'ffmpeg -nostdin -y -vn -an -r 1 -i ' + '"' + self.path + '" ' + \
-              self.TMP_FFMPEG + ' 2>' + self.TMP_FFPROBE
+        cmd = 'ffmpeg -nostdin -y -vn -an -r 1 -i ' + '"' + \
+              self.path + '" ' +  self.TMP_FFMPEG + ' 2>' + self.TMP_FFPROBE
         result = os.popen(cmd).read().strip()
         ext.t_end('no_print')  # 0.1054868698 0.1005489826 0.0921740532
 
@@ -13871,11 +14024,12 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilatio
                     ("Time stopped:", "Green", "Black"),
                     ("Percent play:", "Green", "Black")]
 
-        ''' Aug 6/23 - Too annoying, change all to 'fact' for now '''
-        if self.block_cast:  # bugs in lib_tree_play()
+        ''' Aug 6/23 - Cast is too annoying, change all to 'fact' for now '''
+        if self.block_cast:  # All casts being blocked switch on
             if self.log_level == 'all' or self.log_level == 'info':
                 self.info.fact(text, 'info', 'update', patterns)
         else:
+            # This used to be cast but too annoying
             if self.log_level == 'all' or self.log_level == 'info':
                 self.info.fact(text, 'info', 'update', patterns)
 
@@ -13961,7 +14115,7 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilatio
                 .strftime('%Y-%m-%d %H:%M:%S')
             cmd = 'touch -a -c -d"' + date_str + '" "' + self.path + '"'
         else:
-            ''' Force last access time to current time
+            ''' Force last access time (-a) to current time (-c)
                 Called externally when parent opens new song for playing 
             '''
             cmd = 'touch -a -c ' + '"' + self.path + '"'
@@ -14057,12 +14211,12 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilatio
 
 # ==============================================================================
 #
-#       Refresh() class.
+#       Refresh() class.  NOT USED
 #
 # ==============================================================================
 
 class Refresh:
-    """ Usage:
+    """ Usage:  NOT USED
 
         self.refresh = Refresh(30, self.get_refresh_thread)
 
@@ -14194,7 +14348,7 @@ class Playlists(PlaylistsCommonSelf):
         - rename() - Rename Playlist
         - delete() - Delete Playlist - leaves hole in playlist numbers
 
-Create playlists on iPhone
+NOTES FROM APPLE - Create playlists on iPhone
 
 In the Music app , you can organize music into playlists that you can share
  with your friends.
@@ -14316,7 +14470,8 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         self.top.minsize(width=g.BTN_WID * 10, height=g.PANEL_HGT * 10)
         name = name if name is not None else "Playlists"
         self.top.title(name + " - mserve")
-        self.top.configure(background="Gray")
+        #self.top.configure(background="Gray")  # Sep 5/23 - Use new default
+        self.top.configure(background="#eeeeee")  # Replace "LightGrey"
         self.top.columnconfigure(0, weight=1)
         self.top.rowconfigure(0, weight=1)
         ''' After top created, disable all File Menu options for playlists '''
@@ -14536,7 +14691,6 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
     def new(self):
         """ Called by lib_top File Menubar "New Playlist"
             If new songs are pending, do not allow playlist to open """
-        #PlaylistsCommonSelf.__init__(self)  # Define self. variables
         if self.check_pending():  # lib_top.tree checkboxes not applied?
             return  # We are all done. No window, no processing, nada
         self.state = 'new'
@@ -14545,27 +14699,23 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
 
     def rename(self):
         """ Called by lib_top File Menubar "Rename Playlist" """
-        #PlaylistsCommonSelf.__init__(self)  # Define self. variables
         self.state = 'rename'
         self.create_window("Rename Playlist")
         self.enable_input()
 
     def delete(self):
         """ Called by lib_top File Menubar "Delete Playlist" """
-        #PlaylistsCommonSelf.__init__(self)  # Define self. variables
         self.state = 'delete'
         self.create_window("Delete Playlist")
 
     def view(self):
         """ Called by lib_top View Menubar "View Playlists" """
-        #PlaylistsCommonSelf.__init__(self)  # Define self. variables
         self.state = 'view'
         self.create_window("View Playlists")
 
     def open(self):
         """ Called by lib_top File Menubar "Open Playlist"
             If new songs are pending, do not allow playlist to open """
-        #PlaylistsCommonSelf.__init__(self)  # Define self. variables
         if self.check_pending():  # lib_top.tree checkboxes not applied?
             return  # We are all done. No window, no processing, nada
         self.state = 'open'
@@ -14573,12 +14723,10 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
 
     def save(self):
         """ DEPRECATED. Replaced by self.write_playlist_to_disk() """
-        #PlaylistsCommonSelf.__init__(self)  # Define self. variables
         pass
 
     def save_as(self):
         """ NOT USED as of July 16, 2023 """
-        #PlaylistsCommonSelf.__init__(self)  # Define self. variables
         self.state = 'save_as'
         self.create_window("Save Playlist As…")
         self.enable_input()
@@ -14587,7 +14735,6 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         """ Close Playlist (use Favorites) called by def close_playlist()
             Blank out self.name and call display_lib_title()
             which forces Favorites into title bar when self.name is blank. """
-        #PlaylistsCommonSelf.__init__(self)  # Define self. variables
         self.state = 'close'
         if not self.edit_playlist():  # Check if changes pending & confirm
             return False
@@ -14677,8 +14824,8 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             "\t\t\t\t\t\tSix tabs at once\n" + \
             "\t\t\t\t\t\t\t\tEight tabs at once\n\n" + \
             "When there is a need for the function it will be written."
-        message.ShowInfo(self.parent, "Save As... doesn't work yet !!!",
-                         text, icon='error', align='left', thread=self.get_thread_func)
+        message.ShowInfo(self.parent, "Save As...", text, icon='error',
+                         align='left', thread=self.get_thread_func)
         return False  # We are all done. No window, no processing, nada
 
     def edit_playlist(self):
@@ -14965,10 +15112,6 @@ SLOWDOWN BUG: https://gitlab.gnome.org/GNOME/gnome-shell/-/issues/2674
 class InfoCentre:
     """ Usage:
 
-            self.info = InfoCentre(
-                self.banner_frm, self.banner_btn, self.build_banner_btn,
-                self.build_banner_canvas, self.tt, title_font, text_font):
-
             self.info.cast() - Create dict and call zoom(show_close=False).
             self.info.fact() - Create dict only.
             self.info.zoom() - Expand/collapse frame. Show dict.
@@ -14990,7 +15133,7 @@ class InfoCentre:
     """
 
     def __init__(self, lib_top=None, lib_tree=None, banner_frm=None,
-                 banner_btn=None, build_banner_btn=None, tooltips=None):
+                 tooltips=None):
         """
             
         """
@@ -14998,8 +15141,6 @@ class InfoCentre:
         self.lib_top = lib_top
         self.lib_tree = lib_tree  # Used in development version will probably drop
         self.banner_frm = banner_frm  # Frame shared by button ruler and zoom
-        self.banner_btn = banner_btn  # The button appearing as thin ruler line
-        self.build_banner_btn = build_banner_btn  # Function to call when finished
         self.tt = tooltips  # Tooltips() class instance
 
         ''' Window variables '''
@@ -15235,22 +15376,6 @@ class InfoCentre:
         self.start_time = time.time()  # To calculate total elapsed time
         self.last_delta_time = self.start_time  # To calculate ms between calls
 
-        ''' Destroy banner button in Tooltips() and banner button 
-        if self.banner_btn:
-            # July 31, 2023 recent change making 'None' caused error on destroy
-            self.tt.close(self.banner_btn)
-            self.tt.poll_tips()
-            self.banner_btn.destroy()  # Real Estate commandeered for zoom frame
-            self.banner_btn = None  # Extra insurance
-        '''
-        # Aug 18/23 sledge hammer experiment
-        if self.tt.check(self.banner_frm):
-            #print("mserve.py InfoCentre.zoom(): self.tt.check(self.banner_frm)")
-            # PROBLEM: Just closed banner_btn tooltip that was fading out.
-            #self.tt.close(self.banner_frm)
-            # Why does banner button have to be destroyed and rebuilt?
-            pass  # Aug 18/23 - Yank all banner_btn code - not needed.
-
         ''' Build tk.Frame and tk.Text widgets. Optional tk.Button to close frame '''
         self.frame = tk.Frame(self.banner_frm, bg="black", height=7)
         self.frame.grid()
@@ -15374,14 +15499,6 @@ class InfoCentre:
         self.start_time = time.time()  # To calculate total elapsed time
         self.last_delta_time = self.start_time  # To calculate ms between calls
 
-        ''' Destroy banner button in Tooltips() 
-        if self.banner_btn:
-            self.tt.close(self.banner_btn)
-            self.banner_btn.destroy()  # Destroy banner button. Real Estate commandeered
-            self.banner_btn = None  # Extra insurance
-        else:
-            print("self.banner_btn is 'None' in test_tt()")
-        '''
         ''' Build new frame and Text widget. Add to Tooltips() '''
         self.frame = tk.Frame(self.banner_frm, bg="black", height=7)
         self.frame.grid()
@@ -15481,76 +15598,23 @@ FADE_OUT_SPAN = 400     # 1/5 second to fade out
         self.lib_tree.yview_moveto(old_y_top - end_moved)
 
     def _leave_cb(self):
-        """
-        Called from Tooltips if mouse moves out of Information Centre.
+        """ Called from Tooltips if mouse moves out of Information Centre.
+            Tell tt to start fading out.
+        :return: None """
 
-        The idea is to now tell tt to start fading out.
-
-        :return: None
-        """
-        #print("InfoCentre() _leave_cb() mouse left widget window.",
-        #      "total time:", time.time() - self.start_time)
-
-        # InfoCentre() _leave_cb() mouse left widget window. total time: 0.532470941544
-        # InfoCentre() _leave_cb() mouse left widget window. total time: 0.504528999329
-        # InfoCentre() _leave_cb() mouse left widget window. total time: 0.451492786407
-        # InfoCentre() _leave_cb() mouse left widget window. total time: 0.519959926605
-        # InfoCentre() _leave_cb() mouse left widget window. total time: 0.521574020386
-        # InfoCentre() _leave_cb() mouse left widget window. total time: 0.519021034241
-        # InfoCentre() _leave_cb() mouse left widget window. total time: 0.537034034729
-        # InfoCentre() _leave_cb() mouse left widget window. total time: 0.505052089691
-        # InfoCentre() _leave_cb() mouse left widget window. total time: 0.508666992188
-
-        ''' Feed fake button press event to cause info message to collapse
-            right away. Only works occasionally!
-            
-            When called by button bar leaves right away and closes
-            When called by View Information Centre doesn't leave at all
-            
-            Low priority because view will have a close button and banner button is short
-        '''
         elapsed = time.time() - self.start_time
         if elapsed > 1000.0:  # Ignore if less than 1 second
             self.tt.log_event('press', self.widget, 100, 50)  # x=100, y=50
-            # Notice first event is ignored. Then next is treated as real
-            # InfoCentre() _leave_cb() mouse left widget window. total time: 0.527550935745
-            # InfoCentre() _leave_cb() mouse left widget window. total time: 2.58352994919
-        pass
 
 
     def _ready_cb(self):
-        """
-        Called from Tooltips when ready for message to be displayed.
-        :return: None
-        """
-        #print("InfoCentre() _ready_cb() message can be displayed now.",
-        #      "total time:", time.time() - self.start_time)
-
-        #self.test_label = tk.Label(self.frame, text="I am inside a Frame", font='Arial 17 bold')
-        #self.test_label.place(rel x=0.5, rely=0.5, anchor=tk.CENTER)
-        #self.test_label.update()
-        #self.frame.grid_propagate(True)
-        #self.lib_top.update()
-        #root.update()
-        pass
+        """ Called from Tooltips when ready for message to be displayed.
+        :return: None """
+        pass  # Nothing to do
 
     def _close_cb(self):
         """ Called from Tooltips when fading-out process has ended.
-
-            BUG: Aug 18/23 - Banner button's piling up in tooltips.
-                             Not being tt.close() not being called.
-
-        :return: None
-        """
-        #print("InfoCentre() _close_cb() tooltip processing has ended.",
-        #      "total time:", time.time() - self.start_time)
-
-        ''' Fix rounding errors - Ensure old bottom row is restored '''
-        #self.lib_tree.update_idletasks()  # Need to prevent row creep next run.
-        #new_y_top, new_y_end = self.lib_tree.yview()
-        #end_moved = new_y_end - self.old_y_end
-        #self.lib_tree.yview_moveto(self.old_y_top - end_moved)
-        #self._alpha_cb_dev(0.01)  # Use this with development version
+        :return: None """
 
         ''' May have manually closed frame at same time Tooltips closes '''
         if self.frame:
@@ -15558,19 +15622,10 @@ FADE_OUT_SPAN = 400     # 1/5 second to fade out
             self.lib_top.update()  # Update before destroy or last stays
             if self.tt.check(self.widget):
                 self.tt.close(self.widget)  # Remove 'piggy_back' tooltip
-            # self.widget = self.text  OR  self.widget = self.close_button
             # Aug 12/23 - For some reason frame is None for first time.
             if self.frame:
                 self.frame.destroy()  # Nuke the frame used for info message
             self.frame = None
-
-        ''' Aug 18/23 - why does banner button have to be destroyed and rebuilt? 
-        if self.tt.check(self.banner_btn):  # Aug 1/23 was typo 'frm' not 'btn'
-            self.tt.close(self.banner_btn)  # July 22, 2023 - btn was staying in tt
-        # Rebuild banner button
-        self.build_banner_btn()  # Aug 18/23 - review why just deleted above?
-        self.test = False
-        '''
 
         ''' Ugly patch to show that zoom has finished '''
         self.zoom_is_active = False
@@ -15692,8 +15747,8 @@ def start_ffplay(song, tmp_name, extra_opt, toplevel=None):
 
     ''' ffplay start options to redirect output to temporary file '''
     # noinspection SpellCheckingInspection
-    cmd = 'ffplay -autoexit ' + '"' + song + '" ' + extra_opt + \
-          ' -nodisp 2>' + tmp_name
+    cmd = 'ffplay -autoexit ' + '"' + song + '" ' + \
+          extra_opt + ' -nodisp 2>' + tmp_name
 
     ''' launch ffplay external command in background it polls for pid '''
     found_pid = ext.launch_command(cmd, toplevel=toplevel)
@@ -15952,8 +16007,9 @@ def open_files(old_cwd, prg_path, parameters, toplevel=None):
         create_files()
 
     ''' Was music_dir passed as parameter? '''
+    parm1 = None
     try:
-        music_dir = parameters[1]
+        parm1 = music_dir = parameters[1]
         hold_dir = os.getcwd()
         os.chdir(old_cwd)  # Temporarily change to original directory
         # Massage parameter 1 of ".", "..", "../Sibling", etc.
@@ -15965,19 +16021,47 @@ def open_files(old_cwd, prg_path, parameters, toplevel=None):
         music_dir = None
         use_location = True
 
-    ''' Is passed music_dir in our known locations? '''
-    if music_dir is not None and lc.get_dict_by_dirname(music_dir):
+    ''' Is passed music_dir in our known locations? 
+        Sep 5/23 - Cannot lookup by topdir name because two locations
+                   can exist, e.g. L001 for ssh phone, L005 for ftp phone
+                   Related: Need prompt for user to save new location before
+                   exiting. Currently files are stored in .../mserve instead
+                   of .../mserve/L999
+    '''
+
+    #print(who + "Contents of music_dir:", music_dir)
+    #if music_dir is not None and lc.get_dict_by_dirname(music_dir):
+    if parm1 and "L001" <= parm1 < "M":
+        if lc.get_dict_by_code(parm1):
+            use_location = True  # Override to use location found by dir name
+            #print(who + 'Using location:', lc.DICT['iid'])
+            # Make passed Top Directory our last known location then load it
+            lc.save_mserve_location(lc.DICT['iid'])  # Version 1 function
+            ''' below read lcs.act_code, lcs.act_name & lcs.act_topdir, etc. '''
+            lcs.save_mserve_location(lc.DICT['iid'])  # Version 2 method
+            music_dir = lcs.act_topdir  # Init by above command
+            #print(who + 'Using Top Directory:', music_dir)
+        else:
+            print(who + 'New location not found or off-line:', parm1)
+            print(who + "Continuing will cause endless loop. Exiting...")
+            exit()
+    elif music_dir is not None and lc.get_dict_by_dirname(music_dir):
+        ''' Passed directory name exists in known locations 
+            Full pathname was passed as parameter 1 '''
         use_location = True  # Override to use location found by dir name
         print(who + 'Overriding music_dir:', music_dir,
               'to location:', lc.DICT['iid'])
         # Make passed Top Directory our last known location then load it
         lc.save_mserve_location(lc.DICT['iid'])
         lcs.save_mserve_location(lc.DICT['iid'])
+        music_dir = lcs.act_topdir  # Init by above command
+        print(who + 'Using Top Directory:', music_dir)
 
     ''' create START_DIR, test location awake, check files exist '''
     if use_location:
         ''' When NEW_LOCATION is True no Locations() to read or save '''
-        lcs.register_NEW(NEW_LOCATION)
+        lcs.register_NEW(NEW_LOCATION)  # Register flag that indicates new
+        # besides above flag, can check lcs.act_code.lower() == 'new'
         lcs.register_parent(root)  # ShowInfo will go to root window parent
         ''' Below mounts host testing window appropriately as required'''
         ret = lcs.load_last_location(root)  # Open last location and validate
@@ -15993,7 +16077,7 @@ def open_files(old_cwd, prg_path, parameters, toplevel=None):
             ''' last location code in SQL History Table not found '''
             text = "last location code in SQL History Table not found\n\n"
             text += text2
-            print('\nmserve.py main() ERROR:\n')
+            print('\n' + who + 'ERROR:\n')
             print(text)  # Print to console and show message on screen at 100, 100
             message.ShowInfo(root, title=title, text=text, icon='error',
                              thread=dummy_thread)
@@ -16001,7 +16085,7 @@ def open_files(old_cwd, prg_path, parameters, toplevel=None):
             ''' last location code in SQL History exists but not in Location Table '''
             text = "The last used location not found in SQL Location Table\n\n"
             text += text2
-            print('\nmserve.py main() ERROR:\n')
+            print('\n' + who + 'ERROR:\n')
             print(text)  # Print to console and show message on screen at 100, 100
             message.ShowInfo(root, title=title, text=text, icon='error',
                              thread=dummy_thread)
@@ -16010,7 +16094,7 @@ def open_files(old_cwd, prg_path, parameters, toplevel=None):
             text = "Top Directory doesn't exist or host is off-line.  Check:\n\t"
             text += lcs.open_topdir + "\n\n"
             text += text2
-            print('\nmserve.py main() ERROR:\n')
+            print('\n' + who + 'ERROR:\n')
             print(text)  # Print to console and show message on screen at 100, 100
             message.ShowInfo(root, title=title, text=text, icon='error',
                              thread=dummy_thread)
@@ -16019,22 +16103,22 @@ def open_files(old_cwd, prg_path, parameters, toplevel=None):
     lcs.open_name = music_dir
     NEW_LOCATION = True  # Don't use location dictionary (LODICT) fields
 
-    print("mserve.py open_files() Searching for songs in music_dir:", music_dir)
+    print(who + "Searching for songs in music_dir:", music_dir)
 
     while True:
         if music_dir is None:
             music_dir = g.HOME
         # Prompt to get startup directory using /home/USER as default
         START_DIR = get_dir(root, "Select Music Directory", music_dir)
-        print("mserve.py open_files() START_DIR:", START_DIR, type(START_DIR))
+        print(who + "START_DIR:", START_DIR, type(START_DIR))
         if isinstance(START_DIR, tuple):
-            print("mserve.py open_files() Cancel selected from" +
+            print(who + "Cancel selected from" +
                   " Select Music Directory dialog. Exiting.")
             exit()
 
         if START_DIR is None:
             START_DIR = old_cwd
-            print("mserve.py open_files() START_DIR forced to old_cwd," +
+            print(who + "START_DIR forced to old_cwd," +
                   " should not happen:", old_cwd)
         if not START_DIR.endswith(os.sep):
             START_DIR += os.sep
@@ -16062,7 +16146,7 @@ def open_files(old_cwd, prg_path, parameters, toplevel=None):
             #       Window appears on top-left monitor @ 30,30 so use messagebox instead
             continue
 
-        print("mserve.py open_files() len(music_list):",
+        print(who + "len(music_list):",
               len(music_list), "in START_DIR:", START_DIR)
         print(depth_count)
         #print(music_list)
@@ -16223,8 +16307,19 @@ def main(toplevel=None, cwd=None, parameters=None):
         text = "Cannot find any music files in the directory below:"
         text += "\n\n  " + START_DIR
         print(title + "\n\n" + text)
-        message.ShowInfo(root, title=title, text=text, align='left', 
-                         icon='error', thread=dummy_thread)
+        #message.ShowInfo(root, title=title, text=text, align='left',
+        #                 icon='error', thread=dummy_thread)
+        #   File "./m", line 75, in main
+        #     mserve.main(toplevel=splash, cwd=cwd, parameters=sys.argv)
+        #   File "/home/rick/python/mserve.py", line 16432, in main
+        #     icon='error', thread=dummy_thread)
+        #   File "/home/rick/python/message.py", line 343, in __init__
+        #     simpledialog.Dialog.__init__(self, parent, title=title)
+        #   File "/usr/lib/python2.7/lib-tk/tkSimpleDialog.py", line 85, in __init__
+        #     self.grab_set()
+        #   File "/usr/lib/python2.7/lib-tk/Tkinter.py", line 679, in grab_set
+        #     self.tk.call('grab', 'set', self._w)
+        # _tkinter.TclError: grab failed: another application has grab
         # NOTE: Tempting to exit now but need to proceed to select different location.
     ''' Process sorted list to create SQL Music Table '''
     # PROBLEM: Music Table Rows as soon as directory is opened, however

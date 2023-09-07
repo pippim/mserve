@@ -400,7 +400,6 @@ def data_w_l(text):
 
         Fudge \t which adds white space not counted. Text after \t
         align to defined margin stops which are unknown and guessed. """
-    text = text.replace("\t", " " * 8)  # guesstimate for average tab spaces.
     lines = text.split('\n')
     longest = len(max(lines, key=len))
     width = int(round(float(longest) * g.MSG_WIDTH_ADJUST, 0))  # Aug 9/23
@@ -571,6 +570,7 @@ def body_func(self):
     '''
     
     # Find longest line and use it as text width
+    f_text = f_text.replace("\t", " " * 8)  # guesstimate for average tab spaces.
     width, lines = data_w_l(f_text)
 
     ''' Aug 9/23 - self.title2 width2 (self.title used by simpleDialog class) '''

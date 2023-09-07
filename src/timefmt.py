@@ -116,10 +116,10 @@ def get_sec(time_str):
 def mm_ss(seconds, brackets=False, trim=True, rem=None):
     """ Convert seconds to minutes:seconds.decisecond
         decisecond is 1/10th of a second
-        :param seconds is float
-        :param brackets surround result in "[...]"
-        :param trim suppresses minutes when 0
-        :param rem = 'd' includes deci seconds, 'h' includes hundredths
+        :param seconds: is float
+        :param brackets: surround result in "[...]" and enforce "0:" minutes
+        :param trim: suppresses minutes when 0
+        :param rem: = 'd' includes deci seconds, 'h' includes hundredths
     """
     i = int(seconds)
     d = seconds - i

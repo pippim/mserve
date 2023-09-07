@@ -33,6 +33,7 @@ import errno
 import time
 import datetime
 import glob  # For globbing files in /tmp/mserve_ffprobe*
+import json  # For reading/writing files in json format
 
 # Common routines used by many programs put here
 import toolkit
@@ -110,6 +111,78 @@ def read_into_string(fname):
         with open(fname) as f:
             return f.read()
     return None
+
+
+def write_from_list(fname, f_list):
+    """ Read list of lines and write to text file """
+
+    if os.path.isfile(fname):
+        #print("Overwriting existing file:", fname)
+        pass
+    else:
+        #print("Creating new file:", fname)
+        pass
+
+    try:
+        with open(fname, "w") as f:
+            for f_line in f_list:
+                f.write("%s\n" % f_line)
+                #print("ext.write_from_list() wrote f_line:", f_line)
+    except Exception as err:
+        print("Exception:", err)
+        return False
+
+    return True
+
+
+def write_from_str(fname, f_str):
+    """ Read list of lines and write to text file """
+
+    if os.path.isfile(fname):
+        #print("Overwriting existing file:", fname)
+        pass
+    else:
+        #print("Creating new file:", fname)
+        pass
+
+    try:
+        with open(fname, "w") as f:
+            f.write(f_str)
+            #print("ext.write_from_list() wrote f_line:", f_line)
+    except Exception as err:
+        print("Exception:", err)
+        return False
+
+    return True
+
+
+def read_from_json(fname):
+    """ Read json file and return serialized object """
+    if os.path.isfile(fname):
+        with open(fname) as f:
+            return json.loads(f.read())
+    return None
+
+
+def write_from_json(fname, s_obj):
+    """ Write serialized object to storage """
+
+    if os.path.isfile(fname):
+        #print("Overwriting existing file:", fname)
+        pass
+    else:
+        #print("Creating new file:", fname)
+        pass
+
+    try:
+        with open(fname, "w") as f:
+            s_obj = json.dumps(s_obj)
+            f.write(s_obj)
+    except Exception as err:
+        print("Exception:", err)
+        return False
+
+    return True
 
 
 def check_command(name):
@@ -497,37 +570,5 @@ class GracefulKiller:
         """ If sigint set kill flag """
         self.kill_now = True
 
-
-# noinspection SpellCheckingInspection
-"""
-https://trac.ffmpeg.org/wiki/AudioVolume
-
-Peak and RMS Normalization
-
-To normalize the volume to a given peak or RMS level, the file first has to be
-analyzed using the volumedetect filter:
-
-ffmpeg -i input.wav -filter:a volumedetect -f null /dev/null
-
-Read the output values from the command line log:
-
-[Parsed_volumedetect_0 @ 0x7f8ba1c121a0] mean_volume: -16.0 dB
-[Parsed_volumedetect_0 @ 0x7f8ba1c121a0] max_volume: -5.0 dB
-...
-
-... then calculate the required offset, and use the volume filter as shown above.
-Loudness Normalization
-
-If you want to normalize the (perceived) loudness of the file, use the ​
-loudnorm filter, which implements the EBU R128 algorithm:
-
-ffmpeg -i input.wav -filter:a loudnorm output.wav
-
-This is recommended for most applications, as it will lead to a more uniform
- loudness level compared to simple peak-based normalization. However, it is
-  recommended to run the normalization with two passes, extracting the measured
-   values from the first run, then using the values in a second run with linear
-    normalization enabled. See the loudnorm filter documentation for more. 
-"""
 
 # End of external.py

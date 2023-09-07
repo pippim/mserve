@@ -253,8 +253,17 @@ def populate_tables(SortedList, start_dir, pruned_dir, lodict):
             ofb.AddBlacklist(sql_key)
             continue
 
+        ''' For FTP curlftpfs takes too much time to stat each file '''
+        d = ofb.Select(sql_key)
+        if d:
+            continue  # already in SQL Music Table
+
         ''' TODO: Make into function that sets LastPlayTime '''
-        stat = os.stat(full_path)  # Get file attributes
+        try:
+            stat = os.stat(full_path)  # Get file attributes
+        except OSError:
+            print("Could not stat:", full_path)
+            continue
 
         ''' Add the song only if it doesn't exist already. '''
         sql = "INSERT OR IGNORE INTO Music (OsFileName, \
@@ -2113,18 +2122,16 @@ class PrettyMusic:
     """
 
     def __init__(self, sql_row_id, calc=None, file_ctl=None):
-        """ 
-            Build a pretty dictionary with user friendly field names
+        """ Build a pretty dictionary with user friendly field names
             Values are from current treeview row for SQL Row. See note above.
 
-            The pretty dictionary is passed to mserve.py functions.
-
-        """
+            The pretty dictionary is passed to mserve.py functions. """
 
         self.calc = calc  # Calculated fields callback function
         self.dict = OrderedDict()  # Python 2.7 version not needed in 3.7
         self.scrollbox = None  # custom scrollbox for display
         self.search = None  # search text
+        self.synchronized = 0.0  # Only used for PrettyMusic dictionary.
 
         # List of part section starting positions in field display
         self.part_start = [0]  # First heading starts at field #0
@@ -2232,6 +2239,8 @@ class PrettyMusic:
 
         self.part_start.append(len(self.dict))
 
+        lyrics_count = 0.0
+        time_count = 0.0
         if d["LyricsTimeIndex"] is None:
             time_index_list = ["No time index"]  # Nothing prints yet.
         else:
@@ -2240,17 +2249,27 @@ class PrettyMusic:
             self.dict['Lyrics score'] = "Webscrape for lyrics not completed."
         else:
             lyrics = d["LyricsScore"]
+            lyrics_count = lyrics.count("\n")  # TODO: Test in Windows
+
             for i, line in enumerate(lyrics.splitlines()):
                 # If time index exists, put value in front of lyric line
                 try:
                     # pycharm doesn't like time_index_list, unexpected type str
-                    # noinspection PyStringFormat
-                    self.dict["{:.2f}".format(time_index_list[i])] = line
+                    # no inspection PyStringFormat
+                    self.dict[tmf.mm_ss(time_index_list[i], trim=False,
+                                        rem='h', brackets=True)] = line
+                    time_count += 1.0
                 except (IndexError, ValueError):
                     # IndexError: list index out of range
                     # ValueError: Unknown format code 'f' for object of type 'unicode'
                     self.dict['line # ' + str(i + 1)] = line
 
+        if lyrics_count:
+            self.synchronized = float(time_count / lyrics_count)
+        else:
+            self.synchronized = 0.0
+        #print("time_count:", time_count, "lyrics_count:", lyrics_count,
+        #      "percent:", self.synchronized)
         self.part_start.append(len(self.dict))
 
         ''' Append SQL History Table Rows matching Music ID '''

@@ -17,6 +17,7 @@ from __future__ import with_statement  # Error handling for file opens
 #       July 07 2023 - Enhanced code converted from mserve.py
 #       July 12 2023 - Interface to/from mserve_config.py
 #       Aug. 23 2023 - get_volume() return 25.0 when sink not found.
+#       Sep. 04 2023 - Fix crash when sink has no 'application.name' key
 #
 # ==============================================================================
 """
@@ -25,8 +26,13 @@ NOTE: Use pavucontrol to create loopback from sound output to microphone:
       https://wiki.ubuntu.com/record_system_sound - Required by vu_meter.py
       Keep an eye open if vu_meter.py can be made more robust.
 
+NOTE: Problems if you plug your phone headphones into your computer microphone
+      jack to play music from your phone through your computer attached
+      sound system (perhaps via TV soundbar and HDMI computer output).
+      See: https://devicetests.com/disable-audio-loopback-ubuntu
+
 NOTE: Unstable if 'pulseaudio -k' run from command line.
-      Lose vu_meter.py updates
+      Lose vu_meter.py updates. PA 'application.name' key error.
       'Next' song stays at 25% volume until another 'Next' click
 """
 
@@ -77,7 +83,8 @@ class PulseAudio:
         self.get_all_sinks()  # auto saves to self.sinks_now
         self.sinks_at_init = self.sinks_now
         self.spam_count = 0  # Prevent error message flooding
-        self.poll_count = 0  # To print first 10 job times to fade 
+        self.poll_count = 0  # To print first 10 job times to fade
+        self.err_count = 0  # Errors across session life-span
         self.fade_list = []
         self.dict = {}
 
@@ -572,12 +579,19 @@ AttributeError: 'module' object has no attribute 'pulsectl'
                 this_volume = this_volume.split('%')[0]
                 # create 'Sink' named tuple class
                 Sink = namedtuple('Sink', 'sink_no_str volume name pid user')
-                # noinspection PyArgumentList
-                this_sink = Sink(str(sink.index), int(this_volume),
-                                 str(sink.proplist['application.name']),
-                                 int(sink.proplist['application.process.id']),
-                                 str(sink.proplist['application.process.user']))
-                self.sinks_now.append(this_sink)
+                try:
+                    # noinspection PyArgumentList
+                    this_sink = Sink(str(sink.index), int(this_volume),
+                                     str(sink.proplist['application.name']),
+                                     int(sink.proplist['application.process.id']),
+                                     str(sink.proplist['application.process.user']))
+                    self.sinks_now.append(this_sink)
+                except Exception as err:
+                    print("Exception (KeyError):", err)
+                    self.err_count += 1
+                    print("vu_pulse_audio.py get_all_sinks() error count:",
+                          self.err_count)
+                    print(sink)
             return self.sinks_now
 
         ''' If Python pulsectl.py audio isn't working, then use the slow method '''
@@ -742,5 +756,38 @@ def parse_line_for_assigned_value(line, search, current):
     this_name = this_name.replace(' ', '')
     this_name = this_name.replace('"', '')
     return this_name
+
+
+# noinspection SpellCheckingInspection
+"""
+https://trac.ffmpeg.org/wiki/AudioVolume
+
+Peak and RMS Normalization
+
+To normalize the volume to a given peak or RMS level, the file first has to be
+analyzed using the volumedetect filter:
+
+ffmpeg -i input.wav -filter:a volumedetect -f null /dev/null
+
+Read the output values from the command line log:
+
+[Parsed_volumedetect_0 @ 0x7f8ba1c121a0] mean_volume: -16.0 dB
+[Parsed_volumedetect_0 @ 0x7f8ba1c121a0] max_volume: -5.0 dB
+...
+
+... then calculate the required offset, and use the volume filter as shown above.
+Loudness Normalization
+
+If you want to normalize the (perceived) loudness of the file, use the ​
+loudnorm filter, which implements the EBU R128 algorithm:
+
+ffmpeg -i input.wav -filter:a loudnorm output.wav
+
+This is recommended for most applications, as it will lead to a more uniform
+ loudness level compared to simple peak-based normalization. However, it is
+  recommended to run the normalization with two passes, extracting the measured
+   values from the first run, then using the values in a second run with linear
+    normalization enabled. See the loudnorm filter documentation for more. 
+"""
 
 # End of vu_pulse_audio.py

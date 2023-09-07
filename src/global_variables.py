@@ -16,6 +16,7 @@ from __future__ import with_statement  # Error handling for file opens
 #       May. 19 2023 - appdirs for universal application & storage directories
 #       July 10 2023 - Begin mserve_config.py development (check dependencies)
 #       Aug. 04 2023 - Add FONT, NO_ARTIST_STR and NO_ALBUM_STR constants
+#       Sep. 04 2023 - Add MUSIC_FILE_TYPES list, MSERVE_VERSION = u"3.5.0"
 #
 # ==============================================================================
 
@@ -47,8 +48,11 @@ MSERVE_DIR = None       # /home/user/.config/mserve <- historically wrong
                         # Bad name. It implies where mserve programs are
 PROGRAM_DIR = None      # Directory where mserve.py is stored.
 TEMP_DIR = None         # Directory for temporary files /run/user/1000 preferred
+MUSIC_FILE_TYPES = [".aiff", ".caf", ".flac", ".mp3", ".mp4", ".m4a",
+                    ".oga", ".ogg", ".PCM", ".wav", ".wma"]
+MUSIC_MIN_SIZE = 100000  # Music Files must be at least 100 KB
 
-MSERVE_VERSION = u"3.4.3"  # Get Composers from MusicBrainz
+MSERVE_VERSION = u"3.5.0"  # Make .lrc file (synchronized lyrics standard)
 WIN_MIN_WIDTH = 142     # Same values used by gnome-terminal to prevent window 
 WIN_MIN_HEIGHT = 63     # resizing to shrink too much
 
@@ -99,11 +103,10 @@ def init(caller=None):
     """
     if caller and caller is not "mserve_config.py":
         if not cfg.main(caller):
-            #print("mserve not fully installed. Aborting...")
+            print("mserve not fully installed. Aborting...")
             exit()
         else:
-            # Cannot print from background jobs disk_get.py, mbz_get1.py, etc.
-            #print("mserve_config.py is calling global_variables.py !")
+            print("mserve_config.py is calling global_variables.py !")
             pass
 
     global USER, USER_ID, HOME, USER_DATA_DIR, USER_CONFIG_DIR, MSERVE_DIR

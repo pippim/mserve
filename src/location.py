@@ -17,6 +17,7 @@ from __future__ import with_statement  # Error handling for file opens
 #       July 12 2023 - Interface to/from mserve_config.py
 #       July 22 2023 - Create Locations() class with new sshfs support
 #       July 29 2023 - Create Compare() class
+#       Sep. 04 2023 - Create FNAME_SIZE_DICT under version 3.5.0
 #
 #==============================================================================
 #import stat
@@ -61,6 +62,7 @@ import shutil
 import pickle
 import time
 import datetime
+import netrc  # network resource password file ~/.netrc - FUTURE NOT USED YET
 import ftplib  # Communicate with FTP server
 import random  # For Locations() make_temp
 import string  # For Locations() make_temp
@@ -97,12 +99,16 @@ FNAME_LAST_SONG_NDX    = MSERVE_DIR + "last_song_ndx"  # Last song played in lis
 FNAME_LAST_SELECTIONS  = MSERVE_DIR + "last_selections"  # Shuffled play order of songs
 FNAME_LAST_PLAYLIST    = MSERVE_DIR + "last_playlist"  # Songs selected for playing
 FNAME_MOD_TIME         = MSERVE_DIR + "modification_time"  # Android phone times
+# Sep 04 2023 - Create FNAME_SIZE_DICT of tuples (fake_path, file_size)
+FNAME_SIZE_DICT        = MSERVE_DIR + "size_dict"  # JSON dictionary
+FNAME_WALK_LIST        = MSERVE_DIR + "walk_list"  # JSON list of tuples
+
 
 # Files in /tmp/
 # There can be two open at once so unlike other global variables this is never
 # replaced. It is simply used as base for creating new variable.
-FNAME_TEST              = g.TEMP_DIR + "mserve_test"  # Test if host up
-FNAME_TEST_NMAP         = g.TEMP_DIR + "mserve_test_nmap"  # Test if host up
+FNAME_TEST             = g.TEMP_DIR + "mserve_test"  # Test if host up
+FNAME_TEST_NMAP        = g.TEMP_DIR + "mserve_test_nmap"  # Test if host up
 
 ''' Temporary files also defined in mserve.py '''
 TMP_STDOUT = g.TEMP_DIR + "mserve_stdout"  # _g7gh75 appended Defined mserve.py
@@ -137,18 +143,26 @@ LAST_LOCATION_SET = False
 
 def set_location_filenames(iid):
     """ Called when mserve first starts up """
-    global FNAME_LAST_SELECTIONS, FNAME_LAST_OPEN_STATES
-    global FNAME_LAST_PLAYLIST, FNAME_LAST_SONG_NDX
-    global LAST_LOCATION_SET
+    global FNAME_LAST_OPEN_STATES, FNAME_LAST_PLAYLIST, FNAME_LAST_SONG_NDX
+    global FNAME_MOD_TIME, FNAME_SIZE_DICT, FNAME_WALK_LIST, LAST_LOCATION_SET
 
     ''' Sanity check '''
     if LAST_LOCATION_SET:
         print("location.py set_location_filenames(iid) cannot be called twice!")
         return
 
+    ''' Sanity check '''
+    if iid.lower() == 'new':
+        print("location.py set_location_filenames(iid) called with location:",
+              iid)
+        return
+
     FNAME_LAST_OPEN_STATES = set_one_filename(FNAME_LAST_OPEN_STATES, iid)
     FNAME_LAST_SONG_NDX    = set_one_filename(FNAME_LAST_SONG_NDX, iid)
     FNAME_LAST_PLAYLIST    = set_one_filename(FNAME_LAST_PLAYLIST, iid)
+    FNAME_MOD_TIME         = set_one_filename(FNAME_MOD_TIME, iid)
+    FNAME_SIZE_DICT        = set_one_filename(FNAME_SIZE_DICT, iid)
+    FNAME_WALK_LIST        = set_one_filename(FNAME_WALK_LIST, iid)
 
     LAST_LOCATION_SET = True
 
@@ -176,12 +190,10 @@ def rename_location_filenames(iid, old):
 
 
 def rnm_one_filename(old_fname, iid, old):
-    """ rename on directory name
-        TODO: Check if file/path exists before renaming """
-    old_fname.replace(os.sep + "mserve" + os.sep + old + os.sep,
-                      os.sep + "mserve" + os.sep + iid + os.sep)
-
-    return old_fname  # Assume failure
+    """ Build new directory name - Start using Sep 5/23 """
+    #print("renaming:", old, "to:", iid)
+    return old_fname.replace(os.sep + "mserve" + os.sep + old + os.sep,
+                             os.sep + "mserve" + os.sep + iid + os.sep)
 
 
 def read():
@@ -339,13 +351,28 @@ def validate_host(iid, toplevel=None):
 
 
 def get_dict_by_dirname(dirname):
-    """ Look up location dictionary using top directory path """
+    """ Look up location dictionary using top directory path
+
+        Not bullet-proof because two location codes can use same top directory.
+        One location could be SSH and other location can be FTP both to same
+        server. """
     global DICT                     # mserve.py will reference as lc.DICT
     stripped_last = dirname.rstrip(os.sep)
     for i, DICT in enumerate(LIST):
         topdir = DICT['topdir'].rstrip(os.sep)
         if topdir == stripped_last:
             return True             # DICT will be matching dirname
+
+    DICT = {}                       # No match found DICT empty
+    return False
+
+
+def get_dict_by_code(code):
+    """ Version 3.5.0 - Look up location dictionary using location code """
+    global DICT                     # mserve.py will reference as lc.DICT
+    for DICT in LIST:
+        if code == DICT['iid']:     # Version 1 key name
+            return True             # DICT 'iid' matches 'code' requested
 
     DICT = {}                       # No match found DICT empty
     return False
@@ -375,6 +402,46 @@ def check_if_host_by_dirname(dirname, toplevel=None):
     if found is False:
         return False
 
+    if stripped_last == topdir:
+        return True  # could have done earlier but need to chop legacy code below
+    ''' Should delete code below but needs to be deleted in more places... 
+        Sep 5/23 - Make it so code below never runs. Need to chop everywhere.
+    '''
+    
+    # Wake up host
+    if host is "":
+        print('Top Directory found but host name is blank?')
+        return False
+
+    if not test(DICT['iid'], toplevel):
+        return False
+
+    # Do we need to do more to keep host awake?
+    return True
+
+
+def check_if_host_by_code(code, toplevel=None):
+    """ Sep 5/23 - Overkill copy & paste from 'check_if_host_by_dirname()' """
+    global DICT
+
+    stripped_last = code.strip()  # remove all white space
+    found = False
+    host = ""
+    for i, DICT in enumerate(LIST):
+        if DICT['iid'] == stripped_last:  # Sep 5/23 'iid' is legacy key for 'code'
+            host = DICT['host']
+            found = True
+            break
+
+    if found is False:
+        return False
+
+    if stripped_last == DICT['iid']:
+        return True  # could have done earlier but need to chop legacy code below
+
+    ''' Should delete code below but needs to be deleted in more places... 
+        Sep 5/23 - Make it so code below never runs. Need to chop everywhere.
+    '''
     # Wake up host
     if host is "":
         print('Top Directory found but host name is blank?')
@@ -559,7 +626,7 @@ def get_dir(parent, title, start):
 
 
 def ftp_login():
-    """ Future FTP stuff
+    """ Test FTP stuff -- Sep. 3/23 No longer used Sep 5/23
         Need Error checking on every FTP transaction:
 
 
@@ -586,9 +653,166 @@ ftplib.all_errors
     """
 
     ftp = ftplib.FTP()
+    # ftp 2221 rick 1234  # ftp PORT USER PASSWORD
     ftp.connect('phone', 2221)
-    ftp.login('android', 'android')
+    ftp.login('rick', '1234')
+    # dr-x------   3 user group            0 Aug 27 16:32 Compilations
     print("ftp.getwelcome():", ftp.getwelcome())
+    # noinspection SpellCheckingInspection
+    """
+    ftp.sendcmd("chmod -R +W /")  # / relative to mount point "/SD Card/Music"
+    #   File "/home/rick/python/location.py", line 594, in ftp_login
+    #     ftp.sendcmd("chmod -R +W /")  # / relative to mount point "/SD Card/Music"
+    #   File "/usr/lib/python2.7/ftplib.py", line 249, in sendcmd
+    #     return self.getresp()
+    #   File "/usr/lib/python2.7/ftplib.py", line 224, in getresp
+    #     raise error_perm, resp
+    # error_perm: 502 Command CHMOD not implemented.
+    """
+    ext.t_init('Transfer one file 875 bytes')
+    with open("example.lrc", "rb") as fh:
+        ftp.storbinary("STOR example.lrc", fh)
+    job_time = ext.t_end('print')
+    kbps = (875.0 / 1000.0) / job_time
+    print("KB/s:", kbps)
+    print(" " * 40, ext.t(time.time()))
+
+    ext.t_init('Transfer one file 168,680 bytes')
+    with open("last_selections", "rb") as fh:
+        ftp.storbinary("STOR last_selections", fh)
+    job_time = ext.t_end('print')
+    kbps = (168680.0 / 1000.0) / job_time
+    print("KB/s:", kbps)
+    print(" " * 40, ext.t(time.time()))
+
+    ext.t_init('Transfer second file 168,680 bytes')
+    with open("last_playlist", "rb") as fh:
+        ftp.storbinary("STOR last_playlist", fh)
+    job_time = ext.t_end('print')
+    kbps = (168680.0 / 1000.0) / job_time
+    print("KB/s:", kbps)
+    print(" " * 40, ext.t(time.time()))
+
+    ext.t_init('Transfer 10 MB file 8,192 block size')
+    with open("03 I'm Not In Love.m4a", "rb") as fh:
+        ftp.storbinary("STOR 03 I'm Not In Love.m4a", fh)
+    job_time = ext.t_end('print')
+    kbps = (10450423.0 / 1000.0) / job_time
+    print("KB/s:", kbps)
+    print(" " * 40, ext.t(time.time()))
+
+    ext.t_init('Re-transfer second file 168,680 bytes')
+    with open("last_playlist", "rb") as fh:
+        ftp.storbinary("STOR last_playlist", fh)
+    job_time = ext.t_end('print')
+    kbps = (168680.0 / 1000.0) / job_time
+    print("KB/s:", kbps)
+    print(" " * 40, ext.t(time.time()))
+
+    ext.t_init('Re-Transfer 10 MB file 32,768 block size')
+    with open("03 I'm Not In Love.m4a", "rb") as fh:
+        ftp.storbinary("STOR 03 I'm Not In Love.m4a", fh, blocksize=32768)
+    job_time = ext.t_end('print')
+    kbps = (10450423.0 / 1000.0) / job_time
+    print("KB/s:", kbps)
+    print(" " * 40, ext.t(time.time()))
+
+    ext.t_init('Re-Transfer 10 MB file 65,536 block size')
+    with open("03 I'm Not In Love.m4a", "rb") as fh:
+        ftp.storbinary("STOR 03 I'm Not In Love.m4a", fh, blocksize=65536)
+    job_time = ext.t_end('print')
+    kbps = (10450423.0 / 1000.0) / job_time
+    print("KB/s:", kbps)
+    print(" " * 40, ext.t(time.time()))
+
+    ext.t_init('Re-Transfer 10 MB file 262,144 block size')
+    with open("03 I'm Not In Love.m4a", "rb") as fh:
+        ftp.storbinary("STOR 03 I'm Not In Love.m4a", fh, blocksize=262144)
+    job_time = ext.t_end('print')
+    kbps = (10450423.0 / 1000.0) / job_time
+    print("KB/s:", kbps)
+    print(" " * 40, ext.t(time.time()))
+
+    ext.t_init('Re-Transfer 10 MB file 1,048,576 block size')
+    with open("03 I'm Not In Love.m4a", "rb") as fh:
+        ftp.storbinary("STOR 03 I'm Not In Love.m4a", fh, blocksize=1048576)
+    job_time = ext.t_end('print')
+    kbps = (10450423.0 / 1000.0) / job_time
+    print("KB/s:", kbps)
+    print(" " * 40, ext.t(time.time()))
+
+    ext.t_init('Re-Transfer 10 MB file 4,194,304 block size')
+    with open("03 I'm Not In Love.m4a", "rb") as fh:
+        ftp.storbinary("STOR 03 I'm Not In Love.m4a", fh, blocksize=4194304)
+    job_time = ext.t_end('print')
+    kbps = (10450423.0 / 1000.0) / job_time
+    print("KB/s:", kbps)
+    print(" " * 40, ext.t(time.time()))
+
+    ext.t_init('Re-Transfer 10 MB file 262,144 block size')
+    with open("03 I'm Not In Love.m4a", "rb") as fh:
+        ftp.storbinary("STOR 03 I'm Not In Love.m4a", fh, blocksize=262144)
+    job_time = ext.t_end('print')
+    kbps = (10450423.0 / 1000.0) / job_time
+    print("KB/s:", kbps)
+    print(" " * 40, ext.t(time.time()))
+
+    ext.t_init('Re-Transfer 10 MB file 65,536 block size')
+    with open("03 I'm Not In Love.m4a", "rb") as fh:
+        ftp.storbinary("STOR 03 I'm Not In Love.m4a", fh, blocksize=65536)
+    job_time = ext.t_end('print')
+    kbps = (10450423.0 / 1000.0) / job_time
+    print("KB/s:", kbps)
+    print(" " * 40, ext.t(time.time()))
+
+    ext.t_init('Transfer 10 MB file 8,192 block size')
+    with open("03 I'm Not In Love.m4a", "rb") as fh:
+        ftp.storbinary("STOR 03 I'm Not In Love.m4a", fh)
+    job_time = ext.t_end('print')
+    kbps = (10450423.0 / 1000.0) / job_time
+    print("KB/s:", kbps)
+    print(" " * 40, ext.t(time.time()))
+
+    ext.t_init('Re-Transfer 10 MB file 262,144 block size')
+    with open("03 I'm Not In Love.m4a", "rb") as fh:
+        ftp.storbinary("STOR 03 I'm Not In Love.m4a", fh, blocksize=262144)
+    job_time = ext.t_end('print')
+    kbps = (10450423.0 / 1000.0) / job_time
+    print("KB/s:", kbps)
+    print(" " * 40, ext.t(time.time()))
+
+    ext.t_init('Transfer 10 MB file 16,384 block size')
+    with open("03 I'm Not In Love.m4a", "rb") as fh:
+        ftp.storbinary("STOR 03 I'm Not In Love.m4a", fh, blocksize=16384)
+    job_time = ext.t_end('print')
+    kbps = (10450423.0 / 1000.0) / job_time
+    print("KB/s:", kbps)
+    print(" " * 40, ext.t(time.time()))
+
+    ext.t_init('Re-Transfer 10 MB file 32,768 block size')
+    with open("03 I'm Not In Love.m4a", "rb") as fh:
+        ftp.storbinary("STOR 03 I'm Not In Love.m4a", fh, blocksize=32768)
+    job_time = ext.t_end('print')
+    kbps = (10450423.0 / 1000.0) / job_time
+    print("KB/s:", kbps)
+    print(" " * 40, ext.t(time.time()))
+
+    ext.t_init('Re-Transfer 10 MB file 65,536 block size')
+    with open("03 I'm Not In Love.m4a", "rb") as fh:
+        ftp.storbinary("STOR 03 I'm Not In Love.m4a", fh, blocksize=65536)
+    job_time = ext.t_end('print')
+    kbps = (10450423.0 / 1000.0) / job_time
+    print("KB/s:", kbps)
+    print(" " * 40, ext.t(time.time()))
+
+    ext.t_init('Transfer 10 MB file 8,192 block size')
+    with open("03 I'm Not In Love.m4a", "rb") as fh:
+        ftp.storbinary("STOR 03 I'm Not In Love.m4a", fh)
+    job_time = ext.t_end('print')
+    kbps = (10450423.0 / 1000.0) / job_time
+    print("KB/s:", kbps)
+    print(" " * 40, ext.t(time.time()))
+
 
     def walk(path, all):
         """ walk the path """
@@ -605,6 +829,8 @@ ftplib.all_errors
             # No shortcut ' '.join(parts[8:]) - name could have had double space
             name = f.split(date3)[1]
             if f.startswith("d"):  # directory?
+                # Print all directories to see permissions
+                print(f)
                 new_path = path + name + os.sep
                 walk(new_path, all)  # back down the rabbit hole
             else:
@@ -612,12 +838,21 @@ ftplib.all_errors
                 all.append(path + name + " <" + size.strip() + ">")
 
     all_files = []
-    ext.t_init('walk(os.sep, all_files):')
-    walk(os.sep, all_files)  # 41 seconds
-    ext.t_end('print')
+    if True is True:
+        # Quick test of root directory
+        ext.t_init('quick dir on topdir')
+        ftp.dir(os.sep, all_files.append)
+        for line in all_files[-12:]:
+            print(line)  # Print last dozen lines in root directory
+        ext.t_end('print')
+    else:
+        # Long test of all sub-dirs and files
+        ext.t_init('walk(os.sep, all_files):')
+        walk(os.sep, all_files)  # 41 seconds. Nautilus is split second
+        for i in range(10):
+            print(all_files[i])  # Print first ten lines
+        ext.t_end('print')
     print("len(all_files):", len(all_files))  # 4,074 files incl 163 + 289 subdirs
-    for i in range(10):
-        print(all_files[i])
     return all_files
 
 
@@ -833,6 +1068,7 @@ class LocationsCommonSelf:
         self.act_touchmin = None  # Replaces activemin
         self.act_comments = None
         self.act_row_id = None  # Location SQL Primary Key
+        self.act_ftp = None  # libftp.FTP() instance
 
         ''' fld_intro = "Code: L001  +
                         | Last modified: <time>  +
@@ -940,7 +1176,6 @@ class LocationsCommonSelf:
         self.cmp_close_btn = None  # Button to close Compare Locations window
         self.update_differences_btn = None  # Click button to synchronize
         self.cmp_found = None  # Number of files goes into differences button
-        self.command_list = []  # List of tuples: (iid, command_str)
         self.cmp_command_list = []  # iid,command_str,src_to_trg,src_time,trg_time
         self.cmp_return_code = 0  # Indicate how update failed
         self.src_mt = None  # Source modification time using ModTime() class
@@ -984,8 +1219,26 @@ class Locations(LocationsCommonSelf):
             - open() - Pick existing Location and play music
             - edit() - Edit existing location and update database
             - delete() - Delete existing location and update database
-            - compare() - Compare open location to target location & synchronize
+            - synchronize() - Compare open location to target location & sync
+            - test_common() - Test nmap, host wakeup, mount and topdir
             - load_last_location() - Reopen location from last mserve session
+
+        Version 3.5.1 FTP MINOR UPGRADE PLANS:
+            - Phone as host taking many minutes to read files twice on start.
+            - Only need to read first few subdirectories to get 10 songs
+            - Create dedicated FTP login function that stays connected until
+              host response is in error. Then give chance to check phone, etc.
+            - Check Host with nc / nmap as before
+            - Then run command to wakeup host: "ftp user password"
+            - curlftpfs command moves down to mount topdir command.
+
+        Version 3.5.2 FTP MAJOR UPGRADE PLANS
+            - Top Directory for Music becomes internal list of filenames.
+            - Walk all dirs / files over 30 seconds and save for reusing.
+            - On startup, 1 second to download last saved song.
+            - when music is playing, separate thread runs to get previous / next
+            - FTP binary get has call-back per block-size of 8,192 (the best speed)
+            - During call-back call fast_refresh if > 10ms has passed.
 
     """
 
@@ -1025,10 +1278,11 @@ class Locations(LocationsCommonSelf):
         self.open_touchmin = None  # Replaces activemin
         self.open_comments = None
         self.open_row_id = None  # SQL Location Table Primary ID (int)
+        self.open_ftp = None  # libftp.FTP() instance
 
         ''' Additional Open Location variables not in SQL '''
         self.host_down = False  # For emergency shutdown
-        self.open_sshfs_used = False
+        self.open_fusermount_used = False  # Using sshfs or curlftpfs
 
         ''' External Commands Installed? Flags '''
         self.nmap_installed = False  # Set in display_main_window()
@@ -2469,7 +2723,7 @@ class Locations(LocationsCommonSelf):
 
         ''' Initialize working variables '''
         self.make_act_from_sql_dict(d)  # self.act_ used for testing host
-        self.make_open_from_sql_dict(d)  # self.open_ changed only on load 
+        self.make_open_from_sql_dict(d)  # self.open_ changed only on load
 
         global DICT  # Be glad when this old code is gone !!!
         DICT = self.make_ver1_dict_from_sql_dict(d)
@@ -2482,6 +2736,8 @@ class Locations(LocationsCommonSelf):
 
         ''' If host used, wake it up and validate topdir '''
         if self.validate_host(toplevel=toplevel):
+            # Sep 5/23 - Need to get self.act_ftp variable from host tests into
+            self.open_ftp = self.act_ftp
             return 0  # else not a host or host won't wake up
 
         ''' Check if last used location's music top directory has subdirs '''
@@ -2506,11 +2762,17 @@ class Locations(LocationsCommonSelf):
             Always use self.open_xxx and never self.act_xxx fields which
             can be changed in Maintenance.
 
-# NOTE: For Debugging, run the following commands on the host and client:
-#       HOST (Open a terminal enter command to run forever):
-#           mserve_client.sh -d
-#       CLIENT (Copy to terminal and replace "<HOST>" with Host name):
-#           while : ; do ssh <HOST> "cat /tmp/mserve_client.log" ; sleep 60 ; done
+            TODO:
+                - Sign into host
+                - Run simple command and test results 
+
+            DEBUG -------------------------------------------------------------
+
+            HOST (Open a terminal enter command to run forever):
+                mserve_client.sh -d
+
+            CLIENT (Copy to terminal and replace "<HOST>" with Host name):
+                while : ; do ssh <HOST> "cat /tmp/mserve_client.log" ; sleep 60 ; done
 
         """
         #print("location.py Locations.validate_host(toplevel):", toplevel)
@@ -2556,7 +2818,7 @@ class Locations(LocationsCommonSelf):
                     if result == 0:
                         text = "Mount SUCCESS!"
                         #self.out_fact_print(title, text, 'info')
-                        self.open_sshfs_used = True
+                        self.open_fusermount_used = True
                         if os.path.exists(self.open_topdir) and \
                                 len(os.listdir(self.open_topdir)):
                             #text = "FAST STARTUP... Artist count: ",
@@ -2671,7 +2933,7 @@ class Locations(LocationsCommonSelf):
                     len(os.listdir(self.act_topdir)) > 0:
                 self.test_host_is_mounted = True
                 if self.act_mountcmd:
-                    self.open_sshfs_used = True  # better than nothing...
+                    self.open_fusermount_used = True  # better than nothing...
                 return True  # Probably not even a host.
 
         # noinspection SpellCheckingInspection, Pep8CodingStyleViolationW605
@@ -2890,6 +3152,9 @@ filename.
         if self.called_from_main_top and not self.validate_location():
             return False  # Called from main_top and error given to user to fix
 
+        ''' Long running process - Turn off some play_top buttons '''
+        #self.start_long_running()
+
         ''' If nmap requested and called from test mount the display. '''
         display_test = run_nmap and not self.called_from_main_top
         #print("test_common() calling test_init(display_test):", display_test)
@@ -2929,7 +3194,13 @@ filename.
                 self.test_show(text, pattern=self.act_wakecmd)
 
                 ''' Launch wakeup command (don't use '&& sleep 4' anymore). '''
-                os.popen(self.act_wakecmd)
+                if self.act_wakecmd.startswith("wakeonlan"):
+                    os.popen(self.act_wakecmd)
+                else:
+                    self.act_ftp = ftplib.FTP()
+                    if not self.test_ftp_login(self.act_ftp, self.act_host,
+                                               self.act_wakecmd):
+                        return self.test_failure()
 
         ''' Keep testing host until it is awake '''
         host_is_awake = False
@@ -2940,11 +3211,24 @@ filename.
             if "#" in cmd1:  # Remove any comments from command to append redirects
                 cmd1 = cmd1.split('#')[0]
             cmd = cmd1 + " > " + FNAME_TEST + " 2>&1 &"
-            os.popen(cmd)  # Launch background command to list files to temp file
+
+            def repeated_test():
+                """ Repeated test before and at bottom of loop
+                :return: Nothing
+                """
+                if self.act_ftp:
+                    print("Test host awake with ftplib.FPT() instance")
+                    welcome = self.act_ftp.getwelcome()
+                    if welcome.startswith("220 "):
+                        f_list = ["FTP Success", welcome, ""]
+                        ext.write_from_list(FNAME_TEST, f_list)
+                else:
+                    print("Test host awake with cmd:", cmd)
+                    os.popen(cmd)  # Launch background command to list files to temp file
             full_text = "\nRunning test to see if Host awake:\n\t" + cmd + "\n"
             self.test_show(full_text, pattern=cmd1)
 
-            text = "Waiting for '" + FNAME_TEST + "' output results to appear\n."
+            text = "Waiting for '" + FNAME_TEST + "' output results to appear.\n"
             self.test_show(text, pattern=FNAME_TEST)
 
             testrep = self.act_testrep
@@ -2960,6 +3244,7 @@ filename.
                                   "test if Host awake")
                 # noinspection PyBroadException
                 try:
+                    # Read results from command, must be > 2 characters
                     strings = ext.read_into_list(FNAME_TEST)
                     if len(strings) > 2:
                         self.test_show("\tHost Response first line:\t" + strings[0],
@@ -2973,7 +3258,7 @@ filename.
                         break
                 except:
                     pass
-                os.popen(cmd)  # Launch background command to list files to temp file
+                repeated_test()  # Inner function defined before loop
 
             if not host_is_awake:
                 test_time = int(float(self.act_testrep) * .1)
@@ -2995,9 +3280,11 @@ filename.
             if not self.called_from_main_top:
                 self.test_host_is_mounted = True  # Still mounted after prev wakeup?
                 if self.act_mountcmd:
-                    self.open_sshfs_used = True
+                    self.open_fusermount_used = True
                 else:
-                    self.open_sshfs_used = False
+                    self.open_fusermount_used = False
+            if self.act_ftp:
+                self.test_ftp_walk(self.act_ftp)
             return self.test_success(called_from_sync)
 
         ''' sshfs host's music top directory to local mount point '''
@@ -3009,15 +3296,14 @@ filename.
             self.test_show(text, pattern=self.act_mountcmd)
             # noinspection SpellCheckingInspection
             ''' Advice about fuse error '''
-            text = "NOTE: 'sshfs' can stall and cause mserve to freeze.\n" + \
+            text = "NOTE: 'sshfs' and 'curlftpfs' can stall and cause mserve to freeze.\n" + \
                    "If so, you can test by listing files on mount point.\n\n" + \
-                   "Run the command below and check for the error below:\n" + \
-                   "    $ sshfs '" + self.act_host + ":/mnt/music' /mnt/music\n" + \
-                   "    fuse: bad mount point `/mnt/music`:\n" + \
-                   "    Transport endpoint is not connected\n\n" + \
-                   "If you get the 'fuse' error, unmount the point with:\n" + \
-                   "    $ sudo umount -l /mnt/music'"
-            self.test_show(text, pattern='NOTE:')
+                   "The following commands might help:\n" + \
+                   "    $ fusermount -u " + self.act_topdir + "\n" + \
+                   "    $ sudo umount -l " + self.act_topdir + "\n"
+            if self.act_mountcmd.startswith("sshfs") or \
+                    self.act_mountcmd.startswith("curlftpfs"):
+                self.test_show(text, pattern='NOTE:')
             # We want error messages in our result
             result = os.popen(mountcmd).read().strip()
             text = "\nMount command result: " + result
@@ -3045,6 +3331,8 @@ filename.
         ''' Host is up and directory mounted. Check if TopDir has subdirs '''
         if os.path.exists(self.act_topdir) and \
                 len(os.listdir(self.act_topdir)) > 0:
+            if self.act_ftp:
+                self.test_ftp_walk(self.act_ftp)
             return self.test_success(called_from_sync)  # Finally we're good to go!
         else:
             if os.path.exists(self.act_topdir):
@@ -3175,6 +3463,142 @@ filename.
 
         return host_is_up, host_is_awake
 
+    def test_ftp_login(self, ftp, host, ftp_string):
+        """ Connect and log into FTP Host """
+        # ftp 2221 rick 1234  # ftp PORT USER PASSWORD
+        parts = ftp_string.split()
+        passed = True
+        if len(parts) < 4:
+            passed = False
+        elif parts[0] != "ftp":
+            passed = False
+        try:
+            port = int(parts[1])
+        except ValueError:
+            passed = False
+
+        if not passed:
+            title = "Location Information Error"
+            text = "The field: 'Command to wake up sleeping Host',\n"
+            text += "contains: " + ftp_string
+            text += "\n\nFour parts, separated by a space, are required:\n\n"
+            text += "\tftp  \t- The letters: ftp (without quotes)\n"
+            text += "\tPort \t- The numeric port number\n"
+            text += "\tUser ID  - The user ID/name the host expects\n"
+            text += "\tPassword - Password for user the host expects "
+            self.out_cast_show_print(title, text, 'error', align='left')
+            return False
+        #print("parts:", parts)
+        # PORT: Convert u"2221" to int 2221
+        try:
+            ftp.connect(host, int(parts[1]))  # TODO: split into test_ftp_connect
+            ftp.login(parts[2], parts[3])  # TODO: return error codes
+        except Exception as err:
+            print("Exception:", err)
+            title = "Login Error"
+            text = "Could not log into Remote Host.\n"
+            text += "\nHost name:\t " + host
+            text += "\nUsing port:\t" + parts[1]
+            text += "\nUser name: \t" + parts[2]
+            text += "\nPassword: \t" + parts[3]
+            text += "\n\nFTP returned error message:\n\n"
+            text += str(err)
+            text += "\n\nEnsure FTP Server is running and enabling logins."
+            self.out_cast_show_print(title, text, 'error', align='left')
+            return False
+        return True
+
+    def test_ftp_walk(self, ftp, show=True):
+        """ Walk FTP directories
+            TODO: Simply read fake_paths_size
+        """
+
+        ''' Build fake_paths_size filename (FNAME) using open location) '''
+        size_name = rnm_one_filename(FNAME_SIZE_DICT, self.act_code, self.open_code)
+        walk_name = rnm_one_filename(FNAME_WALK_LIST, self.act_code, self.open_code)
+        if os.path.isfile(size_name) and os.path.isfile(walk_name):
+            return True  # Save time and reuse last session. Tree will rebuild slow
+
+        def walk(topdir, path, all, walks):
+            """ walk the path """
+            files = []
+            dirs = []
+            base_names = []
+            if topdir.endswith(os.sep):
+                u_topdir = topdir.rsplit(os.sep, 1)[0]
+            else:
+                u_topdir = topdir
+            u_topdir = toolkit.uni_str(u_topdir).encode('utf-8')
+            u_path = toolkit.uni_str(path)
+            ftp.dir(u_path, files.append)  # callback = files.append(line)
+            # Filename could be any position on line so can't use line[52:] below
+            # dr-x------   3 user group            0 Aug 27 16:32 Compilations
+            for f in files:
+                lin = ' '.join(f.split())  # compress multiple whitespace to one space
+                parts = lin.split()  # split on one space
+                size = parts[4]
+                # Date format is either: MMM DD hh:mm or MMM DD  YYYY or MMM DD YYYY
+                date3 = parts[7] + " "  # doesn't matter if the size is same as YEAR
+                # No shortcut ' '.join(parts[8:]) - name could have had double space
+                name = f.split(date3)[1]
+                if f.startswith("d"):  # directory?
+                    # Print all directories to see permissions
+                    self.test_show(f)  # self. doesn't work inside inner func.
+                    self.fast_refresh()  # Update animations
+                    new_path = path + name + os.sep
+                    dirs.append(name.encode('utf-8'))
+                    walk(topdir, new_path, all, walks)  # back down the rabbit hole
+                else:
+                    # /path/to/filename.ext <SIZE>
+                    u_name = toolkit.uni_str(name)
+                    base_names.append(u_name.encode('utf-8'))
+                    int_size = int(size.strip())
+                    u_size = u'{:n}'.format(int_size)
+                    entry = u_path + u_name + u" < " + u_size + u" > "
+                    #all.append(entry.encode('utf-8'))  # no more list, now dict
+                    full_path = u_path + u_name
+                    all[u_topdir + full_path.encode('utf-8')] = int_size
+                    if show:
+                        self.test_show(entry.encode('utf-8'))
+            #walk_tuple = tuple((u_path.encode('utf-8'), dirs, base_names))
+            #walks.append(walk_tuple)
+            if u_path.endswith(os.sep):
+                u_path = u_path.rsplit(os.sep, 1)[0]
+            walks.append((u_topdir + u_path.encode('utf-8'), dirs, base_names))
+
+        all_files = {}
+        all_walks = []
+        # Long test of all sub-dirs and files
+        ext.t_init('walk(os.sep, all_files)')
+        print("self.act_topdir:", self.act_topdir)
+        walk(self.act_topdir, os.sep, all_files, all_walks)  # 41 seconds. Nautilus is split second
+        success = ext.write_from_json(size_name, all_files)
+        if not success:
+            print("ext.write_from_json(FNAME_SIZE_DICT, all_files)... FAILED")
+        else:
+            print("FILE SAVED:", size_name)
+        all_walks.sort()  # Sep 6/23 previously "/Compilations" was first in list
+        success = ext.write_from_json(walk_name, all_walks)
+        if not success:
+            print("ext.write_from_json(FNAME_WALK_LIST, all_files)... FAILED")
+        else:
+            print("FILE SAVED:", walk_name)
+        for i, line in enumerate(all_walks):
+            if i < 3:  # Print first 3
+                print(i, "MAKE Walk:", all_walks[i])
+            if i > len(all_walks) - 4:  # Print last 3
+                print(i, "MAKE Walk:", all_walks[i])
+
+        walk_time = ext.t_end('print')
+        text = "\nFTP Walk completed in: " + tmf.mm_ss(walk_time) + " seconds."
+        text += "\nFake paths and sizes saved to: " + size_name
+        text += "\nos.walk(dir, topdown) list to: " + walk_name
+        self.test_show(text, pattern=FNAME_SIZE_DICT)
+        #self.test_show("\nFTP Walk completed in: " +
+        #               tmf.mm_ss(walk_time) + " seconds.")
+        print("len(all_files):", len(all_files))  # 4,074 files incl 452 subdirs
+        return
+
     def test_show(self, text, pattern=None):
         """ Insert into self.test_box (scrolled text box) and print to console.
             Also use dtb (delayed text box), however by design not all lines will
@@ -3235,9 +3659,9 @@ filename.
         if not self.called_from_main_top:
             ''' This is a live situation. Set self.open_xxx '''
             if self.test_host_is_mounted and self.open_mountcmd:
-                self.open_sshfs_used = True
+                self.open_fusermount_used = True
             else:
-                self.open_sshfs_used = False
+                self.open_fusermount_used = False
             self.test_close_window()  # main_top allows reviewing results
 
         if self.called_from_main_top and called_from_sync:
@@ -3246,6 +3670,9 @@ filename.
             if self.apply_button:
                 self.apply_button.grid_remove()
 
+        ''' Long running process - Restore play_top buttons '''
+        #self.end_long_running()
+
         return True
 
     def test_failure(self):
@@ -3253,6 +3680,10 @@ filename.
         failure = "\nHost FAILURE. Review and then click 'Close' button."
         self.test_show(failure, pattern="FAILURE")
         self.test_dtb.close()
+
+        ''' Long running process - Restore play_top buttons '''
+        #self.end_long_running()
+
         # Leave test window open
         return False
 
@@ -3288,18 +3719,18 @@ filename.
                 ~/.ssh/config or to /etc/ssh/ssh_config on the client.
 
         """
-        if self.open_sshfs_used and not self.open_topdir:
+        if self.open_fusermount_used and not self.open_topdir:
             title = "Programming Error."
             text = "location.py Locations.sshfs_close() called with no topdir."
             self.out_cast_show_print(title, text, 'error')
 
-        if self.open_sshfs_used:
+        if self.open_fusermount_used:
             cmd = "fusermount -u " + self.open_topdir
             os.popen(cmd)
             title = "Locations.sshfs_close() called at: " + ext.t(time.time())
             text = "Running: " + cmd
             self.out_fact_print(title, text, 'warning')
-            self.open_sshfs_used = False
+            self.open_fusermount_used = False
 
     def reset(self, shutdown=False):
         """ Named "reset" because used by shutdown as well.
@@ -4167,6 +4598,9 @@ filename.
 
     def fast_refresh(self, tk_after=False):
         """ Quickly update animations with no sleep after """
+
+        if not self.get_thread_func:
+            return True  # Still 'NoneType' during mserve startup & no windows
 
         if not self.last_fast_refresh:
             self.last_fast_refresh = 0.0  # Not init. May be mserve.py call.
