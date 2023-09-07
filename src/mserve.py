@@ -90,101 +90,156 @@ References:
     https://anzeljg.github.io/rin2/book2/2405/docs/tkinter/ttk-Treeview.html
 
 
-# TODO:
-# -----------------------------------------------------------------------------
+-----------------------------------------------------------------------------
 
-#   Playlists
+DESIGN FLAWS:
 
-#     BUGS:
+    Shuffling Favorites, not saving play and exiting, then opening a
+        playlist will undo shuffle. The save favorites dropdown menu
+        option should be enabled and a message displayed.
 
-#       Shuffling Favorites then opening playlist will undo shuffle. Backup!!
+TODO:
 
-#   Miscellaneous
+    Similar to below, high priority to crawl FTP server to find new
+        songs and delete old songs. Unlike below this is done one directory
+        at a time with callback on every filename such that refresh can be
+        called every 10 ms or whatever.
 
-#     TODO:
+    rebuild_lib_tree() doesn't show the song just ripped. Since going
+        through the trouble, might as well reuse SORTED_LIST2 with new last
+        access time if it doesn't refresh automatically for old song ripped
+        again like it should.
 
-#       Similar to below, high priority to crawl FTP server to find new
-#       songs and delete old songs. Unlike below this is done one directory
-#       at a time with callback on every filename such that refresh can be
-#       called every 10 ms or whatever.
+    After creating .lrc file for one location, a batch synchronization to
+        all other locations? Currently, only musicolet running on Android
+        mobile phone is only location that utilizes `.lrc` files.
 
-#       rebuild_lib_tree() doesn't show the song just ripped. Since going
-#       through the trouble, might as well reuse SORTED_LIST2 with new last
-#       access time if it doesn't refresh automatically for old song ripped
-#       again like it should.
+    Currently .lrc file created on at a time from Music Location Tree
+        song popup menu. A batch function for all sycnhronized songs
+        can be run and update only those where the size is differnt.
+        Updating all would be slow, but if only times were changed and
+        not lyrics, the size would be the same and the update would be
+        skipped. Reading history records for lyrics training gives last
+        time and that can be compared to file modTime class. In this case
+        regular synchronize will work assuming main location added .lrc
+        file to Mobile phone with earlier sync. However sync is designed
+        not to add files.
 
-#       For long labels, try: wraplength=250
+    Chronology filter "this artist" is pulling all compilations
+        Evaluate feasibility of "this album" filter
 
-#       Ignore Click should perform collapse list. Collapsing already supported
-#           with chevron    
+    FileControl.zoom() _alpha_cb() that covers instead of pushing tree down
+        FineTune.sync() divide last duration time to zero duration lines
 
-#       Chronology filter "this artist" is pulling all compilations
+    More libftp.FTP() enhancements.
 
-#       FileControl.zoom() _alpha_cb() that covers instead of pushing tree down
-#       FineTune.sync() divide last duration time to zero duration lines
+LONGER TERM TODO'S:
 
-#       More libftp.FTP() enhancements.
+    WSL2 has 150,000 users world wide. Ubuntu has 40 million users.
+        Mac has 100 million users. Android has 3.6 billion users.
 
-#   UPGRADE:
-#       When watching lyrics time scrolling and you notice time is out of sync,
-#           need quick click action button to pause and fix 2 seconds ago...
+    Artist and Album popup in Music Location Tree new option to create
+        temporary playlist and play all. Current favorites or playlist
+        swapped out while temporary playlist plays in play_top. Same new
+        technology could replace "sample middle" and sample full"?
 
-#   RENAME VARIABLES:
-#       'self.saved_selections' -> 'self.play_order_iid'
-#       'self.saved_selections' -> 'self.play_iid_seqs'
-#       'self.saved_selections' -> 'self.playlist_iids'  # Depends on next section
-#       'self.saved_selections' -> 'self.play_lib_iid'
-#       'self.saved_selections' -> 'self.sel_lib_iids'
-#       'self.saved_selections' -> 'self.sel_lib_tree_iids'
-#       'self.saved_selections' -> 'self.play_iids'
-#       'self.saved_selections' -> 'self.select_iids'
-#       'self.saved_selections' -> 'self.sel_iids'
-#       'self.saved_selections' -> 'self.fav_iid_list'
-#       'self.saved_selections' -> 'self.play_iid_list'
+    VU Meter peak line indicator that drops down to current level and changes
+        color as it passes through zone. How long to hold peak and how fast
+        to drop? Peak is instantly pushed up on db increase. Peak would be
+        visible betwen rectangles and inside retangles which requires new
+        rectangle box that is no longer simply invisible or all one color.
 
-#       'self.saved_playlist'   -> 'self.playlist_paths'  # Already DONE
-#       'self.playlist_paths'   -> 'self.sel_lib_paths'
-#       'self.playlist_paths'   -> 'self.sel_lib_tree_paths'
-#       'self.playlist_paths'   -> 'self.select_paths'
-#       'self.playlist_paths'   -> 'self.play_paths'
-#       'self.playlist_paths'   -> 'self.fav_paths'  # Misleading when Playlists()
-#       'self.playlist_paths'   -> 'self.select_paths'
-#       'self.playlist_paths'   -> 'self.fav_path_list'  # Misleading when Playlists()
-#       'self.playlist_paths'   -> 'self.play_path_list'
+    Instead of ellipsis for long labels, try: wraplength=250
 
-#       'self.song_list'        -> 'self.lib_tree_paths'
-#       'self.song_list'        -> 'self.lib_song_paths'
-#       'self.song_list'        -> 'self.fake_paths'  # Already DONE
+    In mserve_config.py, verify external commands are in path:
+        command -v cp, diff, ffplay, ffprobe, ffmpeg, fusermount, 
+            gsettings, gst-launch-1.0, kid3, kill, nautilus, nc, nmap,
+            pactl, pgrep, pqiv, ps, ssh, sshfs, stat, touch, 
+            wakeonlan, wmctrl, xclip, xdotool, xprop
 
-#       'self.ndx'              -> 'self.curr_iid_ndx'
-#       'self.ndx'              -> 'self.play_curr_ndx'
-#       'self.ndx'              -> 'self.play_ndx'  # June 29, 2023 11 AM - Flavor De Jure
-#       'self.ndx'              -> 'self.seq_ndx'
-#       'self.ndx'              -> 'self.select_ndx'
-#       'self.ndx'              -> 'self.sel_ndx'
-#       'self.ndx'              -> 'self.sel_curr_ndx'
-#       'self.ndx'              -> 'self.iid_ndx'
-#       'self.ndx'              -> 'self.fav_ndx'  # Misleading when Playlists()
+    In mserve.py, dropdown menu options will appear if:
+        global KID3_INSTALLED, FM_INSTALLED
+        KID3_INSTALLED = ext.check_command('kid3')
+        FM_INSTALLED = ext.check_command(FM_COMMAND)
 
-#       New brothers for '_ndx' -> 'self.---_iid"   # self.saved_selections[self.ndx]
-#       New brothers for '_ndx' -> 'self.---_path"  # self.playlist_paths[self.ndx]
-#       New brothers for '_ndx' -> 'self.---_pid"   # No longer necessary with
-#       New brothers for '_ndx' -> 'self.---_sink"  # play_ctl.pid & play_ctl.sink
+    In location.py, input fields appear if:
+        self.nmap_installed = ext.check_command('nmap')
+        if self.nmap_installed:
+            self.nmap_installed = ext.check_command('nc')
+        self.ssh_installed = ext.check_command('ssh')
+        self.sshfs_installed = ext.check_command('sshfs')
+        if self.sshfs_installed:
+            self.sshfs_installed = ext.check_command('fusermount')
+        self.wakeonlan_installed = ext.check_command('wakeonlan')
 
-#   RENAME FUNCTIONS:
-#       'self.song_set_ndx()'   -> 'self.set_sel_ndx()'
-#       'self.song_set_ndx()'   -> 'self.set_select_ndx()'
-#       'self.song_set_ndx()'   -> 'self.change_select_ndx()'
-#       'self.song_set_ndx()'   -> 'self.play_new_song()'
-#       'self.song_set_ndx()'   -> 'self.play_set_ndx()'
-#       'self.song_set_ndx()'   -> 'self.set_play_ndx()'    # July 1, 2023 5:28pm
-#       Advantage of changing "self.song_" to "self.play_" is below too:
-#           self.song_artist_var.set(make_ellipsis(self.play_ctl.Artist, E_WIDTH))
-#           self.song_album_var.set(make_ellipsis(self.play_ctl.Album, E_WIDTH))
-#           self.song_title_var.set(make_ellipsis(self.play_ctl.Title, E_WIDTH))
+    show_debug() dumps to console. Convert print() to two new methods:
+        debug_fact_header() and debug_fact_line(). They build title and
+        text lines respectively. A third function, fact_output() 
+        calls lcs.out_fact_print(title, text).
+        
+        Define future button (collapsed=True) such that only title is
+            displayed and click on button to expand section (text).
 
-#       'self.play_insert()'    -> 'self.add_selected()'
-#       'self.play_insert()'    -> 'self.insert_selection()'
+        Revise ShowInfo from stating output in console to:
+            "Debug details in Information Centre and console". 
+
+    When watching lyrics time scrolling and you notice time is out of sync,
+        need quick click action button to pause and fix 2 seconds ago...
+
+RENAME VARIABLES:
+    'self.saved_selections' -> 'self.play_order_iid'
+    'self.saved_selections' -> 'self.play_iid_seqs'
+    'self.saved_selections' -> 'self.playlist_iids'  # Depends on next section
+    'self.saved_selections' -> 'self.play_lib_iid'
+    'self.saved_selections' -> 'self.sel_lib_iids'
+    'self.saved_selections' -> 'self.sel_lib_tree_iids'
+    'self.saved_selections' -> 'self.play_iids'
+    'self.saved_selections' -> 'self.select_iids'
+    'self.saved_selections' -> 'self.sel_iids'
+    'self.saved_selections' -> 'self.fav_iid_list'
+    'self.saved_selections' -> 'self.play_iid_list'
+
+    'self.saved_playlist'   -> 'self.playlist_paths'  # Already DONE
+    'self.playlist_paths'   -> 'self.sel_lib_paths'
+    'self.playlist_paths'   -> 'self.sel_lib_tree_paths'
+    'self.playlist_paths'   -> 'self.select_paths'
+    'self.playlist_paths'   -> 'self.play_paths'
+    'self.playlist_paths'   -> 'self.fav_paths'  # Misleading when Playlists()
+    'self.playlist_paths'   -> 'self.select_paths'
+    'self.playlist_paths'   -> 'self.fav_path_list'  # Misleading when Playlists()
+    'self.playlist_paths'   -> 'self.play_path_list'
+
+    'self.song_list'        -> 'self.lib_tree_paths'
+    'self.song_list'        -> 'self.lib_song_paths'
+    'self.song_list'        -> 'self.fake_paths'  # Already DONE
+
+    'self.ndx'              -> 'self.curr_iid_ndx'
+    'self.ndx'              -> 'self.play_curr_ndx'
+    'self.ndx'              -> 'self.play_ndx'  # June 29, 2023 11 AM - Flavor De Jure
+    'self.ndx'              -> 'self.seq_ndx'
+    'self.ndx'              -> 'self.select_ndx'
+    'self.ndx'              -> 'self.sel_ndx'
+    'self.ndx'              -> 'self.sel_curr_ndx'
+    'self.ndx'              -> 'self.iid_ndx'
+    'self.ndx'              -> 'self.fav_ndx'  # Misleading when Playlists()
+
+    New brothers for '_ndx' -> 'self.---_iid"   # self.saved_selections[self.ndx]
+    New brothers for '_ndx' -> 'self.---_path"  # self.playlist_paths[self.ndx]
+
+RENAME FUNCTIONS:
+    'self.song_set_ndx()'   -> 'self.set_sel_ndx()'
+    'self.song_set_ndx()'   -> 'self.set_select_ndx()'
+    'self.song_set_ndx()'   -> 'self.change_select_ndx()'
+    'self.song_set_ndx()'   -> 'self.play_new_song()'
+    'self.song_set_ndx()'   -> 'self.play_set_ndx()'
+    'self.song_set_ndx()'   -> 'self.set_play_ndx()'    # July 1, 2023 5:28pm
+    Advantage of changing "self.song_" to "self.play_" is below too:
+        self.song_artist_var.set(make_ellipsis(self.play_ctl.Artist, E_WIDTH))
+        self.song_album_var.set(make_ellipsis(self.play_ctl.Album, E_WIDTH))
+        self.song_title_var.set(make_ellipsis(self.play_ctl.Title, E_WIDTH))
+
+    'self.play_insert()'    -> 'self.add_selected()'
+    'self.play_insert()'    -> 'self.insert_selection()'
 #
 # =============================================================================
 
@@ -260,39 +315,6 @@ ERROR OVERRIDE - https://github.com/quodlibet/mutagen/issues/499:
 NOTES:
     File server needs to mount music directory if not mounted already:
         sudo mount -t auto -v /dev/sdb1 /mnt/music
-
-LONGER TERM TODO'S:
-    In mserve_config.py, verify external commands are in path:
-        command -v cp, diff, ffplay, ffprobe, ffmpeg, fusermount, 
-            gsettings, gst-launch-1.0, kid3, kill, nautilus, nc, nmap,
-            pactl, pgrep, pqiv, ps, ssh, sshfs, stat, touch, 
-            wakeonlan, wmctrl, xclip, xdotool, xprop
-
-    In mserve.py, dropdown menu options will appear if:
-        global KID3_INSTALLED, FM_INSTALLED
-        KID3_INSTALLED = ext.check_command('kid3')
-        FM_INSTALLED = ext.check_command(FM_COMMAND)
-
-    In location.py, input fields appear if:
-        self.nmap_installed = ext.check_command('nmap')
-        if self.nmap_installed:
-            self.nmap_installed = ext.check_command('nc')
-        self.ssh_installed = ext.check_command('ssh')
-        self.sshfs_installed = ext.check_command('sshfs')
-        if self.sshfs_installed:
-            self.sshfs_installed = ext.check_command('fusermount')
-        self.wakeonlan_installed = ext.check_command('wakeonlan')
-
-    show_debug() dumps to console. Convert print() to two new methods:
-        debug_fact_header() and debug_fact_line(). They build title and
-        text lines respectively. A third function, fact_output() 
-        calls lcs.out_fact_print(title, text).
-        
-        Define future button (collapsed=True) such that only title is
-            displayed and click on button to expand section (text).
-
-        Revise ShowInfo from stating output in console to:
-            "Debug details in Information Centre and console". 
 
 """
 
@@ -402,7 +424,7 @@ import webscrape            # Get song lyrics via web scrape
 # Subdirectory /pulsectl under directory where mserve.py located
 #from pulsectl import pulsectl  # July 7, 2023 to be Deprecated in mserve
 
-import vu_pulse_audio as vup  # Volume Pulse Audio use pulsectl.Pulse
+import vu_pulse_audio  # Volume Pulse Audio use pulsectl.Pulse
 #help(vup)
 # FUTURE thoughts: import vu_windows as vuw
 #                  import vu_mac as vum
@@ -440,6 +462,7 @@ MED_FONT = 10               # Medium Font size
 FRM_BRD_WID = 2             # Width for frame border
 # TODO: Calculate g.PANEL_HGT (height)
 #PANEL_HGT = 24             # Now from g. Height of Unity panel
+SONG_LABEL_STR = "song"     # For bolding metadata variable in play_top
 
 # Temporary directory work filenames
 TMP_CURR_SONG = g.TEMP_DIR + "mserve_song_playing"
@@ -573,9 +596,12 @@ ARTWORK_SUBSTITUTE = g.PROGRAM_DIR + "Be Creative 2 cropped.jpg"
 
 # June 20, 2023 - Losing average of 4ms per sleep loop when play_top paused
 #   Created new SLEEP_XXX constants but also create 'self.last_sleep_time'
-SLEEP_PAUSED = 33           # play_top open but music paused
-SLEEP_PLAYING = 33          # play_top is playing music
-SLEEP_NO_PLAY = 33          # play_top closed, refresh_lib_top() running
+# Sep. 07, 2023 - Drop SLEEP from 33 to 16 for faster VU meters. Separate
+#   sleep cycle for artwork speed can be created. At twice speed artwork
+#   rendering goes from 3% CPU to 6% CPU load.
+SLEEP_PAUSED = 16           # play_top open but music paused
+SLEEP_PLAYING = 16          # play_top is playing music
+SLEEP_NO_PLAY = 16          # play_top closed, refresh_lib_top() running
 
 
 def make_sorted_list(start_dir, toplevel=None, idle=None, check_only=False):
@@ -6378,7 +6404,9 @@ class MusicLocationTree(PlayCommonSelf):
         self.vu_meter_first_time = True  # Patch for VU meter height repainting
         self.vu_meter_left, self.vu_meter_left_rect = self.create_vu_meter(18, 3)
         self.vu_meter_right, self.vu_meter_right_rect = self.create_vu_meter(18, 4)
-        self.VU_HIST_SIZE = 6
+        # Sep 7/23 below was 6 bump to 12 and loose short decays drop to 4
+        self.VU_HIST_SIZE = 2  # Larger number = slower attack/decay
+        # A better method is to paint line where peak used to be 1/3 second ago
         self.vu_meter_left_hist = [0.0] * self.VU_HIST_SIZE
         self.vu_meter_right_hist = [0.0] * self.VU_HIST_SIZE
 
@@ -6578,7 +6606,7 @@ class MusicLocationTree(PlayCommonSelf):
             Using priority system, display up to 15 rows and set weight to 1 """
 
         control_list = [
-            ("song", self.play_ctl.Title, self.song_title_var, 1),
+            (SONG_LABEL_STR, self.play_ctl.Title, self.song_title_var, 1),
             ("year", self.play_ctl.FirstDate, self.song_first_date_var, 1),
             ("comment", self.play_ctl.Comment, self.song_comment_var, 1),
             ("artist", self.play_ctl.Artist, self.song_artist_var, 1),
@@ -6670,8 +6698,12 @@ class MusicLocationTree(PlayCommonSelf):
         """ Display single row """
         tk.Label(self.play_frm, text=text, font=g.FONT) \
             .grid(row=row, column=1, sticky=tk.W, padx=5)
-        tk.Label(self.play_frm, textvariable=var,
-                 font=g.FONT).grid(row=row, column=2, sticky=tk.W)
+        if text == SONG_LABEL_STR:
+            tk.Label(self.play_frm, textvariable=var,
+                     font=g.FONT+('bold',)).grid(row=row, column=2, sticky=tk.W)
+        else:
+            tk.Label(self.play_frm, textvariable=var,
+                     font=g.FONT).grid(row=row, column=2, sticky=tk.W)
 
     def make_one_song_var(self, text, row):
         """ Make text tkinter label and StringVar() field pair """
@@ -16331,7 +16363,7 @@ def main(toplevel=None, cwd=None, parameters=None):
     sql.populate_tables(SORTED_LIST, START_DIR, PRUNED_DIR, LODICT)
     ext.t_end('no_print')  # sql.create_tables(): 0.1092669964
     ''' Pulse Audio Instance for sinks and volume. '''
-    pav = vup.PulseAudio()
+    pav = vu_pulse_audio.PulseAudio()
     ''' Open Music Location Tree and Favorites Playlist '''
     MusicLocationTree(toplevel, SORTED_LIST)  # Build treeview of songs
     ''' root mainloop '''
