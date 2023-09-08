@@ -420,6 +420,7 @@ import monitor              # Display, Screen, Monitor and Window functions
 import toolkit              # Functions for tkinter-tool kit interface
 import timefmt as tmf       # Format date and time
 import webscrape            # Get song lyrics via web scrape
+from calc import Calculator  # Big Number calculator for Tool Dropdown Menu
 
 # Subdirectory /pulsectl under directory where mserve.py located
 #from pulsectl import pulsectl  # July 7, 2023 to be Deprecated in mserve
@@ -823,6 +824,8 @@ class PlayCommonSelf:
         #def __init__(self, toplevel, song_list, sbar_width=14, **kwargs):
 
         self.killer = ext.GracefulKiller()  # Class to shut down
+        self.calculator = None              # Big Number calculator object
+        self.calc_top = None                # Top level for calculator
         self.debug_file = None              # ~/tmp/mserve_print_file_xxxxxxxx
         self.debug_title = None             # 
         self.debug_text = None              # ~/tmp/mserve_print_file_xxxxxxxx
@@ -1162,6 +1165,7 @@ class PlayCommonSelf:
         self.file_menu = None
         self.edit_menu = None
         self.view_menu = None
+        self.tools_menu = None
         self.playlist_bar = None
 
         ''' last_sleep_time for mor accurate 30 frames per second (fps) '''
@@ -1622,13 +1626,6 @@ class MusicLocationTree(PlayCommonSelf):
                                    command=lcs.view, state=tk.DISABLED)
         self.view_menu.add_command(label="View Playlists", font=g.FONT,
                                    command=self.playlists.view, state=tk.DISABLED)
-        self.play_hockey_allowed = self.get_hockey_state()
-        if self.play_hockey_allowed:
-            text = "Enable FF/Rewind buttons"  # TODO: Make self.variable names
-        else:
-            text = "Enable TV Commercial buttons"
-        self.view_menu.add_command(label=text, font=g.FONT,
-                                   command=self.toggle_hockey)
         self.view_menu.add_separator()  # If countdown running, don't show options
 
         self.view_menu.add_command(label="SQL Music Table", font=g.FONT,
@@ -1637,11 +1634,28 @@ class MusicLocationTree(PlayCommonSelf):
                                    command=self.show_sql_hist)
         self.view_menu.add_command(label="SQL Location Table", font=g.FONT,
                                    command=self.show_sql_location)
-        self.view_menu.add_separator()
-        self.view_menu.add_command(label="Debug Information", font=g.FONT,
-                                   command=self.show_debug)
 
         mb.add_cascade(label="View", menu=self.view_menu, font=g.FONT)
+        ext.t_end('no_print')  # 0.0006351471
+
+        ext.t_init('self.view_menu = tk.Menu(mb)')
+
+        # Tools Dropdown Menu
+        self.tools_menu = tk.Menu(mb, tearoff=0)
+        # If new option, before Enable Hockey, go below bump option # from 0 to 1
+        self.play_hockey_allowed = self.get_hockey_state()
+        if self.play_hockey_allowed:
+            text = "Enable FF/Rewind buttons"  # TODO: Make self.variable names
+        else:
+            text = "Enable TV Commercial buttons"
+        self.tools_menu.add_command(label=text, font=g.FONT,
+                                    command=self.toggle_hockey)
+        self.tools_menu.add_command(label="Big Number Calculator", font=g.FONT,
+                                    command=self.calculator_open)
+        self.tools_menu.add_command(label="Debug Information", font=g.FONT,
+                                    command=self.show_debug)
+
+        mb.add_cascade(label="Tools", menu=self.tools_menu, font=g.FONT)
         ext.t_end('no_print')  # 0.0006351471
 
         self.enable_lib_menu()
@@ -4081,6 +4095,30 @@ class MusicLocationTree(PlayCommonSelf):
                                save_callback=self.get_hockey_state,
                                playlists=self.playlists, info=self.info)
 
+    def calculator_open(self):
+        """ Big Number Calculator allows K, M, G, T, etc. UoM """
+        if self.calculator and self.calc_top:
+            self.calc_top.focus_force()
+            self.calc_top.lift()
+            return
+        geom = monitor.get_window_geom('calculator')
+        self.calc_top = tk.Toplevel()
+        self.calculator = Calculator(self.calc_top, g.FONT, geom)
+        ''' Set program icon in taskbar '''
+        img.taskbar_icon(self.calc_top, 64, 'white', 'lightskyblue', 'black')
+        ''' Trap <Escape> key and  '✘' Window Close Button '''
+        self.calc_top.bind("<Escape>", self.calculator_close)
+        self.calc_top.protocol("WM_DELETE_WINDOW", self.calculator_close)
+        self.calc_top.update_idletasks()
+
+    def calculator_close(self, *args):
+        """ Save last geometry for next Calculator startup """
+        last_geom = monitor.get_window_geom_string(
+            self.calc_top, leave_visible=False)  # Destroy toplevel
+        monitor.save_window_geom('calculator', last_geom)
+        self.calculator = None  # Prevent lifting window
+        self.calc_top = None
+
     def show_debug(self):
         """ Debugging - show machine info, monitors, windows, tooltips 
             locations, sql, metadata, global variables """
@@ -4112,7 +4150,6 @@ class MusicLocationTree(PlayCommonSelf):
         self.debug_detail("Parent's PID      :", os.getppid())  # win needs > 3.2
         self.debug_output()  # self.info.fact() + print()
 
-
         self.debug_header("\nmon = monitor.Monitors()")
         mon = monitor.Monitors()            # Monitors class list of dicts
 
@@ -4143,7 +4180,6 @@ class MusicLocationTree(PlayCommonSelf):
         self.debug_detail("sys.getfilesystemencoding()",
                           sys.getfilesystemencoding())
         self.debug_output()  # self.info.fact() + print()
-
 
         self.debug_header("\nAll Windows (Wnck) - mon.get_all_windows():")
         for i, window in enumerate(mon.get_all_windows()):
@@ -6788,10 +6824,10 @@ class MusicLocationTree(PlayCommonSelf):
 
         self.play_hockey_allowed = not self.play_hockey_allowed  # Flip switch
         if self.play_hockey_allowed:
-            self.view_menu.entryconfigure(3, label="Enable FF/Rewind buttons")
+            self.tools_menu.entryconfigure(0, label="Enable FF/Rewind buttons")
             self.info.fact("Enable FF/Rewind buttons")
         else:
-            self.view_menu.entryconfigure(3, label="Enable TV Commercial buttons")
+            self.tools_menu.entryconfigure(0, label="Enable TV Commercial buttons")
             self.info.fact("Enable TV Commercial buttons")
 
         if not self.play_top_is_active:
@@ -16353,6 +16389,7 @@ def main(toplevel=None, cwd=None, parameters=None):
         #     self.tk.call('grab', 'set', self._w)
         # _tkinter.TclError: grab failed: another application has grab
         # NOTE: Tempting to exit now but need to proceed to select different location.
+
     ''' Process sorted list to create SQL Music Table '''
     # PROBLEM: Music Table Rows as soon as directory is opened, however
     #          a new location may not be saved and may never be accessed again.

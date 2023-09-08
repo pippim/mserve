@@ -774,6 +774,8 @@ def get_window_geom(name):
         default_geom = '+%d+%d' % (xy[0], xy[1])
     elif name == 'locations':  # location.py - Locations
         default_geom = '+%d+%d' % (xy[0], xy[1])
+    elif name == 'calculator':  # calc.py - Calculator() class
+        default_geom = '+%d+%d' % (xy[0], xy[1])
     else:
         print('monitor.get_window_geom(): Bad window name:', name)
         xy = (130, 130)
