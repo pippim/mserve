@@ -15,6 +15,7 @@ from __future__ import with_statement  # Error handling for file opens
 #       mserve_config.py - Check modules to be imported are available.
 #
 #       July 10 2023 - Initial version.
+#       Sep. 08 2023 - Add new module calc.py to mserve.py dependencies
 #
 # ==============================================================================
 # from __future__ import unicode_literals  # Not needed.
@@ -218,7 +219,8 @@ def make_mserve_cfg():
     cfg.append(make_dict(m, None, "toolkit", "pippim.com"))
     cfg.append(make_dict(m, "tmf", "timefmt", "pippim.com"))
     cfg.append(make_dict(m, None, "webscrape", "pippim.com"))
-    cfg.append(make_dict(m, "vup", "vu_pulse_audio", "pippim.com"))
+    cfg.append(make_dict(m, None, "vu_pulse_audio", "pippim.com"))
+    cfg.append(make_dict(m, None, "calc", "pippim.com"))
     return cfg
 
 

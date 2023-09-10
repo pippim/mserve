@@ -2282,7 +2282,7 @@ class ToolTips(CommonTip):
 
         self.widget = widget                # .140599674917592.140599679077192.140599679077336
         self.text = text                    # "This button \n does that."
-        self.tool_type = tool_type          # button/canvas_button/label/menu/piggy
+        self.tool_type = tool_type          # button/canvas_button/label/menu/piggy_back
         self.menu_tuple = menu_tuple        # E.G. (self.cd_top, 200, 50)
         self.pb_alpha = pb_alpha            # Piggy-back callback when alpha changes
         self.pb_leave = pb_leave            # Piggy-back callback when mouse leaves widget
@@ -2306,7 +2306,7 @@ class ToolTips(CommonTip):
             self.widget.bind("<ButtonPress-1>", self.on_press)
             self.widget.bind("<ButtonRelease-1>", self.on_release)
             self.name = self.widget['text']  # Button text
-        if self.name is None:
+        if self.name is None or self.name.strip() == "":
             self.name = self.tool_type  # Not a Button or no text in button
 
         # Add tip dictionary to tips list

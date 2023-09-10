@@ -1255,6 +1255,7 @@ class Locations(LocationsCommonSelf):
         self.text = None  # Text replacing treeview when no locations on file
         self.get_pending = None  # What is pending in parent? - Could be favorites
         self.open_and_play_callback = None
+        self.target_callback = None  # After getting target location for copy
         self.info = None  # InfoCentre() class instance initialized in mserve.py
         self.FileControl = None  # FileControl() class RAW. Needed to reset atime.
         self.enable_lib_menu = None  # Set Locations options on/off in Dropdown
@@ -1334,6 +1335,12 @@ class Locations(LocationsCommonSelf):
     def register_oap_cb(self, open_and_play_callback):
         """ Register open_and_play_callback() function from mserve.py """
         self.open_and_play_callback = open_and_play_callback  # Open Loc/play music
+
+    def register_target_cb(self, target_callback):
+        """ Register target New Location to receive copied files using 
+            "Tools" Dropdown Menu, "Copy Checked To New Location"
+        """
+        self.target_callback = target_callback  # Open Loc/play music
 
     # ==============================================================================
     #
@@ -1432,6 +1439,7 @@ class Locations(LocationsCommonSelf):
             width=g.BTN_WID2 - 4, command=self.reset)
         self.main_close_button.grid(row=14, column=3, padx=(10, 5), pady=5,
                                     sticky=tk.E)
+        # Columns: 0 = Apply, 1 = Test, 2 = Help, 3 = Close
         if self.tt:
             self.tt.add_tip(self.main_close_button, "Ignore changes and return.",
                             anchor="ne")
@@ -1456,6 +1464,7 @@ class Locations(LocationsCommonSelf):
             self.btn_frame, text="🔗 Help", font=g.FONT,
             width=g.BTN_WID2 - 4, command=lambda: g.web_help(help_id))
         self.main_help_button.grid(row=14, column=2, padx=10, pady=5, sticky=tk.E)
+        # Columns: 0 = Apply, 1 = Test, 2 = Help, 3 = Close
         if self.tt:
             self.tt.add_tip(self.main_help_button, help_text, anchor="ne")
 
@@ -1492,8 +1501,7 @@ class Locations(LocationsCommonSelf):
         ''' Help Button - https://www.pippim.com/programs/mserve.html#
                           Optional-Remote-Host-Support '''
         self.make_test_help_button()
-        self.test_top.update_idletasks()  # Not powerful enough?
-        self.test_top.update()  # More power !
+        self.test_top.update()
 
     def make_test_box(self, frame):
         """ Can be in main_top or test_top """
@@ -1513,8 +1521,6 @@ class Locations(LocationsCommonSelf):
         self.test_box.tag_config('green', foreground='Green')
         self.test_box.tag_config('yellow', foreground='Yellow')
 
-        #self.test_box.insert("end", Quote)
-        #self.test_box.highlight_pattern(self.act_host, 'yellow')
         self.test_show(text, pattern=self.act_host)
 
         self.test_box.config(tabs=("10m", "20m", "40m"))
@@ -1530,6 +1536,7 @@ class Locations(LocationsCommonSelf):
             width=g.BTN_WID2 + 6, command=self.test_close_window)
         self.test_close_button.grid(row=0, column=3, padx=(10, 5), pady=5,
                                     sticky=tk.E)
+        # Columns: 0 = Apply, 1 = Test, 2 = Help, 3 = Close
         if not self.called_from_main_top:  # no main_top, so escape closes test_top
             self.test_top.bind("<Escape>", self.test_close_window)
             self.test_top.protocol("WM_DELETE_WINDOW", self.test_close_window)
@@ -1561,6 +1568,7 @@ class Locations(LocationsCommonSelf):
             self.btn_frame, text="🔗 Help Test", font=g.FONT,
             width=g.BTN_WID2, command=lambda: g.web_help("HelpTestHostStatus"))
         self.test_help_button.grid(row=0, column=2, padx=10, pady=5, sticky=tk.E)
+        # Columns: 0 = Apply, 1 = Test, 2 = Help, 3 = Close
         if self.tt:  # During early boot toolkit.Tooltips() is still 'None'
             self.tt.add_tip(self.test_help_button, help_text, anchor="ne")
 
@@ -1588,7 +1596,7 @@ class Locations(LocationsCommonSelf):
     
     def display_location_details(self, frame, mode=None):
         """ Declare location detail window fields and blank them out.
-            Shared by display_main_window() method and test() methods
+            Shared by display_main_window() method and test() method
             When mode is passed it is: 'New', 'Add', 'Open'
 
         :param frame: Parent container for location details.
@@ -1628,7 +1636,7 @@ class Locations(LocationsCommonSelf):
         elif mode and mode == 'New Location':
             ''' For New Location, cannot select existing location  '''
             text = "🡇 🡇  Enter New Location details below  🡇 🡇"
-        else:  # When no mode passed, the window is for testing host.
+        else:  # When mode==None, the window is for testing host.
             ''' When testing host, there are no Treeview rows above '''
             text = "🡅 🡅  Slide scrollbar above to see Test Host results  🡅 🡅"
         self.fld_intro = tk.Label(frame, text=text, font=g.FONT)
@@ -1812,7 +1820,9 @@ class Locations(LocationsCommonSelf):
         text = None  # Dual-purpose flag if delete or open
         if tree_code == self.open_code:
             if self.state == 'open':
-                text = "Cannot reopen the same location."
+                text = "Cannot reopen the currently opened location."
+            if self.state == 'target':
+                text = "Cannot copy currently opened location to itself."
             if self.state == 'delete':
                 text = "Cannot delete currently opened location."
             if self.state == 'synchronize':
@@ -1833,7 +1843,7 @@ class Locations(LocationsCommonSelf):
         self.set_scr_variables(self.main_top)
         if self.state == 'edit':
             self.enable_input()  # .new() calls this directly at very start
-        self.enable_last_button()  # For everyone except "New Location"
+        self.make_apply_button()  # For everyone except "New Location"
         self.main_top.update_idletasks()
 
     def set_scr_variables(self, top_name):
@@ -1960,10 +1970,9 @@ class Locations(LocationsCommonSelf):
         ''' Clicking on scr_image_path is treated like button click '''
         self.fld_image_path.bind("<Button>", self.get_act_image_path)
 
-    def enable_last_button(self):
+    def make_apply_button(self):
         """ Location just picked from treeview
-            Create last button actions of: "Add", "Save", "Delete" or "Open"
-        """
+            Create apply button actions of: "Add", "Save", "Delete", etc. """
         if self.state == 'view':
             return  # No button for view
 
@@ -1978,6 +1987,8 @@ class Locations(LocationsCommonSelf):
             text = "Synchronize"
         elif self.state == 'open':
             text = "Open"
+        elif self.state == 'target':
+            text = "Copy To"
         else:
             toolkit.print_trace()
             text = "Missing!"
@@ -1986,11 +1997,12 @@ class Locations(LocationsCommonSelf):
             self.btn_frame, text="✔ " + text, font=g.FONT,
             width=g.BTN_WID2 - 2, command=self.apply)
         self.apply_button.grid(row=14, column=0, padx=10, pady=5, sticky=tk.E)
+        # Columns: 0 = Apply, 1 = Test, 2 = Help, 3 = Close
         self.main_top.bind("<Return>", self.apply)
-        self.main_close_button['text'] = "✘ Cancel"
+        self.main_close_button['text'] = "✘ Cancel"  # Change from "✘ Cancel"
         ''' toolkit.Tooltips() guaranteed to be active for Apply button '''
         # Aug 29/23 - used to be: "Synchronize Location and update records."
-        self.tt.add_tip(self.apply_button, text + 
+        self.tt.add_tip(self.apply_button, text +
                         " Location and Update.", anchor="nw")
 
     def format_intro_line(self):
@@ -2065,15 +2077,19 @@ class Locations(LocationsCommonSelf):
             text += "Within each Album subdirectory would be one or more music files.\n"
             text += "Up to 100 files checked and didn't find 10 music files for Albums."
             text += "\n\nMusic file search results at three levels:\n"
-            text += "\nTop Directory: {}\n".format(depth_count[0])
-            text += "\nArtist Level : {}\n".format(depth_count[1])
-            text += "\nAlbum Level  : {}\n".format(depth_count[2])
-            text += "\n\nReview your music directories and try again."
-            text += "\n\nNote you can start mserve and pass a directory name to play."
-            text += "\nIn this case a location is not required. For example, at the:"
-            text += "\ncommand line you can type: 'm /home/me/Music/Compilations'"
-            self.out_cast_show(title, text, 'error')  # Splash instructions
-
+            text += "\n\tTop Directory: {}".format(depth_count[0])
+            text += "\n\tArtist Level : {}".format(depth_count[1])
+            text += "\n\tAlbum Level  : {}".format(depth_count[2])
+            text += "\n\nDouble check your music directories."
+            text += "\n\nIs this a new location you plan to copy files to later?"
+            answer = message.AskQuestion(self.main_top, title, text, align='left',
+                                         confirm='no', thread=self.get_thread_func)
+            self.info.cast(title + "\n\n" + text + "\n\n\t\t" +
+                           "Answer was: " + answer.result, 'info')
+            if answer.result == "yes":
+                self.act_topdir = new_topdir
+            else:
+                pass  # Keep old name
         else:
             self.act_topdir = new_topdir
         self.scr_topdir.set(self.act_topdir)
@@ -2302,7 +2318,7 @@ class Locations(LocationsCommonSelf):
         self.state = 'new'
         self.display_main_window("New Location")
         self.enable_input()  # Allow data entry right off the bat
-        self.enable_last_button()  # Set "Add" into last button
+        self.make_apply_button()  # Set "Add" into last button
 
     def open(self):
         """ Called by lib_top File Menubar "Open Location and Play"
@@ -2318,6 +2334,19 @@ class Locations(LocationsCommonSelf):
         LocationsCommonSelf.__init__(self)  # Define self. variables
         self.state = 'open'
         self.display_main_window("Open Location and Play")
+
+    def target(self):
+        """ Called by lib_top Tools Menubar "Copy Checked To Location"
+            If new songs are pending, do not allow opening new location. """
+
+        if self.get_pending:  # 'None' = MusicLocationTree not called yet.
+            ''' Music Location Tree checkboxes pending to apply? '''
+            if self.check_pending():  # lib_top.tree checkboxes not applied?
+                return  # We are all done. No window, no processing, nada
+
+        LocationsCommonSelf.__init__(self)  # Define self. variables
+        self.state = 'target'
+        self.display_main_window("Copy Checked Files To Location")
 
     def edit(self):
         """ Called by lib_top File Menubar "Edit Location"
@@ -3774,6 +3803,9 @@ filename.
             self.info.cast("Open location: " + self.act_name, action="open")
             self.open_and_play_callback(self.act_code, self.act_topdir)
             # Above restarts mserve (assuming no errors) so never come back here
+        elif self.state == 'target':
+            self.info.cast("Target location: " + self.act_name, action="update")
+            self.target_callback(self.act_name, self.act_topdir)
         elif self.state == 'synchronize':
             self.cmp_build_toplevel(sbar_width=14)
             # Problem: We don't want to do reset below, cmp must close itself

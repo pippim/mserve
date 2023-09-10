@@ -329,7 +329,7 @@ def check_pid_running(active_pid):
 
 
 def shell_quote(s):
-    """ Escape quotes in shell variable names """
+    """ Escape quotes in shell variables """
     ''' E.G.
             def play_lyrics_from_web(self):
             """ turn on auto scrolling, it can be overridden from saved steps or

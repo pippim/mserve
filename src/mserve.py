@@ -80,8 +80,9 @@ warnings.simplefilter('default')  # in future Python versions.
 #       Aug. 24 2023 - Redirect show_debug() from console to InformationCentre().
 #       Aug. 31 2023 - refresh_play_top() queuing next song was replaying song.
 #       Sep. 02 2023 - Begin libftp substitute to curlftpfs.
-#       Sep. 03 2023 - Make .lrc (synchronized lyrics) for other music players.
+#       Sep. 03 2023 - Make LRC (synchronized lyrics) for other music players.
 #       Sep. 06 2023 - Use walk_list and size_dict from FTP test host at start.
+#       Sep. 09 2023 - Tools - checked files - Make LRC files and copy to loc.
 
 # noinspection SpellCheckingInspection
 """
@@ -100,6 +101,20 @@ DESIGN FLAWS:
 
 TODO:
 
+    Tools / Utilities for selected Music Location Tree Files:
+        - Make LRC files
+        - Copy files to another location
+        
+        Shared methods to open / close Artist, then Album and highlight
+            each music file as it is processed.
+
+            - Make `.lrc` file: lrc_make(Id)            
+            - Copy: mkdir -p /foo/bar && cp myfile "$_"
+
+        
+    
+    After lyrics training, make .lrc file
+
     Similar to below, high priority to crawl FTP server to find new
         songs and delete old songs. Unlike below this is done one directory
         at a time with callback on every filename such that refresh can be
@@ -109,21 +124,6 @@ TODO:
         through the trouble, might as well reuse SORTED_LIST2 with new last
         access time if it doesn't refresh automatically for old song ripped
         again like it should.
-
-    After creating .lrc file for one location, a batch synchronization to
-        all other locations? Currently, only musicolet running on Android
-        mobile phone is only location that utilizes `.lrc` files.
-
-    Currently .lrc file created on at a time from Music Location Tree
-        song popup menu. A batch function for all sycnhronized songs
-        can be run and update only those where the size is differnt.
-        Updating all would be slow, but if only times were changed and
-        not lyrics, the size would be the same and the update would be
-        skipped. Reading history records for lyrics training gives last
-        time and that can be compared to file modTime class. In this case
-        regular synchronize will work assuming main location added .lrc
-        file to Mobile phone with earlier sync. However sync is designed
-        not to add files.
 
     Chronology filter "this artist" is pulling all compilations
         Evaluate feasibility of "this album" filter
@@ -135,8 +135,8 @@ TODO:
 
 LONGER TERM TODO'S:
 
-    WSL2 has 150,000 users world wide. Ubuntu has 40 million users.
-        Mac has 100 million users. Android has 3.6 billion users.
+    Track mserve suspend / resume times. Similar to play_ctl start / stop.
+        This is needed for knowing that host may be auto disconnected.
 
     Artist and Album popup in Music Location Tree new option to create
         temporary playlist and play all. Current favorites or playlist
@@ -157,31 +157,10 @@ LONGER TERM TODO'S:
             pactl, pgrep, pqiv, ps, ssh, sshfs, stat, touch, 
             wakeonlan, wmctrl, xclip, xdotool, xprop
 
-    In mserve.py, dropdown menu options will appear if:
-        global KID3_INSTALLED, FM_INSTALLED
-        KID3_INSTALLED = ext.check_command('kid3')
-        FM_INSTALLED = ext.check_command(FM_COMMAND)
-
-    In location.py, input fields appear if:
-        self.nmap_installed = ext.check_command('nmap')
-        if self.nmap_installed:
-            self.nmap_installed = ext.check_command('nc')
-        self.ssh_installed = ext.check_command('ssh')
-        self.sshfs_installed = ext.check_command('sshfs')
-        if self.sshfs_installed:
-            self.sshfs_installed = ext.check_command('fusermount')
-        self.wakeonlan_installed = ext.check_command('wakeonlan')
-
-    show_debug() dumps to console. Convert print() to two new methods:
-        debug_fact_header() and debug_fact_line(). They build title and
-        text lines respectively. A third function, fact_output() 
-        calls lcs.out_fact_print(title, text).
+    In InfoCentre():
         
         Define future button (collapsed=True) such that only title is
             displayed and click on button to expand section (text).
-
-        Revise ShowInfo from stating output in console to:
-            "Debug details in Information Centre and console". 
 
     When watching lyrics time scrolling and you notice time is out of sync,
         need quick click action button to pause and fix 2 seconds ago...
@@ -312,8 +291,8 @@ ERROR OVERRIDE - https://github.com/quodlibet/mutagen/issues/499:
       framedata = frame._writeData()
   AttributeError: 'unicode' object has no attribute '_writeData'
 
-NOTES:
-    File server needs to mount music directory if not mounted already:
+File Server NOTES:
+    File server needs to mount music directory if not mounted already. e.g.:
         sudo mount -t auto -v /dev/sdb1 /mnt/music
 
 """
@@ -1118,18 +1097,23 @@ class PlayCommonSelf:
         self.view_iid = None                # Treeview IID of row ID clicked on
         self.scrollbox = None               # Used by self.create_window()
 
+        ''' Tools - batch processing - make .lrc / copy files '''
+        self.checked_loc_name = None        # Location name copied to
+        self.checked_loc_topdir = None      # Top Directory copied to
+        self.checked_in_progress = None     # Has batch processing begun?
+        self.checked_opened_artist = None   # Did batch process open the artist?
+        self.checked_opened_album = None    # Did batch process open the album?
+        self.checked_hl_color = 'Orange'    # Highlight color for row processing
+
         ''' Global variables of active children '''
         self.play_top_is_active = False     # Playing songs window open?
-        self.vu_meter_first_time = None  # Aug 3/23 Patch for VU meter height
+        self.vu_meter_first_time = None     # Aug 3/23 Patch for VU meter height
         self.cmp_top_is_active = False      # compare locations open?
-        #self.sync_top_is_active = False      # Sync Time Index window open?
         self.mus_top_is_active = False      # View SQL Music open?
         self.his_top_is_active = False      # View SQL History open?
         self.lcs_top_is_active = False      # View SQL Location open?
         self.hdr_top_is_active = None       # Did we open SQL drill down window?
         self.sync_paused_music = False      # Important this is False now
-        #self.sync_changed_score = False     # For warning messages
-        #self.sync_ffplay_is_running = False     # Music playing for Syncing?
         self.loc_keep_awake_is_active = False   # Prevent remote host sleeping?
 
         self.saved_selections = []          # lib_tree song ids in playlist order
@@ -1155,10 +1139,10 @@ class PlayCommonSelf:
         self.pending_cancel_btn = None      # Cancel Playlist Update Button
 
         ''' Set volume slider '''
-        self.tv_vol = None               # tvVolume() during Hockey TV commercials
+        self.tv_vol = None  # tvVolume() during Hockey TV commercials
 
         ''' Playlists stored in SQL database '''
-        self.playlists = None               # Playlists()
+        self.playlists = None  # Playlists() class
         self.title_suffix = None  # title_suffix used in two places below
 
         ''' Menu bars: File, Edit, View + space + playlist information '''
@@ -1469,9 +1453,11 @@ class MusicLocationTree(PlayCommonSelf):
 
         ''' Colors for tags '''
         self.ignore_item = None
-        self.lib_tree.tag_configure('play_sel', background='ForestGreen',
-                                    foreground="White")
+        self.lib_tree.tag_configure(
+            'play_sel', background='ForestGreen', foreground="White")
         self.lib_tree.tag_configure('popup_sel', background='yellow')
+        self.lib_tree.tag_configure(
+            'checked_sel', background=self.checked_hl_color)  # 'Orange'
 
         ''' Refresh last played 999 ago, every minute '''
         self.last_inotify_time = None  # Last time bubble message sent
@@ -1652,6 +1638,14 @@ class MusicLocationTree(PlayCommonSelf):
                                     command=self.toggle_hockey)
         self.tools_menu.add_command(label="Big Number Calculator", font=g.FONT,
                                     command=self.calculator_open)
+        self.tools_menu.add_separator()  # If countdown running, don't show options
+
+        self.tools_menu.add_command(label="Make LRC For Checked Songs", font=g.FONT,
+                                    command=self.checked_make_lrc, state=tk.DISABLED)
+        self.tools_menu.add_command(label="Copy Checked To New Location",
+                                    font=g.FONT, command=self.checked_copy_files)
+        self.tools_menu.add_separator()  # If countdown running, don't show options
+
         self.tools_menu.add_command(label="Debug Information", font=g.FONT,
                                     command=self.show_debug)
 
@@ -1664,14 +1658,23 @@ class MusicLocationTree(PlayCommonSelf):
         """ Called from build_lib_menu() and passed to self.playlists to call.
             Also passed with lcs.register_menu(self.enable_lib_menu)
         :return: None """
+
+        if not self.lib_top_is_active:
+            return  # Shutting down, catch for Playlists() & Locations()
+
         ''' Quick and dirty solution for Locations Maintenance Window '''
-        if lcs.main_top:
+        if lcs.main_top or self.checked_in_progress:
+            # Location Maintenance window open or checked songs processing
             self.file_menu.entryconfig("Open Location and Play", state=tk.DISABLED)
             self.file_menu.entryconfig("New Location", state=tk.DISABLED)
             self.edit_menu.entryconfig("Edit Location", state=tk.DISABLED)
             self.edit_menu.entryconfig("Delete Location", state=tk.DISABLED)
             self.edit_menu.entryconfig("Synchronize Location", state=tk.DISABLED)
             self.view_menu.entryconfig("View Locations", state=tk.DISABLED)
+            self.tools_menu.entryconfig("Make LRC For Checked Songs",
+                                        state=tk.DISABLED)
+            self.tools_menu.entryconfig("Copy Checked To New Location",
+                                        state=tk.DISABLED)
         else:
             self.file_menu.entryconfig("Open Location and Play", state=tk.NORMAL)
             self.file_menu.entryconfig("New Location", state=tk.NORMAL)
@@ -1679,17 +1682,21 @@ class MusicLocationTree(PlayCommonSelf):
             self.edit_menu.entryconfig("Delete Location", state=tk.NORMAL)
             self.edit_menu.entryconfig("Synchronize Location", state=tk.NORMAL)
             self.view_menu.entryconfig("View Locations", state=tk.NORMAL)
-
+            self.tools_menu.entryconfig("Make LRC For Checked Songs",
+                                        state=tk.NORMAL)
+            self.tools_menu.entryconfig("Copy Checked To New Location",
+                                        state=tk.NORMAL)
         self.disable_playlist_menu()
         if self.playlists.top:  # If top level is open, everything disabled.
-            return
+            return  # Playlist Maintenance is active
 
-        if self.playlists.open_name:
+        if self.playlists.open_name:  # Is there a playlist open?
             # Can close even if pending counts but there will be confirmation inside
             #self.file_menu.entry config("Save Playlist As…", state=tk.NORMAL)
-            self.file_menu.entryconfig("Close Playlist and Use Favorites", state=tk.NORMAL)
+            self.file_menu.entryconfig("Close Playlist and Use Favorites",
+                                       state=tk.NORMAL)
 
-        if self.get_pending_cnt_total() == 0:
+        if self.get_pending_cnt_total() == 0 and not self.checked_in_progress:
             # If nothing pending can open create new playlist, etc.
             self.file_menu.entryconfig("Open Playlist", state=tk.NORMAL)
             self.file_menu.entryconfig("New Playlist", state=tk.NORMAL)
@@ -1715,7 +1722,8 @@ class MusicLocationTree(PlayCommonSelf):
         self.file_menu.entryconfig("New Playlist", state=tk.DISABLED)
         self.file_menu.entryconfig("Save Playlist", state=tk.DISABLED)
         #self.file_menu.entry config("Save Playlist As…", state=tk.DISABLED)
-        self.file_menu.entryconfig("Close Playlist and Use Favorites", state=tk.DISABLED)
+        self.file_menu.entryconfig("Close Playlist and Use Favorites",
+                                   state=tk.DISABLED)
         self.edit_menu.entryconfig("Rename Playlist", state=tk.DISABLED)
         self.edit_menu.entryconfig("Delete Playlist", state=tk.DISABLED)
         self.view_menu.entryconfig("View Playlists", state=tk.DISABLED)
@@ -1740,13 +1748,13 @@ class MusicLocationTree(PlayCommonSelf):
         # Above first time 0, second time 17
         self.lib_top.update()  # If not done song_sel tags still visible
         items = self.lib_tree.tag_has("song_sel")
-        print("len(song_sel) items:", len(items))
+        #print("len(song_sel) items:", len(items))
         items = self.lib_tree.tag_has("checked")
-        print("len(checked) items:", len(items))
+        #print("len(checked) items:", len(items))
         items = self.lib_tree.tag_has("tristate")
-        print("len(tristate) items:", len(items))
+        #print("len(tristate) items:", len(items))
         items = self.lib_tree.tag_has("unchecked")
-        print("len(unchecked) items:", len(items))
+        #print("len(unchecked) items:", len(items))
 
         # Build playlist_paths using Music Ids
         for music_id in self.playlists.open_id_list:
@@ -1819,6 +1827,9 @@ class MusicLocationTree(PlayCommonSelf):
             #self.fine_tune.top.lift()
             self.fine_tune_lift()
 
+        ''' Big Number Calculator - Checks if self.calc_top active '''
+        self.calculator_lift()  # Can still highlight row and invoke ltp
+
         ''' Sampling random song in lib_tree '''
         if self.ltp_top_is_active:
             self.lib_tree_play_lift()  # Focus and raise in stacking order
@@ -1827,7 +1838,8 @@ class MusicLocationTree(PlayCommonSelf):
         """ Wait until clicks to do something in lib_tree (like play music)
             NOTE: this would be a good opportunity for housekeeping
             TODO: Call refresh_acc_times() every 60 seconds
-            
+                  Sep 8/23 - higher priority now that FTP needs background
+                  processing to retrieve files one at a time with callbacks.
         """
 
         if not self.lib_top_is_active:
@@ -2426,6 +2438,7 @@ class MusicLocationTree(PlayCommonSelf):
                 print(who + "Skipping file less than:", str_size,
                       "bytes. Filename below:")
                 print("-", full_path)
+                continue  # Causes error because in sorted_list
 
             self.tree_col_range_add(CurrAlbumId, 5, [size, 1])
             self.tree_col_range_add(CurrArtistId, 5, [size, 1])
@@ -3113,9 +3126,6 @@ class MusicLocationTree(PlayCommonSelf):
         if FM_INSTALLED:
             menu.add_command(label="Open " + FM_NAME, font=(None, MED_FONT),
                              command=lambda: self.fm_open(Id))
-        if LRC_INSTALLED:
-            menu.add_command(label="Make .lrc file", font=(None, MED_FONT),
-                             command=lambda: self.lrc_make(Id))
         menu.add_separator()
 
         menu.add_command(label="Ignore click", font=(None, MED_FONT),
@@ -3152,7 +3162,7 @@ class MusicLocationTree(PlayCommonSelf):
             menu.add_command(label="Open " + FM_NAME, font=(None, MED_FONT),
                              command=lambda: self.fm_open(Id))
         if LRC_INSTALLED:
-            menu.add_command(label="Make .lrc file", font=(None, MED_FONT),
+            menu.add_command(label="Make LRC file", font=(None, MED_FONT),
                              command=lambda: self.lrc_make(Id))
 
         menu.add_separator()
@@ -3391,6 +3401,8 @@ class MusicLocationTree(PlayCommonSelf):
                 answer = message.AskQuestion(
                     self.lib_top, title, text, icon='warning',
                     thread=self.get_refresh_thread)
+                self.info.cast(title + "\n\n" + text + "\n\n\t\t" +
+                               "Answer was: " + answer.result, 'warning')
                 if answer.result != "yes":
                     continue  # Enter a new name
 
@@ -3655,13 +3667,11 @@ class MusicLocationTree(PlayCommonSelf):
         trg_path = self.make_variable_path(Id)
         self.run_and_move_window(trg_path, FM_COMMAND, FM_WIN_SIZE)
 
-    def lrc_make(self, Id):
+    def lrc_make(self, Id, msgs=True):
         """ Make song_name.lrc file with synchronized lyrics
-        
-            Requires view_sql_metadata() functionality:
-            
-            self.view_sql_music_id(Id, self.play_ctl)
-            
+            Called from song file right click popup
+            Called from Tools / Make LRC for checked files
+
             https://en.wikipedia.org/wiki/LRC_(file_format)
 
             [ar:Lyrics artist]
@@ -3691,12 +3701,13 @@ class MusicLocationTree(PlayCommonSelf):
         pretty = sql.PrettyMusic(str(music_id), file_ctl=self.play_ctl)
 
         if pretty.synchronized < 0.8:
-            title = "Song not synchronized"
-            text = "Song must be at least 80% synchronized to make .lrc file\n\n"
-            text += "Current synchronized percentage is: "
-            text += '{0:.2f}'.format(pretty.synchronized)
-            lcs.out_cast_show(title, text, 'error')
-            return
+            if msgs:  # When no messages, called from checked_ batch processing
+                title = "Song not synchronized"
+                text = "Song must be at least 80% synchronized to make .lrc file\n\n"
+                text += "Current synchronized percentage is: "
+                text += '{0:.2f}'.format(pretty.synchronized)
+                lcs.out_cast_show(title, text, 'error')
+            return False
 
         lrc_list = list()
         lrc_list.append(u"[ar:" + pretty.dict['Artist'] + u"]")
@@ -3722,14 +3733,264 @@ class MusicLocationTree(PlayCommonSelf):
         title = u".lrc file created"
         text = u"Synchronized lyrics have been written to the file:\n\n"
         text += lrc_path
-        lcs.out_cast_show(title, text)
+        if msgs:
+            lcs.out_cast_show(title, text)
 
         if True is False:
-            print(u"Make .lrc file for:", trg_path)
+            ''' print audit log "if True is True:" '''
+            print(u"Make LRC file for:", trg_path)
             print("Extracting lyrics from dictionary level:", curr_level_name)
             print("curr_start:", curr_start, "curr_end:", curr_end)
             for line in lrc_list:
                 print(line)
+
+        return True
+
+    def checked_make_lrc(self):
+        """ Make LRC files for Music Location Tree checked files """
+        title = "Make LRC Files For Checked Songs"
+        text = "For every checked song, e.g. 'Song Name.mp3'\n"
+        text += "a matching 'Song Name.lrc' file is created.\n\n"
+        text += "LRC files are used by other Music Players \n"
+        text += "to display synchronized lyrics.\n\n"
+        text += "If no lyrics score, or if lyrics score < 80%\n"
+        text += "synchronized, no '.lrc' file will be created."
+        answer = message.AskQuestion(self.lib_top, title, text, align='left',
+                                     thread=self.get_refresh_thread)
+        self.info.cast(title + "\n\n" + text + "\n\n\t\t" +
+                       "Answer was: " + answer.result, 'info')
+        if answer.result != "yes":
+            return
+
+        ''' TODO: Prevent other location & playlist related functions from 
+                  starting up and changing lcs.act_topdir or music tree. '''
+
+        ''' Tools - batch processing - make .lrc / copy files '''
+        self.checked_process('lrc')
+
+    def checked_copy_files(self):
+        """ Copy Music Location Tree checked files + LRC to new location
+
+            Sep 9, 2023 - Only works on new empty locations. Otherwise
+            synchronization needs to be used.
+        """
+        title = "Copy Checked Files To New Location"
+        text = "You will be prompted to select a target location.\n\n"
+        text += "Then every checked song in the Music Location Tree, and\n"
+        text += "it's LRC file, will be copied to the selected location.\n\n"
+        human_selected = toolkit.human_bytes(self.lib_top_totals[8])
+        text += "Total size of copied files: " + human_selected + "\n\n"
+
+        text += "If the Top Directory isn't empty, you will need to\n"
+        text += "synchronize location instead.\n\n"
+
+        text += "If the new location is a remote host, make sure it works\n"
+        text += "by using the 'Test Host' button, on the next window."
+        answer = message.AskQuestion(self.lib_top, title, text, align='left',
+                                     thread=self.get_refresh_thread)
+        self.info.fact(title + "\n\n" + text + "\n\n\t\t" +
+                       "Answer was: " + answer.result, 'info')
+        # lcs.main_top messed up if cast used above.
+        # The .cast close button disappears.
+        # The piggy_back tool_type from .cast gets main_top_window name.  
+        if answer.result != "yes":
+            return
+
+        lcs.register_target_cb(self.checked_target_cb)
+        ''' Select location for target '''
+        lcs.target()  # Enters idle loop until button clicked
+        while lcs.main_top:  # Is Location Maintenance window still open?
+            # Location Maintenance calls refresh
+            thread = self.get_refresh_thread()
+            thread()
+
+        if self.checked_loc_name is None and self.checked_loc_topdir is None:
+            # When both are None, cancel button clicked
+            print("Cancelling target location selection.")
+            return
+
+        if self.checked_loc_name is None or self.checked_loc_topdir is None:
+            # When one is None, Proceed clicked but with errors
+            title = "Invalid Location"
+            text = "Location has a blank Name or a blank Music Top Directory"
+            lcs.out_cast_show(title, text, 'error')
+            return
+
+        if not os.path.isdir(self.checked_loc_topdir):
+            title = "Invalid Music Top Directory"
+            text = "Location has an invalid Music Top Directory!\n\n"
+            text += "Location: " + self.checked_loc_name + "\n\n"
+            text += "Directory: " + self.checked_loc_topdir + "\n\n"
+            text += "Edit the location and correct error."
+            lcs.out_cast_show(title, text, 'error')
+            return
+
+        list_dir = os.listdir(self.checked_loc_topdir)
+        if len(list_dir) > 0:
+            title = "Invalid Location"
+            text = "Location's Music Top Directory not empty!\n\n"
+            text += "Location: " + self.checked_loc_name + "\n\n"
+            text += "Directory: " + self.checked_loc_topdir + "\n\n"
+            text += "Edit the location and correct error."
+            lcs.out_cast_show(title, text, 'error')
+            return
+
+        ''' Tools - batch processing - make .lrc / copy files '''
+        self.checked_process('copy')
+        self.checked_loc_name = None  # Extra safety
+        self.checked_loc_topdir = None
+
+    def checked_target_cb(self, loc_name, loc_topdir):
+        """ Location selected - get name and topdir """
+        print("loc_name:", loc_name)
+        print("loc_topdir:", loc_topdir)
+        self.checked_loc_name = loc_name
+        self.checked_loc_topdir = loc_topdir
+
+    def checked_copy_one_file(self, Id):
+        """ Copy Music Location Tree checked files to another location
+
+            mkdir -p /foo/bar && cp myfile "$_"
+
+        """
+        who = "mserve.py checked_copy_one_file() - "
+        cmd = "echo Hello World!"
+        src_path = self.make_variable_path(Id)
+        src_base, src_ext = src_path.rsplit(u".", 1)
+        lrc_src_path = toolkit.uni_str(src_base) + u'.lrc'
+        trg_path = src_path.replace(lcs.open_topdir, self.checked_loc_topdir)
+        trg_subdir = trg_path.rsplit(os.sep, 1)[0]
+        lrc_trg_path = lrc_src_path.replace(lcs.open_topdir, self.checked_loc_topdir)
+
+        src_path = toolkit.uni_str(src_path)
+        src_size = os.path.getsize(src_path)
+
+        lrc_src_path = toolkit.uni_str(lrc_src_path)
+        trg_path = toolkit.uni_str(trg_path)
+        trg_subdir = toolkit.uni_str(trg_subdir)
+        lrc_trg_path = toolkit.uni_str(lrc_trg_path)
+        #print("trg_path:", trg_path)
+        #print("lrc_trg_path:", lrc_trg_path)
+
+        # Make subdirectory if it doesn't exist
+        command_str = u'mkdir -p  "' + trg_subdir + u'"  &&  '  # chain to next command
+        command_str += u"cp --preserve=timestamps --verbose"
+
+        ''' Complete command line with extra space:  "source"  "target" '''
+        command_str += u'  "' + src_path + u'"  "' + trg_path + u'"'
+
+        # Make dir first & copy file next
+        lcs.run_one_command(command_str, src_size)  # size = ~8 MB
+        if not self.lib_top_is_active:
+            return
+
+        if os.path.isfile(lrc_src_path):
+            lrc_src_size = os.path.getsize(lrc_src_path)
+            command_str = u"cp --preserve=timestamps --verbose"
+            command_str += u'  "' + lrc_src_path + u'"  "' + lrc_trg_path + u'"'
+            lcs.run_one_command(command_str, lrc_src_size)  # size ~2 KB
+
+    def checked_process(self, action):
+        """ Process all checked items 
+            Copied from clear_all_checks
+        """
+        who = "mserve.py checked_process() - "
+        ext.t_init('check_process()')
+
+        ''' TODO: Prevent other location & playlist related functions from 
+                  starting up and changing lcs.act_topdir or music tree. '''
+
+        self.checked_in_progress = True  # Options will be set tk.DISABLED
+        self.enable_lib_menu()  # Turn off location and playlist options
+        self.start_long_running_process()
+        self.lib_top.update_idletasks()
+        self.lib_tree_open_states = []
+        for Artist in self.lib_tree.get_children():  # Read all Artists
+            if self.lib_tree.tag_has("unchecked", Artist):
+                continue
+            self.checked_highlight('Artist', Artist)
+            for Album in self.lib_tree.get_children(Artist):  # Read all Albums
+                if self.lib_tree.tag_has("unchecked", Album):
+                    continue
+                self.checked_highlight('Album', Album)
+                for Song in self.lib_tree.get_children(Album):  # Read all Albums
+                    if not self.lib_top_is_active:
+                        return
+                    if self.lib_tree.tag_has("unchecked", Song):
+                        continue
+                    self.checked_highlight('Song', Song)
+                    ''' Process 'copy' or 'lrc' action '''
+                    if action == 'lrc':
+                        self.lrc_make(Song, msgs=False)
+                    elif action == 'copy':
+                        self.checked_copy_one_file(Song)
+                    else:
+                        toolkit.print_trace()
+                        print(who + "Bad action:", action)
+                        return
+                    self.checked_done('Song', Song)
+                self.checked_done('Album', Album)
+            self.checked_done('Artist', Artist)
+        self.lib_top.update_idletasks()
+        ext.t_end('no_print')  # 0.33 for 1500 selections
+        self.end_long_running_process()
+        self.checked_in_progress = None  # When None, options set to tk.NORMAL
+        self.enable_lib_menu()  # Turn On location and playlist options
+        # 0.1857478619  for 3 selections out of 3826 songs
+
+    def checked_highlight(self, line_type, iid):
+        """ Highlight Music Location Treeview line """
+        if not self.lib_top_is_active:
+            return
+        toolkit.tv_tag_add(self.lib_tree, iid, "checked_sel", strict=True)
+
+        if line_type == 'Song':
+            self.lib_tree.see(iid)
+            thread = self.get_refresh_thread()
+            thread()  # ten times slower due to every 18 ms invocation
+            # but visual effect nicer than racing through music location tree
+            #self.lib_top.update_idletasks()
+            return
+
+        ''' Is it already opened? '''
+        opened = self.lib_tree.item(iid, 'open')
+
+        if line_type == 'Artist':
+            if opened is True or opened == 1:
+                self.checked_opened_artist = False
+            else:
+                self.checked_opened_artist = True
+                self.lib_tree.item(iid, open=True)
+
+        elif line_type == 'Album':
+            if opened is True or opened == 1:
+                self.checked_opened_album = False
+            else:
+                self.checked_opened_album = True
+                self.lib_tree.item(iid, open=True)
+
+        #self.lib_top.update_idletasks()  # Done by get_refresh_thread
+
+    def checked_done(self, line_type, iid):
+        """ Finished one batched item """
+        if not self.lib_top_is_active:
+            return
+
+        toolkit.tv_tag_remove(self.lib_tree, iid, "checked_sel", strict=True)
+
+        if line_type == 'Song':
+            self.lib_top.update_idletasks()
+            return
+
+        if line_type == 'Artist':
+            if self.checked_opened_artist:  # Did we open album?
+                self.lib_tree.item(iid, open=False)
+
+        elif line_type == 'Album':
+            if self.checked_opened_album:  # Did we open album?
+                self.lib_tree.item(iid, open=False)
+
+        self.lib_top.update_idletasks()
 
     # ==============================================================================
     #
@@ -4098,8 +4359,7 @@ class MusicLocationTree(PlayCommonSelf):
     def calculator_open(self):
         """ Big Number Calculator allows K, M, G, T, etc. UoM """
         if self.calculator and self.calc_top:
-            self.calc_top.focus_force()
-            self.calc_top.lift()
+            self.calculator_lift()
             return
         geom = monitor.get_window_geom('calculator')
         self.calc_top = tk.Toplevel()
@@ -4110,6 +4370,13 @@ class MusicLocationTree(PlayCommonSelf):
         self.calc_top.bind("<Escape>", self.calculator_close)
         self.calc_top.protocol("WM_DELETE_WINDOW", self.calculator_close)
         self.calc_top.update_idletasks()
+
+    def calculator_lift(self):
+        """ Lift Big Number Calculator above Music Location Tree window """
+        if self.calculator and self.calc_top:
+            self.calc_top.focus_force()
+            self.calc_top.lift()
+            return
 
     def calculator_close(self, *args):
         """ Save last geometry for next Calculator startup """
@@ -6973,16 +7240,17 @@ class MusicLocationTree(PlayCommonSelf):
                                 " seconds ahead.", anchor="se")
             elif name == "Chron":
                 ''' Show/Hide Chronology (Playlist) toggle button (Frame 4) '''
-                text = "placeholder"
                 if self.chron_is_hidden is None:
-                    self.chron_is_hidden = False  # Initialization
+                    self.chron_is_hidden = False  # Initialization starts shown
+
+                ''' Code copied from self.set_chron_button_text(). Make DRY '''
+                text, text2 = self.get_chron_button_text()
                 self.chron_button = tk.Button(
                     self.play_btn_frm, text=text,
                     width=g.BTN_WID2 + 2, command=lambda s=self: s.chron_toggle())
                 self.chron_button.grid(row=0, column=col, padx=2, sticky=tk.W)
                 text = "placeholder"
-                self.tt.add_tip(self.chron_button, text, anchor="se")
-                self.set_chron_button_text()
+                self.tt.add_tip(self.chron_button, text2, anchor="se")
             else:
                 print("mserve.py build_play_btn_frm() Bad button name:", name)
 
@@ -10815,8 +11083,7 @@ mark set markName index"
         self.play_chron_highlight(self.ndx, True)  # True = use short line
 
     def chron_highlight_row(self, event):
-        """ Cursor hovering over row highlights it in light blue
-        """
+        """ Cursor hovering over row highlights it in light blue """
         tree = event.widget
         item = tree.identify_row(event.y)
         if item is None:
@@ -11129,30 +11396,38 @@ mark set markName index"
         number_str = play_padded_number(playlist_no, number_digits)
 
         ''' Song title - remove track number and filename extension '''
-        title = self.lib_tree.item(lib_tree_iid)['text']
+        try:
+            title = self.lib_tree.item(lib_tree_iid)['text']
+        except tk.TclError:
+            title = "Playlist Song not found: " + str(playlist_no)
+            print(title)
+            # TODO: Remove from playlist by posting "unchecked" to song.
         title = title.lstrip('0123456789.- ')  # Trim leading digit
         title = os.path.splitext(title)[0]  # Trim trailing ext
         line = number_str
         line = cat3(line, TITLE_PREFIX, title)
 
         ''' Extract Artist name from treeview parents '''
-        album = self.lib_tree.parent(lib_tree_iid)
-        artist = self.lib_tree.parent(album)
-        line = cat3(line, ARTIST_PREFIX, self.lib_tree.item(artist)['text'])
-        line = cat3(line, ALBUM_PREFIX, self.lib_tree.item(album)['text'])
-
+        try:
+            album = self.lib_tree.parent(lib_tree_iid)
+            artist = self.lib_tree.parent(album)
+            line = cat3(line, ARTIST_PREFIX, self.lib_tree.item(artist)['text'])
+            line = cat3(line, ALBUM_PREFIX, self.lib_tree.item(album)['text'])
+        except tk.TclError as err:
+            print("tk.TclError:", err)
+            print("Bad playlist number must be unchecked but invisible.")
+            print("Remove error checking in mserve.py populate_lib_tree().")
         ''' Build extended line using metadata for song in SQL Music Table '''
-        #path = self.real_path(int(playlist_no - 1))  # Remove <No Artist>, etc.
-        path = self.real_path(int(lib_tree_iid))  # Remove <No Artist>, etc.
-        sql_key = path[len(START_DIR):]  # Remove prefix from filename
+        try:
+            path = self.real_path(int(lib_tree_iid))  # Remove <No Artist>, etc.
+            sql_key = path[len(START_DIR):]  # Remove prefix from filename
+        except tk.TclError:
+            sql_key = "Crash/and/Burn Baby"
 
         ''' June 3, 2023 - Using new Blacklist '''
         d = sql.ofb.Select(sql_key)
-
         if d is None:
             return line, None  # No SQL Music Table Row exists, use short line
-
-
 
         try:
             line = number_str + TITLE_PREFIX + d['Title'].encode("utf8")
@@ -11259,19 +11534,23 @@ mark set markName index"
 
     def set_chron_button_text(self):
         """ Called by toggle_chron(), long_running_process() and begin play """
+        text, text2 = self.get_chron_button_text()
+        self.chron_button['text'] = text
+        self.tt.set_text(self.chron_button, text2)
 
+    def get_chron_button_text(self):
+        """ Called by set_chron_button_text() and build_play_btn_frm() """
         if self.chron_is_hidden:
             text = "🖸 Show Chronology"
-            text2 = "Show last three songs played,\n" +\
-                    "current song, and future six\n" +\
+            text2 = "Show last three songs played,\n" + \
+                    "current song, and future six\n" + \
                     "songs in playlist."
         else:  # Hide chronology (playlist)
             text = "🖸 Hide Chronology"
-            text2 = "Hide the scrollable playlist below\n" +\
+            text2 = "Hide the chronology playlist below\n" + \
                     "double the size of spinning artwork."
 
-        self.chron_button['text'] = text
-        self.tt.set_text(self.chron_button, text2)
+        return text, text2
 
     def toggle_chron_tt_positions(self):
         """ Called by toggle_chron(), and build_play_btn_frm()) """
@@ -15059,10 +15338,11 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         PlaylistsCommonSelf.__init__(self)  # Define self. variables
         #self.top = None  # Indicate Playlist Maintenance is closed
         ''' Enable File, Edit & View Dropdown Menus for playlists '''
+
         if isinstance(shutdown, tk.Event):
             self.enable_lib_menu()  # <Escape> bind
         elif not shutdown:  # When shutting down lib_top may not exist.
-            self.enable_lib_menu()
+            self.enable_lib_menu()  # Sep 9/23 - patch inside to fix errors
 
     # noinspection PyUnusedLocal
     def apply(self, *args):
