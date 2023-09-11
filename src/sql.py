@@ -1602,15 +1602,20 @@ def get_config(Type, Action):
 
         VARIABLE        DESCRIPTION
         --------------  -----------------------------------------------------
-        Type - Action   'window' - library, playlist, history, encoding,
-                                   sql_music, sql_history, sql_location,
-                                   location
-        Type - Action   'resume' - LODICT[iid]. SourceMaster = Playing/Paused
-                        'chron_state' - LODICT[iid]. SourceMaster = hide/show
-                        'hockey_state' - LODICT[iid]. SourceMaster = On/Off
+        Type - Action   'window' - library, playlist(Music Playing), history,
+                        encoding, sql_music, sql_history, sql_location,
+                        pls_top(needs to be deleted), lcs_top(needs deleting),
+                        playlists(maintenance), location(needs deleting),
+                        locations(maintenance), calculator, results(DELETE)
+                        See: monitory.py - get_window_geom(name)
+        Type - Action   'resume' - L999 or P999999. SourceMaster = Playing/Paused
+                        'chron_state' - L999 or P999999. SourceMaster = hide/show
+                        'hockey_state' - L999 or P999999. SourceMaster = On/Off
+                        'make_lrc' - L999 or P999999. FUTURE use
+                        'copy_new' - L999 or P999999. FUTURE use
         Type - Action   'location' - 'last': The last location played.
                         SourceMaster = loc. Code, SourceDetail = loc. Name,
-                        Target = TopDir
+                        Target = TopDir: FUTURE add playlist to restart it
         Type - Action   'encoding' - 'format': Target = oga, mp4, flac or wav
                         'encoding' - 'quality': Size = 30 to 100
                         'encoding' - 'naming': SM = '99 ' or '99 - '
@@ -2046,6 +2051,8 @@ class Webscrape:
     def read_music_id(self, music_id):
 
         """
+                NOT USED - Reviewed Sep 10/23 and considered deleting...
+
         ==========================   COPY from webscrape.py   =========================
             
         # Web scraping song lyrics IPC file names

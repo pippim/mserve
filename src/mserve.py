@@ -93,6 +93,11 @@ References:
 
 -----------------------------------------------------------------------------
 
+BUGS:
+
+    Starting mserve with FTP Host gets error and have to start again.
+    Open Location and Play fails and requires restart for new location.   
+
 DESIGN FLAWS:
 
     Shuffling Favorites, not saving play and exiting, then opening a
@@ -100,20 +105,13 @@ DESIGN FLAWS:
         option should be enabled and a message displayed.
 
 TODO:
-
-    Tools / Utilities for selected Music Location Tree Files:
-        - Make LRC files
-        - Copy files to another location
-        
-        Shared methods to open / close Artist, then Album and highlight
-            each music file as it is processed.
-
-            - Make `.lrc` file: lrc_make(Id)            
-            - Copy: mkdir -p /foo/bar && cp myfile "$_"
-
-        
     
-    After lyrics training, make .lrc file
+    After 'Make LRC For Checked Songs' and 'Copy Checked To New Location'
+        'add' new history or add/update last 'edit' history record. Not
+        for every song, simply for that location or playlist.
+
+    When playing .wav and there is a matching .mp3, mp4, etc. with artwork
+        and lyrics, why not use that SQL Music Table metadata?
 
     Similar to below, high priority to crawl FTP server to find new
         songs and delete old songs. Unlike below this is done one directory
@@ -131,9 +129,11 @@ TODO:
     FileControl.zoom() _alpha_cb() that covers instead of pushing tree down
         FineTune.sync() divide last duration time to zero duration lines
 
-    More libftp.FTP() enhancements.
+    More libftp.FTP() enhancements. e.g. background file refresh
 
 LONGER TERM TODO'S:
+    
+    After lyrics training, make .lrc file?
 
     Track mserve suspend / resume times. Similar to play_ctl start / stop.
         This is needed for knowing that host may be auto disconnected.
@@ -142,6 +142,12 @@ LONGER TERM TODO'S:
         temporary playlist and play all. Current favorites or playlist
         swapped out while temporary playlist plays in play_top. Same new
         technology could replace "sample middle" and sample full"?
+
+    Too many history records. Purge function from 20k records and reuild
+        row IDs.  When only genius is webscraped for lyrics, it's pointless
+        havving history records for now. Indeed only if someone other than
+        genius is scraped should there be a history record. 'file'-'init'
+        into history might be irrelevant except for new songs?
 
     VU Meter peak line indicator that drops down to current level and changes
         color as it passes through zone. How long to hold peak and how fast
@@ -219,6 +225,20 @@ RENAME FUNCTIONS:
 
     'self.play_insert()'    -> 'self.add_selected()'
     'self.play_insert()'    -> 'self.insert_selection()'
+    
+RENAME WINDOWS:
+    'Playing Playlist'      -> 'Playing Music' window
+                            -> 'Music Playing' window           # 1
+                            -> 'Play Selections' window
+                            -> 'Playing Checked' window
+                            -> 'Music Checked' window
+                            -> 'Checked Music' window
+                            -> 'Playlist Music' window
+                            -> 'Playlist Songs' window
+
+    'Music Location Tree'   -> doesn't have a name, just location name
+
+    'Information Centre'    -> 'Session History' window
 #
 # =============================================================================
 
@@ -3853,8 +3873,9 @@ class MusicLocationTree(PlayCommonSelf):
             mkdir -p /foo/bar && cp myfile "$_"
 
         """
+        if not self.lib_top_is_active:
+            return  # mserve is shutting down
         who = "mserve.py checked_copy_one_file() - "
-        cmd = "echo Hello World!"
         src_path = self.make_variable_path(Id)
         src_base, src_ext = src_path.rsplit(u".", 1)
         lrc_src_path = toolkit.uni_str(src_base) + u'.lrc'
@@ -3900,6 +3921,8 @@ class MusicLocationTree(PlayCommonSelf):
         ''' TODO: Prevent other location & playlist related functions from 
                   starting up and changing lcs.act_topdir or music tree. '''
 
+        if not self.lib_top_is_active:
+            return  # mserve is shutting down
         self.checked_in_progress = True  # Options will be set tk.DISABLED
         self.enable_lib_menu()  # Turn off location and playlist options
         self.start_long_running_process()
@@ -3915,7 +3938,7 @@ class MusicLocationTree(PlayCommonSelf):
                 self.checked_highlight('Album', Album)
                 for Song in self.lib_tree.get_children(Album):  # Read all Albums
                     if not self.lib_top_is_active:
-                        return
+                        return  # mserve is shutting down
                     if self.lib_tree.tag_has("unchecked", Song):
                         continue
                     self.checked_highlight('Song', Song)
@@ -3931,10 +3954,13 @@ class MusicLocationTree(PlayCommonSelf):
                     self.checked_done('Song', Song)
                 self.checked_done('Album', Album)
             self.checked_done('Artist', Artist)
-        self.lib_top.update_idletasks()
         ext.t_end('no_print')  # 0.33 for 1500 selections
-        self.end_long_running_process()
         self.checked_in_progress = None  # When None, options set to tk.NORMAL
+        if not self.lib_top_is_active:
+            return  # mserve is shutting down
+
+        self.lib_top.update_idletasks()
+        self.end_long_running_process()
         self.enable_lib_menu()  # Turn On location and playlist options
         # 0.1857478619  for 3 selections out of 3826 songs
 
@@ -16618,7 +16644,7 @@ def main(toplevel=None, cwd=None, parameters=None):
     ''' Create initial instance of Locations class.'''
     lcs = lc.Locations(make_sorted_list)  # Pass reference
 
-    ''' sql.open_db() is called again in sql.populate_tables() OK '''
+    ''' sql.open_db() is called again in sql.populate_tables()  '''
     sql.open_db(LCS=lcs)  # SQL needed to build location lists
     lcs.build_locations()  # Build SQL location lists for TopDir lookup
 
@@ -16634,8 +16660,21 @@ def main(toplevel=None, cwd=None, parameters=None):
     img.set_font_style()  # Make messagebox text larger for HDPI monitors
     ''' Set program icon in taskbar '''
     img.taskbar_icon(root, 64, 'white', 'lightskyblue', 'black')
-    ''' Open Files - Shouldn't it return True or False though?'''
+
+
+    '''   B I G   T I C K E T   E V E N T    
+
+          Open Files - If it fails it will exit()  '''
     open_files(cwd, prg_path, parameters)  # Create application directory
+
+
+    # Debugging
+    #mt = lc.ModTime(lcs.open_code)
+    #print("#"*80)
+    #print("lc.ModTime() allows_mtime:", mt.allows_mtime)
+    #print("type(mt.allows_mtime)", type(mt.allows_mtime))
+    #mt.print(0, 40)  # Print first 40 keys by index #
+    #print("#"*80)
 
     ''' Original version open Locations and build LIST '''
     #if not lc.read():

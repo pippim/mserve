@@ -879,15 +879,13 @@ class ModTime:
                   code)
             self.allows_mtime = True  # Assume best-case scenario
             return
-        #self.loc_dict = item(iid)   # Keep copy of dictionary
-        #self.topdir = self.loc_dict['topdir']
         self.topdir = d['TopDir']  # SQL Location Table column name
         self.filename = FNAME_MOD_TIME
-        #self.filename = set_one_filename(self.filename, iid)
-        self.filename = set_one_filename(self.filename, code)
-        #print('modification_time filename:',self.filename)
-
-        # print('Initializing iid:',iid,'dict:',self.loc_dict)
+        #print("Opened Location:", code, self.filename)
+        parts = self.filename.split(os.sep)
+        parts[-2] = code
+        self.filename = os.sep.join(parts)
+        #print("Massaged Location:", code, self.filename)
 
         # Does location support modification timestamping?
         testfile = ext.join(self.topdir, "mserve_test_time")
@@ -928,33 +926,29 @@ class ModTime:
             return
 
         # Initialize dictionary with previous modification_time file results
+        #print("lc.ModTime() self.filename:", self.filename)
         if os.path.isfile(self.filename):
             with open(self.filename, 'rb') as filehandle:
                 # read the data as binary data stream
                 self.mod_dict = pickle.load(filehandle)
 
-        if True is True:
-            return  # skip debug stuff below
+        if True is False:
+            self.print(0, 10)  # Print debug stuff
 
-        print("location.py ModTime() len(self.mod_dict):", len(self.mod_dict))
-        i = 0
-        for key in self.mod_dict:
-            print(key, self.mod_dict[key])  # Print first 10 key/values
-            i += 1
-            if i > 10:
-                break
-        return
 
     def get(self, path, mtime):
         """ Check if modification time has list entry for new time. """
         if self.allows_mtime:
             return mtime  # Nothing to do
 
+        mtime = float(mtime)  # Ensure it's a float
+        #print("NO mtime:", tmf.ago(mtime), path)
         # See if file is in our dictionary
         dict_old_time, dict_new_time = self.mod_dict.get(path, (0.0, 0.0))
-        mtime = float(mtime)
-        dict_old_time = float(dict_old_time)
-        dict_new_time = float(dict_new_time)
+
+        #print("dict_old_time:", tmf.ago(dict_old_time),
+        #      "dict_new_time:", tmf.ago(dict_new_time))
+
         if dict_new_time == mtime:
             return mtime                    # Nothing has changed
         if dict_old_time == 0:
@@ -968,7 +962,8 @@ class ModTime:
             print('This SHOULD NOT happen?')
             return mtime                    # 
         elif dict_old_time == mtime:
-            # print('ModTime.get() Return existing override time')
+            ''' Expected results '''
+            #print('ModTime.get() Return existing override time')
             return dict_new_time            # It's existing filename same time
         elif dict_new_time == mtime:
             print('The passed mtime matches last dict_new_time already')
@@ -1015,6 +1010,26 @@ class ModTime:
         # Add or update dict_new_time
         self.mod_dict[path] = (old_mtime, new_mtime)
         #print('ModTime.update() old_mtime:', t(old_mtime), 'new_mtime:', t(new_mtime))
+
+    def print(self, start_i, end_i):
+        """ Print dictionary elements.  Print first 11 chars of date string
+            and only print last 45 characters of key to prevent line wrap.
+        """
+        if self.allows_mtime:
+            return  # Nothing to do
+
+        for i, (k, v) in enumerate(self.mod_dict.items()):
+            if i == 0:
+                print("location.py ModTime() mod_dict. start_i:",
+                      start_i, "end_i:", end_i)
+            if i > end_i:
+                break
+            if i > start_i:
+                old_time, new_time = v
+                old = tmf.ago(old_time)
+                new = tmf.ago(new_time)
+                print("old: {} | new: {} | key: {}".format(old[:11], new[:11],
+                                                           k[-45:]))
 
     def close(self):
         """ If new modification time record it in list entry. """
@@ -4301,13 +4316,19 @@ filename.
             action = "Missing"  # Will not appear in treeview
             return action, src_path, src_size, src_time, \
                 trg_path, None, None
+
+        """ Checking ModTime should be done before os.stat().
+            If paths_and_sizes dictionary exists, use it for size not os.stat().
+            Use same to compare results of os.path.isfile() test.  
+        """
+
         trg_stat = os.stat(trg_path)
         trg_size = trg_stat.st_size
         trg_time = float(trg_stat.st_mtime)
 
         ''' When Android not updating modification time, keep track ourselves '''
         src_time = self.src_mt.get(src_path, src_time)
-        trg_time = self.trg_mt.get(trg_path, trg_time)
+        trg_time = self.trg_mt.get(trg_path, trg_time)  # def get
         time_diff = abs(src_time - trg_time)  # time diff between src & trg
 
         ''' Size and modify times match? Already synchronized. '''
