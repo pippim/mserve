@@ -18,10 +18,11 @@ from __future__ import with_statement  # Error handling for file opens
 #       July 22 2023 - Create Locations() class with new sshfs support
 #       July 29 2023 - Create Compare() class
 #       Sep. 04 2023 - Create FNAME_SIZE_DICT under version 3.5.0
+#       Sep. 10 2023 - Retrieve FTP file for diff when curlftpfs chokes on '#'
 #
 #==============================================================================
 #import stat
-import Tkinter
+#import Tkinter
 
 """
 
@@ -113,6 +114,7 @@ FNAME_TEST_NMAP        = g.TEMP_DIR + "mserve_test_nmap"  # Test if host up
 ''' Temporary files also defined in mserve.py '''
 TMP_STDOUT = g.TEMP_DIR + "mserve_stdout"  # _g7gh75 appended Defined mserve.py
 TMP_STDERR = g.TEMP_DIR + "mserve_stderr"  # _u4rt5m appended Defined mserve.py
+TMP_FTP_RETRIEVE = g.TEMP_DIR + "mserve_ftp_retr"  # _a87sd6 appended Defined mserve.py
 
 ''' Temporary files for encoding.py '''
 IPC_PICKLE_FNAME = g.TEMP_DIR + "mserve_encoding_pickle"
@@ -893,7 +895,7 @@ class ModTime:
             try:
                 with open(testfile, "w") as text_file:
                     text_file.write("Test Modification Time")
-                print("location.py ModTime __init__(): Loop count:", i + 1)
+                #print("location.py ModTime __init__(): Loop count:", i + 1)
                 break  # Success
             except Exception as err:
                 # IOError: [Errno 5] Input/output error: '/mnt/music/mserve_test_time'
@@ -1085,10 +1087,8 @@ class LocationsCommonSelf:
         self.act_row_id = None  # Location SQL Primary Key
         self.act_ftp = None  # libftp.FTP() instance
 
-        ''' fld_intro = "Code: L001  +
-                        | Last modified: <time>  +
-                        | Free: 99,999 MB of 999,999 MB" 
-        '''
+        ''' fld_intro = 
+            Code: L001 | Last modified: <time> | Free: 99,999 MB of 999,999 MB '''
         self.fld_intro = None  # Formatted: fld_code + fld_modify_time
         self.total_bytes = None  # Size of filesystem in bytes
         self.free_bytes = None  # Number of free bytes that ordinary users
@@ -1190,11 +1190,13 @@ class LocationsCommonSelf:
         self.cmp_btn_frm = None  # Button frame for update diff / progress bar
         self.cmp_close_btn = None  # Button to close Compare Locations window
         self.update_differences_btn = None  # Click button to synchronize
-        self.cmp_found = None  # Number of files goes into differences button
+        self.cmp_found = 0  # Number of files goes into differences button
         self.cmp_command_list = []  # iid,command_str,src_to_trg,src_time,trg_time
         self.cmp_return_code = 0  # Indicate how update failed
         self.src_mt = None  # Source modification time using ModTime() class
+        self.src_paths_and_sizes = None  # To avoid os.stat.st_size
         self.trg_mt = None  # Target modification time using ModTime() class
+        self.trg_paths_and_sizes = None  # To avoid os.stat.st_size
         self.cmp_trg_missing = []  # Source files not found in target location
         self.cmp_msg_box = None  # message.Open()
         self.last_fast_refresh = 0.0  # Calling refresh many times.
@@ -1206,6 +1208,7 @@ class LocationsCommonSelf:
         self.temp_suffix = (''.join(random.choice(letters) for _i in range(6)))
         self.TMP_STDOUT = TMP_STDOUT + "_" + self.temp_suffix
         self.TMP_STDERR = TMP_STDERR + "_" + self.temp_suffix
+        self.TMP_FTP_RETRIEVE = TMP_FTP_RETRIEVE + "_" + self.temp_suffix
 
 
 class Locations(LocationsCommonSelf):
@@ -1364,7 +1367,7 @@ class Locations(LocationsCommonSelf):
     # ==============================================================================
 
     def display_main_window(self, name=None):
-        """ Mount window with Location Treeview or placeholder text when none.
+        """ Mount window with Location Treeview or placeholder text for no tree
             :param name: "New Location", "Open Location", etc.
         """
         ''' Build various lists of locations for treeview and validations '''
@@ -1410,7 +1413,7 @@ class Locations(LocationsCommonSelf):
         self.make_main_close_button()
 
         ''' Help Button - https://www.pippim.com/programs/mserve.html#locations '''
-        ''' 🔗 Help - Videos and explanations on pippim.com '''
+        ''' ⧉ Help - Videos and explanations on pippim.com '''
         self.make_main_help_button()
 
         ''' Test Host Button whenever a wakeup command present '''
@@ -1465,7 +1468,7 @@ class Locations(LocationsCommonSelf):
         """ Added by main window, removed by testing. """
 
         ''' Help Button - https://www.pippim.com/programs/mserve.html#locations '''
-        ''' 🔗 Help - Videos and explanations on pippim.com '''
+        ''' ⧉ Help - Videos and explanations on pippim.com '''
 
         if self.state == 'synchronize':
             help_id = "HelpSynchronizeLocation"
@@ -1476,7 +1479,7 @@ class Locations(LocationsCommonSelf):
         help_text += "https://www.pippim.com/programs/mserve.html#\n"
 
         self.main_help_button = tk.Button(
-            self.btn_frame, text="🔗 Help", font=g.FONT,
+            self.btn_frame, text="⧉ Help", font=g.FONT,
             width=g.BTN_WID2 - 4, command=lambda: g.web_help(help_id))
         self.main_help_button.grid(row=14, column=2, padx=10, pady=5, sticky=tk.E)
         # Columns: 0 = Apply, 1 = Test, 2 = Help, 3 = Close
@@ -1564,8 +1567,8 @@ class Locations(LocationsCommonSelf):
             BUG: Aug 29/23 - when called from main_top, tooltip not found errors
                 But close button tooltip works?
 
-                Could be previous "🔗 Help" grid removed is conflict?
-                Rename to ""🔗 Help Test" to debug if this is the case. YES
+                Could be previous "⧉ Help" grid removed is conflict?
+                Rename to ""⧉ Help Test" to debug if this is the case. YES
 
                 This doesn't happen when a window with a close button calls
                 another window with a close button? etc.
@@ -1580,7 +1583,7 @@ class Locations(LocationsCommonSelf):
         help_text += "videos and explanations on using this screen.\n"
         help_text += "https://www.pippim.com/programs/mserve.html#\n"
         self.test_help_button = tk.Button(
-            self.btn_frame, text="🔗 Help Test", font=g.FONT,
+            self.btn_frame, text="⧉ Help Test", font=g.FONT,
             width=g.BTN_WID2, command=lambda: g.web_help("HelpTestHostStatus"))
         self.test_help_button.grid(row=0, column=2, padx=10, pady=5, sticky=tk.E)
         # Columns: 0 = Apply, 1 = Test, 2 = Help, 3 = Close
@@ -3889,6 +3892,23 @@ filename.
 
         self.start_long_running()  # Remove mserve full playlist buttons
 
+        ''' Open FTP super-fast access file paths & sizes '''
+        # print(who + "lcs.open_ftp:", lcs.open_ftp)
+        if self.open_ftp:
+            self.src_paths_and_sizes = \
+                ext.read_from_json(FNAME_SIZE_DICT)
+            #if self.src_paths_and_sizes:
+            #    print("\nFNAME_SIZE_DICT:", FNAME_SIZE_DICT, "size:",
+            #          len(self.src_paths_and_sizes))
+        if self.act_ftp:
+            fname = rnm_one_filename(FNAME_SIZE_DICT, self.act_code, self.open_code)
+            self.trg_paths_and_sizes = \
+                ext.read_from_json(fname)
+            print("self.act_ftp:", self.act_ftp, type(self.act_ftp))
+            #if self.trg_paths_and_sizes:
+            #    print("\nfname:", fname, "size:",
+            #          len(self.trg_paths_and_sizes))
+
         ''' Create Compare Locations top window - self.cmp_top '''
         self.cmp_top = tk.Toplevel()
         self.cmp_top.minsize(g.WIN_MIN_WIDTH, g.WIN_MIN_HEIGHT)
@@ -3976,7 +3996,7 @@ filename.
         help_text += "videos and explanations on using this screen.\n"
         help_text += "https://www.pippim.com/programs/mserve.html#\n"
         self.cmp_help_button = tk.Button(
-            self.cmp_btn_frm, text="🔗 Help", font=g.FONT,
+            self.cmp_btn_frm, text="⧉ Help", font=g.FONT,
             width=g.BTN_WID2 - 4, command=lambda: g.web_help("HelpSynchronizeActions"))
         self.cmp_help_button.grid(row=0, column=1, padx=10, pady=5, sticky=tk.E)
 
@@ -4115,7 +4135,9 @@ filename.
                 self.tt.close(self.cmp_top)  # Close tooltips under top level
         self.cmp_top.destroy()  # Close the treeview window
         self.cmp_top = None
-        #self.called_from_main_top = False  # Added Aug 28/23 - for test_common
+
+        self.reset()  # Safest way to avoid self.act_ftp corruption running again.
+
         return True
 
     def cmp_populate_tree(self):
@@ -4125,18 +4147,20 @@ filename.
 
         :returns True: When locations are different
         """
-        # How many path separators '/' are there in source and target?
+        # How many path separators '/' are there in source?
         start_dir_sep = self.open_topdir.count(os.sep)
-        #target_dir_sep = self.cmp_target_dir.count(os.sep) - 1
         self.src_mt = ModTime(self.open_code)
         self.trg_mt = ModTime(self.act_code)
 
-        ''' TODO: Put these values on screen, perhaps in location test '''
+        ''' TODO: Put self....mt.allows_mtime on screen: 
+                  perhaps in test host frame?
+                  perhaps in format_info() line?
+        '''
         #print("self.src_mt.allows_mtime:", self.src_mt.allows_mtime)
         #print("self.trg_mt.allows_mtime:", self.trg_mt.allows_mtime)
 
         LastArtist = LastAlbum = CurrAlbumId = CurrArtistId = ""
-        self.cmp_found = 0
+        #self.cmp_found = 0
 
         ext.t_init("Build compare target")
         ''' Traverse fake_paths created by mserve.py make_sorted_list() '''
@@ -4249,38 +4273,21 @@ filename.
     def compare_path_pair(self, fake_path):
         """ Called when inserting in treeview and after copy/touch command.
 
-            NOTE:
+            NOTES for sshfs:
                 First sync is 8,261 seconds 2 hours 18 minutes for
                 3,800 songs 'diff'.
 
-                Second sync is 1 minute for
+                Second sync is 1 minute
 
-            TOOD:
+                Run bash script 'test-for-sync.sh' to change files
+                    in ~/Music/Compilations
 
-                First time retries all sync. Cancel and start again for
-                modTime to kick in.
-
-                Disable Next button in playlist player by calling:
-
-                    def start_long_running_process(self):
-                        self.long_running_process = True
-                        self.play_btn_frm.grid_forget()
-                        self.build_play_btn_frm()
-
-                    def end_long_running_process(self):
-                        self.long_running_process = False
-                        self.play_btn_frm.grid_forget()
-                        self.build_play_btn_frm()
-
-            FOR TESTING: Run bash script 'test-for-sync.sh' to change files
-                         in ~/Music/Compilations
-
-                         Use Kid3 on song to change some metadata
+                Use Kid3 on song to change some metadata
 
             RETURNS:
 
-            return action, src_path, src_size, src_time, \
-                trg_path, trg_size, trg_time
+                return action, src_path, src_size, src_time, \
+                    trg_path, trg_size, trg_time
 
             WHERE:
                 src_path = self.open_topdir + real bottom path
@@ -4306,29 +4313,45 @@ filename.
 
         ''' Build real song path from fake_path and stat '''
         src_path = self.real_from_fake_path(fake_path)
-        src_stat = os.stat(src_path)  # os.stat provides file attributes
-        src_size = src_stat.st_size
-        src_time = float(src_stat.st_mtime)
+        
+        ''' Is os.stat() call necessary? '''
+        src_size = 0
+        src_time = 0.0
+        if self.src_paths_and_sizes:
+            src_size = self.src_paths_and_sizes.get(src_path, 0)
+        if not self.src_mt.allows_mtime:
+            old_time, src_time = self.src_mt.mod_dict.get(src_path, (0.0, 0.0))
+
+        if src_size == 0 or src_time == 0.0:
+            src_stat = os.stat(src_path)  # os.stat provides file attributes
+            src_size = src_stat.st_size
+            src_time = float(src_stat.st_mtime)
 
         ''' Build target path, check if exists and use os.stat '''
         trg_path = src_path.replace(self.open_topdir, self.cmp_target_dir)
-        if not os.path.isfile(trg_path):  # If target missing, then return
-            action = "Missing"  # Will not appear in treeview
-            return action, src_path, src_size, src_time, \
-                trg_path, None, None
 
-        """ Checking ModTime should be done before os.stat().
-            If paths_and_sizes dictionary exists, use it for size not os.stat().
-            Use same to compare results of os.path.isfile() test.  
-        """
+        ''' Is os.stat() call necessary? '''
+        trg_size = 0
+        trg_time = 0.0
+        if self.trg_paths_and_sizes:
+            trg_size = self.trg_paths_and_sizes.get(trg_path, 0)
+        if not self.trg_mt.allows_mtime:
+            old_time, trg_time = self.trg_mt.mod_dict.get(trg_path, (0.0, 0.0))
 
-        trg_stat = os.stat(trg_path)
-        trg_size = trg_stat.st_size
-        trg_time = float(trg_stat.st_mtime)
+        ''' check if exists and use os.stat '''
+        if trg_size == 0 or trg_time == 0.0:
+            if not os.path.isfile(trg_path):  # If target missing, then return
+                action = "Missing"  # Will not appear in treeview
+                return action, src_path, src_size, src_time, \
+                    trg_path, None, None
+
+            trg_stat = os.stat(trg_path)  # os.stat provides file attributes
+            trg_size = trg_stat.st_size
+            trg_time = float(trg_stat.st_mtime)
 
         ''' When Android not updating modification time, keep track ourselves '''
         src_time = self.src_mt.get(src_path, src_time)
-        trg_time = self.trg_mt.get(trg_path, trg_time)  # def get
+        trg_time = self.trg_mt.get(trg_path, trg_time)
         time_diff = abs(src_time - trg_time)  # time diff between src & trg
 
         ''' Size and modify times match? Already synchronized. '''
@@ -4351,6 +4374,25 @@ filename.
 
         self.run_one_command(
             'diff -s ' + '"' + src_path + '" "' + trg_path + '"', src_size)
+
+        ''' Permission denied if curlftpfs chokes on files with # in name '''
+        if self.act_ftp and self.cmp_return_code != 0:
+            print("Retrying self.act_ftp and self.cmp_return_code != 0:")
+            base_path = trg_path.replace(self.act_topdir, '')
+            self.ftp_retrieve(self.act_ftp, base_path)  # Retrieve manually
+            self.cmp_return_code = 0  # Reset for repeating test
+            self.run_one_command(
+                'diff -s ' + '"' + src_path + '" "' +
+                self.TMP_FTP_RETRIEVE + '"', src_size)
+            print(ext.read_into_string(self.TMP_STDOUT))
+            """ 
+            TODO:
+            1. Assume target is Android and Android is never the source
+            2. ftp file transfer to /tmp/mserve_ftp_recv_zs8k6f
+            3. diff between src_path and /tmp file (self.TMP_FTP_RETRIEVE)
+            4. See ftp_retrieve
+            """
+
         ''' Permission denied - Do nothing, just report and skip copy '''
         if self.cmp_return_code != 0:
             action = "Error: Permission denied on 'diff' check"
@@ -4403,6 +4445,15 @@ filename.
 
         return action, src_path, src_size, src_time, \
             trg_path, trg_size, trg_time
+
+    def ftp_retrieve(self, ftp, path):
+        """ Retrieve file from FTP host """
+
+        prefix, basename = path.rsplit(os.sep, 1)
+        ftp.cwd(prefix)
+        with open(self.TMP_FTP_RETRIEVE, 'wb') as f:
+            ftp.retrbinary('RETR ' + basename, f.write)
+        # error_perm: 550 No such directory.
 
     def cmp_update_files(self):
         """ Called via "Update differences" button on cmp_top """

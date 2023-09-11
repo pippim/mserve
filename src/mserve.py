@@ -95,8 +95,8 @@ References:
 
 BUGS:
 
-    Starting mserve with FTP Host gets error and have to start again.
-    Open Location and Play fails and requires restart for new location.   
+    Open Location and Play fails and requires restart for new location.
+        Essentially performing "Open New Location and Exit"   
 
 DESIGN FLAWS:
 
@@ -154,6 +154,10 @@ LONGER TERM TODO'S:
         to drop? Peak is instantly pushed up on db increase. Peak would be
         visible betwen rectangles and inside retangles which requires new
         rectangle box that is no longer simply invisible or all one color.
+
+    Synchronize Android host is 1,000 times faster with ModTime() class
+        but can be even faster using earlier and with paths_and_sizes
+        file. Probalby another 100 times faster. 
 
     Instead of ellipsis for long labels, try: wraplength=250
 
@@ -419,15 +423,8 @@ import monitor              # Display, Screen, Monitor and Window functions
 import toolkit              # Functions for tkinter-tool kit interface
 import timefmt as tmf       # Format date and time
 import webscrape            # Get song lyrics via web scrape
-from calc import Calculator  # Big Number calculator for Tool Dropdown Menu
-
-# Subdirectory /pulsectl under directory where mserve.py located
-#from pulsectl import pulsectl  # July 7, 2023 to be Deprecated in mserve
-
 import vu_pulse_audio  # Volume Pulse Audio use pulsectl.Pulse
-#help(vup)
-# FUTURE thoughts: import vu_windows as vuw
-#                  import vu_mac as vum
+from calc import Calculator  # Big Number calculator for Tool Dropdown Menu
 
 
 # Poor man's locale circa 2020 stuff that needs to be upgraded
@@ -487,7 +484,8 @@ LYRICS_SCRAPE = g.TEMP_DIR + "mserve_scrape_*"
 TMP_ALL_NAMES = [TMP_CURR_SONG, TMP_CURR_SAMPLE, TMP_CURR_SYNC, TMP_FFPROBE+"*",
                  TMP_FFMPEG + "*", TMP_PRINT_FILE + "*", VU_METER_FNAME,
                  VU_METER_LEFT_FNAME, VU_METER_RIGHT_FNAME, LYRICS_SCRAPE,
-                 lc.FNAME_TEST, lc.TMP_STDOUT+"*", lc.TMP_STDERR+"*"]
+                 lc.FNAME_TEST, lc.TMP_STDOUT+"*", lc.TMP_STDERR+"*",
+                 lc.TMP_FTP_RETRIEVE+"*"]
 
 # More names added later after lcs is initialized.
 
@@ -914,7 +912,7 @@ class PlayCommonSelf:
         AlbumArtist, AlbumDate, FirstDate, CreationTime, DiscNumber, TrackNumber, 
         Rating, Genre, Composer, Comment, Hyperlink, Duration, Seconds, 
         GaplessPlayback, PlayCount, LastPlayTime, LyricsScore, LyricsTimeIndex 
-        PLUS: EncodingFormat, DiscId, MusicBrainzDiscId, OsFileSize, OsAccessTime '''
+        + EncodingFormat, DiscId, MusicBrainzDiscId, OsFileSize, OsAccessTime '''
 
         # Play frame VU meters - columns 2 & 3
         self.play_vu_meter_style = None     # 'led' = Use LED rectangles
@@ -1449,14 +1447,14 @@ class MusicLocationTree(PlayCommonSelf):
 
         ''' Help Button - 
             https://www.pippim.com/programs/mserve.html#HelpMusicLocationTree '''
-        ''' 🔗 Help - Videos and explanations on pippim.com '''
+        ''' ⧉ Help - Videos and explanations on pippim.com '''
 
         help_text = "Open new window in default web browser for\n"
         help_text += "videos and explanations on using this screen.\n"
         help_text += "https://www.pippim.com/programs/mserve.html#\n"
 
         lib_help_btn = tk.Button(
-            frame3, text="🔗 Help", font=g.FONT, width=g.BTN_WID2 - 4,
+            frame3, text="⧉ Help", font=g.FONT, width=g.BTN_WID2 - 4,
             command=lambda: g.web_help("HelpMusicLocationTree"))
         lib_help_btn.grid(row=0, column=3, padx=10, pady=5, sticky=tk.E)
         if self.tt:
@@ -1876,19 +1874,6 @@ class MusicLocationTree(PlayCommonSelf):
             print('\nmserve.py refresh_lib_top() closed by host down.')
             self.close()
             return False
-
-        ''' Synchronizing lyrics to time index controls music 
-            Original code yanked July 7, 2023. Currently refresh_play_top()
-            is only used. If play_top gets closed it automatically closes
-            self.fine_tune class.
-        # NOTE THIS IS BROKEN on July 7, 2023
-        # First section isn't calling self.tt.poll_tips()
-        # Below is duplicated code in self.refresh_play_top. DRY it.
-        if self.fine_tune and self.fine_tune.top_is_active:
-            self.fine_tune.top.update()  # Without this no keyboard/mouse click
-            self.fine_tune.top.after(50)
-            return False  # Looks like True causes animations to freeze
-        '''
 
         ''' Always give time slice to tooltips '''
         self.tt.poll_tips()  # Tooltips fade in and out. self.info piggy backing
@@ -12000,8 +11985,8 @@ class FineTune:
                           "this fine-tune index window.", anchor="ne")
 
             elif name == "HelpT":
-                ''' 🔗 Help - Videos and explanations on pippim.com '''
-                help = tk.Button(self.btn_bar_frm, text="🔗 Help", width=g.BTN_WID2 - 4,
+                ''' ⧉ Help - Videos and explanations on pippim.com '''
+                help = tk.Button(self.btn_bar_frm, text="⧉ Help", width=g.BTN_WID2 - 4,
                                  font=ms_font, command=lambda: g.web_help("HelpT"))
                 help.grid(row=0, column=col)
                 self.tt.add_tip(help, help_text, anchor="ne")
@@ -12032,8 +12017,8 @@ class FineTune:
                                   "go back 5 seconds and resume play.", anchor="nw")
 
             elif name == "HelpB":
-                ''' 🔗 Help - Videos and explanations on pippim.com '''
-                help = tk.Button(self.btn_bar_frm, text="🔗 Help", width=g.BTN_WID2-4,
+                ''' ⧉ Help - Videos and explanations on pippim.com '''
+                help = tk.Button(self.btn_bar_frm, text="⧉ Help", width=g.BTN_WID2-4,
                                  font=ms_font, command=lambda: g.web_help("HelpB"))
                 help.grid(row=0, column=col)
                 self.tt.add_tip(help, help_text, anchor="nw")
@@ -12077,8 +12062,8 @@ class FineTune:
                     "go back 5 seconds and resume play.", anchor="ne")
 
             elif name == "HelpS":
-                ''' 🔗 Help - Videos and explanations on pippim.com '''
-                help = tk.Button(self.btn_bar_frm, text="🔗 Help", width=g.BTN_WID2 - 4,
+                ''' ⧉ Help - Videos and explanations on pippim.com '''
+                help = tk.Button(self.btn_bar_frm, text="⧉ Help", width=g.BTN_WID2 - 4,
                                  font=ms_font,
                                  command=lambda: g.web_help("HelpS"))
                 help.grid(row=0, column=col)
@@ -13222,14 +13207,14 @@ class tvVolume:
 
         ''' Help Button - 
             https://www.pippim.com/programs/mserve.html#HelpTvVolume '''
-        ''' 🔗 Help - Videos and explanations on pippim.com '''
+        ''' ⧉ Help - Videos and explanations on pippim.com '''
 
         help_text = "Open new window in default web browser for\n"
         help_text += "videos and explanations on using this screen.\n"
         help_text += "https://www.pippim.com/programs/mserve.html#\n"
 
         help_btn = tk.Button(
-            bottom_frm, text="🔗 Help", font=g.FONT,
+            bottom_frm, text="⧉ Help", font=g.FONT,
             width=g.BTN_WID2 - 4, command=lambda: g.web_help("HelpTvVolume"))
         help_btn.grid(row=0, column=1, padx=10, pady=5, sticky=tk.E)
         if self.tt:
@@ -13448,7 +13433,7 @@ class FileControlCommonSelf:
         AlbumArtist, AlbumDate, FirstDate, CreationTime, DiscNumber, TrackNumber,
         Rating, Genre, Composer, Comment, Hyperlink, Duration, Seconds,
         GaplessPlayback, PlayCount, LastPlayTime, LyricsScore, LyricsTimeIndex 
-        PLUS: EncodingFormat, DiscId, MusicBrainzDiscId, OsFileSize, OsAccessTime '''
+        + EncodingFormat, DiscId, MusicBrainzDiscId, OsFileSize, OsAccessTime '''
         self.DiscNumber = None      # new July 13, 2023 'DISC'
         self.TrackNumber = None     # self.metadata.get('TRACK', "None")
         self.Genre = None           # self.metadata.get('GENRE', "None")
@@ -13864,7 +13849,7 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilatio
         AlbumArtist, AlbumDate, FirstDate, CreationTime, DiscNumber, TrackNumber,
         Rating, Genre, Composer, Comment, Hyperlink, Duration, Seconds,
         GaplessPlayback, PlayCount, LastPlayTime, LyricsScore, LyricsTimeIndex 
-        PLUS: EncodingFormat, DiscId, MusicBrainzDiscId, OsFileSize, OsAccessTime '''
+        + EncodingFormat, DiscId, MusicBrainzDiscId, OsFileSize, OsAccessTime '''
         self.Compilation = self.metadata.get('COMPILATION', None)
         self.AlbumArtist = self.metadata.get('ALBUM_ARTIST', None)
         self.AlbumDate = toolkit.uni_str(
@@ -14947,7 +14932,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         help_text += "videos and explanations on using this screen.\n"
         help_text += "https://www.pippim.com/programs/mserve.html#\n"
         self.help_button = tk.Button(
-            bottom_frm, text="🔗 Help", font=g.FONT, width=g.BTN_WID2 - 4,
+            bottom_frm, text="⧉ Help", font=g.FONT, width=g.BTN_WID2 - 4,
             command=lambda: g.web_help("HelpPlaylists"))
         self.help_button.grid(row=0, column=1, padx=10, pady=5, sticky=tk.E)
         self.tt.add_tip(self.help_button, help_text, anchor="ne")
@@ -16667,19 +16652,6 @@ def main(toplevel=None, cwd=None, parameters=None):
           Open Files - If it fails it will exit()  '''
     open_files(cwd, prg_path, parameters)  # Create application directory
 
-
-    # Debugging
-    #mt = lc.ModTime(lcs.open_code)
-    #print("#"*80)
-    #print("lc.ModTime() allows_mtime:", mt.allows_mtime)
-    #print("type(mt.allows_mtime)", type(mt.allows_mtime))
-    #mt.print(0, 40)  # Print first 40 keys by index #
-    #print("#"*80)
-
-    ''' Original version open Locations and build LIST '''
-    #if not lc.read():
-    #    toolkit.print_trace()
-    #    exit()
 
     ''' Sorted list of songs in the location - Need Delayed Text Box '''
     ext.t_init('make_sorted_list()')
