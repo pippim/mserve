@@ -95,16 +95,19 @@ References:
 
 BUGS:
 
-    Open Location and Play fails and requires restart for new location.
-        Essentially performing "Open New Location and Exit"   
-
-DESIGN FLAWS:
-
-    Shuffling Favorites, not saving play and exiting, then opening a
-        playlist will undo shuffle. The save favorites dropdown menu
-        option should be enabled and a message displayed.
+    Sep. 11 2023 - All Bugs have been fixed.
 
 TODO:
+
+    More libftp.FTP() enhancements. e.g. background dir walk and refresh
+        Music Location Tree. Related setup file caching below.
+    Setup variables when file_ctl.new(path) method called:
+        ''' Variables for FTP / SSH '''
+        # For FTP check if music file in cache. If not, retrieve to cache
+        self.file_cached = None     # music file retrieved locally for playing?
+        self.cache_name = None      # cached filename replaces self.path 
+        self.cache_size = None      # music file size
+        self.cache_mtime = None     # music file lc.ModTime()
     
     After 'Make LRC For Checked Songs' and 'Copy Checked To New Location'
         'add' new history or add/update last 'edit' history record. Not
@@ -129,7 +132,6 @@ TODO:
     FileControl.zoom() _alpha_cb() that covers instead of pushing tree down
         FineTune.sync() divide last duration time to zero duration lines
 
-    More libftp.FTP() enhancements. e.g. background file refresh
 
 LONGER TERM TODO'S:
     
@@ -13447,14 +13449,14 @@ class FileControlCommonSelf:
         self.DiscId = None          # gstreamer adds to MP3 automatically
         self.MusicBrainzDiscId = None  # "       "           "
         self.AudioStream = None     # from ffmpeg self.audio[0] when checked
-        self.ArtworkStream = None     # from ffmpeg self.artwork[0] when checked
+        self.ArtworkStream = None   # from ffmpeg self.artwork[0] when checked
 
         ''' mserve SQL Music Table Metadata Extras '''
         self.Rating = None          # Future Use
         self.Hyperlink = None       # Future Use
         self.PlayCount = None       # How many times 80% + was played
-        self.LastPlayTime = None  # Time last played (float)
-        self.OsFileSize = None
+        self.LastPlayTime = None    # Time last played (float)
+        self.OsFileSize = None      # File size when saved in SQL Music Table
         self.OsAccessTime = None    # Current time if > 80% played
 
         ''' Static variables for music control. '''
@@ -13472,6 +13474,16 @@ class FileControlCommonSelf:
         self.ff_name = None         # TMP_CURR_SONG, etc.
         self.dead_start = None      # Start song and pause it immediately
 
+
+        ''' Variables for FTP / SSH '''
+        # For FTP check if music file in cache. If not, retrieve to cache
+        self.file_cached = None     # music file retrieved locally for playing?
+        self.cache_name = None      # cached filename replaces self.path
+        self.cache_size = None      # music file size
+        self.cache_mtime = None     # music file lc.ModTime()
+
+
+        ''' Clean up any previous work files '''
         try:
             if os.path.isfile(self.TMP_FFPROBE):
                 os.remove(self.TMP_FFPROBE)
@@ -13510,6 +13522,12 @@ class FileControl(FileControlCommonSelf):
         self.temp_suffix = (''.join(random.choice(letters) for _i in range(6)))
         self.TMP_FFPROBE = TMP_FFPROBE + "_" + self.temp_suffix
         self.TMP_FFMPEG = TMP_FFMPEG + "_" + self.temp_suffix + ".jpg"
+
+        ''' Variables for FTP / SSH - Override after init to self.act_host '''
+        self.open_host = lcs.open_host  # Optional remote host name
+        # For FTP check if music file in cache. If not, retrieve to cache
+        self.open_ftp = lcs.open_ftp  # FTP login instance
+        self.open_allows_mtime = None  # Can modification time be set?
 
     def new(self, path, action=None):
         """
@@ -16391,28 +16409,28 @@ def open_files(old_cwd, prg_path, parameters, toplevel=None):
     #print(who + "Contents of music_dir:", music_dir)
     #if music_dir is not None and lc.get_dict_by_dirname(music_dir):
     if parm1 and "L001" <= parm1 < "M":
-        if lc.get_dict_by_code(parm1):
+        if lcs.read_location(parm1):
             use_location = True  # Override to use location found by dir name
             #print(who + 'Using location:', lc.DICT['iid'])
             # Make passed Top Directory our last known location then load it
-            lc.save_mserve_location(lc.DICT['iid'])  # Version 1 function
+            #lc.save_mserve_location(lc.DICT['iid'])  # Version 1 function
             ''' below read lcs.act_code, lcs.act_name & lcs.act_topdir, etc. '''
-            lcs.save_mserve_location(lc.DICT['iid'])  # Version 2 method
+            lcs.save_mserve_location(lcs.act_code)
             music_dir = lcs.act_topdir  # Init by above command
             #print(who + 'Using Top Directory:', music_dir)
         else:
-            print(who + 'New location not found or off-line:', parm1)
+            print(who + 'New location not found in SQL Location Table:', parm1)
             print(who + "Continuing will cause endless loop. Exiting...")
             exit()
-    elif music_dir is not None and lc.get_dict_by_dirname(music_dir):
+    elif music_dir is not None and lcs.get_dict_by_dirname(music_dir):
         ''' Passed directory name exists in known locations 
             Full pathname was passed as parameter 1 '''
         use_location = True  # Override to use location found by dir name
         print(who + 'Overriding music_dir:', music_dir,
-              'to location:', lc.DICT['iid'])
+              'to location:', lcs.act_code)
         # Make passed Top Directory our last known location then load it
-        lc.save_mserve_location(lc.DICT['iid'])
-        lcs.save_mserve_location(lc.DICT['iid'])
+        #lc.save_mserve_location(lc.DICT['iid'])
+        lcs.save_mserve_location(lcs.act_code)
         music_dir = lcs.act_topdir  # Init by above command
         print(who + 'Using Top Directory:', music_dir)
 
@@ -16688,7 +16706,8 @@ def main(toplevel=None, cwd=None, parameters=None):
     #          Need function to prompt for location name, assign new code and
     #          then call sql.populate_tables()
     ext.t_init('sql.populate_tables()')
-    sql.populate_tables(SORTED_LIST, START_DIR, PRUNED_DIR, LODICT)
+    #sql.populate_tables(SORTED_LIST, START_DIR, PRUNED_DIR, LODICT)
+    sql.populate_tables(SORTED_LIST, START_DIR, PRUNED_DIR, None)
     ext.t_end('no_print')  # sql.create_tables(): 0.1092669964
     ''' Pulse Audio Instance for sinks and volume. '''
     pav = vu_pulse_audio.PulseAudio()

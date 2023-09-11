@@ -373,6 +373,7 @@ def get_dict_by_code(code):
     """ Version 3.5.0 - Look up location dictionary using location code """
     global DICT                     # mserve.py will reference as lc.DICT
     for DICT in LIST:
+        print("DICT['iid']:", DICT['iid'])
         if code == DICT['iid']:     # Version 1 key name
             return True             # DICT 'iid' matches 'code' requested
 
@@ -2241,6 +2242,22 @@ class Locations(LocationsCommonSelf):
             self.all_topdir.append(self.act_topdir)  # must match all_codes order
             #LIST.append(self.make_ver1_dict_from_sql_dict(d))  # Temporary
 
+    def get_dict_by_dirname(self, dirname):
+        """ Look up location using top directory path
+
+            Not bullet-proof because two location codes can use same top directory.
+            One location could be SSH and other location can be FTP both to same
+            server. """
+
+        ''' Read backwards assuming last location added is correct one '''
+        for i, topdir in reversed(list(enumerate(self.all_topdir))):
+            if topdir.rstrip(os.sep) == dirname.rstrip(os.sep):
+                if self.read_location(self.all_codes[i]):
+                    return True
+                break
+                
+        return False
+
     def out_cast_show_print(self, title, text, icon='info', align="center"):
         """ Send self.info.cast(), message.ShowInfo() and print(). """
         if self.info:
@@ -2486,7 +2503,7 @@ class Locations(LocationsCommonSelf):
         """ Use location code to read SQL Location Row into work fields """
         d = sql.loc_read(code)
         if d is None:
-            return None
+            return None  # Sep 11/23 s/b False but need to test everywhere first
 
         ''' Current Location work fields - from SQL Location Table Row '''
         self.make_act_from_sql_dict(d)
