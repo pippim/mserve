@@ -134,16 +134,17 @@ def make_default_cfg():
     DEFAULT_CFG += make_mbz2_cfg()  # for mbz_get2.py
 
 
+# noinspection SpellCheckingInspection
 def make_g_cfg():
     """ Configuration for: 'import global_variables as g' """
     cfg = list()  # Return list of dictionaries
     m = "global_variables"  # Module name to python interpreter
     cfg.append(make_dict(m, "user_data_dir", "appdirs"))
     cfg.append(make_dict(m, "user_config_dir", "appdirs"))
-    # noinspection SpellCheckingInspection
     cfg.append(make_dict(m, None, "tempfile"))
     cfg.append(make_dict(m, None, "os"))
     cfg.append(make_dict(m, None, "pwd"))
+    cfg.append(make_dict(m, None, "webbrowser"))
     return cfg
 
 
@@ -206,7 +207,6 @@ def make_mserve_cfg():
     cfg.append(make_dict(m, "np", "numpy", d2, "2", "python-numpy"))
     cfg.append(make_dict(m, None, "notify2", d3, "3", "python3-notify2"))
     cfg.append(make_dict(m, None, "notify2", d3, "2", "python-notify2"))
-
 
     cfg.append(make_dict(m, "g", "global_variables", "pippim.com"))
     cfg.append(make_dict(m, "lc", "location", "pippim.com"))
@@ -1068,6 +1068,25 @@ def main(caller=None):
     #print("mserve_config.py startup called from:", caller)
     make_default_cfg()  # Create default configuration
 
+    #print("caller:", caller)
+    #print("len(sys.argv):", len(sys.argv))
+    parm1 = parm2 = parm3 = parm4 = None
+    if (len(sys.argv)) >= 2:
+        parm1 = sys.argv[1]
+        #print("parm1:", parm1)
+
+    if (len(sys.argv)) >= 3:
+        parm2 = sys.argv[2]
+        #print("parm2:", parm2)
+
+    if (len(sys.argv)) >= 4:
+        parm3 = sys.argv[3]
+        #print("parm3:", parm3)
+
+    if (len(sys.argv)) >= 5:
+        parm4 = sys.argv[4]
+        #print("parm4:", parm4)
+
     ''' 
     cfg_dict = \
         {"module": module,
@@ -1087,16 +1106,78 @@ def main(caller=None):
                     if not cfg_dict['imp_from'] + ".py" in pippim_modules:
                         pippim_modules.append(cfg_dict['imp_from'] + ".py")
 
-    pippim_modules.sort()
+    """ Website table of programs 
+
+        Generated (called from refresh.sh):
+        
+            python mserve_config.py line_count ~/website/programs/mserve_incl.md
+
+        Inside ~/website/programs/mserve.md:
+            ## Programs at a Glance
+            {:.no_toc}
+            {% include_relative mserve_incl.md %}
+
+    """
+    pippim_modules.sort()  # Alphanumeric sort
+    total = 0
+    #                   12345678901234567890
+    # Longest module:   global_variables.py
+    MOD = 19  # Module Name maximum width
+    LINE = 7  # Maximum line count size 999,999, align right
+    DATE = 19  # Date fixed size, align center
+    DESC = 39  # Program description
+    pippim_report  = "| Python Module       | # Lines |      Modified       |"
+    pippim_report += " Description                             |\n"
+    pippim_report += "|---------------------|--------:|:-------------------:|"
+    pippim_report += "-----------------------------------------|\n"
     for module in pippim_modules:
+        #print("module:", module)
         if module == "m.py":
-            module = "m"
-        #res = os.popen("wc -l " + module).read().strip()
-        #res = res.replace(" ", "\t")
-        #print(res)
-        if True is False:
-            print("module:", module)
-        pass
+            module = "m"  # remove `.py` extension automatically applied earlier
+        if parm1 and parm1 == "line_count":
+            name = module.ljust(MOD)
+            line = os.popen("wc -l " + module).read().strip()
+            if len(line) < 2:  # Shortest is "83 m"
+                line = "Missing"
+
+            desc = os.popen("grep ^'Description: mserve' " + module).read().strip()
+            if len(desc) < 20:
+                desc = "Description not found!"
+            desc = desc.replace("Description: mserve - Music Server - ", "")
+
+            date = os.popen('date -r ' + module + ' "+%Y-%m-%d %H:%M:%S"').\
+                read().strip()
+            if len(date) < 10:
+                date = "No Date!"
+            if line != "Missing":
+                val = int(line.split()[0])  # Drop program name at end
+                total += val
+                line = '{:,}'.format(val)  # int to string
+            pippim_report += "| " + name.ljust(MOD)
+            pippim_report += " | " + line.rjust(LINE)
+            pippim_report += " | " + date.ljust(DATE)
+            pippim_report += " | " + desc.ljust(DESC) + " |\n"
+            # Need error message if file missing.
+            #parts = line.split()
+            #for i, val in enumerate(parts):
+            #    if i % 2 == 0:
+            #        total += int(val)
+            #        pippim_report += "| " + parts[i+1].ljust(20)
+            #        pippim_report += "|" + '{:,}'.format(int(val)).rjust(8) + " |\n"
+
+    if parm1 and parm1 == "line_count":
+        pippim_report += "| " + "ALL Modules".ljust(MOD)
+        pippim_report += " | " + '{:,}'.format(total).rjust(LINE)
+        pippim_report += " | " + " ".ljust(DATE)  # Fake empty date & description
+        pippim_report += " | " + " ".ljust(DESC) + " |\n"
+        #print(pippim_report)
+        if parm2:
+            ''' Parameter 2 has output filename:
+                ~/website2/programs/mserve_incl.md '''
+            import external as ext
+            # ext calls timefmt which calls g.init() so want to rewrite
+            ext.write_from_str(parm2, pippim_report)
+
 
     """
         REVIEW:

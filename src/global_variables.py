@@ -4,7 +4,7 @@
 Author: Pippim
 License: GNU GPLv3
 Source: This repository
-Description: Global variables shared by all Pippim mserve modules
+Description: mserve - Music Server - Global variables shared by all modules
 """
 from __future__ import print_function  # Must be first import
 from __future__ import with_statement  # Error handling for file opens
@@ -76,10 +76,9 @@ PANEL_HGT = 24          # Height of Unity panel
 
 NO_ARTIST_STR = "<No Artist>"  # Substitute null subdirectory with string
 NO_ALBUM_STR = "<No Album>"  # Used in mserve.py and location.py
-CFG_DECIMAL_PLACES = 0   # 0 decimal place, eg "38 MB"
+CFG_DECIMAL_PLACES = 0  # 0 decimal place, eg "38 MB"
 CFG_DIVISOR_AMT = 1000000  # Divide by million
 CFG_DIVISOR_UOM = "MB"  # Unit of Measure becomes Megabyte
-
 
 HELP_URL = "https://www.pippim.com/programs/mserve.html#"
 

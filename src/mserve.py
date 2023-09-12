@@ -99,8 +99,22 @@ BUGS:
 
 TODO:
 
-    More libftp.FTP() enhancements. e.g. background dir walk and refresh
-        Music Location Tree. Related setup file caching below.
+    Remove all lc.LIST, lc.DICT, lc.read(), lc.write(), etc.  Delete old
+        location pickle files no longer referenced:
+            .../mserve/locations
+            .../mserve/last_location
+            .../mserve/L999/
+
+    Display invalid music files (<100K) with ShowInfo() instead of print().
+        At same time advise to delete walk_list and paths_and_sizes to have
+        rebuilt.
+
+    High priority to crawl FTP server with fast_refresh per file to find new
+        songs and delete old songs. With every filename refresh can be
+        called every 10 ms or so. When complete, rebuild lib_tree and save
+        walk_list and paths_and_sizes. Do this at start of every session. It
+        may not finish if session less than ten minutes?
+
     Setup variables when file_ctl.new(path) method called:
         ''' Variables for FTP / SSH '''
         # For FTP check if music file in cache. If not, retrieve to cache
@@ -113,19 +127,6 @@ TODO:
         'add' new history or add/update last 'edit' history record. Not
         for every song, simply for that location or playlist.
 
-    When playing .wav and there is a matching .mp3, mp4, etc. with artwork
-        and lyrics, why not use that SQL Music Table metadata?
-
-    Similar to below, high priority to crawl FTP server to find new
-        songs and delete old songs. Unlike below this is done one directory
-        at a time with callback on every filename such that refresh can be
-        called every 10 ms or whatever.
-
-    rebuild_lib_tree() doesn't show the song just ripped. Since going
-        through the trouble, might as well reuse SORTED_LIST2 with new last
-        access time if it doesn't refresh automatically for old song ripped
-        again like it should.
-
     Chronology filter "this artist" is pulling all compilations
         Evaluate feasibility of "this album" filter
 
@@ -134,6 +135,9 @@ TODO:
 
 
 LONGER TERM TODO'S:
+
+    When playing .wav and there is a matching .mp3, mp4, etc. with artwork
+        and lyrics, why not use that SQL Music Table metadata?
     
     After lyrics training, make .lrc file?
 
@@ -146,10 +150,10 @@ LONGER TERM TODO'S:
         technology could replace "sample middle" and sample full"?
 
     Too many history records. Purge function from 20k records and reuild
-        row IDs.  When only genius is webscraped for lyrics, it's pointless
-        havving history records for now. Indeed only if someone other than
+        row IDs. Since only genius is webscraped for lyrics, it's pointless
+        having history records for now. Only if a website other than
         genius is scraped should there be a history record. 'file'-'init'
-        into history might be irrelevant except for new songs?
+        history might be irrelevant except for new songs added to location.
 
     VU Meter peak line indicator that drops down to current level and changes
         color as it passes through zone. How long to hold peak and how fast
@@ -160,6 +164,11 @@ LONGER TERM TODO'S:
     Synchronize Android host is 1,000 times faster with ModTime() class
         but can be even faster using earlier and with paths_and_sizes
         file. Probalby another 100 times faster. 
+
+    rebuild_lib_tree() doesn't show the song just ripped. Since going
+        through the trouble, might as well reuse SORTED_LIST2 with new last
+        access time if it doesn't refresh automatically for old song ripped
+        again like it should.
 
     Instead of ellipsis for long labels, try: wraplength=250
 
@@ -215,7 +224,7 @@ RENAME VARIABLES:
     'self.ndx'              -> 'self.fav_ndx'  # Misleading when Playlists()
 
     New brothers for '_ndx' -> 'self.---_iid"   # self.saved_selections[self.ndx]
-    New brothers for '_ndx' -> 'self.---_path"  # self.playlist_paths[self.ndx]
+                            -> 'self.---_path"  # self.playlist_paths[self.ndx]
 
 RENAME FUNCTIONS:
     'self.song_set_ndx()'   -> 'self.set_sel_ndx()'
@@ -383,7 +392,7 @@ except NameError:  # name 'reload' is not defined
     pass  # Python 3 already in unicode by default
 
 import shutil
-import json  # For List conversions to SQL
+import json  # List and Dictionary storage to SQL column, Pickle or text file
 import glob  # For globbing files in /tmp/mserve_ffprobe*
 import time
 import datetime
@@ -425,8 +434,8 @@ import monitor              # Display, Screen, Monitor and Window functions
 import toolkit              # Functions for tkinter-tool kit interface
 import timefmt as tmf       # Format date and time
 import webscrape            # Get song lyrics via web scrape
-import vu_pulse_audio  # Volume Pulse Audio use pulsectl.Pulse
-from calc import Calculator  # Big Number calculator for Tool Dropdown Menu
+import vu_pulse_audio       # Volume Pulse Audio class pulsectl.Pulse()
+from calc import Calculator  # Big Number Calculator on Tools Dropdown Menu
 
 
 # Poor man's locale circa 2020 stuff that needs to be upgraded
@@ -599,9 +608,9 @@ ARTWORK_SUBSTITUTE = g.PROGRAM_DIR + "Be Creative 2 cropped.jpg"
 # Sep. 07, 2023 - Drop SLEEP from 33 to 16 for faster VU meters. Separate
 #   sleep cycle for artwork speed can be created. At twice speed artwork
 #   rendering goes from 3% CPU to 6% CPU load.
-SLEEP_PAUSED = 16           # play_top open but music paused
-SLEEP_PLAYING = 16          # play_top is playing music
-SLEEP_NO_PLAY = 16          # play_top closed, refresh_lib_top() running
+SLEEP_PAUSED = 16       # play_top open but music paused
+SLEEP_PLAYING = 16      # play_top is playing music
+SLEEP_NO_PLAY = 16      # play_top closed, refresh_lib_top() running
 
 
 def make_sorted_list(start_dir, toplevel=None, idle=None, check_only=False):
