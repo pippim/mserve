@@ -83,6 +83,7 @@ warnings.simplefilter('default')  # in future Python versions.
 #       Sep. 03 2023 - Make LRC (synchronized lyrics) for other music players.
 #       Sep. 06 2023 - Use walk_list and size_dict from FTP test host at start.
 #       Sep. 09 2023 - Tools - checked files - Make LRC files and copy to loc.
+#       Sep. 21 2023 - Slide Show Carousel (beta < 1 hour coding)
 
 # noinspection SpellCheckingInspection
 """
@@ -616,6 +617,9 @@ COMPIZ_FISHING_STEPS = 100  # May 18, 2023 when 100 steps windows disappear
 # When no artwork for song use this image file
 ARTWORK_SUBSTITUTE = g.PROGRAM_DIR + "Be Creative 2 cropped.jpg"
 # "Be Creative 2 cropped.png" is a 4.4 MB image 3120x3120
+SLIDE_SHOW = True  # Only when ~/.local/share/mserve/SlideShow directory exists
+SLIDE_SHOW_DIR = g.USER_DATA_DIR + os.sep + "SlideShow"
+# all images in directory are cycled through as album artwork
 
 # June 20, 2023 - Losing average of 4ms per sleep loop when play_top paused
 #   Created new SLEEP_XXX constants but also create 'self.last_sleep_time'
@@ -898,6 +902,19 @@ class PlayCommonSelf:
         self.co_ords = None                 # np.column_stack((X, Y))
         self.xy_list = None                 # list(map(tuple, self.co_ords.
         self.breakpoint = None              # int(self.im.size * self.play/100
+        # Slide Show vars
+        self.runSlideShow = False           # Files in ~/.../mserve/SlideShow?
+        self.listSlideNames = []            # List of files in mserve/SlideShow
+        self.nextSlideIndex = 0             # Current slide displayed in list
+        if SLIDE_SHOW and os.path.isdir(SLIDE_SHOW_DIR):
+            self.listSlideNames = os.listdir(SLIDE_SHOW_DIR)
+            print("len(self.listSlideNames):", len(self.listSlideNames))
+            ''' TODO: python-magic to ensure only image files included'''
+            if len(self.listSlideNames) > 1:
+                self.runSlideShow = True
+                for image in self.listSlideNames:
+                    print("image:", image)
+
 
         ''' Volume slider above Metadata Display fields '''
         self.slider_frm = None              # Volume slider frame
@@ -10386,8 +10403,21 @@ mark set markName index"
     def set_artwork_colors(self):
         """ Get artwork for currently playing song.
             Apply artwork colors to panels, buttons and text. """
-        self.play_current_song_art, self.play_resized_art, self.play_original_art = \
-            self.play_ctl.get_artwork(self.art_width, self.art_height)
+
+        if self.runSlideShow:
+            if self.nextSlideIndex >= len(self.listSlideNames):
+                self.nextSlideIndex = 0
+            full_name = SLIDE_SHOW_DIR + os.sep + \
+                self.listSlideNames[self.nextSlideIndex]
+            self.play_original_art = Image.open(full_name)
+            self.play_resized_art = self.play_original_art.resize(
+                (self.art_width, self.art_height), Image.ANTIALIAS)
+            self.play_current_song_art = ImageTk.PhotoImage(self.play_resized_art)
+            self.nextSlideIndex += 1  # Always one past actual index
+        else:
+            self.play_current_song_art, self.play_resized_art, \
+                self.play_original_art = \
+                self.play_ctl.get_artwork(self.art_width, self.art_height)
 
         if self.play_current_song_art is None and ARTWORK_SUBSTITUTE:
             # print("Getting ARTWORK_SUBSTITUTE:", ARTWORK_SUBSTITUTE)
@@ -14103,6 +14133,7 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilatio
             set_artwork_colors()
             lib_tree_play()
         """
+
         if len(self.artwork) == 0:
             # Song has no artwork that ffmpeg can identify.
             return None, None, None
@@ -14119,7 +14150,7 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilatio
         ext.t_init("'ffmpeg -nostdin -y -vn -an -r 1 -i '")
         # noinspection SpellCheckingInspection
         cmd = 'ffmpeg -nostdin -y -vn -an -r 1 -i ' + '"' + \
-              self.path + '" ' +  self.TMP_FFMPEG + ' 2>' + self.TMP_FFPROBE
+              self.path + '" ' + self.TMP_FFMPEG + ' 2>' + self.TMP_FFPROBE
         result = os.popen(cmd).read().strip()
         ext.t_end('no_print')  # 0.1054868698 0.1005489826 0.0921740532
 
