@@ -4,7 +4,7 @@
 Author: Pippim
 License: GNU GPLv3
 Source: This repository
-Description: mserve - Music Server - Pulse Audio controls
+Description: mserve - Music Server - Pulse Audio Volume Controls
 """
 
 from __future__ import print_function  # Must be first import

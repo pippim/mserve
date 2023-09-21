@@ -4,7 +4,7 @@
 Author: Pippim
 License: GNU GPLv3
 Source: This repository
-Description: mserve - Music Server - Configuration
+Description: mserve - Music Server - Dependencies Checker and Setup
 """
 
 from __future__ import print_function  # Must be first import
@@ -16,6 +16,7 @@ from __future__ import with_statement  # Error handling for file opens
 #
 #       July 10 2023 - Initial version.
 #       Sep. 08 2023 - Add new module calc.py to mserve.py dependencies
+#       Sep. 11 2023 - Generate line counts for Website Dashboard
 #
 # ==============================================================================
 # from __future__ import unicode_literals  # Not needed.
@@ -26,10 +27,7 @@ try:
 except ImportError:
     pass
 
-"""
-    Called by 'm' or called by 'mserve.py' if 'm' was skipped.
-"""
-
+""" Called by 'm' or called by 'mserve.py' if 'm' was skipped. """
 
 ''' Check Python version is minimal 2.7.12 '''
 import sys
@@ -46,7 +44,6 @@ if sys.version_info[0] >= 2 and sys.version_info[1] >= 7 and sys.version_info[2]
     raise Exception("003: " + current_version)
 
 import os
-
 import inspect
 import importlib
 
@@ -1068,9 +1065,11 @@ def main(caller=None):
     #print("mserve_config.py startup called from:", caller)
     make_default_cfg()  # Create default configuration
 
-    #print("caller:", caller)
-    #print("len(sys.argv):", len(sys.argv))
-    parm1 = parm2 = parm3 = parm4 = None
+    if True is False:
+        print("caller:", caller)
+        print("len(sys.argv):", len(sys.argv))
+
+    parm1 = parm2 = None
     if (len(sys.argv)) >= 2:
         parm1 = sys.argv[1]
         #print("parm1:", parm1)
@@ -1078,14 +1077,6 @@ def main(caller=None):
     if (len(sys.argv)) >= 3:
         parm2 = sys.argv[2]
         #print("parm2:", parm2)
-
-    if (len(sys.argv)) >= 4:
-        parm3 = sys.argv[3]
-        #print("parm3:", parm3)
-
-    if (len(sys.argv)) >= 5:
-        parm4 = sys.argv[4]
-        #print("parm4:", parm4)
 
     ''' 
     cfg_dict = \
@@ -1106,36 +1097,48 @@ def main(caller=None):
                     if not cfg_dict['imp_from'] + ".py" in pippim_modules:
                         pippim_modules.append(cfg_dict['imp_from'] + ".py")
 
-    """ Website table of programs 
+    """ mserve Python Modules Line Counts for Website 
 
-        Generated (called from refresh.sh):
+        Called from ~/website/sede/refresh.sh (programs/mserve.md NOT refreshed):
         
             python mserve_config.py line_count ~/website/programs/mserve_incl.md
 
-        Inside ~/website/programs/mserve.md:
+        Inside ~/website/programs/mserve.md (NOT refreshed by refresh.sh):
             ## Programs at a Glance
             {:.no_toc}
             {% include_relative mserve_incl.md %}
+
+        NOTE: If you change ~/website/programs/mserve.md, you must manually commit
+              as ~/website/sede/refresh.sh NEVER refreshes markdown in pippim.com.
+              If you change ~/website2/programs/mserve.md, GitHub will probably
+              update when refresh.sh runs, but this hasn't been tested.
 
     """
     pippim_modules.sort()  # Alphanumeric sort
     total = 0
     #                   12345678901234567890
     # Longest module:   global_variables.py
-    MOD = 19  # Module Name maximum width
+    MOD = 145  # Module Name maximum width
     LINE = 7  # Maximum line count size 999,999, align right
     DATE = 19  # Date fixed size, align center
     DESC = 39  # Program description
-    pippim_report  = "| Python Module       | # Lines |      Modified       |"
-    pippim_report += " Description                             |\n"
-    pippim_report += "|---------------------|--------:|:-------------------:|"
-    pippim_report += "-----------------------------------------|\n"
+    pippim_report = "## Python Modules used in {{ site.title }} **mserve** "
+    if parm1 and parm1 == "line_count":
+        import global_variables as g
+        g.init()
+        pippim_report += "Version " + g.MSERVE_VERSION + "\n{:.no_toc}\n\n"
+        pippim_report += "| Python Module" + " " * (MOD - 12) + "|   Lines |      Modified       |"
+        pippim_report += " Description                             |\n"
+        pippim_report += "|-" + "-" * MOD + "-|--------:|:-------------------:|"
+        pippim_report += "-----------------------------------------|\n"
     for module in pippim_modules:
         #print("module:", module)
         if module == "m.py":
             module = "m"  # remove `.py` extension automatically applied earlier
         if parm1 and parm1 == "line_count":
-            name = module.ljust(MOD)
+            name = "[`" + module + "`]"  # ' ⧉' needs unicode, skip it Sep 20/23
+            name += "(https://github.com/pippim/mserve/blob/main/src/" + module
+            name += ' "View mserve Python source code"){:target="_blank"}'
             line = os.popen("wc -l " + module).read().strip()
             if len(line) < 2:  # Shortest is "83 m"
                 line = "Missing"
@@ -1157,26 +1160,23 @@ def main(caller=None):
             pippim_report += " | " + line.rjust(LINE)
             pippim_report += " | " + date.ljust(DATE)
             pippim_report += " | " + desc.ljust(DESC) + " |\n"
-            # Need error message if file missing.
-            #parts = line.split()
-            #for i, val in enumerate(parts):
-            #    if i % 2 == 0:
-            #        total += int(val)
-            #        pippim_report += "| " + parts[i+1].ljust(20)
-            #        pippim_report += "|" + '{:,}'.format(int(val)).rjust(8) + " |\n"
 
     if parm1 and parm1 == "line_count":
         pippim_report += "| " + "ALL Modules".ljust(MOD)
         pippim_report += " | " + '{:,}'.format(total).rjust(LINE)
         pippim_report += " | " + " ".ljust(DATE)  # Fake empty date & description
         pippim_report += " | " + " ".ljust(DESC) + " |\n"
-        #print(pippim_report)
+
         if parm2:
             ''' Parameter 2 has output filename:
                 ~/website2/programs/mserve_incl.md '''
             import external as ext
             # ext calls timefmt which calls g.init() so want to rewrite
             ext.write_from_str(parm2, pippim_report)
+        else:
+            # No output file so print instead
+            print("\nmserve_config.py - No output filename passed in parm #2\n")
+            print(pippim_report)
 
 
     """

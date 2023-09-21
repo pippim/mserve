@@ -4,7 +4,7 @@
 Author: Pippim
 License: GNU GPLv3
 Source: This repository
-Description: Global variables shared by all Pippim mserve modules
+Description: mserve - Music Server - Webscrape Lyrics from genius.com
 """
 from __future__ import print_function  # Must be first import
 from __future__ import with_statement  # Error handling for file opens

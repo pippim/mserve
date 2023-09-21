@@ -4,7 +4,7 @@
 Author: Pippim
 License: GNU GPLv3
 Source: This repository
-Description: Pippim mserve server - toolkit
+Description: mserve - Music Server - Tkinter Tools and Tooltips()
 """
 
 from __future__ import print_function       # Must be first import

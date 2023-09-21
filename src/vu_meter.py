@@ -5,6 +5,8 @@ Author: Pippim
 License: GNU GPLv3
 Source: This repository
 Description: mserve - Music Server - VU Meter processor spawned by mserve.py
+WARNING: Do not shorten or lengthen description! It is used in Python Dashboard
+         and will break mserve_config.py that feeds /website/programs/mserve.md
 """
 
 from __future__ import print_function  # Must be first import

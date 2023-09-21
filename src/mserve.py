@@ -4,7 +4,7 @@
 Author: pippim.com
 License: GNU GPLv3. (c) 2020 - 2023
 Source: This repository
-Description: mserve - Music Server
+Description: mserve - Music Server - Main **mserve** Python Module
 """
 
 from __future__ import print_function  # Must be first import
@@ -99,11 +99,23 @@ BUGS:
 
 TODO:
 
+    "Playing Music" window start up splash tooltip centered with:
+        "Playing Music from: "  Favorites, Playlist: "xxx", Artist: "xxx",
+                                Album: "xxx", Genre "xxx", Year "9999".
+        "Duration: ", "Position: ", "Current Song: "
+        Repeat splash tooltip on Pause/Play
+        Similar splash tooltip for "Music Location Tree" window.
+
+    Update Metadata over WiFi takes hours. Mutagen check should be skipped
+        because the results aren't used. When `curlftpfs` gives error:
+        "1) Not a music file", use FTP transfer because `#` in filename.
+
     Remove all lc.LIST, lc.DICT, lc.read(), lc.write(), etc.  Delete old
         location pickle files no longer referenced:
             .../mserve/locations
             .../mserve/last_location
-            .../mserve/L999/
+
+    Top Directory picker needs to recall dir_name() checker to get location. 
 
     Display invalid music files (<100K) with ShowInfo() instead of print().
         At same time advise to delete walk_list and paths_and_sizes to have
@@ -135,6 +147,8 @@ TODO:
 
 
 LONGER TERM TODO'S:
+
+    Calculate total duration in Music Location Tree and seleccted duration.
 
     When playing .wav and there is a matching .mp3, mp4, etc. with artwork
         and lyrics, why not use that SQL Music Table metadata?
@@ -332,7 +346,7 @@ File Server NOTES:
 
 """
 
-''' If called by 'm' configuration is OK. Otherwise, check configuration. '''
+''' If called by 'm', configuration is OK. Otherwise, check configuration. '''
 import inspect
 import os
 try:
@@ -501,7 +515,7 @@ TMP_ALL_NAMES = [TMP_CURR_SONG, TMP_CURR_SAMPLE, TMP_CURR_SYNC, TMP_FFPROBE+"*",
 # More names added later after lcs is initialized.
 
 ENCODE_DEV = True  # Development encoding.py last disc ID recycled saving 63 secs
-# Keeps mbz_get1 and mbz_get2 pickle parameter pass-back files (saving minute)
+# When True also recycles mbz_get1_pickle and mbz_get2_pickle pass-back files
 # TMP_MBZ_GET1A = g.TEMP_DIR + "mserve_mbz_get1_releases_json"
 # TMP_MBZ_GET1B = g.TEMP_DIR + "mserve_mbz_get1_recordings_json"
 # TMP_MBZ_GET1C = g.TEMP_DIR + "mserve_mbz_get1_release_by_id_results_json"
@@ -509,12 +523,12 @@ ENCODE_DEV = True  # Development encoding.py last disc ID recycled saving 63 sec
 # TMP_MBZ_GET1E = g.TEMP_DIR + "mserve_mbz_get1_releases_with_dates_json"
 # TMP_MBZ_GET1F = g.TEMP_DIR + "mserve_mbz_get1_release_by_id_error_json"
 # TMP_MBZ_DEBUG = g.TEMP_DIR + "mserve_mbz_get1_dates_list"
-#               = g.TEMP_DIR + "mserve_mbz_get1_stdout
-#                               mserve_mbz_get1_pickle
-#                               mserve_mbz_get2_pickle
-#                               mserve_mbz_get2_stdout
-#  mserve_disc_get_stdout, mserve_encoding_artwork.jpg
-#  mserve_encoding_last_disc, mserve_encoding_pickle, mserve_gst_launch
+# No variable   = g.TEMP_DIR + "mserve_mbz_get1_stdout
+#     "               "         mserve_mbz_get1_pickle
+#     "               "         mserve_mbz_get2_pickle
+#     "               "         mserve_mbz_get2_stdout
+# ALSO filenames: mserve_disc_get_stdout, mserve_encoding_artwork.jpg
+# mserve_encoding_last_disc, mserve_encoding_pickle, mserve_gst_launch
 
 
 KID3_INSTALLED = False  # Reset just before popup menu created
@@ -2357,36 +2371,24 @@ class MusicLocationTree(PlayCommonSelf):
 
         for i, os_name in enumerate(self.fake_paths):
 
-            # split /mnt/music/Artist/Album/Song.m4a into list
-            '''
-                Our sorted list may have removed subdirectory levels using:
-                
-                work_list = [w.replace(os.sep + g.NO_ALBUM_STR + os.sep, os.sep) \
-                     for w in work_list]
-
-            '''
+            ''' Sorted list removed subdirectory levels: self.fake_paths = 
+                    [w.replace(os.sep + g.NO_ALBUM_STR + os.sep, os.sep) \
+                        for w in work_list] '''
             groups = os_name.split(os.sep)
-            #            Artist = str(groups [start_dir_sep+1])
-            #            Album = str(groups [start_dir_sep+2])
-            #            Song = str(groups [start_dir_sep+3])
             Artist = groups[start_dir_sep + 1]
             Album = groups[start_dir_sep + 2]
             Song = groups[start_dir_sep + 3]
 
             if Artist != LastArtist:
-                #  0=Access, 1=Size, 2=Selected Size, 3=StatTime, 4=StatSize,
-                #  5=Count, 6=Seconds, 7=SelSize, 8=SelCount, 9=SelSeconds
-                # Dec 28 2020 - Selected Size is now Song Sequence Number
                 level_count[0] += 1  # Increment artist count
                 opened = False  # New installation would be more concise view for user
                 CurrArtistId = self.lib_tree.insert(
                     "", "end", text=Artist, tags=("Artist", "unchecked"), open=opened,
-                    values=("",  "",  "",  0.0,  0,  0,    0,  0,  0, 0))
-                #           Access    Selected   StatSize  sSize   sSeconds
-                #           0         2          4         6       8
-                #   values=("",  "",  "",  0.0,  0,  0,    0,  0,  0 )
-                #                1         3         5         7
-                #                Size      StatTime  Count     sCount
+                    values=("", "", "", 0.0, 0, 0, 0, 0, 0, 0))
+                #   Index:  0         2      4     6     8
+                #   Name:   LastPlay  SelStr Size  Secs  sCount (s=Selected)
+                #   Index:      1        3      5     7     9
+                #   Name:       SizeStr  Time   Cnt   sSize sSeconds
 
                 # Treeview bug inserts integer 0 as string 0, must overwrite
                 self.tree_col_range_replace(CurrArtistId, 5, [0, 0, 0, 0, 0, 0])
@@ -2400,6 +2402,8 @@ class MusicLocationTree(PlayCommonSelf):
                 CurrAlbumId = self.lib_tree.insert(
                     CurrArtistId, "end", text=Album, tags=("Album", "unchecked"),
                     open=opened, values=("", "", "", 0.0, 0, 0, 0, 0, 0, 0))
+                # 0=PlayTime, 1=Size MB, 2=Selected Str, 3=Time, 4=StatSize,
+                # 5=Count, 6=Seconds, 7=SelSize, 8=SelCount, 9=SelSeconds
                 # May 24, 2023 - open state wasn't specified before today
                 # Treeview bug inserts integer 0 as string 0, must overwrite
                 self.tree_col_range_replace(CurrAlbumId, 5, [0, 0, 0, 0, 0, 0])
@@ -2453,7 +2457,7 @@ class MusicLocationTree(PlayCommonSelf):
                 str_size = '{:n}'.format(g.MUSIC_MIN_SIZE)
                 print(who + "Skipping file less than:", str_size,
                       "bytes. Filename below:")
-                print("-", full_path)
+                print(" " + full_path)
                 continue  # Causes error because in sorted_list
 
             self.tree_col_range_add(CurrAlbumId, 5, [size, 1])
@@ -2469,6 +2473,9 @@ class MusicLocationTree(PlayCommonSelf):
             self.lib_tree.insert(
                 CurrAlbumId, "end", iid=str(i), text=Song, tags=("Song", "unchecked"),
                 values=(ftime, fsize, '', float(play_time), size, 1, 0, 0, 0, 0))
+            # Dec 28 2020 - Selected Size is now Song Sequence Number
+            # 0=PlayTime, 1=Size MB, 2=Selected Str, 3=Time, 4=StatSize,
+            # 5=Count, 6=Seconds, 7=SelSize, 8=SelCount, 9=SelSeconds
             self.tree_col_range_replace(str(i), 6, [1, 0, 0, 0, 0])
             self.lib_tree.tag_bind(str(i), '<Motion>', self.lib_highlight_row)
 
@@ -2494,8 +2501,8 @@ class MusicLocationTree(PlayCommonSelf):
             boxes. Never called for batched checkbox processing on load or
             Process Pending functions.
         """
-        # 'values' 0=Access, 1=Size, 2=Selected Size, 3=StatTime, 4=StatSize,
-        #          5=Count, 6=Seconds, 7=SelSize, 8=SelCount, 9=SelSeconds
+        # 0=PlayTime, 1=Size MB, 2=Selected Str, 3=Time, 4=StatSize,
+        # 5=Count, 6=Seconds, 7=SelSize, 8=SelCount, 9=SelSeconds
         # Set slice to StatSize, Count, Seconds
         total_values = slice(4, 7)  # start at index, stop before index
         #select_values = slice(7, 10)  # start at index, stop before index
@@ -13039,8 +13046,8 @@ class BatchSelect:
             Roll up totals into list of dictionaries.
             DO NOT update parents here. Update parents with batch_update()
         """
-        # 'values' 0=Access, 1=Size, 2=Selected Size, 3=StatTime, 4=StatSize,
-        #          5=Count, 6=Seconds, 7=SelSize, 8=SelCount, 9=SelSeconds
+        # 0=PlayTime, 1=Size MB, 2=Selected Str, 3=Time, 4=StatSize,
+        # 5=Count, 6=Seconds, 7=SelSize, 8=SelCount, 9=SelSeconds
         total_values = slice(4, 7)  # parm = start index, stop before index
         # slice(4, 7) = Set slice to grab StatSize, Count, Seconds
 
