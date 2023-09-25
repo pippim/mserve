@@ -33,7 +33,8 @@ import errno
 import time
 import datetime
 import glob  # For globbing files in /tmp/mserve_ffprobe*
-import json  # For reading/writing files in json format
+import json  # For reading/writing files in json format, no image support
+import pickle  # For reading/writing files in pickle format, supports images
 
 # Common routines used by many programs put here
 import toolkit
@@ -164,7 +165,7 @@ def read_from_json(fname):
     return None
 
 
-def write_from_json(fname, s_obj):
+def write_to_json(fname, s_obj):
     """ Write serialized object to storage """
 
     if os.path.isfile(fname):
@@ -178,6 +179,37 @@ def write_from_json(fname, s_obj):
         with open(fname, "w") as f:
             s_obj = json.dumps(s_obj)
             f.write(s_obj)
+    except Exception as err:
+        print("Exception:", err)
+        return False
+
+    return True
+
+
+def read_from_pickle(fname):
+    """ Read pickle file and return serialized object with image(s) """
+    if os.path.isfile(fname):
+        with open(fname, 'rb') as f:
+            try:
+                return pickle.load(f)
+            except EOFError:
+                print("Pickle EOFError:", fname)
+    return None
+
+
+def write_to_pickle(fname, s_obj):
+    """ Write serialized object with image to storage """
+
+    if os.path.isfile(fname):
+        #print("Overwriting existing file:", fname)
+        pass
+    else:
+        #print("Creating new file:", fname)
+        pass
+
+    try:
+        with open(fname, "wb") as f:
+            pickle.dump(s_obj, f)
     except Exception as err:
         print("Exception:", err)
         return False

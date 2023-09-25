@@ -3636,15 +3636,15 @@ filename.
         ext.t_init('walk(os.sep, all_files)')
         print("self.act_topdir:", self.act_topdir)
         walk(self.act_topdir, os.sep, all_files, all_walks)  # 41 seconds. Nautilus is split second
-        success = ext.write_from_json(size_name, all_files)
+        success = ext.write_to_json(size_name, all_files)
         if not success:
-            print("ext.write_from_json(FNAME_SIZE_DICT, all_files)... FAILED")
+            print("ext.write_to_json(FNAME_SIZE_DICT, all_files)... FAILED")
         else:
             print("FILE SAVED:", size_name)
         all_walks.sort()  # Sep 6/23 previously "/Compilations" was first in list
-        success = ext.write_from_json(walk_name, all_walks)
+        success = ext.write_to_json(walk_name, all_walks)
         if not success:
-            print("ext.write_from_json(FNAME_WALK_LIST, all_files)... FAILED")
+            print("ext.write_to_json(FNAME_WALK_LIST, all_files)... FAILED")
         else:
             print("FILE SAVED:", walk_name)
         for i, line in enumerate(all_walks):

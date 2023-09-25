@@ -84,6 +84,8 @@ warnings.simplefilter('default')  # in future Python versions.
 #       Sep. 06 2023 - Use walk_list and size_dict from FTP test host at start.
 #       Sep. 09 2023 - Tools - checked files - Make LRC files and copy to loc.
 #       Sep. 21 2023 - Slide Show Carousel (beta < 1 hour coding)
+#       Sep. 23 2023 - Playlists class save_act() for Rename Playlist function.
+#       Sep. 24 2023 - YouTube Playlists - View in mserve and Open in browser.
 
 # noinspection SpellCheckingInspection
 """
@@ -414,6 +416,8 @@ import datetime
 import re
 import traceback  # To display call stack (functions that got us here)
 import webbrowser
+import requests  # retrieve YouTube thumbnail images
+from io import BytesIO  # convert YouTube thumbnail images to TK image format
 import random  # For FileControl() make_temp
 import string  # For FileControl() make_temp
 from collections import OrderedDict
@@ -617,9 +621,16 @@ COMPIZ_FISHING_STEPS = 100  # May 18, 2023 when 100 steps windows disappear
 # When no artwork for song use this image file
 ARTWORK_SUBSTITUTE = g.PROGRAM_DIR + "Be Creative 2 cropped.jpg"
 # "Be Creative 2 cropped.png" is a 4.4 MB image 3120x3120
+
 SLIDE_SHOW = True  # Only when ~/.local/share/mserve/SlideShow directory exists
 SLIDE_SHOW_DIR = g.USER_DATA_DIR + os.sep + "SlideShow"
 # all images in directory are cycled through as album artwork
+
+WEB_PLAY = True  # Does directory ~/.local/share/mserve/YouTubePlaylists/ exist?
+WEB_PLAY_DIR = g.USER_DATA_DIR + os.sep + "YouTubePlaylists"  # + playlist.name + ".csv"
+# YouTube Resolution: default = 120x90(2.8K), hqdefault = 480x360(35.6K)
+# mqdefault = 320x180
+YOUTUBE_RESOLUTION = "mqdefault.jpg"  # 63 videos = 176.4 KB
 
 # June 20, 2023 - Losing average of 4ms per sleep loop when play_top paused
 #   Created new SLEEP_XXX constants but also create 'self.last_sleep_time'
@@ -908,12 +919,13 @@ class PlayCommonSelf:
         self.nextSlideIndex = 0             # Current slide displayed in list
         if SLIDE_SHOW and os.path.isdir(SLIDE_SHOW_DIR):
             self.listSlideNames = os.listdir(SLIDE_SHOW_DIR)
-            print("len(self.listSlideNames):", len(self.listSlideNames))
+            #print("len(self.listSlideNames):", len(self.listSlideNames))
             ''' TODO: python-magic to ensure only image files included'''
             if len(self.listSlideNames) > 1:
                 self.runSlideShow = True
                 for image in self.listSlideNames:
-                    print("image:", image)
+                    #print("image:", image)
+                    pass
 
 
         ''' Volume slider above Metadata Display fields '''
@@ -1168,7 +1180,6 @@ class PlayCommonSelf:
         ''' Global variables of active children '''
         self.play_top_is_active = False     # Playing songs window open?
         self.vu_meter_first_time = None     # Aug 3/23 Patch for VU meter height
-        self.cmp_top_is_active = False      # compare locations open?
         self.mus_top_is_active = False      # View SQL Music open?
         self.his_top_is_active = False      # View SQL History open?
         self.lcs_top_is_active = False      # View SQL Location open?
@@ -3821,8 +3832,8 @@ class MusicLocationTree(PlayCommonSelf):
         human_selected = toolkit.human_bytes(self.lib_top_totals[8])
         text += "Total size of copied files: " + human_selected + "\n\n"
 
-        text += "If the Top Directory isn't empty, you will need to\n"
-        text += "synchronize location instead.\n\n"
+        text += "If the Top Directory is NOT empty, you will need to use the\n"
+        text += "'Synchronize Location' function for existing songs.\n\n"
 
         text += "If the new location is a remote host, make sure it works\n"
         text += "by using the 'Test Host' button, on the next window."
@@ -3846,7 +3857,9 @@ class MusicLocationTree(PlayCommonSelf):
 
         if self.checked_loc_name is None and self.checked_loc_topdir is None:
             # When both are None, cancel button clicked
-            print("Cancelling target location selection.")
+            title = "No Location"
+            text = "Cancelling target location selection."
+            lcs.out_cast_show(title, text, 'warning')
             return
 
         if self.checked_loc_name is None or self.checked_loc_topdir is None:
@@ -4100,14 +4113,10 @@ class MusicLocationTree(PlayCommonSelf):
             self.gone_fishing.close()       # Shark eating man animation
             self.gone_fishing = None
 
-        #if self.cmp_top_is_active:          # Comparing Locations?
-        #    self.cmp_close()                # Extreme lags when running 'diff'
         if lcs.cmp_top_is_active:
-            lcs.cmp_close()  # Close Compare Locations window
-        #if self.sync_top_is_active:          # Synchronizing lyrics time indices
-        #    self.sync_close()
+            lcs.cmp_close()                 # Close Compare Locations window
         if self.fine_tune and self.fine_tune.top_is_active:
-            self.fine_tune.close()  # Synchronizing lyrics time indices
+            self.fine_tune.close()          # Synchronizing lyrics time indices
         if self.play_top_is_active:         # Is music playing?
             self.play_close()
         if self.ltp_top_is_active:          # Sampling middle 10 seconds?
@@ -4116,16 +4125,16 @@ class MusicLocationTree(PlayCommonSelf):
             self.mus_close()
         if self.his_top_is_active:          # Viewing SQL History Table?
             self.his_close()
-        if self.lcs_top_is_active:  # Viewing SQL Location Table? NOT lcs.top !!!
-            self.lcs_close()  # Different than lcs.close() !!!
+        if self.lcs_top_is_active:          # Viewing SQL Location Table
+            self.lcs_close()                # Careful: NOT self.lcs.close() !!!
         if self.tv_vol and self.tv_vol.top:
             self.tv_vol.close()             # Adjusting Volume during TV commercials?
         if self.playlists.top:              # Close Playlists window and tell it
             self.playlists.reset(shutdown=True)  # NOT to enable lib_top menu options
-        if lcs.test_top:  # Test Host Window is open
+        if lcs.test_top:                    # Test Host Window is open
             lcs.test_top.destroy()
-            lcs.test_top = None  # Extra insurance
-        if lcs.main_top:  # Locations Maintenance Window is open
+            lcs.test_top = None             # Extra insurance
+        if lcs.main_top:                    # Locations Maintenance Window open
             lcs.reset(shutdown=True)
         if not lcs.host_down:  # When host down accessing /mnt/music locks 15 min.
             lcs.sshfs_close()  # It will check if mounted and act accordingly
@@ -6166,7 +6175,7 @@ class MusicLocationTree(PlayCommonSelf):
         ''' Two songs needed to save, next startup uses previous save '''
         if len(self.saved_selections) < 2:
             print("mserve.py save_last_selection() WARNING: Need at least " +
-                  "two songs to save favorites.")
+                  "two songs to save playlist.")
             return
 
         ''' Save full path of selected songs in current play order '''
@@ -14704,6 +14713,13 @@ class PlaylistsCommonSelf:
         self.input_active = False  # Can enter Playlist Name & Description
         self.pending_counts = None
 
+        self.nameYouTube = None  # = WEB_PLAY_DIR + os.sep + self.act_name + ".csv"
+        self.linkYouTube = None  # YouTube links retrieved from .csv file
+        self.listYouTube = None  # [dictYouTube, dictYouTube, ... dictYouTube]
+        self.dictYouTube = None  # {name: song name, link: link, image: ImageTk.PhotoImage}
+        self.validYouTube = None  # Does nameYouTube exist?
+        self.imagesYouTube = None
+
         ''' Input Window and fields '''
         self.top = None  # tk.Toplevel
         self.frame = None  # tk.Frame inside self.top
@@ -14886,7 +14902,9 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         self.pending_counts = self.get_pending()
         ''' Rebuild playlist changes since last time '''
         self.build_playlists()
-        ''' Save geometry for Playlists() '''
+        ''' create_top() shared with buildYouTubePlaylist '''
+        self.create_top(name)
+        ''' Save geometry for Playlists() 
         self.top = tk.Toplevel()  # Playlists top level
         geom = monitor.get_window_geom('playlists')
         self.top.geometry(geom)
@@ -14897,10 +14915,12 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         self.top.configure(background="#eeeeee")  # Replace "LightGrey"
         self.top.columnconfigure(0, weight=1)
         self.top.rowconfigure(0, weight=1)
-        ''' After top created, disable all File Menu options for playlists '''
-        self.enable_lib_menu()
-        ''' Set program icon in taskbar '''
-        img.taskbar_icon(self.top, 64, 'white', 'lightskyblue', 'black')
+        '''
+        # After top created, disable all File Menu options for playlists
+        #self.enable_lib_menu()
+        # Set program icon in taskbar
+        #img.taskbar_icon(self.top, 64, 'white', 'lightskyblue', 'black')
+
         ''' Create master frame '''
         self.frame = tk.Frame(self.top, borderwidth=g.FRM_BRD_WID,
                               relief=tk.RIDGE)
@@ -14982,15 +15002,15 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
 
         ''' Apply Button '''
         close_tt_text = "Close Playlist window."
-        if self.state != 'view':
-            close_tt_text = "Discard any changes and close Playlist window."
-            action = name.split(" Playlist")[0]
-            self.apply_button = tk.Button(bottom_frm, text="✔ " + action,
-                                          width=g.BTN_WID2 - 2, command=self.apply)
-            self.apply_button.grid(row=0, column=0, padx=10, pady=5, sticky=tk.E)
-            self.tt.add_tip(self.apply_button, action + " Playlist and return.",
-                            anchor="nw")
-            self.top.bind("<Return>", self.apply)
+        #if self.state != 'view':
+        close_tt_text = "Discard any changes and close Playlist window."
+        action = name.split(" Playlist")[0]
+        self.apply_button = tk.Button(bottom_frm, text="✔ " + action,
+                                      width=g.BTN_WID2 - 2, command=self.apply)
+        self.apply_button.grid(row=0, column=0, padx=10, pady=5, sticky=tk.E)
+        self.tt.add_tip(self.apply_button, action + " Playlist and return.",
+                        anchor="nw")
+        self.top.bind("<Return>", self.apply)
 
         ''' Help Button - https://www.pippim.com/programs/mserve.html#HelpPlaylists '''
         help_text = "Open new window in default web browser for\n"
@@ -15015,6 +15035,25 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         if self.top:  # May have been closed above.
             self.top.update_idletasks()
 
+    def create_top(self, name):
+        """ Shared with create_window() and buildYouTubePlaylist """
+
+        self.top = tk.Toplevel()  # Playlists top level
+        ''' Save geometry for Playlists() '''
+        geom = monitor.get_window_geom('playlists')
+        self.top.geometry(geom)
+        self.top.minsize(width=g.BTN_WID * 10, height=g.PANEL_HGT * 10)
+        name = name if name is not None else "Playlists"
+        self.top.title(name + " - mserve")
+        #self.top.configure(background="Gray")  # Sep 5/23 - Use new default
+        self.top.configure(background="#eeeeee")  # Replace "LightGrey"
+        self.top.columnconfigure(0, weight=1)
+        self.top.rowconfigure(0, weight=1)
+        ''' After top created, disable all File Menu options for playlists '''
+        self.enable_lib_menu()
+        ''' Set program icon in taskbar '''
+        img.taskbar_icon(self.top, 64, 'white', 'lightskyblue', 'black')
+
     def enable_input(self):
         """ Turn on input fields for 'new', 'rename' and 'save_as' """
         self.input_active = True
@@ -15038,6 +15077,221 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                 self.names_for_loc.append(self.act_name)
         self.names_all_loc.sort()
         self.names_for_loc.sort()
+
+    def checkYouTubePlaylist(self):
+        """ Is Playlist from YouTube? """
+
+        self.validYouTube = False  # Assume not valid YouTube Playlist
+        if not self.act_description.startswith("https://www.youtube.com"):
+            return False
+        self.nameYouTube = WEB_PLAY_DIR + os.sep + self.act_name + ".csv"
+        if not os.path.isfile(self.nameYouTube):
+            return False
+        self.linkYouTube = ext.read_into_list(self.nameYouTube)
+        if not self.linkYouTube:
+            return False
+
+        self.validYouTube = True
+        return True
+
+    def buildYouTubePlaylist(self):
+        """ Have valid playlist to build list of dictionaries 
+            TODO: Save list and reread next time. User must manually delete
+                  saved list to rebuild (.../mserve/Playlists/Name.JSON)
+        """
+        self.listYouTube = []
+        self.dictYouTube = {}
+        self.imagesYouTube = []
+
+        ''' Previous generation available? '''
+        fname = self.nameYouTube.replace(".csv", ".pickle")
+        if os.path.isfile(fname):
+            self.listYouTube = ext.read_from_pickle(fname)
+            if self.listYouTube and self.listYouTube:
+                if len(self.linkYouTube) == len(self.listYouTube):
+                    return True
+
+        self.act_count = 0
+        self.act_seconds = 0.0  # Duration of all songs
+
+        ''' dtb for retrieving YouTube Images first time. '''
+        dtb = message.DelayedTextBox(title="Get YouTube Playlist", width=1000,
+                                     toplevel=self.top, startup_delay=0)
+        for link in self.linkYouTube:
+            try:  # split link into segments
+                song_name = link.rsplit(";", 2)[0]
+                link_name = link.rsplit(";", 2)[1]
+                duration = link.rsplit(";", 2)[2].strip()
+                video_name = link_name.split("/watch?v=")[1]
+                image_name = "https://i.ytimg.com/vi/" + video_name
+                image_name += "/" + YOUTUBE_RESOLUTION
+            except ValueError:
+                continue
+
+            try:  # grab image thumbnail
+                raw_data = requests.get(image_name).content
+            except requests.exceptions.RequestException as e:  # This is the correct syntax
+                print("RequestException:", e)
+                continue
+
+            try:  # convert thumbnail image into tkinter format
+                im = Image.open(BytesIO(raw_data))
+                image = {
+                    'pixels': im.tobytes(),
+                    'size': im.size,
+                    'mode': im.mode,
+                }
+                dictYouTube = dict()
+                dictYouTube['name'] = song_name
+                dictYouTube['link'] = link_name
+                dictYouTube['duration'] = duration
+                dictYouTube['image'] = image
+                self.listYouTube.append(dictYouTube)
+                #print("song:", song_name, "duration:", duration)
+                self.act_count += 1
+                self.act_seconds += float(tmf.get_sec(duration))
+
+            except tk.TclError:  # Not sure if this works for PIL yet....
+                continue
+            dtb_line = "Name: " + song_name + " Image: " + image_name
+            dtb.update(dtb_line)
+
+        dtb.close()
+
+        ''' Save list so it doesn't have to be regenerated '''
+        self.save_act()  # Save count and seconds
+        ext.write_to_pickle(fname, self.listYouTube)
+        return len(self.listYouTube) > 0
+
+    def displayYouTubePlaylist(self):
+        """ Read all self.dictYouTube inside self.listYouTube and create 
+            treeview.
+        """
+        if self.tt and self.tt.check(self.top):
+            self.tt.close(self.top)
+        if self.top:
+            geom = monitor.get_window_geom_string(self.top, leave_visible=False)
+            monitor.save_window_geom('playlists', geom)
+            self.top.destroy()
+            self.top = None
+
+        ''' create_top() shared with create_window() '''
+        self.create_top("YouTube Playlist - " + self.act_name)
+
+        ''' Create master frame '''
+        self.frame = tk.Frame(self.top, borderwidth=g.FRM_BRD_WID,
+                              relief=tk.RIDGE)
+        self.frame.grid(sticky=tk.NSEW)
+
+        ''' Refresh screen '''
+        if self.top:  # May have been closed above.
+            self.top.update_idletasks()
+
+        ''' Create treeview frame with scrollbars '''
+        tree_frame = tk.Frame(self.frame, bg="LightGrey", relief=tk.RIDGE)
+        tree_frame.grid(sticky=tk.NSEW)
+        tree_frame.columnconfigure(0, weight=1)
+        self.frame.columnconfigure(0, weight=1)
+
+        ''' Treeview style is large images in cell 0 '''
+        style = ttk.Style()
+        style.configure("YouTube.Treeview.Heading", font=(None, MED_FONT),
+                        rowheight=int(g.LARGE_FONT * 2.2))  # FONT14 alias
+        row_height = 200
+        style.configure("YouTube.Treeview", font=g.FONT14, rowheight=row_height)
+
+        # Create Treeview
+        you_tree = ttk.Treeview(tree_frame, column=('name',),
+                                selectmode='none', height=4,
+                                style="YouTube.Treeview")
+        you_tree.grid(row=0, column=0, sticky='nsew')
+        v_scroll = tk.Scrollbar(tree_frame, orient=tk.VERTICAL, 
+                                width=SCROLL_WIDTH, command=you_tree.yview)
+        v_scroll.grid(row=0, column=1, sticky=tk.NS)
+        you_tree.configure(yscrollcommand=v_scroll.set)
+        # v_scroll.config(troughcolor='black', bg='gold')
+        # https://stackoverflow.com/a/17457843/6929343
+        # MouseWheel captures no events
+        you_tree.bind("<MouseWheel>", lambda event: self._on_mousewheel(event))
+        # Button-4 is mousewheel scroll up event
+        you_tree.bind("<Button-4>", lambda event: self._on_mousewheel(event))
+        # Button-5 is mousewheel scroll down event
+        you_tree.bind("<Button-5>", lambda event: self._on_mousewheel(event))
+
+        # Setup column heading
+        you_tree.heading('#0', text=' Thumbnail Image', anchor='center')
+        you_tree.heading('#1', text=' Song Name')
+        # #0, #01, #02 denotes the 0, 1st, 2nd columns
+
+        # Setup column hqdefault
+        # YouTube Resolution: default=120x90(2.8K), hqdefault=480x360(35.6K)
+        # mqdefault = 320x180
+        you_tree.column('#0', width=420, stretch=False)
+        you_tree.column('name', anchor='center', width=600, stretch=True)
+
+        # Give some padding between triangles and border, between tree & scroll bars
+        you_tree["padding"] = (10, 10, 10, 10)  # left, top, right, bottom
+
+        for i, self.dictYouTube in enumerate(self.listYouTube):
+            song_name = self.dictYouTube['name']
+            song_name = toolkit.normalize_tcl(song_name)
+            duration = self.dictYouTube['duration']
+            image = self.dictYouTube['image']
+            im = Image.frombytes(image['mode'], image['size'], image['pixels'])
+
+            # Text Draw duration over image
+            width, height = im.size
+            draw_font = ImageFont.truetype("DejaVuSans.ttf", 24)
+            draw = ImageDraw.Draw(im)
+            x0 = width - 75  # text start x
+            y0 = height - 30  # text start y
+            x1 = x0 + 70
+            y1 = y0 + 25
+            draw.rectangle((x0-10, y0-5, x1, y1), fill="#333")
+            draw.text((x0, y0), duration, font=draw_font, fill="white")
+
+            # Convert image to tk photo and save from garbage collection
+            photo = ImageTk.PhotoImage(im)
+            self.imagesYouTube.append(photo)  # Save from GIC
+            # https://stackoverflow.com/questions/49307497/
+            # python-tkinter-treeview-add-an-image-as-a-column-value
+            you_tree.insert('', 'end', text=" " + str(i+1) + ": ", image=photo,
+                            value=(song_name,))
+
+        ''' button frame '''
+        bottom_frm = tk.Frame(self.frame)
+        bottom_frm.grid(row=4, columnspan=4, sticky=tk.E)
+
+        ''' Close Button - NOTE: This calls reset() function !!! '''
+        self.close_button = tk.Button(bottom_frm, text="✘ Close",
+                                      width=g.BTN_WID2 - 4, command=self.reset)
+        self.close_button.grid(row=4, column=4, padx=(10, 5), pady=5,
+                               sticky=tk.E)
+        self.tt.add_tip(self.close_button, "Close Window", anchor="ne")
+
+        self.top.bind("<Escape>", self.reset)
+        self.top.protocol("WM_DELETE_WINDOW", self.reset)
+
+        ''' Refresh screen '''
+        if self.top:  # May have been closed above.
+            self.top.update_idletasks()
+
+    @staticmethod
+    def _on_mousewheel(event):
+        """ https://stackoverflow.com/a/6976347/6929343
+            https://stackoverflow.com/a/17457843/6929343 """
+        tree = event.widget
+        #print("event.num:", event.num)
+
+        # Override mousewheel scrolls up
+        if event.num == 4:
+            tree.yview_scroll(-4, "units")
+            return "break"  # Don't let regular event handler do scroll of 5
+
+        # Override mousewheel scroll down
+        if event.num == 5:
+            tree.yview_scroll(4, "units")
+            return "break"  # Don't let regular event handler do scroll of 5
 
     def populate_his_tree(self):
         """ Use custom Data Dictionary routines for managing treeview. """
@@ -15390,6 +15644,40 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                         self.open_size, self.open_count, self.open_seconds,
                         self.open_description)
 
+    def save_act(self):
+        """ Save self.act_xxx vars after rename """
+
+        sql.save_config('playlist', self.act_code, self.act_loc_id,
+                        self.act_name, json.dumps(self.act_id_list),
+                        self.act_size, self.act_count, self.act_seconds,
+                        self.act_description)
+
+    def website_play(self):
+        """ Play music from website """
+        try:
+            webbrowser.open_new(self.act_description)
+        except Exception as err:
+            print("Exception:", err)
+
+        ''' TODO: Mount Window to import playlist
+                  See: ~/website/assets/js/theCookieJar.js youPlaylistMoveCSV()
+
+        STEP 1: Use CTRL+I in web browser
+        STEP 2: Click Button 1 to copy to clipboard "youPlayListScroll()"
+        STEP 3: Go to web browser and use CTRL+V then Enter
+        STEP 3A: Type "allow pasting" (without the quotes) if requested by browser
+        STEP 3B: Wait for web browser to stop scrolling, 1 second per song
+        STEP 4: Click Button 2 to copy to clipboard "youPlaylistCopy()"
+        STEP 5: Go to web browser and use Ctrl+V then Enter
+        STEP 6: Click Button 3 to copy to clipboard "youPlaylistSave()"
+        STEP 7: Go to web browser and use Ctrl+V then Enter
+        STEP 8: Click Button 4 to complete "youPlayListMoveCSV"
+        STEP 9: Use "View Playlists" to see results
+
+        <meta property="og:image" 
+        content="https://i.ytimg.com/vi/a-Xfv64uhMI/hqdefault.jpg?sqp=-oaymwEWCKgBEF5IWvKriqkDCQgBFQAAiEIYAQ==&amp;rs=AOn4CLDFxwNmNvfio8fMjvI4dOFmN-4k2Q&amp;days_since_epoch=19623">
+        '''
+
     def delete_playlist(self):
         """ Delete Playlist using History Row ID """
         sql.hist_cursor.execute("DELETE FROM History WHERE Id = ?",
@@ -15413,8 +15701,8 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         # print("self.top after .destroy()", self.top)
         PlaylistsCommonSelf.__init__(self)  # Define self. variables
         #self.top = None  # Indicate Playlist Maintenance is closed
-        ''' Enable File, Edit & View Dropdown Menus for playlists '''
 
+        ''' Enable File, Edit & View Dropdown Menus for playlists '''
         if isinstance(shutdown, tk.Event):
             self.enable_lib_menu()  # <Escape> bind
         elif not shutdown:  # When shutting down lib_top may not exist.
@@ -15439,6 +15727,11 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                 self.reset()  # Close everything down, E.G. destroy window
                 self.display_lib_title()
                 self.apply_callback(delete_only=True)
+        elif self.state == 'open' and self.act_description.startswith("http"):
+            self.info.cast("Opening Web Browser for: " + self.act_name + " at " +
+                           self.act_description)
+            self.website_play()
+            self.reset()  # Close everything down, E.G. destroy window
         elif self.state == 'open':
             self.info.cast("Opened playlist: " + self.act_name + " with " +
                            str(self.act_count) + " songs.")
@@ -15451,15 +15744,27 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             self.play_close()  # must be called before name is set
             self.make_open_from_act()  #
             self.save_playlist()  # Save brand new playlist
-            self.apply_callback()  # Tell parent to start editing playlist
+            self.apply_callback()  # Tell parent to start marking checkboxes
         elif self.state == 'view':
-            print("Playlists.view() should not call apply()")
+            if self.checkYouTubePlaylist():
+                if self.buildYouTubePlaylist():
+                    #print("buildYouTubePlaylist() SUCCESS")
+                    self.displayYouTubePlaylist()
+                    return  # Can't destroy window below
+                else:
+                    print("buildYouTubePlaylist() FAILED")
+            else:
+                print("Playlists.view() WIP for regular playlist songs")
         elif self.state == 'rename':
             self.info.cast("Renamed playlist: " + self.act_name + " with " +
                            str(self.act_count) + " songs.", action="update")
             if self.open_code and self.open_code == self.act_code:
                 self.open_name = self.act_name  # 'rename' title
+                self.open_description = self.act_description
+                # Not sure about saving config & wiping out any WIP
                 self.display_lib_title()
+            else:
+                self.save_act()  # sql.save_config() self.act_code, etc.
         elif self.state == 'save':
             ''' Remaining options is Save '''
             self.save_playlist()
@@ -15469,7 +15774,6 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             self.info.cast("Playlists.apply() bad state: " + self.state, 
                            action="update", icon='error')
 
-            
         if self.parent:
             # During shutdown we somehow get to this point and below gets error
             # because lib_top no longer exists.
