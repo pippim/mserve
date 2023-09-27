@@ -987,7 +987,7 @@ def get_last_play(key):
 
 
 def music_get_row(key):
-    """ Get Music Table row using Id """
+    """ Get Music Table row using Music Id """
     # Get row using the MusicID
     cursor.execute("SELECT * FROM Music WHERE Id = ?", [key])
 
@@ -2896,8 +2896,15 @@ def history_treeview():
         ("display_long", None), ("stretch", 1)]),
 
       OrderedDict([
+        ("column", "timestamp"), ("heading", "Timestamp"), ("sql_table", "History"),
+        ("var_name", "Timestamp"), ("select_order", 0), ("unselect_order", 14),
+        ("key", False), ("anchor", "w"), ("instance", float),
+        ("format", "date"), ("display_width", 300),
+        ("display_min_width", 200), ("display_long", None), ("stretch", 0)]),
+
+      OrderedDict([
         ("column", "reason"), ("heading", "Reason"), ("sql_table", "calc"),
-        ("var_name", "reason"), ("select_order", 0), ("unselect_order", 14),
+        ("var_name", "reason"), ("select_order", 0), ("unselect_order", 15),
         ("key", False), ("anchor", "w"), ("instance", str), ("format", None),
         ("display_width", 160), ("display_min_width", 140),
         ("display_long", None), ("stretch", 1)])
@@ -2907,7 +2914,27 @@ def history_treeview():
 
 
 def playlist_treeview():
-    """ Define Data Dictionary treeview columns for playlists in history table. """
+    """ Define Data Dictionary treeview columns for playlists in history table.
+        self.his_view.tree.heading('detail', text='Playlist Name')
+        self.his_view.tree.heading('comments', text='Playlist Description')
+        self.his_view.tree.heading('count', text='Song Count')
+        self.his_view.tree.heading('size', text='Size of Files')
+        self.his_view.tree.heading('seconds', text='Duration')
+
+                sql.save_config('playlist', self.open_code, self.open_loc_id,
+                        self.open_name, json.dumps(self.open_id_list),
+                        self.open_size, self.open_count, self.open_seconds,
+                        self.open_description)
+
+def save_config(Type, Action="", SourceMaster="", SourceDetail="", Target="",
+                Size=0, Count=0, Seconds=0.0, Comments=""):
+    # Check if record exists
+    d = get_config(Type, Action)
+    if d is None:
+        hist_add(time.time(), 0, g.USER, Type, Action, SourceMaster,
+                 SourceDetail, Target, Size, Count, Seconds, Comments)
+
+    """
 
     playlist_treeview_list = [
 
@@ -2919,7 +2946,7 @@ def playlist_treeview():
         ("display_min_width", 200), ("display_long", None), ("stretch", 0)]),
 
       OrderedDict([
-        ("column", "music_id"), ("heading", "Music ID"), ("sql_table", "History"),
+        ("column", "music_id"), ("heading", "Always 0"), ("sql_table", "History"),
         ("var_name", "MusicId"), ("select_order", 0), ("unselect_order", 2),
         ("key", False), ("anchor", "e"), ("instance", int), ("format", "{:,}"),
         ("display_width", 100), ("display_min_width", 80),
@@ -2933,63 +2960,63 @@ def playlist_treeview():
         ("display_long", None), ("stretch", 1)]),  # 0=NO, 1=YES
 
       OrderedDict([
-        ("column", "type"), ("heading", "Type"), ("sql_table", "History"),
+        ("column", "type"), ("heading", "'Playlist'"), ("sql_table", "History"),
         ("var_name", "Type"), ("select_order", 0), ("unselect_order", 4),
         ("key", False), ("anchor", "w"), ("instance", str), ("format", None),
         ("display_width", 80), ("display_min_width", 60),
         ("display_long", None), ("stretch", 1)]),
 
       OrderedDict([
-        ("column", "action"), ("heading", "Action"), ("sql_table", "History"),
+        ("column", "action"), ("heading", "P999999"), ("sql_table", "History"),
         ("var_name", "Action"), ("select_order", 0), ("unselect_order", 5),
         ("key", False), ("anchor", "w"), ("instance", str),
         ("format", None), ("display_width", 80),
         ("display_min_width", 60), ("display_long", None), ("stretch", 1)]),
 
       OrderedDict([
-        ("column", "master"), ("heading", "Master"), ("sql_table", "History"),
+        ("column", "master"), ("heading", "Loc. Code"), ("sql_table", "History"),
         ("var_name", "SourceMaster"), ("select_order", 0), ("unselect_order", 6),
         ("key", False), ("anchor", "w"), ("instance", str), ("format", None),
         ("display_width", 150), ("display_min_width", 100),
         ("display_long", None), ("stretch", 1)]),
 
       OrderedDict([
-        ("column", "detail"), ("heading", "Detail"), ("sql_table", "History"),
+        ("column", "detail"), ("heading", "Playlist Name"), ("sql_table", "History"),
         ("var_name", "SourceDetail"), ("select_order", 0), ("unselect_order", 7),
         ("key", False), ("anchor", "w"), ("instance", str), ("format", None),
         ("display_width", 150), ("display_min_width", 100),
         ("display_long", None), ("stretch", 1)]),  # 0=NO, 1=YES
 
       OrderedDict([
-        ("column", "target"), ("heading", "Target"), ("sql_table", "History"),
+        ("column", "target"), ("heading", "Music ID list"), ("sql_table", "History"),
         ("var_name", "Target"), ("select_order", 0), ("unselect_order", 8),
         ("key", False), ("anchor", "w"), ("instance", str), ("format", None),
         ("display_width", 300), ("display_min_width", 200),
         ("display_long", None), ("stretch", 1)]),
 
       OrderedDict([
-        ("column", "size"), ("heading", "Size"), ("sql_table", "History"),
+        ("column", "size"), ("heading", "Size of Files"), ("sql_table", "History"),
         ("var_name", "Size"), ("select_order", 0), ("unselect_order", 9),
         ("key", False), ("anchor", "e"), ("instance", int), ("format", "{:,}"),
         ("display_width", 100), ("display_min_width", 80),
         ("display_long", None), ("stretch", 1)]),
 
       OrderedDict([
-        ("column", "count"), ("heading", "Count"), ("sql_table", "History"),
+        ("column", "count"), ("heading", "Song Count"), ("sql_table", "History"),
         ("var_name", "Count"), ("select_order", 0), ("unselect_order", 10),
         ("key", False), ("anchor", "e"), ("instance", int), ("format", "{:,}"),
         ("display_width", 80), ("display_min_width", 60),
         ("display_long", None), ("stretch", 1)]),
 
       OrderedDict([
-        ("column", "comments"), ("heading", "Comments"), ("sql_table", "History"),
+        ("column", "comments"), ("heading", "Playlist Description"), ("sql_table", "History"),
         ("var_name", "Comments"), ("select_order", 0), ("unselect_order", 11),
         ("key", False), ("anchor", "w"), ("instance", str), ("format", None),
-        ("display_width", 160), ("display_min_width", 140),
+        ("display_width", 500), ("display_min_width", 300),
         ("display_long", None), ("stretch", 1)]),
 
       OrderedDict([
-        ("column", "seconds"), ("heading", "Seconds"), ("sql_table", "History"),
+        ("column", "seconds"), ("heading", "Duration"), ("sql_table", "History"),
         ("var_name", "Seconds"), ("select_order", 0), ("unselect_order", 12),
         ("key", False), ("anchor", "e"), ("instance", float), ("format", "{0:,.4f}"),
         ("display_width", 140), ("display_min_width", 80),
@@ -3003,11 +3030,12 @@ def playlist_treeview():
         ("display_long", None), ("stretch", 1)]),
 
       OrderedDict([
-        ("column", "reason"), ("heading", "Reason"), ("sql_table", "calc"),
-        ("var_name", "reason"), ("select_order", 0), ("unselect_order", 14),
-        ("key", False), ("anchor", "w"), ("instance", str), ("format", None),
-        ("display_width", 160), ("display_min_width", 140),
-        ("display_long", None), ("stretch", 1)])
+        ("column", "timestamp"), ("heading", "Timestamp"), ("sql_table", "History"),
+        ("var_name", "Timestamp"), ("select_order", 0), ("unselect_order", 14),
+        ("key", False), ("anchor", "w"), ("instance", float),
+        ("format", "date"), ("display_width", 300),
+        ("display_min_width", 200), ("display_long", None), ("stretch", 0)]),
+
     ]
 
     return playlist_treeview_list

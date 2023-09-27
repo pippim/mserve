@@ -546,7 +546,8 @@ FM_NAME = "Nautilus File Manager"  # No HDPI required.  Change to FM_NAME
 FM_COMMAND = "nautilus"
 FM_WIN_SIZE = "1000x600"  # Window size changed after program starts
 
-LRC_INSTALLED = True  # Sep 3/23 - experimental .lrc file generation
+LRC_INSTALLED = True  # Sep 3/23 - .lrc (Synchronized LyRiCs) file generation
+XDOTOOL_INSTALLED = True  # Sep 26/23 - experimental .lrc file generation
 
 # Kill application.name: speech-dispatcher, application.process.id: 5529
 DELETE_SPEECH = True  # Kill speech dispatcher which has four threads each boot.
@@ -11207,7 +11208,7 @@ mark set markName index"
         self.chron_last_tag_removed = None
 
     def chron_tree_right_click(self, event):
-        """ Drop down menu:
+        """ Popup menu:
                 Play different song / Restart current song
                 Kid3 to edit metadata / artwork
                 Notes about song stored in SQL History Table
@@ -14724,6 +14725,7 @@ class PlaylistsCommonSelf:
         self.top = None  # tk.Toplevel
         self.frame = None  # tk.Frame inside self.top
         self.his_view = None  # SQL Hist tk.Treeview managed by Data Dictionary
+        self.you_tree = None  # YouTube Playlist Tree
         self.fld_name = None  # Field tk.Entry for toggling readonly state
         self.fld_description = None
         self.scr_name = tk.StringVar()  # Input fields
@@ -14904,28 +14906,12 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         self.build_playlists()
         ''' create_top() shared with buildYouTubePlaylist '''
         self.create_top(name)
-        ''' Save geometry for Playlists() 
-        self.top = tk.Toplevel()  # Playlists top level
-        geom = monitor.get_window_geom('playlists')
-        self.top.geometry(geom)
-        self.top.minsize(width=g.BTN_WID * 10, height=g.PANEL_HGT * 10)
-        name = name if name is not None else "Playlists"
-        self.top.title(name + " - mserve")
-        #self.top.configure(background="Gray")  # Sep 5/23 - Use new default
-        self.top.configure(background="#eeeeee")  # Replace "LightGrey"
-        self.top.columnconfigure(0, weight=1)
-        self.top.rowconfigure(0, weight=1)
-        '''
-        # After top created, disable all File Menu options for playlists
-        #self.enable_lib_menu()
-        # Set program icon in taskbar
-        #img.taskbar_icon(self.top, 64, 'white', 'lightskyblue', 'black')
 
         ''' Create master frame '''
         self.frame = tk.Frame(self.top, borderwidth=g.FRM_BRD_WID,
                               relief=tk.RIDGE)
         self.frame.grid(sticky=tk.NSEW)
-        self.frame.columnconfigure(0, weight=1)
+        #self.frame.columnconfigure(0, weight=1)
         self.frame.columnconfigure(1, weight=3)  # Data entry fields
         self.frame.rowconfigure(0, weight=1)
         ms_font = g.FONT
@@ -14951,7 +14937,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                  font=ms_font).grid(row=1, column=0, sticky=tk.W, padx=5)
         self.fld_name = tk.Entry(self.frame, textvariable=self.scr_name,
                                  state='readonly', font=ms_font)
-        self.fld_name.grid(row=1, column=1, sticky=tk.W, padx=5, pady=5)
+        self.fld_name.grid(row=1, column=1, sticky=tk.EW, padx=5, pady=5)
         self.scr_name.set("")  # Clear left over from last invocation
 
         ''' Playlist Description is readonly except for 'new' and 'rename' '''
@@ -14960,7 +14946,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         self.fld_description = tk.Entry(
             self.frame, textvariable=self.scr_description, state='readonly',
             font=ms_font)
-        self.fld_description.grid(row=2, column=1, sticky=tk.W, padx=5, pady=5)
+        self.fld_description.grid(row=2, column=1, sticky=tk.EW, padx=5, pady=5)
         self.scr_description.set("")  # Clear left over from last invocation
 
         ''' Device Location is always readonly '''
@@ -15078,6 +15064,81 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         self.names_all_loc.sort()
         self.names_for_loc.sort()
 
+    def populate_his_tree(self):
+        """ Use custom Data Dictionary routines for managing treeview. """
+        ''' Data Dictionary and Treeview column names '''
+        #history_dict = sql.history_treeview()  # Heart of Data Dictionary
+        # Sep 25/23 switch to proper dictionary
+        history_dict = sql.playlist_treeview()
+        columns = ("detail", "comments", "count", "size", "seconds")
+        toolkit.select_dict_columns(columns, history_dict)
+        ''' Create treeview frame with scrollbars '''
+        tree_frame = tk.Frame(self.frame, bg="LightGrey", relief=tk.RIDGE)
+        tree_frame.grid(sticky=tk.NSEW, columnspan=4)
+        tree_frame.columnconfigure(0, weight=1)
+        tree_frame.rowconfigure(0, weight=1)
+        self.his_view = toolkit.DictTreeview(
+            history_dict, self.top, tree_frame, columns=columns,
+            highlight_callback=self.highlight_callback)
+        ''' Override formatting of 'size' column to MB '''
+        self.his_view.change_column_format("MB", "size")
+        ''' Override formatting of 'seconds' column to Days:Hours:Min:Sec '''
+        self.his_view.change_column_format("days", "seconds")
+        ''' Override generic column heading names for Playlist usage '''
+        # Sep 25/23 - Put proper names in proper dictionary
+        #self.his_view.tree.heading('detail', text='Playlist Name')
+        #self.his_view.tree.heading('comments', text='Playlist Description')
+        #self.his_view.tree.heading('count', text='Song Count')
+        #self.his_view.tree.heading('size', text='Size of Files')
+        #self.his_view.tree.heading('seconds', text='Duration')
+        self.his_view.tree["displaycolumns"] = columns  # hide row_id
+        ''' Treeview click and drag columns to different order '''
+        # Moving columns needs work and probably isn't even needed
+        #toolkit.MoveTreeviewColumn(self.top, self.his_view.tree,
+        #                           row_release=self.his_button_click)
+        ''' Treeview select item with button clicks '''
+        self.his_view.tree.bind("<Button-1>", self.his_button_click)
+        self.his_view.tree.bind("<Button-3>", self.his_button_click)
+        self.his_view.tree.bind("<Double-Button-1>", self.apply)
+        self.his_view.tree.tag_configure('play_sel', background='ForestGreen',
+                                         foreground="White")
+        ''' Loop through sorted lists, reread history and insert in tree '''
+        for name in self.names_for_loc:  # Sorted alphabetically
+            ndx = self.all_names.index(name)  # In key order P000001, P000002, etc.
+            number_str = self.all_numbers[ndx]
+            d = sql.get_config('playlist', number_str)  # Must be here
+            self.his_view.insert("", d, iid=number_str, tags="unchecked")
+
+    def his_button_click(self, event):
+        """ Left button clicked on Playlist row. """
+        number_str = self.his_view.tree.identify_row(event.y)
+        if self.state == "new" or self.state == "save_as":
+            # cannot use enable_input because rename needs to pick old name first
+            text = "Cannot pick an old playlist when new playlist name required.\n\n" + \
+                "Enter a new Playlist name and description below."
+            message.ShowInfo(self.top, "Existing playlists for reference only!",
+                             text, icon='warning', thread=self.get_thread_func)
+        else:
+            ''' Highlight row clicked '''
+            toolkit.tv_tag_remove_all(self.his_view.tree, 'play_sel')
+            toolkit.tv_tag_add(self.his_view.tree, number_str, 'play_sel')
+
+            self.read_playlist(number_str)
+            self.scr_name.set(self.act_name)
+            self.scr_description.set(self.act_description)
+            self.scr_location.set(self.act_loc_id)
+            self.fld_count['text'] = '{:n}'.format(self.act_count)
+            self.fld_size['text'] = toolkit.human_mb(self.act_size)
+            self.fld_seconds['text'] = toolkit.days(self.act_seconds)
+            self.top.update_idletasks()
+            #print("Music IDs", self.act_id_list)
+
+    def highlight_callback(self, number_str):
+        """ As lines are highlighted in treeview, this function is called.
+        :param number_str: Playlist number used as iid inside treeview
+        :return: None """
+        pass
+
     def checkYouTubePlaylist(self):
         """ Is Playlist from YouTube? """
 
@@ -15095,7 +15156,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         return True
 
     def buildYouTubePlaylist(self):
-        """ Have valid playlist to build list of dictionaries 
+        """ Have valid playlist to build list of dictionaries
             TODO: Save list and reread next time. User must manually delete
                   saved list to rebuild (.../mserve/Playlists/Name.JSON)
         """
@@ -15147,9 +15208,15 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                 dictYouTube['duration'] = duration
                 dictYouTube['image'] = image
                 self.listYouTube.append(dictYouTube)
-                #print("song:", song_name, "duration:", duration)
+                # print("song:", song_name, "duration:", duration)
                 self.act_count += 1
                 self.act_seconds += float(tmf.get_sec(duration))
+
+                thread = self.get_thread_func()  # repeated 3 times....
+                if thread:
+                    thread()
+                else:
+                    return False  # closing down...
 
             except tk.TclError:  # Not sure if this works for PIL yet....
                 continue
@@ -15164,9 +15231,61 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         return len(self.listYouTube) > 0
 
     def displayYouTubePlaylist(self):
-        """ Read all self.dictYouTube inside self.listYouTube and create 
+        """ Read all self.dictYouTube inside self.listYouTube and create
             treeview.
+
+            TODO: Select and play (requires mouse training):
+                1) Open browser window and Optional Move to Monitor
+                2) Click play button
+                3) Click back button
+                4) Click forward button
+                5) Move to movie monitor/tv
+                6) Click full-screen
+
+            Right-click menu chron_popup:
+                1) Play using XDOTOOL controls
+                2) Train For Play
+                    2A) Open song (web browser link)
+                    2B) Get Window coordinates
+                    2C) Optional drag window to a monitor & press Enter
+                    2D) Prompt to move mouse over play button, press Enter
+                    2E) Prompt to move mouse over back button, press Enter
+                    2F) Prompt to move mouse over forward button, press Enter
+                    2G) Prompt to move mouse over full screen button, press Enter
+                    2H) Save results in History Records 'mouse' - 'move', 'drag'
+                        'play', 'back', 'forward', 'full'
+
+            Reference: https://stackoverflow.com/a/22925718/6929343
+
+                import Tkinter as tk
+                root = tk.Tk()
+
+                def motion(event):
+                    x, y = event.x, event.y
+                    print('{}, {}'.format(x, y))
+
+                root.bind('<Motion>', motion)
+                root.mainloop()
+
+            OR: https://stackoverflow.com/a/22943296/6929343
+
+                x = root.winfo_pointerx()
+                y = root.winfo_pointery()
+                abs_coord_x = root.winfo_pointerx() - root.winfo_rootx()
+                abs_coord_y = root.winfo_pointery() - root.winfo_rooty()
+
+            PROBLEM: YouTube freshly launched in browser has no back button
+                     so commercial starts immediately
+
+            SOLUTION: Proceed with window move and full screen click
+
+            OTHER PROBLEM: Destination monitor has window always on top.
+                Need to get windows on monitor and check always on top.
+                Advise cannot start until always on top is toggled off and
+                any full screen is removed.
+
         """
+
         if self.tt and self.tt.check(self.top):
             self.tt.close(self.top)
         if self.top:
@@ -15201,42 +15320,52 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         style.configure("YouTube.Treeview", font=g.FONT14, rowheight=row_height)
 
         # Create Treeview
-        you_tree = ttk.Treeview(tree_frame, column=('name',),
-                                selectmode='none', height=4,
-                                style="YouTube.Treeview")
-        you_tree.grid(row=0, column=0, sticky='nsew')
-        v_scroll = tk.Scrollbar(tree_frame, orient=tk.VERTICAL, 
-                                width=SCROLL_WIDTH, command=you_tree.yview)
+        self.you_tree = ttk.Treeview(tree_frame, column=('name',),
+                                     selectmode='none', height=4,
+                                     style="YouTube.Treeview")
+        self.you_tree.grid(row=0, column=0, sticky='nsew')
+        v_scroll = tk.Scrollbar(tree_frame, orient=tk.VERTICAL,
+                                width=SCROLL_WIDTH, command=self.you_tree.yview)
         v_scroll.grid(row=0, column=1, sticky=tk.NS)
-        you_tree.configure(yscrollcommand=v_scroll.set)
+        self.you_tree.configure(yscrollcommand=v_scroll.set)
         # v_scroll.config(troughcolor='black', bg='gold')
         # https://stackoverflow.com/a/17457843/6929343
+
+        # Left-click, requires two presses to fire
+        #self.you_tree.bind('<Button-1>', self.you_tree_click)  # Needs 2 clicks
+        #self.you_tree.bind('<ButtonPress-1>', self.you_tree_click)  # Needs 2 clicks
+        #self.you_tree.bind('<ButtonRelease-1>', self.you_tree_click)  # Needs 2 clicks
+        #self.you_tree.bind("<<TreeviewSelect>>", self.you_tree_click)  # 1 click
+        # Right-click
+        self.you_tree.bind('<Button-3>', self.you_tree_click)  # Right-click
+
         # MouseWheel captures no events
-        you_tree.bind("<MouseWheel>", lambda event: self._on_mousewheel(event))
+        self.you_tree.bind("<MouseWheel>", lambda event: self._on_mousewheel(event))
         # Button-4 is mousewheel scroll up event
-        you_tree.bind("<Button-4>", lambda event: self._on_mousewheel(event))
+        self.you_tree.bind("<Button-4>", lambda event: self._on_mousewheel(event))
         # Button-5 is mousewheel scroll down event
-        you_tree.bind("<Button-5>", lambda event: self._on_mousewheel(event))
+        self.you_tree.bind("<Button-5>", lambda event: self._on_mousewheel(event))
 
         # Setup column heading
-        you_tree.heading('#0', text=' Thumbnail Image', anchor='center')
-        you_tree.heading('#1', text=' Song Name')
+        self.you_tree.heading('#0', text='Thumbnail Image')
+        self.you_tree.heading('#1', text='Song Name', anchor='center')
         # #0, #01, #02 denotes the 0, 1st, 2nd columns
 
         # Setup column hqdefault
         # YouTube Resolution: default=120x90(2.8K), hqdefault=480x360(35.6K)
         # mqdefault = 320x180
-        you_tree.column('#0', width=420, stretch=False)
-        you_tree.column('name', anchor='center', width=600, stretch=True)
+        self.you_tree.column('#0', width=430, stretch=False)
+        self.you_tree.column('name', anchor='center', width=590, stretch=True)
 
         # Give some padding between triangles and border, between tree & scroll bars
-        you_tree["padding"] = (10, 10, 10, 10)  # left, top, right, bottom
+        self.you_tree["padding"] = (10, 10, 10, 10)  # left, top, right, bottom
 
         for i, self.dictYouTube in enumerate(self.listYouTube):
             song_name = self.dictYouTube['name']
             song_name = toolkit.normalize_tcl(song_name)
             duration = self.dictYouTube['duration']
             image = self.dictYouTube['image']
+            # from bytes() converts jpg in memory instead of reading from disk
             im = Image.frombytes(image['mode'], image['size'], image['pixels'])
 
             # Text Draw duration over image
@@ -15247,7 +15376,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             y0 = height - 30  # text start y
             x1 = x0 + 70
             y1 = y0 + 25
-            draw.rectangle((x0-10, y0-5, x1, y1), fill="#333")
+            draw.rectangle((x0 - 10, y0 - 5, x1, y1), fill="#333")
             draw.text((x0, y0), duration, font=draw_font, fill="white")
 
             # Convert image to tk photo and save from garbage collection
@@ -15255,8 +15384,14 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             self.imagesYouTube.append(photo)  # Save from GIC
             # https://stackoverflow.com/questions/49307497/
             # python-tkinter-treeview-add-an-image-as-a-column-value
-            you_tree.insert('', 'end', text=" " + str(i+1) + ": ", image=photo,
-                            value=(song_name,))
+            self.you_tree.insert('', 'end', iid=str(i), text="#" + str(i + 1),
+                                 image=photo, value=(song_name,))
+            # TODO: So fast should throttle refresh to 12 ms interval
+            thread = self.get_thread_func()  # repeated 3 times....
+            if thread:
+                thread()
+            else:
+                return False  # closing down...
 
         ''' button frame '''
         bottom_frm = tk.Frame(self.frame)
@@ -15276,94 +15411,315 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         if self.top:  # May have been closed above.
             self.top.update_idletasks()
 
+    def you_tree_click(self, event):
+        """ Popup menu: """
+        item = self.you_tree.identify_row(event.y)
+
+        if item is None:
+            # self.info.cast("Cannot click on an empty row.")
+            return  # Empty row, nothing to do
+
+        menu = tk.Menu(root, tearoff=0)
+        menu.post(event.x_root, event.y_root)
+
+        global XDOTOOL_INSTALLED
+        XDOTOOL_INSTALLED = ext.check_command('xdotool')
+
+        no = str(int(item) + 1)
+        menu.add_command(label="Play #" + no, font=(None, MED_FONT),
+                         command=lambda: self.you_tree_play(item))
+
+        if XDOTOOL_INSTALLED:
+            menu.add_command(label="Smart Play", font=(None, MED_FONT),
+                             command=lambda: self.you_tree_smart_play(item))
+
+        menu.add_command(label="Copy link", font=(None, MED_FONT),
+                         command=lambda: self.you_tree_copy_link(item))
+
+        menu.add_separator()
+
+        menu.add_command(label="Ignore click", font=(None, MED_FONT),
+                         command=lambda: self.close_you_popup(menu, item))
+
+        menu.tk_popup(event.x_root, event.y_root)
+        menu.bind("<FocusOut>", lambda _: self.close_you_popup(menu, item))
+        # '_' prevents: TypeError: <lambda>() takes no arguments (1 given)
+
+    def close_you_popup(self, menu, item):
+        """ Close the chronology try popup menu """
+        if item:
+            ndx = int(item)
+            finished = self.listYouTube[ndx]['link']
+        menu.unpost()  # Remove popup menu
+
+    def you_tree_play(self, item):
+        """ Play song highlighted in YouTube treeview. """
+        ndx = int(item)
+        webbrowser.open_new(self.listYouTube[ndx]['link'])
+
+    def you_tree_smart_play(self, item):
+        """ Smart Play song highlighted in YouTube treeview. """
+        title = "WARNING: Experimental feature"
+        text = "Currently this features moves YouTube from right to left monitor."
+        #message.ShowInfo(self.top, title, text, icon='warning',
+        #                 thread=self.get_thread_func)
+        ndx = int(item)
+        mon = monitor.Monitors()            # Monitors class list of dicts
+        # Start windows
+        start_wins = mon.get_all_windows()
+        webbrowser.open_new(self.listYouTube[ndx]['link'])
+        time.sleep(1.0)  # TODO: Loop for 30 seconds until list changes
+        end_wins = mon.get_all_windows()
+
+        if len(start_wins) >= len(end_wins):
+            print("Could not find new window")
+            print("start/end window count:", len(start_wins), len(end_wins))
+            return
+
+        win_list = list(set(end_wins) - set(start_wins))
+        window = win_list[0]
+        print("\nwindow:", window)
+        # [Window(number=130028740L, name='Mozilla Firefox', x=1920, y=24,
+        #         width=1728, height=978)]
+
+        new_x = new_y = 30  # Move to 30,30 (x, y)
+        str_win = str(window.number)  # should remove L in python 2.7.5+
+        int_win = int(str_win)  # https://stackoverflow.com/questions
+        hex_win = hex(int_win)  # /5917203/python-trailing-l-problem
+        # Move window to x=30, y=30
+        os.popen('xdotool windowmove ' + hex_win + ' ' +
+                 str(new_x) + ' ' + str(new_y))
+        #time.sleep(0.5)  # After window move, need a little time
+        #message.ShowInfo(self.top, title, text, icon='warning',
+        #                 thread=self.get_thread_func)
+
+        # Could remove target window's above setting (Always On Top):
+        #   os.popen('wmctrl -ir ' + trg_win + ' -b toggle,above')
+
+        # Make full screen. Have to reverse before closing because setting
+        # remembered by firefox for next window open
+
+        os.popen('wmctrl -ir ' + hex_win + ' -b add,maximized_vert')
+        os.popen('wmctrl -ir ' + hex_win + ' -b add,maximized_horz')
+        os.popen('wmctrl -ir ' + hex_win + ' -b add,above')
+        # Move to screen center and click to play
+        os.popen('xdotool mousemove 1860 900')  # 1920/2 x 1080/2
+        #time.sleep(3.0)  # Time for YouTube to load up and build page
+        os.popen('xdotool click --window ' + hex_win + ' --delay 5000 1')
+
+        # TODO: Skip Ads on first play - Wait five seconds and click at:
+        #os.popen('xdotool mousemove 1880 1000')
+        #time.sleep(5.0)  # TODO: Wouldn't need sleep if no add appears
+        # Need to scrape screen to see what HTML is there.
+        """
+            from selenium import webdriver
+            import time
+            
+            # Create a new instance of Chrome and go to the website we want to scrape
+            browser = webdriver.Chrome()
+            browser.get("http://www.elpais.com/")
+            time.sleep(5) # Let the browser load
+            
+            # Find the div element containing the article content
+            div = browser.find_element_by_class_name('articleContent')
+            
+            # Print out all the text inside the div
+            print(div.text)        
+        """
+
+    def you_tree_copy_link(self, item):
+        """ Copy link to clipboard. """
+        ndx = int(item)
+        link = self.listYouTube[ndx]['link']
+        r = tk.Tk()
+        r.withdraw()
+        r.clipboard_clear()
+        r.clipboard_append(link)
+        r.update()
+        r.destroy()
+        title = "Clipboard Ready."
+        text = "Link has been copied to clipboard:\n\n"
+        text += link
+        message.ShowInfo(self.top, title, text, icon='warning',
+                         thread=self.get_thread_func)
+
     @staticmethod
     def _on_mousewheel(event):
-        """ https://stackoverflow.com/a/6976347/6929343
-            https://stackoverflow.com/a/17457843/6929343 """
-        tree = event.widget
-        #print("event.num:", event.num)
-
-        # Override mousewheel scrolls up
-        if event.num == 4:
-            tree.yview_scroll(-4, "units")
+        """ Mousewheel scroll defaults to 5 units, but tree has 4 images """
+        if event.num == 4:  # Override mousewheel scroll up
+            event.widget.yview_scroll(-4, "units")  # tree = event.widget
+            return "break"  # Don't let regular event handler do scroll of 5
+        if event.num == 5:  # Override mousewheel scroll down
+            event.widget.yview_scroll(4, "units")  # tree = event.widget
             return "break"  # Don't let regular event handler do scroll of 5
 
-        # Override mousewheel scroll down
-        if event.num == 5:
-            tree.yview_scroll(4, "units")
-            return "break"  # Don't let regular event handler do scroll of 5
+    def displayMusicIds(self):
+        """ Read Music Id's from Playlist History record that was read using:
+                self.act_id_list = ['Target']  # Music Id's in play order
 
-    def populate_his_tree(self):
-        """ Use custom Data Dictionary routines for managing treeview. """
-        ''' Data Dictionary and Treeview column names '''
-        history_dict = sql.history_treeview()  # Heart of Data Dictionary
-        columns = ("detail", "comments", "count", "size", "seconds")
-        toolkit.select_dict_columns(columns, history_dict)
+            Similar function in displayYouTubePlaylist
+        """
+
+        # Common code with displayYouTubePlaylist
+        if self.tt and self.tt.check(self.top):
+            self.tt.close(self.top)
+        if self.top:
+            geom = monitor.get_window_geom_string(self.top, leave_visible=False)
+            monitor.save_window_geom('playlists', geom)
+            self.top.destroy()
+            self.top = None
+
+        # Common code with displayYouTubePlaylist
+        ''' create_top() shared with create_window() '''
+        self.create_top("YouTube Playlist - " + self.act_name)
+
+        ''' Create master frame '''
+        self.frame = tk.Frame(self.top, borderwidth=g.FRM_BRD_WID,
+                              relief=tk.RIDGE)
+        self.frame.grid(sticky=tk.NSEW)
+
+        ''' Refresh screen '''
+        if self.top:  # May have been closed above.
+            self.top.update_idletasks()
+
         ''' Create treeview frame with scrollbars '''
         tree_frame = tk.Frame(self.frame, bg="LightGrey", relief=tk.RIDGE)
-        tree_frame.grid(sticky=tk.NSEW, columnspan=4)
+        tree_frame.grid(sticky=tk.NSEW)
         tree_frame.columnconfigure(0, weight=1)
-        tree_frame.rowconfigure(0, weight=1)
-        self.his_view = toolkit.DictTreeview(
-            history_dict, self.top, tree_frame, columns=columns,
-            highlight_callback=self.highlight_callback)
-        ''' Override formatting of 'size' column to MB '''
-        self.his_view.change_column_format("MB", "size")
-        ''' Override formatting of 'seconds' column to Days:Hours:Min:Sec '''
-        self.his_view.change_column_format("days", "seconds")
-        ''' Override generic column heading names for Playlist usage '''
-        self.his_view.tree.heading('detail', text='Playlist Name')
-        self.his_view.tree.heading('comments', text='Playlist Description')
-        self.his_view.tree.heading('count', text='Song Count')
-        self.his_view.tree.heading('size', text='Size of Files')
-        self.his_view.tree.heading('seconds', text='Duration')
-        self.his_view.tree["displaycolumns"] = columns  # hide row_id
-        ''' Treeview click and drag columns to different order '''
-        # Moving columns needs work and probably isn't even needed
-        #toolkit.MoveTreeviewColumn(self.top, self.his_view.tree,
-        #                           row_release=self.his_button_click)
-        ''' Treeview select item with button clicks '''
-        self.his_view.tree.bind("<Button-1>", self.his_button_click)
-        self.his_view.tree.bind("<Button-3>", self.his_button_click)
-        self.his_view.tree.bind("<Double-Button-1>", self.apply)
-        self.his_view.tree.tag_configure('play_sel', background='ForestGreen',
-                                         foreground="White")
-        ''' Loop through sorted lists, reread history and insert in tree '''
-        for name in self.names_for_loc:  # Sorted alphabetically
-            ndx = self.all_names.index(name)  # In key order P000001, P000002, etc.
-            number_str = self.all_numbers[ndx]
-            d = sql.get_config('playlist', number_str)  # Must be here
-            self.his_view.insert("", d, iid=number_str, tags="unchecked")
+        self.frame.columnconfigure(0, weight=1)
 
-    def his_button_click(self, event):
-        """ Left button clicked on Playlist row. """
-        number_str = self.his_view.tree.identify_row(event.y)
-        if self.state == "new" or self.state == "save_as":
-            # cannot use enable_input because rename needs to pick old name first
-            text = "Cannot pick an old playlist when new playlist name required.\n\n" + \
-                "Enter a new Playlist name and description below."
-            message.ShowInfo(self.top, "Existing playlists for reference only!",
-                             text, icon='warning', thread=self.get_thread_func)
-        else:
-            ''' Highlight row clicked '''
-            toolkit.tv_tag_remove_all(self.his_view.tree, 'play_sel')
-            toolkit.tv_tag_add(self.his_view.tree, number_str, 'play_sel')
+        ''' Treeview style is large images in cell 0 '''
+        style = ttk.Style()
+        style.configure("YouTube.Treeview.Heading", font=(None, MED_FONT),
+                        rowheight=int(g.LARGE_FONT * 2.2))  # FONT14 alias
+        row_height = 200
+        style.configure("YouTube.Treeview", font=g.FONT14, rowheight=row_height)
 
-            self.read_playlist(number_str)
-            self.scr_name.set(self.act_name)
-            self.scr_description.set(self.act_description)
-            self.scr_location.set(self.act_loc_id)
-            self.fld_count['text'] = '{:n}'.format(self.act_count)
-            self.fld_size['text'] = toolkit.human_mb(self.act_size)
-            self.fld_seconds['text'] = toolkit.days(self.act_seconds)
+        # Create Treeview
+        self.you_tree = ttk.Treeview(tree_frame, column=('name',),
+                                     selectmode='none', height=4,
+                                     style="YouTube.Treeview")
+        self.you_tree.grid(row=0, column=0, sticky='nsew')
+        v_scroll = tk.Scrollbar(tree_frame, orient=tk.VERTICAL,
+                                width=SCROLL_WIDTH, command=self.you_tree.yview)
+        v_scroll.grid(row=0, column=1, sticky=tk.NS)
+        self.you_tree.configure(yscrollcommand=v_scroll.set)
+        # v_scroll.config(troughcolor='black', bg='gold')
+        # https://stackoverflow.com/a/17457843/6929343
+
+
+        # MouseWheel captures no events
+        self.you_tree.bind("<MouseWheel>", lambda event: self._on_mousewheel(event))
+        # Button-4 is mousewheel scroll up event
+        self.you_tree.bind("<Button-4>", lambda event: self._on_mousewheel(event))
+        # Button-5 is mousewheel scroll down event
+        self.you_tree.bind("<Button-5>", lambda event: self._on_mousewheel(event))
+
+        # Setup column heading
+        self.you_tree.heading('#0', text='Thumbnail Image', anchor='center')
+        self.you_tree.heading('#1', text='Title / Artist / Album / Year')
+        # #0, #01, #02 denotes the 0, 1st, 2nd columns
+
+        # Setup column hqdefault
+        # YouTube Resolution: default=120x90(2.8K), hqdefault=480x360(35.6K)
+        # mqdefault = 320x180
+        self.you_tree.column('#0', anchor='center', width=430, stretch=False)
+        self.you_tree.column('name', width=590, stretch=True)
+
+        # Give some padding between triangles and border, between tree & scroll bars
+        self.you_tree["padding"] = (10, 10, 10, 10)  # left, top, right, bottom
+
+
+        # Differences start here with displayYouTubePlaylist
+        #PRUNED_DIR =
+        view_ctl = FileControl(self.top, self.info)
+        self.imagesYouTube = []
+
+        for i, music_id in enumerate(self.act_id_list):
+            d = sql.music_get_row(music_id)
+            if not d:
+                print("Invalid SQL music ID:", music_id)
+                continue
+
+            os_filename = PRUNED_DIR + d['OsFileName']
+            view_ctl.new(os_filename)  # Declaring new file populates metadata
+            # Search on: def get_artwork(self, width, height)
+            # original_art = Image.open(self.TMP_FFMPEG)
+            #   resized_art = original_art.resize(
+            #   (width, height), Image.ANTIALIAS)
+            #   return ImageTk.PhotoImage(resized_art), resized_art, original_art
+
+            # TODO: Image needs to be pre-stored for speed view_ctl
+            #       get_artwork should pad edges when rectangle
+            #       im = resized_art (rectangle), image = original art (square)
+            photo, im, original = view_ctl.get_artwork(320, 180)
+            # Reading twice SQL Music Table twice... No need for pretty yet
+            #pretty = sql.PrettyMusic(str(music_id), file_ctl=view_ctl)
+
+            song_name = d['Title']
+            song_name += "\n\n\tartist \t" + d['Artist']
+            song_name += "\n\talbum \t" + d['Album']
+            if d['FirstDate']:
+                song_name += "\n\tyear \t" + sql.sql_format_value(d['FirstDate'])[:4]
+
+            # from bytes() converts jpg in memory instead of reading from disk
+            #im = Image.frombytes(image['mode'], image['size'], image['pixels'])
+
+            # Text Draw duration over image
+            duration = tmf.mm_ss(d['Seconds'])  # Strip hours and fractions
+            try:
+                width, height = im.size  # im.size: (320, 180) im.mode: RGB
+            except AttributeError:  # 'NoneType' object has no attribute 'size'
+                continue  # TODO: No Artwork image
+            #print("\nim.size:", im.size, "im.mode:", im.mode)
+            draw_font = ImageFont.truetype("DejaVuSans.ttf", 24)
+            draw = ImageDraw.Draw(im)
+            x0 = width - 75  # text start x
+            y0 = height - 30  # text start y
+            x1 = x0 + 70
+            y1 = y0 + 25
+            draw.rectangle((x0 - 10, y0 - 5, x1, y1), fill="#333")
+            draw.text((x0, y0), duration, font=draw_font, fill="white")
+
+            # Convert image to tk photo and save from garbage collection
+            photo = ImageTk.PhotoImage(im)
+            self.imagesYouTube.append(photo)  # Save from GIC
+            # https://stackoverflow.com/questions/49307497/
+            # python-tkinter-treeview-add-an-image-as-a-column-value
+            self.you_tree.insert('', 'end', iid=str(i), text="#" + str(i + 1),
+                                 image=photo, value=(song_name,))
+            self.you_tree.see(str(i))
             self.top.update_idletasks()
-            #print("Music IDs", self.act_id_list)
+            thread = self.get_thread_func()  # repeated 3 times...
+            if thread:
+                thread()
+            else:
+                return False  # closing down...
 
-    def highlight_callback(self, number_str):
-        """ As lines are highlighted in treeview, this function is called.
-        :param number_str: Playlist number used as iid inside treeview
-        :return: None """
-        pass
+
+        view_ctl.close()
+
+        # Below is identical to displayYouTubePlaylist()
+
+        ''' button frame '''
+        bottom_frm = tk.Frame(self.frame)
+        bottom_frm.grid(row=4, columnspan=4, sticky=tk.E)
+
+        ''' Close Button - NOTE: This calls reset() function !!! '''
+        self.close_button = tk.Button(bottom_frm, text="✘ Close",
+                                      width=g.BTN_WID2 - 4, command=self.reset)
+        self.close_button.grid(row=4, column=4, padx=(10, 5), pady=5,
+                               sticky=tk.E)
+        self.tt.add_tip(self.close_button, "Close Window", anchor="ne")
+
+        self.top.bind("<Escape>", self.reset)
+        self.top.protocol("WM_DELETE_WINDOW", self.reset)
+
+        ''' Refresh screen '''
+        if self.top:  # May have been closed above.
+            self.top.update_idletasks()
+
+    # Call Entry points
 
     def new(self):
         """ Called by lib_top File Menubar "New Playlist"
@@ -15419,6 +15775,8 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         self.reset_open_vars()
         self.display_lib_title()
         return True
+
+# Data Processing
 
     def read_playlist(self, number_str):
         """ Use playlist number to read SQL History Row into work fields """
@@ -15727,11 +16085,13 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                 self.reset()  # Close everything down, E.G. destroy window
                 self.display_lib_title()
                 self.apply_callback(delete_only=True)
+
         elif self.state == 'open' and self.act_description.startswith("http"):
             self.info.cast("Opening Web Browser for: " + self.act_name + " at " +
                            self.act_description)
             self.website_play()
             self.reset()  # Close everything down, E.G. destroy window
+
         elif self.state == 'open':
             self.info.cast("Opened playlist: " + self.act_name + " with " +
                            str(self.act_count) + " songs.")
@@ -15739,12 +16099,14 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             self.make_open_from_act()
             self.reset()  # Close everything down, E.G. destroy window
             self.apply_callback()  # Parent will start playing (if > 1 song in list)
+
         elif self.state == 'new':
             self.info.cast("Created new playlist: " + self.act_name, action="add")
             self.play_close()  # must be called before name is set
             self.make_open_from_act()  #
             self.save_playlist()  # Save brand new playlist
             self.apply_callback()  # Tell parent to start marking checkboxes
+
         elif self.state == 'view':
             if self.checkYouTubePlaylist():
                 if self.buildYouTubePlaylist():
@@ -15755,6 +16117,9 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                     print("buildYouTubePlaylist() FAILED")
             else:
                 print("Playlists.view() WIP for regular playlist songs")
+                self.displayMusicIds()
+                return  # Can't destroy window below
+
         elif self.state == 'rename':
             self.info.cast("Renamed playlist: " + self.act_name + " with " +
                            str(self.act_count) + " songs.", action="update")
@@ -15765,6 +16130,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                 self.display_lib_title()
             else:
                 self.save_act()  # sql.save_config() self.act_code, etc.
+
         elif self.state == 'save':
             ''' Remaining options is Save '''
             self.save_playlist()
@@ -16045,11 +16411,10 @@ class InfoCentre:
         :param collapsed: When true, text is collapsed and click to expand
         :param ms_font: Optional font to use. e.g. ("courier", 11) or "TkFixedFont"
         :return: time assigned to information centre entry. """
-        ''' 
-            PROCESSING STEPS:
+
+        ''' PROCESSING STEPS:
                 Create dictionary
-                Insert dictionary in list
-        '''
+                Insert dictionary in list '''
 
         time_stamp = self.new_dict('fact', text, severity, action, patterns,
                                    collapsed, ms_font)
