@@ -300,6 +300,7 @@ REQUIRES:
     sudo apt install python-pil.imagetk      # PIL image processing
     sudo apt install python-pyaudio          # For background job vu_meter.py
     sudo apt install python-requests         # Get Cover Art
+    sudo apt install python-selenium         # Automated YouTube Playlist play
     sudo apt install python-subprocess32     # To compare locations
     sudo apt install python-simplejson       # automatically installed Ubuntu
     sudo apt install python-tk               # Tkinter (default in Windows & Mac)
@@ -433,6 +434,12 @@ locale.setlocale(locale.LC_ALL, '')  # Use '' for auto locale selecting
 # Dist-packages
 import notify2              # send inotify over python-dbus
 import numpy as np          # For image processing speed boost
+from selenium import webdriver  # For YouTube Playlists
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import NoSuchElementException
+from selenium.common.exceptions import WebDriverException
 
 # Dist-packages copied underneath .../mserve/ directory
 import mutagen              # Get easy tags instead of ffprobe - testing stage
@@ -547,7 +554,8 @@ FM_COMMAND = "nautilus"
 FM_WIN_SIZE = "1000x600"  # Window size changed after program starts
 
 LRC_INSTALLED = True  # Sep 3/23 - .lrc (Synchronized LyRiCs) file generation
-XDOTOOL_INSTALLED = True  # Sep 26/23 - experimental .lrc file generation
+XDOTOOL_INSTALLED = True  # Sep 26/23 - experimental youTubePlaylist
+WMCTRL_INSTALLED = True  # Sep 27/23 - experimental youTubePlaylist
 
 # Kill application.name: speech-dispatcher, application.process.id: 5529
 DELETE_SPEECH = True  # Kill speech dispatcher which has four threads each boot.
@@ -11231,27 +11239,27 @@ mark set markName index"
 
         if self.ndx == (int(item) - 1):
             # Restart current song from beginning
-            menu.add_command(label="Restart Song № " + item, font=(None, MED_FONT),
+            menu.add_command(label="Restart Song № " + item, font=g.FONT,
                              command=lambda: self.chron_tree_play_now(item))
         else:
             # Play different song in list / Sel. MB
-            menu.add_command(label="Play Song № " + item, font=(None, MED_FONT),
+            menu.add_command(label="Play Song № " + item, font=g.FONT,
                              command=lambda: self.chron_tree_play_now(item))
         menu.add_separator()
         if self.chron_filter is None:
             # Give three filter options
-            menu.add_command(label="Filter Synchronized songs", font=(None, MED_FONT),
+            menu.add_command(label="Filter Synchronized songs", font=g.FONT,
                              command=lambda: self.chron_apply_filter('time_index', item))
-            menu.add_command(label="Filter not Synchronized", font=(None, MED_FONT),
+            menu.add_command(label="Filter not Synchronized", font=g.FONT,
                              command=lambda: self.chron_apply_filter('no_time_index', item))
             ''' July 18, 2023 - When Artist is "Compilations", narrow down to song artist '''
-            menu.add_command(label="Filter by this Artist", font=(None, MED_FONT),
+            menu.add_command(label="Filter by this Artist", font=g.FONT,
                              command=lambda: self.chron_apply_filter('artist_name', item))
-            menu.add_command(label="Filter over 5 Minutes", font=(None, MED_FONT),
+            menu.add_command(label="Filter over 5 Minutes", font=g.FONT,
                              command=lambda: self.chron_apply_filter('over_5', item))
         else:
             # option to remove filters for full playlist
-            menu.add_command(label="Full playlist unfiltered", font=(None, MED_FONT),
+            menu.add_command(label="Full playlist unfiltered", font=g.FONT,
                              command=lambda: self.chron_reverse_filter())
         menu.add_separator()
 
@@ -11260,26 +11268,26 @@ mark set markName index"
         FM_INSTALLED = ext.check_command(FM_COMMAND)
 
         if KID3_INSTALLED:
-            menu.add_command(label="kid3", font=(None, MED_FONT),
+            menu.add_command(label="kid3", font=g.FONT,
                              command=lambda: self.chron_tree_kid3(item))
         if FM_INSTALLED:
-            menu.add_command(label="Open " + FM_NAME, font=(None, MED_FONT),
+            menu.add_command(label="Open " + FM_NAME, font=g.FONT,
                              command=lambda: self.chron_tree_fm(item))
         menu.add_separator()
 
         Id = item  # For copied code below
         os_filename = self.real_paths[int(Id)]
         # view_sql_metadata
-        menu.add_command(label="View Raw Metadata", font=(None, MED_FONT),
+        menu.add_command(label="View Raw Metadata", font=g.FONT,
                          command=lambda: self.view_metadata(
                              Id, os_filename=os_filename, top=self.play_top))
-        menu.add_command(label="View SQL Metadata", font=(None, MED_FONT),
+        menu.add_command(label="View SQL Metadata", font=g.FONT,
                          command=lambda: self.view_sql_music_id(
                              Id, self.play_ctl, top=self.play_top))
 
         menu.add_separator()
 
-        menu.add_command(label="Ignore click", font=(None, MED_FONT),
+        menu.add_command(label="Ignore click", font=g.FONT,
                          command=lambda: self.close_chron_popup(menu, item))
 
         menu.tk_popup(event.x_root, event.y_root)
@@ -15233,58 +15241,50 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
     def displayYouTubePlaylist(self):
         """ Read all self.dictYouTube inside self.listYouTube and create
             treeview.
-
-            TODO: Select and play (requires mouse training):
-                1) Open browser window and Optional Move to Monitor
-                2) Click play button
-                3) Click back button
-                4) Click forward button
-                5) Move to movie monitor/tv
-                6) Click full-screen
-
-            Right-click menu chron_popup:
-                1) Play using XDOTOOL controls
-                2) Train For Play
-                    2A) Open song (web browser link)
-                    2B) Get Window coordinates
-                    2C) Optional drag window to a monitor & press Enter
-                    2D) Prompt to move mouse over play button, press Enter
-                    2E) Prompt to move mouse over back button, press Enter
-                    2F) Prompt to move mouse over forward button, press Enter
-                    2G) Prompt to move mouse over full screen button, press Enter
-                    2H) Save results in History Records 'mouse' - 'move', 'drag'
-                        'play', 'back', 'forward', 'full'
-
-            Reference: https://stackoverflow.com/a/22925718/6929343
-
-                import Tkinter as tk
-                root = tk.Tk()
-
-                def motion(event):
-                    x, y = event.x, event.y
-                    print('{}, {}'.format(x, y))
-
-                root.bind('<Motion>', motion)
-                root.mainloop()
-
-            OR: https://stackoverflow.com/a/22943296/6929343
-
-                x = root.winfo_pointerx()
-                y = root.winfo_pointery()
-                abs_coord_x = root.winfo_pointerx() - root.winfo_rootx()
-                abs_coord_y = root.winfo_pointery() - root.winfo_rooty()
-
-            PROBLEM: YouTube freshly launched in browser has no back button
-                     so commercial starts immediately
-
-            SOLUTION: Proceed with window move and full screen click
-
-            OTHER PROBLEM: Destination monitor has window always on top.
-                Need to get windows on monitor and check always on top.
-                Advise cannot start until always on top is toggled off and
-                any full screen is removed.
-
         """
+
+        self.displayPlaylistCommonTop("YouTube")
+
+        for i, self.dictYouTube in enumerate(self.listYouTube):
+            song_name = self.dictYouTube['name']
+            song_name = toolkit.normalize_tcl(song_name)
+            duration = self.dictYouTube['duration']
+            image = self.dictYouTube['image']
+            # from bytes() converts jpg in memory instead of reading from disk
+            im = Image.frombytes(image['mode'], image['size'], image['pixels'])
+
+            # Text Draw duration over image & place into self.imagesYouTube[]
+            self.displayPlaylistCommonDuration(im, duration)
+            """ # Text Draw duration over image
+            width, height = im.size
+            draw_font = ImageFont.truetype("DejaVuSans.ttf", 24)
+            draw = ImageDraw.Draw(im)
+            x0 = width - 75  # text start x
+            y0 = height - 30  # text start y
+            x1 = x0 + 70
+            y1 = y0 + 25
+            draw.rectangle((x0 - 10, y0 - 5, x1, y1), fill="#333")
+            draw.text((x0, y0), duration, font=draw_font, fill="white")
+            # Convert image to tk photo and save from garbage collection
+            photo = ImageTk.PhotoImage(im)
+            self.imagesYouTube.append(photo)  # Save from GIC
+            """
+            # https://stackoverflow.com/questions/49307497/
+            # python-tkinter-treeview-add-an-image-as-a-column-value
+            self.you_tree.insert('', 'end', iid=str(i), text="#" + str(i + 1),
+                                 image=self.imagesYouTube[-1],
+                                 value=(song_name,))
+            # TODO: So fast should throttle refresh to 12 ms interval
+            thread = self.get_thread_func()  # repeated 3 times....
+            if thread:
+                thread()
+            else:
+                return False  # closing down...
+
+        self.displayPlaylistCommonBottom()
+
+    def displayPlaylistCommonTop(self, name):
+        """ Shared by: displayYouTubePlaylist and displayMusicIds """
 
         if self.tt and self.tt.check(self.top):
             self.tt.close(self.top)
@@ -15295,7 +15295,10 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             self.top = None
 
         ''' create_top() shared with create_window() '''
-        self.create_top("YouTube Playlist - " + self.act_name)
+        if name == "YouTube":
+            self.create_top("YouTube Playlist - " + self.act_name + " - mserve")
+        else:
+            self.create_top("mserve Playlist - " + self.act_name + " - mserve")
 
         ''' Create master frame '''
         self.frame = tk.Frame(self.top, borderwidth=g.FRM_BRD_WID,
@@ -15332,10 +15335,10 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         # https://stackoverflow.com/a/17457843/6929343
 
         # Left-click, requires two presses to fire
-        #self.you_tree.bind('<Button-1>', self.you_tree_click)  # Needs 2 clicks
-        #self.you_tree.bind('<ButtonPress-1>', self.you_tree_click)  # Needs 2 clicks
-        #self.you_tree.bind('<ButtonRelease-1>', self.you_tree_click)  # Needs 2 clicks
-        #self.you_tree.bind("<<TreeviewSelect>>", self.you_tree_click)  # 1 click
+        # self.you_tree.bind('<Button-1>', self.you_tree_click)  # Needs 2 clicks
+        # self.you_tree.bind('<ButtonPress-1>', self.you_tree_click)  # Needs 2 clicks
+        # self.you_tree.bind('<ButtonRelease-1>', self.you_tree_click)  # Needs 2 clicks
+        # self.you_tree.bind("<<TreeviewSelect>>", self.you_tree_click)  # 1 click
         # Right-click
         self.you_tree.bind('<Button-3>', self.you_tree_click)  # Right-click
 
@@ -15348,7 +15351,11 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
 
         # Setup column heading
         self.you_tree.heading('#0', text='Thumbnail Image')
-        self.you_tree.heading('#1', text='Song Name', anchor='center')
+        if name == "YouTube":
+            self.you_tree.heading('#1', text='Song Name', anchor='center')
+        else:
+            self.you_tree.heading('#1', text='Title / Artist / Album / Year')
+
         # #0, #01, #02 denotes the 0, 1st, 2nd columns
 
         # Setup column hqdefault
@@ -15360,38 +15367,29 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         # Give some padding between triangles and border, between tree & scroll bars
         self.you_tree["padding"] = (10, 10, 10, 10)  # left, top, right, bottom
 
-        for i, self.dictYouTube in enumerate(self.listYouTube):
-            song_name = self.dictYouTube['name']
-            song_name = toolkit.normalize_tcl(song_name)
-            duration = self.dictYouTube['duration']
-            image = self.dictYouTube['image']
-            # from bytes() converts jpg in memory instead of reading from disk
-            im = Image.frombytes(image['mode'], image['size'], image['pixels'])
+        # Highlight current song in green background, white text
+        self.you_tree.tag_configure('play_sel', background='ForestGreen',
+                                    foreground="White")
 
-            # Text Draw duration over image
-            width, height = im.size
-            draw_font = ImageFont.truetype("DejaVuSans.ttf", 24)
-            draw = ImageDraw.Draw(im)
-            x0 = width - 75  # text start x
-            y0 = height - 30  # text start y
-            x1 = x0 + 70
-            y1 = y0 + 25
-            draw.rectangle((x0 - 10, y0 - 5, x1, y1), fill="#333")
-            draw.text((x0, y0), duration, font=draw_font, fill="white")
+    def displayPlaylistCommonDuration(self, im, duration):
+        """ Text Draw duration over image
+            Shared by: displayYouTubePlaylist and displayMusicIds
+        """
+        width, height = im.size
+        draw_font = ImageFont.truetype("DejaVuSans.ttf", 24)
+        draw = ImageDraw.Draw(im)
+        x0 = width - 75  # text start x
+        y0 = height - 30  # text start y
+        x1 = x0 + 70
+        y1 = y0 + 25
+        draw.rectangle((x0 - 10, y0 - 5, x1, y1), fill="#333")
+        draw.text((x0, y0), duration, font=draw_font, fill="white")
 
-            # Convert image to tk photo and save from garbage collection
-            photo = ImageTk.PhotoImage(im)
-            self.imagesYouTube.append(photo)  # Save from GIC
-            # https://stackoverflow.com/questions/49307497/
-            # python-tkinter-treeview-add-an-image-as-a-column-value
-            self.you_tree.insert('', 'end', iid=str(i), text="#" + str(i + 1),
-                                 image=photo, value=(song_name,))
-            # TODO: So fast should throttle refresh to 12 ms interval
-            thread = self.get_thread_func()  # repeated 3 times....
-            if thread:
-                thread()
-            else:
-                return False  # closing down...
+        photo = ImageTk.PhotoImage(im)
+        self.imagesYouTube.append(photo)  # Save from GIC
+
+    def displayPlaylistCommonBottom(self):
+        """ Shared by: displayYouTubePlaylist and displayMusicIds """
 
         ''' button frame '''
         bottom_frm = tk.Frame(self.frame)
@@ -15422,23 +15420,36 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         menu = tk.Menu(root, tearoff=0)
         menu.post(event.x_root, event.y_root)
 
-        global XDOTOOL_INSTALLED
+        global XDOTOOL_INSTALLED, WMCTRL_INSTALLED
         XDOTOOL_INSTALLED = ext.check_command('xdotool')
+        WMCTRL_INSTALLED = ext.check_command('wmctrl')
 
-        no = str(int(item) + 1)
-        menu.add_command(label="Play #" + no, font=(None, MED_FONT),
+        no = str(int(item) + 1)  # file_menu.add  # font=(None, MED_FONT)
+        menu.add_command(label="Play Song #" + no, font=g.FONT,
                          command=lambda: self.you_tree_play(item))
 
-        if XDOTOOL_INSTALLED:
-            menu.add_command(label="Smart Play", font=(None, MED_FONT),
+        if XDOTOOL_INSTALLED and WMCTRL_INSTALLED:
+            menu.add_command(label="Smart Play #" + no, font=g.FONT,
                              command=lambda: self.you_tree_smart_play(item))
 
-        menu.add_command(label="Copy link", font=(None, MED_FONT),
+        menu.add_command(label="Copy Link #" + no, font=g.FONT,
                          command=lambda: self.you_tree_copy_link(item))
 
         menu.add_separator()
 
-        menu.add_command(label="Ignore click", font=(None, MED_FONT),
+        menu.add_command(label="Play Entire Playlist", font=g.FONT,
+                         command=lambda: self.you_tree_play_all())
+
+        if XDOTOOL_INSTALLED and WMCTRL_INSTALLED:
+            menu.add_command(label="Smart Play Playlist", font=g.FONT,
+                             command=lambda: self.you_tree_smart_play_all())
+
+        menu.add_command(label="Copy Playlist Link", font=g.FONT,
+                         command=lambda: self.you_tree_copy_all())
+
+        menu.add_separator()
+
+        menu.add_command(label="Ignore click", font=g.FONT,
                          command=lambda: self.close_you_popup(menu, item))
 
         menu.tk_popup(event.x_root, event.y_root)
@@ -15457,36 +15468,47 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         ndx = int(item)
         webbrowser.open_new(self.listYouTube[ndx]['link'])
 
-    def you_tree_smart_play(self, item):
-        """ Smart Play song highlighted in YouTube treeview. """
+    def you_tree_play_all(self):
+        """ Play song highlighted in YouTube treeview. """
         title = "WARNING: Experimental feature"
         text = "Currently this features moves YouTube from right to left monitor."
-        #message.ShowInfo(self.top, title, text, icon='warning',
+        # message.ShowInfo(self.top, title, text, icon='warning',
         #                 thread=self.get_thread_func)
-        ndx = int(item)
-        mon = monitor.Monitors()            # Monitors class list of dicts
+        mon = monitor.Monitors()  # Monitors class list of dicts
         # Start windows
         start_wins = mon.get_all_windows()
         webbrowser.open_new(self.listYouTube[ndx]['link'])
         time.sleep(1.0)  # TODO: Loop for 30 seconds until list changes
         end_wins = mon.get_all_windows()
 
-        if len(start_wins) >= len(end_wins):
+        if not len(start_wins) + 1 == len(end_wins):
             print("Could not find new window")
             print("start/end window count:", len(start_wins), len(end_wins))
             return
 
         win_list = list(set(end_wins) - set(start_wins))
         window = win_list[0]
-        print("\nwindow:", window)
+        #print("\n window list:", window)
         # [Window(number=130028740L, name='Mozilla Firefox', x=1920, y=24,
         #         width=1728, height=978)]
 
-        new_x = new_y = 30  # Move to 30,30 (x, y)
         str_win = str(window.number)  # should remove L in python 2.7.5+
         int_win = int(str_win)  # https://stackoverflow.com/questions
         hex_win = hex(int_win)  # /5917203/python-trailing-l-problem
-        # Move window to x=30, y=30
+
+
+        # If last usage was full screen, reverse it
+        net_states = os.popen('xprop -id ' + str_win).read().strip()
+        #print("net_states:", net_states)
+        if "_NET_WM_STATE_FULLSCREEN" in net_states:
+            os.popen('wmctrl -ir ' + hex_win +
+                     ' -b toggle,fullscreen')  # DOES NOT WORK !!!
+        # Remove maximized, don't have to test first
+        os.popen('wmctrl -ir ' + hex_win +
+                 ' -b remove,maximized_vert,maximized_horz')
+        #os.popen('wmctrl - r: ACTIVE: -e 0, 300, 168, 740, 470')
+
+        new_x = new_y = 30  # Move to top left monitor @ 30,30 (x, y)
         os.popen('xdotool windowmove ' + hex_win + ' ' +
                  str(new_x) + ' ' + str(new_y))
         #time.sleep(0.5)  # After window move, need a little time
@@ -15503,34 +15525,395 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         os.popen('wmctrl -ir ' + hex_win + ' -b add,maximized_horz')
         os.popen('wmctrl -ir ' + hex_win + ' -b add,above')
         # Move to screen center and click to play
-        os.popen('xdotool mousemove 1860 900')  # 1920/2 x 1080/2
-        #time.sleep(3.0)  # Time for YouTube to load up and build page
-        os.popen('xdotool click --window ' + hex_win + ' --delay 5000 1')
+        #os.popen('xdotool mousemove 1860 900')  # 1920/2 x 1080/2
+        time.sleep(7.0)  # Time for YouTube to load up and build page
+        #os.popen('xdotool click --window ' + hex_win + ' --delay 5000 1')
+        os.popen('xdotool key f')  # Full Screen
+        os.popen('xdotool key space')  # Start playing
+
+        # Selenium to watch for skip ad button to appear and click it
+        # sudo apt install python-selenium
+
+        web = webbrowser.get()
+        print("browser name:", web.name)
+        if web.name.startswith("xdg-open"):
+            xdg_browser = os.popen("xdg-settings get default-web-browser"). \
+                read().strip()
+            if "FIREFOX" in xdg_browser.upper():
+                driver = webdriver.Firefox()
+                print("driver = webdriver.Firefox()")
+            if "CHROME" in xdg_browser.upper():
+                driver = webdriver.Chrome()
+                print("driver = webdriver.Chrome()")
 
         # TODO: Skip Ads on first play - Wait five seconds and click at:
         #os.popen('xdotool mousemove 1880 1000')
         #time.sleep(5.0)  # TODO: Wouldn't need sleep if no add appears
         # Need to scrape screen to see what HTML is there.
         """
+
+Full screen
+<button class="ytp-fullscreen-button ytp-button" 
+aria-keyshortcuts="f" data-priority="11" 
+data-title-no-tooltip="Full screen" 
+aria-label="Full screen keyboard shortcut f" 
+title="Full screen (f)"><svg height="100%" version="1.1" 
+viewBox="0 0 36 36" width="100%">
+<g class="ytp-fullscreen-button-corner-0">
+<use class="ytp-svg-shadow" xlink:href="#ytp-id-53">
+</use><path class="ytp-svg-fill" 
+d="m 10,16 2,0 0,-4 4,0 0,-2 L 10,10 l 0,6 0,0 z" 
+id="ytp-id-53"></path></g><g class="ytp-fullscreen-button-corner-1">
+<use class="ytp-svg-shadow" xlink:href="#ytp-id-54"></use>
+<path class="ytp-svg-fill" d="m 20,10 0,2 4,0 0,4 2,0 L 26,10 l -6,0 0,0 z" 
+id="ytp-id-54"></path></g><g class="ytp-fullscreen-button-corner-2">
+<use class="ytp-svg-shadow" xlink:href="#ytp-id-55">
+</use><path class="ytp-svg-fill" 
+d="m 24,24 -4,0 0,2 L 26,26 l 0,-6 -2,0 0,4 0,0 z" id="ytp-id-55">
+</path></g><g class="ytp-fullscreen-button-corner-3">
+<use class="ytp-svg-shadow" xlink:href="#ytp-id-56">
+</use><path class="ytp-svg-fill" 
+d="M 12,20 10,20 10,26 l 6,0 0,-2 -4,0 0,-4 0,0 z" 
+id="ytp-id-56"></path></g></svg></button>        
+
+Play button
+<button class="ytp-play-button ytp-button" 
+aria-keyshortcuts="k" 
+data-title-no-tooltip="Play" 
+aria-label="Play keyboard shortcut k" 
+title="Play (k)"><svg height="100%" version="1.1" 
+viewBox="0 0 36 36" width="100%">
+<use class="ytp-svg-shadow" xlink:href="#ytp-id-63">
+</use><path class="ytp-svg-fill" 
+d="M 12,26 18.5,22 18.5,14 12,10 z M 18.5,22 25,18 25,18 18.5,14 z" 
+id="ytp-id-63"></path></svg></button>
+
+            https://stackoverflow.com/a/64036779/6929343
             from selenium import webdriver
-            import time
-            
-            # Create a new instance of Chrome and go to the website we want to scrape
-            browser = webdriver.Chrome()
-            browser.get("http://www.elpais.com/")
-            time.sleep(5) # Let the browser load
-            
-            # Find the div element containing the article content
-            div = browser.find_element_by_class_name('articleContent')
-            
-            # Print out all the text inside the div
-            print(div.text)        
+            from selenium.webdriver.support import expected_conditions as EC
+            driver = webdriver.Firefox()
+            driver = webdriver.Chrome()
+            driver.get("https://www.youtube.com/watch?v=suia_i5dEZc")
+            driver.get("http://somedomain/url_that_delays_loading")
+            try:
+                wait = WebDriverWait(driver, 20)  # 20 seconds to load y-t
+                element = wait.until(EC.element_to_be_clickable((
+                          By.XPATH, "//*[@id='skip-button:6']/span/button")))
+            finally:
+                print("No ad button found")
+                driver.quit()
+                return
+
+            element.click()
         """
 
+
+    def you_tree_smart_play_all(self):
+        """ Smart Play entire YouTube Playlist.
+
+15 second ad:
+<span class="ytp-ad-duration-remaining" style=""
+id="ad-duration-remaining:1v">
+<div class="ytp-ad-text" style=""
+id="ad-text:1w">0:11</div></span>
+
+Above appears and disappears within:
+
+<div class="ytp-player-content ytp-cultural-moment-player-content"
+data-layer="4">
+<a class="ytp-cultural-moment-overlay ytp-hip-hop-50-overlay ytp-button"
+target="_blank" style="display: none;"></a></div>
+
+2 ads:
+<div class="video-ads ytp-ad-module" data-layer="4">
+<div class="ytp-ad-player-overlay" style=""
+id="player-overlay:20">
+<div class="ytp-ad-player-overlay-flyout-cta ytp-ad-player-overlay-flyout-cta-rounded">
+<div class="ytp-flyout-cta" style="" id="flyout-cta:27">
+<div class="ytp-flyout-cta-icon-container">
+<img class="ytp-ad-image ytp-flyout-cta-icon-rounded ytp-flyout-cta-icon" style=""
+id="ad-image:28"
+src="https://yt3.ggpht.com/aR6CO8PY4rgLk-jWVudLeD6GY1XzTzjZjbIkVKtKqBxUu_LGLPu5NXeh1uAyHKdGa50CxYdYAGU=s176-c-k-c0x00ffffff-no-rj"
+alt=""></div>
+<div class="ytp-flyout-cta-body">
+<div class="ytp-flyout-cta-text-container">
+<div class="ytp-flyout-cta-headline-container">
+<div class="ytp-ad-text ytp-flyout-cta-headline" style=""
+id="ad-text:29">Caramel</div></div>
+<div class="ytp-flyout-cta-description-container">
+<div class="ytp-ad-text ytp-flyout-cta-description" style=""
+id="ad-text:2a">www.werthers-original.ca/en</div></div></div>
+<div class="ytp-flyout-cta-action-button-container">
+<button class="ytp-ad-button ytp-flyout-cta-action-button
+ytp-flyout-cta-action-button-rounded" style="" role="link"
+id="button:2b" aria-label="Learn more This link opens in new tab">
+<span class="ytp-ad-button-text">Learn more</span></button>
+</div></div></div></div>
+<div class="ytp-ad-player-overlay-instream-info">
+<span class="ytp-ad-simple-ad-badge" style=""
+id="simple-ad-badge:2c"><div class="ytp-ad-text" style=""
+id="simple-ad-badge:2d">Ad 1 of 2 ·</div></span>
+<span class="ytp-ad-duration-remaining" style=""
+id="ad-duration-remaining:2e">
+<div class="ytp-ad-text" style=""
+id="ad-text:2f">0:07</div></span>
+<span class="ytp-ad-hover-text-button ytp-ad-info-hover-text-button" style=""
+id="ad-info-hover-text-button:2g">
+<button class="ytp-ad-button ytp-ad-button-link ytp-ad-clickable" style=""
+id="button:2h" aria-label="My Ad Center">
+<span class="ytp-ad-button-icon">
+<svg fill="#fff" height="100%" version="1.1"
+viewBox="0 0 48 48" width="100%"><path d="M0 0h48v48H0z" fill="none"></path>
+<path d="M22 34h4V22h-4v12zm2-30C12.95 4 4 12.95 4 24s8.95 20 20 20 20-8.95
+20-20S35.05 4 24 4zm0 36c-8.82 0-16-7.18-16-16S15.18 8 24 8s16 7.18 16
+16-7.18 16-16 16zm-2-22h4v-4h-4v4z"></path>
+</svg></span></button>
+<div class="ytp-ad-hover-text-container ytp-ad-info-hover-text-short"
+>My Ad Center
+<div class="ytp-ad-hover-text-callout"></div></div></span>
+<button class="ytp-ad-button ytp-ad-visit-advertiser-button ytp-ad-button-link"
+style="" id="visit-advertiser:2i"
+aria-label="werthers-original.ca/en This link opens in new tab" role="link">
+<span class="ytp-ad-button-text">werthers-original.ca/en</span>
+<span class="ytp-ad-button-icon"><svg fill="#fff" height="100%" version="1.1"
+viewBox="0 0 48 48" width="100%">
+<path d="M0 0h48v48H0z" fill="none"></path>
+<path d="M38 38H10V10h14V6H10c-2.21 0-4 1.79-4 4v28c0 2.21 1.79 4 4 4h28c2.21
+0 4-1.79 4-4V24h-4v14zM28 6v4h7.17L15.51 29.66l2.83 2.83L38 12.83V20h4V6H28z"></path>
+</svg></span></button></div>
+<div class="ytp-ad-player-overlay-skip-or-preview">
+<div class="ytp-ad-skip-ad-slot" style="" id="skip-button:21">
+<div class="ytp-ad-preview-slot" style="display: none;"
+id="preskip-component:22">
+<span class="ytp-ad-preview-container countdown-next-to-thumbnail"
+style="display: none;">
+<div class="ytp-ad-text ytp-ad-preview-text" style="display: none;"
+id="ad-text:23">1</div>
+<span class="ytp-ad-preview-image">
+<img class="ytp-ad-image" style="display: none;"
+id="ad-image:24" src="https://i.ytimg.com/vi/RBxK3CcOQD8/mqdefault.jpg" alt="">
+</span></span></div>
+<div class="ytp-ad-skip-button-slot" style=""
+id="skip-button:25"><span class="ytp-ad-skip-button-container"
+style="opacity: 0.5;"><button class="ytp-ad-skip-button ytp-button">
+<div class="ytp-ad-text ytp-ad-skip-button-text" style=""
+id="ad-text:26">Skip Ads</div><span class="ytp-ad-skip-button-icon">
+<svg height="100%" version="1.1" viewBox="0 0 36 36" width="100%">
+<use class="ytp-svg-shadow" xlink:href="#ytp-id-405"></use>
+<path class="ytp-svg-fill" d="M 12,24 20.5,18 12,12 V 24 z M 22,12 v 12 h
+2 V 12 h -2 z" id="ytp-id-405">
+</path></svg></span></button></span></div></div></div>
+<div class="ytp-ad-player-overlay-progress-bar"></div>
+<div class="ytp-ad-player-overlay-instream-user-sentiment"></div></div></div>
+
+IMPORTANT buried classlink above:
+
+<span class="ytp-ad-duration-remaining" style="" id="ad-duration-remaining:2e">
+<div class="ytp-ad-text" style="" id="ad-text:2f">0:07</div></span>
+
+        """
+
+        web = webbrowser.get()
+        print("browser name:", web.name)
+        mon = monitor.Monitors()  # Monitors class list of dicts
+        # Start windows
+        start_wins = mon.get_all_windows()
+        if web.name.startswith("xdg-open"):
+            xdg_browser = os.popen("xdg-settings get default-web-browser"). \
+                read().strip()
+            if "FIREFOX" in xdg_browser.upper():
+                """
+                selenium has been replaced by marionette:
+
+                https://firefox-source-docs.mozilla.org/python/marionette_driver.html
+
+                For ubuntu:
+
+                https://stackoverflow.com/a/39536091/6929343
+                https://stackoverflow.com/questions/43272919/difference-between-webdriver-firefox-marionette-webdriver-gecko-driver
+                https://stackoverflow.com/questions/38916650/what-are-the-benefits-of-using-marionette-firefoxdriver-instead-of-the-old-selen/38917100#38917100
+
+                """
+                #driver = webdriver.Firefox()
+                #driver = webdriver.Chrome()
+                driver = webdriver.Chrome(
+                    '/home/rick/python/chromedriver108/chromedriver')
+                # Optional argument, if not specified will search path.
+
+                #print("driver = webdriver.Firefox()")
+                print("driver = webdriver.Chrome() (NOT DEFAULT)")
+                """
+                    WebDriverException: Message: 'chromedriver' executable 
+                    needs to be in PATH. Please see 
+                    https://sites.google.com/a/chromium.org/chromedriver/home
+                    New download links:
+                    https://sites.google.com/chromium.org/driver/downloads?authuser=0
+                """
+            if "CHROME" in xdg_browser.upper():
+                driver = webdriver.Chrome()
+                print("driver = webdriver.Chrome()")
+
+        time.sleep(1.0)  # TODO: Loop for 30 seconds until list changes
+        end_wins = mon.get_all_windows()
+
+        driver.get(self.act_description)
+
+        if not len(start_wins) + 1 == len(end_wins):
+            print("Could not find new window")
+            print("start/end window count:", len(start_wins), len(end_wins))
+            return
+
+        win_list = list(set(end_wins) - set(start_wins))
+        window = win_list[0]
+        # print("\n window list:", window)
+        # [Window(number=130028740L, name='Mozilla Firefox', x=1920, y=24,
+        #         width=1728, height=978)]
+
+        str_win = str(window.number)  # should remove L in python 2.7.5+
+        int_win = int(str_win)  # https://stackoverflow.com/questions
+        hex_win = hex(int_win)  # /5917203/python-trailing-l-problem
+
+        # If last usage was full screen, reverse it
+        net_states = os.popen('xprop -id ' + str_win).read().strip()
+        # print("net_states:", net_states)
+        if "_NET_WM_STATE_FULLSCREEN" in net_states:
+            os.popen('wmctrl -ir ' + hex_win +
+                     ' -b toggle,fullscreen')  # DOES NOT WORK !!!
+        # Remove maximized, don't have to test first
+        os.popen('wmctrl -ir ' + hex_win +
+                 ' -b remove,maximized_vert,maximized_horz')
+        # os.popen('wmctrl - r: ACTIVE: -e 0, 300, 168, 740, 470')
+
+        new_x = new_y = 30  # Move to top left monitor @ 30,30 (x, y)
+        os.popen('xdotool windowmove ' + hex_win + ' ' +
+                 str(new_x) + ' ' + str(new_y))
+        # time.sleep(0.5)  # After window move, need a little time
+        # message.ShowInfo(self.top, title, text, icon='warning',
+        #                 thread=self.get_thread_func)
+
+        # Could remove target window's above setting (Always On Top):
+        #   os.popen('wmctrl -ir ' + trg_win + ' -b toggle,above')
+
+        # Make full screen. Have to reverse before closing because setting
+        # remembered by firefox for next window open
+
+        os.popen('wmctrl -ir ' + hex_win + ' -b add,maximized_vert')
+        os.popen('wmctrl -ir ' + hex_win + ' -b add,maximized_horz')
+        os.popen('wmctrl -ir ' + hex_win + ' -b add,above')
+
+        # Move to close automated test software message
+        os.popen('xdotool mousemove 1890 140')
+        # Send left click (1) after 50ms delay
+        os.popen('xdotool windowactivate ' + hex_win)
+        #os.popen('xdotool click --window ' + hex_win + ' --delay 50 1')
+        os.popen('xdotool click 1')
+
+        # Move to Play all button
+        os.popen('xdotool mousemove 500 790')
+        # Send left click (1) after 3 second delay
+        time.sleep(3.0)  # Wait 3 seconds
+        #os.popen('xdotool click --window ' + hex_win + ' 1')
+        os.popen('xdotool click 1')
+        time.sleep(2.0)  # Wait 2 seconds
+        #os.popen('xdotool key --window ' + hex_win + ' f')  # Full Screen
+        os.popen('xdotool key f')  # Full Screen
+
+        last_link = ""  # When link changes highlight row in you_tree
+        while True:
+            try:
+                # TODO Start Duration Countdown
+                link = driver.current_url
+                if link != last_link:
+                    last_link = link
+                    print("\nNew song to highlight in list:", link)
+                    try:
+                        link_pre = link.split("&list=")[0]
+                        print("massaged link:", link_pre)
+                        result = self.you_tree_highlight_row(link_pre)
+                        if result:
+                            self.you_tree.see(str(result))
+                            print("Highlighting self.you_tree iid:", result)
+                            toolkit.tv_tag_remove_all(self.you_tree, 'play_sel')
+                            toolkit.tv_tag_add(self.you_tree, str(result), 'play_sel')
+                            # See one above, then two past (BROKEN)
+                            # See two past, then one above (NEEDS FINE TUNING)
+                            two_past = result + 1
+                            if two_past < len(self.listYouTube):
+                                self.you_tree.see(str(two_past))
+                            one_before = result - 1
+                            if one_before >= 0:
+                                self.you_tree.see(str(one_before))
+                        else:
+                            print("Could not find result for link_pre", link_pre)
+
+                    except IndexError:
+                        print("Could not find '&list=' in link!")
+            except Exception as err:
+                print("Exception:", err)
+                print("ERROR on link = driver.current_url")
+                continue
+
+            try:
+                # TODO Start Duration Countdown
+                # TODO Save and restore active window
+                ad = driver.find_element(
+                    By.CSS_SELECTOR, ".ytp-ad-duration-remaining")
+                #print("Ad appeared")
+                # Sometimes window must be activated to accept input
+                os.popen('xdotool windowactivate ' + hex_win)
+                # Short delay 10, 50 it is replaying same song
+                # Long delay 50, 300 replayed same song once out of 25 songs
+                # Long delay 50, 400 replayed same song once out of 30 songs?
+                # Send Alt-L left-arrow then Alt-L right-arrow
+                os.popen('xdotool key --delay 100 Alt_L+Left')
+                # Add delay because restarting at first video
+                os.popen('xdotool key --delay 400 Alt_L+Right')
+
+
+            except NoSuchElementException:
+                thread = self.get_thread_func()  # repeated 3 times....
+                if thread:
+                    thread()
+                else:
+                    driver.quit()
+                    return False  # mserve closing down...
+                if not self.top:
+                    driver.quit()
+                    return  # playlist closed
+                continue
+
+            except WebDriverException:
+                return
+
+    def you_tree_highlight_row(self, link_search):
+        """ Highlight row black & gold as second entry (see 2 below + 1 before)
+            If same link used twice in playlist the first will be highlighted.
+        """
+        for i, self.dictYouTube in enumerate(self.listYouTube):
+            song_name = self.dictYouTube['name']
+            song_name = toolkit.normalize_tcl(song_name)
+            link_name = self.dictYouTube['link']
+            duration = self.dictYouTube['duration']
+
+            if link_search == link_name:
+                print("Now playing:", song_name, "Duration:", duration)
+                return i
+
+        print("Link:", link_search, "  NOT FOUND!")
+        return None
+
+
     def you_tree_copy_link(self, item):
-        """ Copy link to clipboard. """
+        """ Copy Single Song link to clipboard. """
         ndx = int(item)
-        link = self.listYouTube[ndx]['link']
+        self.you_tree_shared_copy_link(self.listYouTube[ndx]['link'])
+
+    def you_tree_copy_all(self):
+        """ Copy Playlist link to clipboard. """
+        self.you_tree_shared_copy_link(self.act_description)
+
+    def you_tree_shared_copy_link(self, link):
+        """ Copy link to clipboard. """
         r = tk.Tk()
         r.withdraw()
         r.clipboard_clear()
@@ -15556,82 +15939,11 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
     def displayMusicIds(self):
         """ Read Music Id's from Playlist History record that was read using:
                 self.act_id_list = ['Target']  # Music Id's in play order
-
-            Similar function in displayYouTubePlaylist
         """
 
-        # Common code with displayYouTubePlaylist
-        if self.tt and self.tt.check(self.top):
-            self.tt.close(self.top)
-        if self.top:
-            geom = monitor.get_window_geom_string(self.top, leave_visible=False)
-            monitor.save_window_geom('playlists', geom)
-            self.top.destroy()
-            self.top = None
+        self.displayPlaylistCommonTop("MusicIds")
 
-        # Common code with displayYouTubePlaylist
-        ''' create_top() shared with create_window() '''
-        self.create_top("YouTube Playlist - " + self.act_name)
-
-        ''' Create master frame '''
-        self.frame = tk.Frame(self.top, borderwidth=g.FRM_BRD_WID,
-                              relief=tk.RIDGE)
-        self.frame.grid(sticky=tk.NSEW)
-
-        ''' Refresh screen '''
-        if self.top:  # May have been closed above.
-            self.top.update_idletasks()
-
-        ''' Create treeview frame with scrollbars '''
-        tree_frame = tk.Frame(self.frame, bg="LightGrey", relief=tk.RIDGE)
-        tree_frame.grid(sticky=tk.NSEW)
-        tree_frame.columnconfigure(0, weight=1)
-        self.frame.columnconfigure(0, weight=1)
-
-        ''' Treeview style is large images in cell 0 '''
-        style = ttk.Style()
-        style.configure("YouTube.Treeview.Heading", font=(None, MED_FONT),
-                        rowheight=int(g.LARGE_FONT * 2.2))  # FONT14 alias
-        row_height = 200
-        style.configure("YouTube.Treeview", font=g.FONT14, rowheight=row_height)
-
-        # Create Treeview
-        self.you_tree = ttk.Treeview(tree_frame, column=('name',),
-                                     selectmode='none', height=4,
-                                     style="YouTube.Treeview")
-        self.you_tree.grid(row=0, column=0, sticky='nsew')
-        v_scroll = tk.Scrollbar(tree_frame, orient=tk.VERTICAL,
-                                width=SCROLL_WIDTH, command=self.you_tree.yview)
-        v_scroll.grid(row=0, column=1, sticky=tk.NS)
-        self.you_tree.configure(yscrollcommand=v_scroll.set)
-        # v_scroll.config(troughcolor='black', bg='gold')
-        # https://stackoverflow.com/a/17457843/6929343
-
-
-        # MouseWheel captures no events
-        self.you_tree.bind("<MouseWheel>", lambda event: self._on_mousewheel(event))
-        # Button-4 is mousewheel scroll up event
-        self.you_tree.bind("<Button-4>", lambda event: self._on_mousewheel(event))
-        # Button-5 is mousewheel scroll down event
-        self.you_tree.bind("<Button-5>", lambda event: self._on_mousewheel(event))
-
-        # Setup column heading
-        self.you_tree.heading('#0', text='Thumbnail Image', anchor='center')
-        self.you_tree.heading('#1', text='Title / Artist / Album / Year')
-        # #0, #01, #02 denotes the 0, 1st, 2nd columns
-
-        # Setup column hqdefault
-        # YouTube Resolution: default=120x90(2.8K), hqdefault=480x360(35.6K)
-        # mqdefault = 320x180
-        self.you_tree.column('#0', anchor='center', width=430, stretch=False)
-        self.you_tree.column('name', width=590, stretch=True)
-
-        # Give some padding between triangles and border, between tree & scroll bars
-        self.you_tree["padding"] = (10, 10, 10, 10)  # left, top, right, bottom
-
-
-        # Differences start here with displayYouTubePlaylist
-        #PRUNED_DIR =
+        # file control class
         view_ctl = FileControl(self.top, self.info)
         self.imagesYouTube = []
 
@@ -15643,51 +15955,29 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
 
             os_filename = PRUNED_DIR + d['OsFileName']
             view_ctl.new(os_filename)  # Declaring new file populates metadata
-            # Search on: def get_artwork(self, width, height)
-            # original_art = Image.open(self.TMP_FFMPEG)
-            #   resized_art = original_art.resize(
-            #   (width, height), Image.ANTIALIAS)
-            #   return ImageTk.PhotoImage(resized_art), resized_art, original_art
 
             # TODO: Image needs to be pre-stored for speed view_ctl
             #       get_artwork should pad edges when rectangle
             #       im = resized_art (rectangle), image = original art (square)
             photo, im, original = view_ctl.get_artwork(320, 180)
-            # Reading twice SQL Music Table twice... No need for pretty yet
-            #pretty = sql.PrettyMusic(str(music_id), file_ctl=view_ctl)
+            if im is None:
+                original = img.make_image(NO_ART_STR,
+                                          image_w=1200, image_h=1200)
+                im = original.resize((320, 180), Image.ANTIALIAS)
+                #photo = ImageTk.PhotoImage(im)  Not needed
 
             song_name = d['Title']
             song_name += "\n\n\tartist \t" + d['Artist']
             song_name += "\n\talbum \t" + d['Album']
             if d['FirstDate']:
                 song_name += "\n\tyear \t" + sql.sql_format_value(d['FirstDate'])[:4]
-
-            # from bytes() converts jpg in memory instead of reading from disk
-            #im = Image.frombytes(image['mode'], image['size'], image['pixels'])
-
-            # Text Draw duration over image
             duration = tmf.mm_ss(d['Seconds'])  # Strip hours and fractions
-            try:
-                width, height = im.size  # im.size: (320, 180) im.mode: RGB
-            except AttributeError:  # 'NoneType' object has no attribute 'size'
-                continue  # TODO: No Artwork image
-            #print("\nim.size:", im.size, "im.mode:", im.mode)
-            draw_font = ImageFont.truetype("DejaVuSans.ttf", 24)
-            draw = ImageDraw.Draw(im)
-            x0 = width - 75  # text start x
-            y0 = height - 30  # text start y
-            x1 = x0 + 70
-            y1 = y0 + 25
-            draw.rectangle((x0 - 10, y0 - 5, x1, y1), fill="#333")
-            draw.text((x0, y0), duration, font=draw_font, fill="white")
 
-            # Convert image to tk photo and save from garbage collection
-            photo = ImageTk.PhotoImage(im)
-            self.imagesYouTube.append(photo)  # Save from GIC
-            # https://stackoverflow.com/questions/49307497/
-            # python-tkinter-treeview-add-an-image-as-a-column-value
+            # Text Draw duration over image & place into self.imagesYouTube[]
+            self.displayPlaylistCommonDuration(im, duration)
             self.you_tree.insert('', 'end', iid=str(i), text="#" + str(i + 1),
-                                 image=photo, value=(song_name,))
+                                 image=self.imagesYouTube[-1],
+                                 value=(song_name,))
             self.you_tree.see(str(i))
             self.top.update_idletasks()
             thread = self.get_thread_func()  # repeated 3 times...
@@ -15696,30 +15986,12 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             else:
                 return False  # closing down...
 
-
         view_ctl.close()
 
         # Below is identical to displayYouTubePlaylist()
+        self.displayPlaylistCommonBottom()
 
-        ''' button frame '''
-        bottom_frm = tk.Frame(self.frame)
-        bottom_frm.grid(row=4, columnspan=4, sticky=tk.E)
-
-        ''' Close Button - NOTE: This calls reset() function !!! '''
-        self.close_button = tk.Button(bottom_frm, text="✘ Close",
-                                      width=g.BTN_WID2 - 4, command=self.reset)
-        self.close_button.grid(row=4, column=4, padx=(10, 5), pady=5,
-                               sticky=tk.E)
-        self.tt.add_tip(self.close_button, "Close Window", anchor="ne")
-
-        self.top.bind("<Escape>", self.reset)
-        self.top.protocol("WM_DELETE_WINDOW", self.reset)
-
-        ''' Refresh screen '''
-        if self.top:  # May have been closed above.
-            self.top.update_idletasks()
-
-    # Call Entry points
+# Class Entry Point Methods
 
     def new(self):
         """ Called by lib_top File Menubar "New Playlist"

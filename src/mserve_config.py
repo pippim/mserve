@@ -184,7 +184,7 @@ def make_mserve_cfg():
     cfg.append(make_dict(m, None, "sys"))
     cfg.append(make_dict(m, None, "os"))
     cfg.append(make_dict(m, None, "shutil"))
-    cfg.append(make_dict(m, None, "json"))
+    cfg.append(make_dict(m, None, "json"))  # sudo apt install simplejson [auto]
     cfg.append(make_dict(m, None, "time"))
     cfg.append(make_dict(m, None, "datetime"))
     cfg.append(make_dict(m, None, "re"))
@@ -202,10 +202,13 @@ def make_mserve_cfg():
 
     d2 = "https://github.com/numpy/numpy"
     d3 = "https://pypi.org/project/notify2/"
+    d4 = "https://www.selenium.dev/documentation/webdriver/"
     cfg.append(make_dict(m, "np", "numpy", d2, "3", "python3-numpy"))
     cfg.append(make_dict(m, "np", "numpy", d2, "2", "python-numpy"))
     cfg.append(make_dict(m, None, "notify2", d3, "3", "python3-notify2"))
     cfg.append(make_dict(m, None, "notify2", d3, "2", "python-notify2"))
+    cfg.append(make_dict(m, None, "selenium", d4, "3", "python3-selenium"))
+    cfg.append(make_dict(m, None, "selenium", d4, "2", "python-selenium"))
 
     cfg.append(make_dict(m, "g", "global_variables", "pippim.com"))
     cfg.append(make_dict(m, "lc", "location", "pippim.com"))

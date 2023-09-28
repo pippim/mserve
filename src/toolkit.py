@@ -469,7 +469,8 @@ def tv_tag_add(tv, iid, new, strict=False):
     tags = tv.item(iid)['tags']
     # BUG tags is <type 'str'>
     if isinstance(tags, str):
-        print("tv_tag_add got tags type:", type(tags))
+        #print("tv_tag_add got tags type:", type(tags))
+        # This will happen for you_tree (YouTube Playlist) first time call.
         tags = []
     if new not in tags:
         tags.append(new)
