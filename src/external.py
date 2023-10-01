@@ -17,6 +17,7 @@ from __future__ import with_statement  # Error handling for file opens
 #       July 12 2023 - Hooks to mserve_config.py
 #       Aug. 18 2023 - Fix newish function - get_running_apps()
 #       Aug. 22 2023 - remove_group() - remove file groups ending in * (splat)
+#       Sep. 29 2023 - t(short=False) - Set to True for MM:SS printed only
 #
 #==============================================================================
 
@@ -67,10 +68,20 @@ def t_end(option):
     return elapsed
 
 
-def t(float_time):
-    """ Print date and time with AM/PM """
+def t(float_time=None, short=False, hun=False):
+    """ Print date and time with AM/PM
+    .%f
+    """
+    if not float_time:
+        float_time = time.time()
     f_time = datetime.datetime.fromtimestamp(float_time)
-    return f_time.strftime("%b %d %Y %I:%M:%S %p")
+    if short:
+        if hun:
+            return f_time.strftime("%H:%M:%S.%f")
+        else:
+            return f_time.strftime("%H:%M:%S")
+    else:
+        return f_time.strftime("%b %d %Y %I:%M:%S %p")
 
 
 def h(float_time):

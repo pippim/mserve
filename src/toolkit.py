@@ -67,7 +67,8 @@ import global_variables as g
 if g.USER is None:
     print('toolkit.py was forced to run g.init()')
     g.init()
-import external as ext      # Time formatting routines
+import external as ext      # External program calls
+import timefmt as tmf       # Time formatting routines
 import image as img         # Pippim image.py module
 
 # noinspection SpellCheckingInspection
@@ -805,7 +806,7 @@ class DictTreeview:
             if data_dict['format'] == "MB":
                 values.append(human_mb(unmasked_value))
             elif data_dict['format'] == "days":
-                values.append(days(unmasked_value))
+                values.append(tmf.days(unmasked_value))
             elif data_dict['format'] == "date":
                 # times are stored in epoch (seconds since January 1, 1970)
                 # Tue Jun 25 10:09:52 2019
@@ -1169,22 +1170,6 @@ def human_bytes(size, decimals=1, space=True):
     rounded = rounded.rstrip(".")  # Remove trailing '.' if there
     pad = " " if space is True else ""
     return rounded + pad + uom[off]
-
-
-def days(seconds):
-    """ Change '86772' seconds to '1 day, 6 min'
-        Called by MusicTree() class and Playlists() class
-    """
-    tim = int(seconds)
-    m = tim / 60 % 60
-    h = tim / 3600 % 24
-    d = tim / 86400
-    r = str(m) + " min"
-    if h > 0: 
-        r = str(h) + " hr, " + r
-    if d > 0: 
-        r = str(d) + " day, " + r
-    return r
 
 
 class SearchText:

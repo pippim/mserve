@@ -149,6 +149,22 @@ def mm_ss(seconds, brackets=False, trim=True, rem=None):
     return result
 
 
+def days(seconds):
+    """ Convert '86772' seconds to '1 day, 6 min'
+        Called by MusicTree() class and Playlists() class
+        TODO: Move to timefmt.py
+    """
+    tim = int(seconds)
+    m = tim / 60 % 60
+    h = tim / 3600 % 24
+    d = tim / 86400
+    r = str(m) + " min"
+    if h > 0: 
+        r = str(h) + " hr, " + r
+    if d > 0: 
+        r = str(d) + " day, " + r
+    return r
+
 # From mserve time_format() make it's own module called ??? (not time though)
 # If MAX_DEPTH changes you must update 'depth_count = [ 0, 0, 0 ]' below.
 LAST_WEEK = 60 * 60 * 24 * 7        # Formatted dates
