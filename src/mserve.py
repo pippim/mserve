@@ -14729,9 +14729,13 @@ class PlaylistsCommonSelf:
         self.nameYouTube = None  # = WEB_PLAY_DIR + os.sep + self.act_name + ".csv"
         self.linkYouTube = None  # YouTube links retrieved from .csv file
         self.listYouTube = None  # [dictYouTube, dictYouTube, ... dictYouTube]
-        self.dictYouTube = None  # {name: song name, link: link, image: ImageTk.PhotoImage}
+        self.dictYouTube = None  # { name: link: duration: image: }
         self.validYouTube = None  # Does nameYouTube exist?
-        self.imagesYouTube = None
+        self.photosYouTube = None  # Photos saved from garbage collector (GIC)
+        self.progressYouTube = None  # Progress (Duration) within playing song
+        self.durationYouTube = None  # Progress (Duration) within playing song
+        self.timeLastYouTube = None  # Last System time playing video (33ms)
+        self.timePlayYouTube = None  # Current System time playing video (33ms)
 
         ''' Input Window and fields '''
         self.top = None  # tk.Toplevel
@@ -15034,7 +15038,8 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             self.top.update_idletasks()
 
     def create_top(self, name):
-        """ Shared with create_window() and buildYouTubePlaylist """
+        """ Shared with self.create_window(), self.displayMusicIds()
+            and self.buildYouTubePlaylist() """
 
         self.top = tk.Toplevel()  # Playlists top level
         ''' Save geometry for Playlists() '''
@@ -15174,7 +15179,8 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         """
         self.listYouTube = []
         self.dictYouTube = {}
-        self.imagesYouTube = []
+        self.photosYouTube = []
+        self.progressYouTube = None
 
         ''' Previous generation available? '''
         fname = self.nameYouTube.replace(".csv", ".pickle")
@@ -15261,7 +15267,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             # from bytes() converts jpg in memory instead of reading from disk
             im = Image.frombytes(image['mode'], image['size'], image['pixels'])
 
-            # Text Draw duration over image & place into self.imagesYouTube[]
+            # Text Draw duration over image & place into self.photosYouTube[]
             self.displayPlaylistCommonDuration(im, duration)
             """ # Text Draw duration over image
             width, height = im.size
@@ -15275,12 +15281,12 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             draw.text((x0, y0), duration, font=draw_font, fill="white")
             # Convert image to tk photo and save from garbage collection
             photo = ImageTk.PhotoImage(im)
-            self.imagesYouTube.append(photo)  # Save from GIC
+            self.photosYouTube.append(photo)  # Save from GIC
             """
             # https://stackoverflow.com/questions/49307497/
             # python-tkinter-treeview-add-an-image-as-a-column-value
             self.you_tree.insert('', 'end', iid=str(i), text="#" + str(i + 1),
-                                 image=self.imagesYouTube[-1],
+                                 image=self.photosYouTube[-1],
                                  value=(song_name,))
             if not lcs.fast_refresh():
                 driver.quit()
@@ -15355,10 +15361,11 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         # self.you_tree.bind('<ButtonPress-1>', self.you_tree_click)  # Needs 2 clicks
         # self.you_tree.bind('<ButtonRelease-1>', self.you_tree_click)  # Needs 2 clicks
         # self.you_tree.bind("<<TreeviewSelect>>", self.you_tree_click)  # 1 click
-        # Right-click
+
+        # Right-click - reliable works on first click, first time, all the time
         self.you_tree.bind('<Button-3>', self.you_tree_click)  # Right-click
 
-        # MouseWheel captures no events
+        # Oct 1, 2023 - MouseWheel event does NOT capture any events
         self.you_tree.bind("<MouseWheel>", lambda event: self._on_mousewheel(event))
         # Button-4 is mousewheel scroll up event
         self.you_tree.bind("<Button-4>", lambda event: self._on_mousewheel(event))
@@ -15402,7 +15409,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         draw.text((x0, y0), duration, font=draw_font, fill="white")
 
         photo = ImageTk.PhotoImage(im)
-        self.imagesYouTube.append(photo)  # Save from GIC
+        self.photosYouTube.append(photo)  # Save from GIC
 
     def displayPlaylistCommonBottom(self):
         """ Shared by: displayYouTubePlaylist and displayMusicIds """
@@ -15444,9 +15451,20 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         menu.add_command(label="Play Song #" + no, font=g.FONT,
                          command=lambda: self.you_tree_play(item))
 
+        # TODO: Check Selenium Installed
+        #       Check ChromeDriver installed & matches version
+        #       Check Firefox Driver installed
+
         if XDOTOOL_INSTALLED and WMCTRL_INSTALLED:
             menu.add_command(label="Smart Play #" + no, font=g.FONT,
                              command=lambda: self.you_tree_smart_play(item))
+        # Exception in Tkinter callback
+        # Traceback (most recent call last):
+        #   File "/usr/lib/python2.7/lib-tk/Tkinter.py", line 1540, in __call__
+        #     return self.func(*args)
+        #   File "/home/rick/python/mserve.py", line 15456, in <lambda>
+        #     command=lambda: self.you_tree_smart_play(item))
+        # AttributeError: Playlists instance has no attribute 'you_tree_smart_play'
 
         menu.add_command(label="Copy Link #" + no, font=g.FONT,
                          command=lambda: self.you_tree_copy_link(item))
@@ -15484,19 +15502,18 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         ndx = int(item)
         webbrowser.open_new(self.listYouTube[ndx]['link'])
 
-    def you_tree_play_all(self):
-        """ Play song highlighted in YouTube treeview.
-Exception in Tkinter callback
-Traceback (most recent call last):
-  File "/usr/lib/python2.7/lib-tk/Tkinter.py", line 1540, in __call__
-    return self.func(*args)
-  File "/home/rick/python/mserve.py", line 15456, in <lambda>
-    command=lambda: self.you_tree_play_all())
-  File "/home/rick/python/mserve.py", line 15495, in you_tree_play_all
-    webbrowser.open_new(self.listYouTube[ndx]['link'])
-NameError: global name 'ndx' is not defined
+    def you_tree_smart_play(self):
+        """ Smart Play entire YouTube Playlist. """
+        title = "NOT IMPLEMENTED."
+        text = "Calling regular play"
+        message.ShowInfo(self.top, title, text, icon='warning',
+                         thread=self.get_thread_func)
+        ndx = int(item)
+        webbrowser.open_new(self.listYouTube[ndx]['link'])
 
-        """
+    def you_tree_play_all(self):
+        """ Play all songs in treeview (Entire YouTube Playlist). """
+
         title = "WARNING: Experimental feature"
         text = "Currently this features moves YouTube from right to left monitor."
         # message.ShowInfo(self.top, title, text, icon='warning',
@@ -15634,7 +15651,6 @@ id="ytp-id-63"></path></svg></button>
 
             element.click()
         """
-
 
     def you_tree_smart_play_all(self):
         """ Smart Play entire YouTube Playlist.
@@ -15868,6 +15884,11 @@ MOST IMPORTANT is buried within classlink above:
         print("play_all <type>:", type(play_all))
         """
 
+        print(ext.t(short=True, hun=True),
+              "IPL - getPlayerStatus(driver)",
+              self.getPlayerStatus(driver))
+
+        last_player_status = player_status = self.getPlayerStatus(driver) 
         # Find and click to "Play all" button
         if not self.driverClick(driver, 'link_text', "Play all"):
             print("Play all button click FAILED!")
@@ -15877,6 +15898,7 @@ MOST IMPORTANT is buried within classlink above:
             #os.popen('xdotool click --window ' + hex_win + ' 1')
             os.popen('xdotool click 1')  # Click on play all button
 
+        # TODO:
         self.top.after(500)  # Wait 1/2 second to send full screen key 'f'
 
         #driver.fullscreen_window()
@@ -15896,7 +15918,11 @@ MOST IMPORTANT is buried within classlink above:
                     2C) If second ad appears loop back to 2A 
         """
         last_link = ""  # When link changes highlight row in self.you_tree
-        last_player_status = 0  # Track player status to calculate duration
+        currIndexYouTube = 0  # Starts at 1 for first song
+        LastIndexYouTube = 0  # Starts at 1 for first song
+        nextIndexYouTubeMissingCount = 0
+
+        # last_player_status = 0  # Initialized above after "Play All" picked
         double_ad = 0  # track double ads
         duration = 0.0
         last_time = time.time()
@@ -15907,13 +15933,9 @@ MOST IMPORTANT is buried within classlink above:
                 driver.quit()
                 return False
 
-            try:
-                # TODO Start Duration Countdown
-                link = driver.current_url
-            except Exception as err:
-                print("Exception:", err)
-                print("ERROR on link = driver.current_url")
-                continue
+            link = self.getCurrentLink(driver)
+            if not link:
+                continue  # Error getting link
 
             result = None
             if link != last_link:
@@ -15922,6 +15944,10 @@ MOST IMPORTANT is buried within classlink above:
                     link_pre = link.split("&list=")[0]
                     #print("massaged link:", link_pre)
                     result = self.you_tree_highlight_row(link_pre)
+                    #lastIndexYouTube = currIndexYouTube
+                    #currIndexYouTube = int(link.split("&index=")[1])
+                    nextIndexYouTubeMissingCount = 0
+                    #print("currIndexYouTube:", currIndexYouTube)
                 except IndexError:
                     print("Could not find '&list=' in link!")
                     continue
@@ -15929,6 +15955,7 @@ MOST IMPORTANT is buried within classlink above:
             if link != last_link and result:
                 self.you_tree.see(str(result))
                 song_no = str(result + 1).ljust(4)
+                last_song_index = result + 1
                 print("\n" + ext.t(short=True),
                       "STARTING Playlist - Song #", song_no, " |", link_pre)
                 toolkit.tv_tag_remove_all(self.you_tree, 'play_sel')
@@ -15947,46 +15974,101 @@ MOST IMPORTANT is buried within classlink above:
                       "STARTING Playlist - Song # 1     |", link_pre)
                 toolkit.tv_tag_add(self.you_tree, "0", 'play_sel')
 
-            last_link = link  # Save for next loop check
-
             player_status = self.getPlayerStatus(driver)
             if not player_status:
                 player_status = last_player_status
+                print(ext.t(short=True, hun=True), "player_status is NONE")
 
             if player_status != last_player_status:
-                last_player_status = player_status
                 print(ext.t(short=True), "New player_status:", player_status)
-                # 1 = playing
-                # 2 = paused
-                # 3 = begin playing song
-                # 5 = begin playing ad perhaps?
-                # -1 = no song or more likely ad playing
+
+            ''' Update button bar with progress display and skip commercials '''
+            self.updateYouTubeProgress(driver, link, last_link,
+                                       player_status, last_player_status)
+
+            #       P A T C H
+
+            if self.isYouTubeAdRunning(driver):
+                currIndex = self.getCurrentIndex(driver)
+                if not currIndex:
+                    continue  # Error getting link's Index
+                if currIndex != last_song_index:
+                    nextIndexYouTubeMissingCount += 1
+                    print("ad playing at end of song. Must loop and wait",
+                          nextIndexYouTubeMissingCount, end="\r")
+                    if nextIndexYouTubeMissingCount < 500:
+                        continue  # Loop for song index to change
+                last_player_status = player_status
+                #continue
+
+            last_link = link  # Save for next loop check
+            last_video_text = None  # Save for next loop check
+            last_player_status = player_status
 
             """
-
+            YouTube Auto Pause feature
                 00:26:04 STARTING Playlist - Song # 10
                 00:26:04 New player_status: 3
                 00:26:05 New player_status: 1
                 00:26:05 New player_status: 2
-                YouTube message "Video paused. Continue Playing?"
-                Click "Yes" and YouTube splashes "Thank you for confirming"
+            YouTube message: "Video paused. Continue Playing?"
+            Click "Yes" and YouTube splashes: "Thank you for confirming"
                 00:45:15 New player_status: 3
                 00:45:15 New player_status: 1
-            
+
+            Song #11 was supposed to start but it stayed on Song #10
+                00:50:01 STARTING Playlist - Song # 11    | htt=lZf5Zp9Cl90
+                00:50:02 New player_status: 5 <type 'int'>
+                00:50:02 driver.back() visible loops: 1   | htt=lZf5Zp9Cl90
+                00:50:02.469428 # 1. getPlayerStatus(driver) 1
+                00:50:03.129916 # 2. getPlayerStatus(driver) -1
+                00:50:03 3x driver.forward() Total 750ms  | htt=lZf5Zp9Cl90
+                00:50:03.552014 # 3. getPlayerStatus(driver) -1
+                00:50:03.604563 # 4. getPlayerStatus(driver) -1
+                00:50:03 New player_status: -1 
+                00:50:03 driver.back() visible loops: 1   | htt=lZf5Zp9Cl90
+                00:50:03.970142 # 1. getPlayerStatus(driver) 3
+                00:50:04.591082 # 2. getPlayerStatus(driver) 1
+                00:50:04 2x driver.forward() Total 450ms  | htt=lZf5Zp9Cl90
+                00:50:04.620827 # 4. getPlayerStatus(driver) 1
+                00:50:04 New player_status: 1 
+
+            Second time # 11 skipped
+                00:54:51 New player_status: -1
+                00:54:52 driver.back() visible loops: 1   | htt=lZf5Zp9Cl90
+                00:54:52.326989 # 1. getPlayerStatus(driver) 3
+                00:54:53.017465 # 2. getPlayerStatus(driver) -1
+                00:54:53 3x driver.forward() Total 750ms  | htt=lZf5Zp9Cl90
+                00:54:53.390831 # 3. getPlayerStatus(driver) -1
+                00:54:53.402633 # 4. getPlayerStatus(driver) -1
+                00:54:53 driver.back() visible loops: 1   | htt=lZf5Zp9Cl90
+                00:54:53.896423 # 1. getPlayerStatus(driver) 1
+                00:54:54.590004 # 2. getPlayerStatus(driver) 1
+                00:54:54 2x driver.forward() Total 450ms  | htt=lZf5Zp9Cl90
+                00:54:54.671328 # 4. getPlayerStatus(driver) 1
+                00:54:54 New player_status: 1
+
+            # 11 finally starts playing
+                00:59:45 New player_status: 1
+
+            # 12 starts normally            
+                01:03:50 STARTING Playlist - Song # 12    | EqQuihD0hoI
+                01:03:50 New player_status: -1
+
             """
 
             # Has YouTube popped up an ad?
-            if self.isYouTubeAdVisible(driver):
+            if self.isYouTubeAdRunning(driver):
                 """  TODO: At start, quickly ramp down volume over 1/10 second
                            At end, Slowly ramp up volume over 1/2 second
                            However, setup mute mode too, so no ramping
                            Need to capture web browsers sink and then use: 
                                 pav.fade(driver_sink, start, end, time) """
                 count = 0
-                while self.isYouTubeAdVisible(driver):
+                while self.isYouTubeAdRunning(driver):
                     count += 1
                     print("BACK LOOP Ad still visible:", count, end="\r")
-                    # Spam back button
+                    # Back button goes to previous song played
                     driver.back()
                     if not lcs.fast_refresh():
                         driver.quit()
@@ -15997,6 +16079,10 @@ MOST IMPORTANT is buried within classlink above:
                 print(ext.t(short=True, hun=True),
                       "# 1. getPlayerStatus(driver)",
                       self.getPlayerStatus(driver))
+                print(ext.t(short=True, hun=True),
+                      "# 1. self.getCurrentIndex(driver)",
+                      self.getCurrentIndex(driver))
+
                 driver.forward()  # Send forward page event
 
                 # TODO: create function that calls lcs.fast_refresh in loop
@@ -16005,27 +16091,48 @@ MOST IMPORTANT is buried within classlink above:
                 print(ext.t(short=True, hun=True),
                       "# 2. getPlayerStatus(driver)",
                       self.getPlayerStatus(driver))
-                if self.isYouTubeAdVisible(driver):
+                print(ext.t(short=True, hun=True),
+                      "# 2. self.getCurrentIndex(driver)",
+                      self.getCurrentIndex(driver))
+                if self.isYouTubeAdRunning(driver):
                     # Probably within second ad, or delay sometimes too short
                     double_ad += 1
                     # With this test, don't know if ad #1 or #2 is visible...
                     print(ext.t(short=True), "3x driver.forward() Total 750ms",
                           " |", link_pre)
+                    print(ext.t(short=True, hun=True),
+                          "# 3A. getPlayerStatus(driver) BEFORE forward()",
+                          self.getPlayerStatus(driver))
+                    print(ext.t(short=True, hun=True),
+                          "# 3A. self.getCurrentIndex(driver)",
+                          self.getCurrentIndex(driver))
                     driver.forward()
                     # TODO: create function that calls lcs.fast_refresh in loop
                     self.top.after(350)  # 300 too short for triple ad
                     print(ext.t(short=True, hun=True),
-                          "# 3. getPlayerStatus(driver)",
+                          "# 3B. getPlayerStatus(driver) AFTER forward()",
                           self.getPlayerStatus(driver))
+                    print(ext.t(short=True, hun=True),
+                          "# 3B. self.getCurrentIndex(driver)",
+                          self.getCurrentIndex(driver))
                 else:
                     print(ext.t(short=True), "2x driver.forward() Total 450ms",
                           " |", link_pre)
+                    print(ext.t(short=True, hun=True),
+                          "# 3. getPlayerStatus(driver)",
+                          self.getPlayerStatus(driver))
+                    print(ext.t(short=True, hun=True),
+                          "# 3. self.getCurrentIndex(driver)",
+                          self.getCurrentIndex(driver))
 
                 # Could be within second ad but extra forward needed for next
                 driver.forward()  # Extra forward needed for next song
                 print(ext.t(short=True, hun=True),
                       "# 4. getPlayerStatus(driver)",
                       self.getPlayerStatus(driver))
+                print(ext.t(short=True, hun=True),
+                      "# 4. self.getCurrentIndex(driver)",
+                      self.getCurrentIndex(driver))
 
                 """ TWICE Stuck on Song # 8
 
@@ -16200,6 +16307,315 @@ MOST IMPORTANT is buried within classlink above:
             you'll get "How I met your mother" wikipedia page.
         """
 
+    def updateYouTubeProgress(self, driver, link, last_link,
+                              player_status, last_player_status):
+        """ Update progress display in button bar and skip commercials
+
+        :param driver: Selenium WebDriver Instance
+        :param link: address bar URL
+        :param last_link: previous address bar URL in loop
+        :param player_status: Music player status (-1, 1, 2, 3, 5)
+        :param last_player_status: Last Music Player state in loop
+        :return: False mserve is closing, else True
+        """
+        if True is True:
+            return True
+
+        if link != last_link:
+            print(ext.t(short=True), "updateYouTubeProgress(link)              :",
+                  link)
+            print(ext.t(short=True), "updateYouTubeProgress(last_link)         :",
+                  last_link)
+
+        if player_status != last_player_status:
+            print(ext.t(short=True), "updateYouTubeProgress(player_status)     :",
+                  player_status)
+            print(ext.t(short=True), "updateYouTubeProgress(last_player_status):",
+                  last_player_status)
+            # -1 = ad is playing
+            # 1 = playing
+            # 2 = paused or YT progress bar is dragging
+            # 3 = begin playing song or YouTube prompting to play after suspend
+            # 5 = Status prior to Play All and starting Ad
+
+        if player_status not in [-1, 1, 2, 3, 5]:
+            print("Unknown player_status: ", player_status)
+
+        """
+        self.nameYouTube = None  # = WEB_PLAY_DIR + os.sep + self.act_name + ".csv"
+        self.linkYouTube = None  # YouTube links retrieved from .csv file
+        self.listYouTube = None  # [dictYouTube, dictYouTube, ... dictYouTube]
+        self.dictYouTube = None  # { name: link: duration: image: }
+        self.validYouTube = None  # Does nameYouTube exist?
+        self.photosYouTube = None  # Photos saved from garbage collector (GIC)
+        self.progressYouTube = None  # Progress (Duration) within playing song
+        self.durationYouTube = None  # Progress (Duration) within playing song
+        self.timeLastYouTube = None  # Last System time playing video (33ms)
+        self.timePlayYouTube = None  # Current System time playing video (33ms)
+        
+        what is "video-title"
+        
+        Click pause then play:
+        
+            14:54:09 updateYouTubeProgress(player_status)     : 2
+            14:54:09 updateYouTubeProgress(last_player_status): 1
+
+            14:54:10 updateYouTubeProgress(player_status)     : 3
+            14:54:10 updateYouTubeProgress(last_player_status): 2
+
+            14:54:10 updateYouTubeProgress(player_status)     : 1
+            14:54:10 updateYouTubeProgress(last_player_status): 3
+        
+        """
+
+        if not self.isYouTubeAdRunning(driver):
+            return True  # Nothing to do
+
+        video_title = self.getVideoTitle(driver)
+        if video_title:
+            video_text = video_title.text
+            print("video-title.text:", video_text)
+        else:
+            print("ERROR video-title NOT FOUND!")
+
+
+        while True:  # Ad was visible. Loop until status is song playing (1)
+            """  TODO: At start, quickly ramp down volume over 1/10 second
+                       At end, Slowly ramp up volume over 1/2 second
+                       However, setup mute mode too, so no ramping
+                       Need to capture web browsers sink and then use: 
+                            pav.fade(driver_sink, start, end, time) """
+            if True is True:
+                # Force exit
+                print(ext.t(short=True, hun=True),
+                      "updateYouTubeProgress Ad Visible:",
+                      self.getPlayerStatus(driver))
+                return True
+
+            if not lcs.fast_refresh():
+                driver.quit()
+                return False
+
+            count = 0
+            while self.isYouTubeAdRunning(driver):
+                count += 1
+                print("BACK LOOP Ad still visible:", count, end="\r")
+                # Back button goes to previous song played
+                driver.back()
+                if not lcs.fast_refresh():
+                    driver.quit()
+                    return False
+
+            print(ext.t(short=True), "driver.back() visible loops:",
+                  str(count).ljust(2), " |", link_pre)  # Always 1
+            print(ext.t(short=True, hun=True),
+                  "# 1. getPlayerStatus(driver)",
+                  self.getPlayerStatus(driver))
+            driver.forward()  # Send forward page event
+
+            # TODO: create function that calls lcs.fast_refresh in loop
+            #       until 400ms expires
+            self.top.after(400)  # 350ms was too short for single ad
+            print(ext.t(short=True, hun=True),
+                  "# 2. getPlayerStatus(driver)",
+                  self.getPlayerStatus(driver))
+            if self.isYouTubeAdRunning(driver):
+                # Probably within second ad, or delay sometimes too short
+                double_ad += 1
+                # With this test, don't know if ad #1 or #2 is visible...
+                print(ext.t(short=True), "3x driver.forward() Total 750ms",
+                      " |", link_pre)
+                driver.forward()
+                # TODO: create function that calls lcs.fast_refresh in loop
+                self.top.after(350)  # 300 too short for triple ad
+                print(ext.t(short=True, hun=True),
+                      "# 3. getPlayerStatus(driver)",
+                      self.getPlayerStatus(driver))
+            else:
+                print(ext.t(short=True), "2x driver.forward() Total 450ms",
+                      " |", link_pre)
+
+            # Could be within second ad but extra forward needed for next
+            driver.forward()  # Extra forward needed for next song
+            print(ext.t(short=True, hun=True),
+                  "# 4. getPlayerStatus(driver)",
+                  self.getPlayerStatus(driver))
+
+    def cmp_update_files(self):
+        """ Called via "Update differences" button on cmp_top """
+
+        ''' Replace "update differences" button with progress bar '''
+        self.update_differences_btn.grid_remove()  # Button can't click again
+        progress_var = tk.DoubleVar()
+        progress_bar = ttk.Progressbar(
+            self.cmp_btn_frm, variable=progress_var, length=1200)
+        progress_bar.grid(row=0, column=1, padx=2)  # skinny
+        progress_bar.grid(row=0, column=1, padx=2, pady=2, sticky=tk.NSEW)
+        #self.cmp_btn_frm.columnconfigure(1, weight=1)
+        self.cmp_btn_frm.pack_slaves()
+
+        ''' Build list of commands. Cannot update_idle inside loop (crash) '''
+        self.cmp_return_code = 0  # Indicate how update failed
+        self.cmp_command_list = list()  # List of tuples [(commands, parameters)]
+        self.fast_refresh(tk_after=True)  # Update play_top animations
+        for artist in self.cmp_tree.get_children():
+            for album in self.cmp_tree.get_children(artist):
+                for song in self.cmp_tree.get_children(album):
+                    if not self.build_command_list(song):
+                        self.cmp_return_code = 1  # Indicate how update failed
+                        break  # Programmer error
+        self.fast_refresh(tk_after=True)  # Update play_top animations
+
+        ''' Tally sizes of all files to be copied. For granular progress bars. '''
+        all_sizes = 0
+        command_count = len(self.cmp_command_list)
+        for iid, command, size, src_to_trg, src_time, trg_time in \
+                self.cmp_command_list:
+            if command.startswith("cp"):
+                all_sizes += float(size)  # Total size of all files copied
+
+        last_sel_iid = None  # Last row highlighted in green
+        run_count = 0  # How many commands have be run so far
+        copy_time_so_far = 0.0  # To estimate time remaining
+        copy_size_so_far = 0  # To calculate progress bar percent
+        all_start_time = time.time()  # To give total time duration when done
+
+        ''' Process self.build_command_list(song) list '''
+        for iid, command, size, src_to_trg, src_time, trg_time in \
+                self.cmp_command_list:
+            # Variable src_to_trg: True=source->target. False=target->source
+
+            ''' Initialization '''
+            if self.cmp_return_code != 0:
+                break  # Could be from previous loop too
+
+            ''' Uncomment code below for enough lag to watch progress bar '''
+            #for _i in range(10):  # About 1/2 second lag to test play_top
+            #    time.sleep(.05)
+            #    self.fast_refresh(tk_after=True)
+
+            fake_path = self.fake_paths[int(iid)]  # TODO: put paths in tuple?
+            src_path = self.real_from_fake_path(fake_path)
+            trg_path = src_path.replace(self.open_topdir, self.cmp_target_dir)
+
+            if not self.fast_refresh():  # No sleep after should only take few ms
+                return  # Already know closing down
+
+            ''' 1. Highlight command being run '''
+            ''' Shutting down? '''
+            if not self.cmp_top_is_active:
+                return
+            self.cmp_tree.see(iid)  # tree.see() crashes when window is closed
+            if last_sel_iid:
+                toolkit.tv_tag_remove(self.cmp_tree, last_sel_iid, 'cmp_sel')
+            toolkit.tv_tag_add(self.cmp_tree, iid, 'cmp_sel')
+            last_sel_iid = iid  # Save highlight for removing next cycle
+
+            ''' 2. Run the copy or touch command '''
+            start_time = time.time()
+            if not self.run_one_command(command, size):
+                #self.cmp_return_code can be set to 2, 3, 4 or 5
+                break  # Run one command failed
+
+            ''' 3. Refresh progress bar '''
+            run_count += 1
+            percent = float(100.0 * run_count / command_count)
+            progress_var.set(percent)
+            if command.startswith("cp"):
+                copy_time_so_far += time.time() - start_time
+                copy_size_so_far += float(size)  # Total size of all files copied
+                percent = float(100.0 * copy_size_so_far / all_sizes)
+                if True is False:
+                    progress_var.set(percent)  # No good - timestamps are short.
+            if not self.fast_refresh():  # No sleep after should only take few ms
+                return
+
+            ''' 4. Update modification times for Android cell phones '''
+            self.update_mod_times(
+                src_to_trg, src_path, src_time, trg_path, trg_time)
+            if not self.fast_refresh():  # No sleep after
+                return
+
+            ''' 5. Compare source and target again to verify success '''
+            c_action, c_src_path, c_src_size, c_src_time, c_trg_path, \
+                c_trg_size, c_trg_time = self.compare_path_pair(fake_path)
+            if not c_action == "Same":
+                print("Error: action should be 'Same' but isn't:", c_action)
+                print("c_src_path:", c_src_path)
+                print("c_src_size:", c_src_size)
+                print("c_trg_path:", c_trg_path)
+                print("c_trg_size:", c_trg_size)
+                self.cmp_return_code = 10  # Files not same
+                # self.cmp_return_code UNUSED 6, 7, 8 and 9
+                break
+
+        ''' Shutting down? '''
+        if not self.cmp_top_is_active:
+            return
+
+        ''' Remove last highlight and close ModTime instances '''
+        toolkit.tv_tag_remove(self.cmp_tree, last_sel_iid, 'cmp_sel')
+        self.src_mt.close()  # Save modification_time to disk
+        self.trg_mt.close()  # If no changes then simply exit
+
+        ''' Error message first '''
+        if not self.cmp_return_code == 0:  # An error was found
+            title = "location.py Locations.cmp_update_files()"
+            text = "received non-zero self.cmp_return_code: "
+            text += str(self.cmp_return_code)
+            self.out_cast_show_print(title, text, 'error')
+
+        ''' Summary message '''
+        missing_count = len(self.cmp_trg_missing)
+        elapsed = time.time() - all_start_time
+        if copy_time_so_far:
+            speed = float(all_sizes) / copy_time_so_far
+        else:
+            speed = 0.0
+
+        print("commands:", command_count, "\tsize:", all_sizes,
+              "\telapsed:", '{:n}'.format(round(copy_time_so_far, 3)),
+              "\tspeed:", '{:n}'.format(round(speed, 3)))
+
+        title = "Locations synchronized"
+        text = "Open Location:  " + self.open_name
+        # TODO: Open Location missing: 999 music files.
+        text += "\nOther Location: " + self.act_name
+        if missing_count:
+            text += "\nOther location is missing: " + '{:n}'.format(missing_count)
+            text += " music files."
+        text += "\n\nFile synchronization count: " + '{:n}'.format(run_count)
+        if speed > 0:
+            text += "\n\nCopy speed (MB/s): " + '{:n}'.format(speed)
+        text += "\n\nTotal time (D.HH:MM:SS): " + tmf.mm_ss(elapsed)
+        self.out_cast_show_print(title, text, align="left")
+
+        # All done, close treeview as it's no longer relevant
+        self.cmp_close()
+
+    def getCurrentIndex(self, driver):
+        """ Get link URL from Browser address bar & return index """
+        link = self.getCurrentLink(driver) 
+        try:
+            currIndex = int(link.split("&index=")[1])
+            return currIndex
+        except IndexError:
+            pass
+
+        print("ERROR on link = getCurrentIndex")
+        return None
+
+    @staticmethod
+    def getCurrentLink(driver):
+        """ Get link URL from Browser address bar """
+        try:
+            link = driver.current_url
+            return link
+        except Exception as err:
+            print("Exception:", err)
+            print("ERROR on link = driver.current_url")
+            return None
+
     @staticmethod
     def driverClick(driver, by, desc):
         """ Credit: https://itecnote.com/tecnote/
@@ -16230,7 +16646,42 @@ MOST IMPORTANT is buried within classlink above:
             return None
 
     @staticmethod
-    def isYouTubeAdVisible(driver):
+    def getVideoTitle(driver):
+        """ Credit: https://stackoverflow.com/a/51032412/6929343
+        """
+        try:
+            video_id = driver.execute_script(
+                "return document.getElementById('video-id')")
+            print("video_id:", video_id)
+        except:
+            print("return document.getElementById('video-id')  FAILED !")
+
+        start = time.time()
+
+        wait = WebDriverWait(driver, 10)
+        element = wait.until(EC.presence_of_element_located((
+            By.CSS_SELECTOR, "h1.title yt-formatted-string"))).text
+        print("getVideoTitle(driver) element:", element)
+        elapsed = time.time() - start
+        if elapsed > 9.0:
+            print("getVideoTitle(driver) took over 9 seconds!")
+        return element
+
+    @staticmethod
+    def getVideoTitleBroken(driver):
+        """ Doesn't work, .innerText, .getText() and .text all fail :(
+        """
+        try:
+            # Player status for accurate duration countdown
+            video_title = driver.execute_script(
+                "return document.getElementById('video-title')")
+            return video_title
+        except WebDriverException as err:
+            print("WebDriverException:", err)
+            return None
+
+    @staticmethod
+    def isYouTubeAdRunning(driver):
         """
         :param driver: Selenium webdriver instance
         :return: True if ad displaying, False if no ad displayed
@@ -16308,7 +16759,7 @@ MOST IMPORTANT is buried within classlink above:
 
         # file control class
         view_ctl = FileControl(self.top, self.info)
-        self.imagesYouTube = []
+        self.photosYouTube = []
 
         for i, music_id in enumerate(self.act_id_list):
             d = sql.music_get_row(music_id)
@@ -16336,10 +16787,10 @@ MOST IMPORTANT is buried within classlink above:
                 song_name += "\n\tyear \t" + sql.sql_format_value(d['FirstDate'])[:4]
             duration = tmf.mm_ss(d['Seconds'])  # Strip hours and fractions
 
-            # Text Draw duration over image & place into self.imagesYouTube[]
+            # Text Draw duration over image & place into self.photosYouTube[]
             self.displayPlaylistCommonDuration(im, duration)
             self.you_tree.insert('', 'end', iid=str(i), text="#" + str(i + 1),
-                                 image=self.imagesYouTube[-1],
+                                 image=self.photosYouTube[-1],
                                  value=(song_name,))
             self.you_tree.see(str(i))
             self.top.update_idletasks()
