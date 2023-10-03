@@ -442,6 +442,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
 from selenium.common.exceptions import NoSuchElementException
 from selenium.common.exceptions import WebDriverException
+from selenium.common.exceptions import TimeoutException
 
 # Dist-packages copied underneath .../mserve/ directory
 import mutagen              # Get easy tags instead of ffprobe - testing stage
@@ -14732,10 +14733,11 @@ class PlaylistsCommonSelf:
         self.dictYouTube = None  # { name: link: duration: image: }
         self.validYouTube = None  # Does nameYouTube exist?
         self.photosYouTube = None  # Photos saved from garbage collector (GIC)
-        self.progressYouTube = None  # Progress (Duration) within playing song
-        self.durationYouTube = None  # Progress (Duration) within playing song
-        self.timeLastYouTube = None  # Last System time playing video (33ms)
-        self.timePlayYouTube = None  # Current System time playing video (33ms)
+        self.progressYouTube = 0.0  # Progress (Duration) within playing song
+        self.durationYouTube = 0.0  # Progress (Duration) within playing song
+        self.timeLastYouTube = 0.0  # Last System time playing video (33ms)
+        self.timePlayYouTube = 0.0  # Current System time playing video (33ms)
+        self.timeForwardYouTube = 0.0  # System time driver.forward()
 
         ''' Input Window and fields '''
         self.top = None  # tk.Toplevel
@@ -15655,113 +15657,347 @@ id="ytp-id-63"></path></svg></button>
     def you_tree_smart_play_all(self):
         """ Smart Play entire YouTube Playlist.
 
-15 second ad:
-<span class="ytp-ad-duration-remaining" style=""
-id="ad-duration-remaining:1v">
-<div class="ytp-ad-text" style=""
-id="ad-text:1w">0:11</div></span>
-
-Above appears and disappears within:
-
-<div class="ytp-player-content ytp-cultural-moment-player-content"
-data-layer="4">
-<a class="ytp-cultural-moment-overlay ytp-hip-hop-50-overlay ytp-button"
-target="_blank" style="display: none;"></a></div>
-
-2 ads:
-<div class="video-ads ytp-ad-module" data-layer="4">
-<div class="ytp-ad-player-overlay" style=""
-id="player-overlay:20">
-<div class="ytp-ad-player-overlay-flyout-cta ytp-ad-player-overlay-flyout-cta-rounded">
-<div class="ytp-flyout-cta" style="" id="flyout-cta:27">
-<div class="ytp-flyout-cta-icon-container">
-<img class="ytp-ad-image ytp-flyout-cta-icon-rounded ytp-flyout-cta-icon" style=""
-id="ad-image:28"
-src="https://yt3.ggpht.com/aR6CO8PY4rgLk-jWVudLeD6GY1XzTzjZjbIkVKtKqBxUu_LGLPu5NXeh1uAyHKdGa50CxYdYAGU=s176-c-k-c0x00ffffff-no-rj"
-alt=""></div>
-<div class="ytp-flyout-cta-body">
-<div class="ytp-flyout-cta-text-container">
-<div class="ytp-flyout-cta-headline-container">
-<div class="ytp-ad-text ytp-flyout-cta-headline" style=""
-id="ad-text:29">Caramel</div></div>
-<div class="ytp-flyout-cta-description-container">
-<div class="ytp-ad-text ytp-flyout-cta-description" style=""
-id="ad-text:2a">www.werthers-original.ca/en</div></div></div>
-<div class="ytp-flyout-cta-action-button-container">
-<button class="ytp-ad-button ytp-flyout-cta-action-button
-ytp-flyout-cta-action-button-rounded" style="" role="link"
-id="button:2b" aria-label="Learn more This link opens in new tab">
-<span class="ytp-ad-button-text">Learn more</span></button>
-</div></div></div></div>
-<div class="ytp-ad-player-overlay-instream-info">
-<span class="ytp-ad-simple-ad-badge" style=""
-id="simple-ad-badge:2c"><div class="ytp-ad-text" style=""
-id="simple-ad-badge:2d">Ad 1 of 2 ·</div></span>
-<span class="ytp-ad-duration-remaining" style=""
-id="ad-duration-remaining:2e">
-<div class="ytp-ad-text" style=""
-id="ad-text:2f">0:07</div></span>
-<span class="ytp-ad-hover-text-button ytp-ad-info-hover-text-button" style=""
-id="ad-info-hover-text-button:2g">
-<button class="ytp-ad-button ytp-ad-button-link ytp-ad-clickable" style=""
-id="button:2h" aria-label="My Ad Center">
-<span class="ytp-ad-button-icon">
-<svg fill="#fff" height="100%" version="1.1"
-viewBox="0 0 48 48" width="100%"><path d="M0 0h48v48H0z" fill="none"></path>
-<path d="M22 34h4V22h-4v12zm2-30C12.95 4 4 12.95 4 24s8.95 20 20 20 20-8.95
-20-20S35.05 4 24 4zm0 36c-8.82 0-16-7.18-16-16S15.18 8 24 8s16 7.18 16
-16-7.18 16-16 16zm-2-22h4v-4h-4v4z"></path>
-</svg></span></button>
-<div class="ytp-ad-hover-text-container ytp-ad-info-hover-text-short"
->My Ad Center
-<div class="ytp-ad-hover-text-callout"></div></div></span>
-<button class="ytp-ad-button ytp-ad-visit-advertiser-button ytp-ad-button-link"
-style="" id="visit-advertiser:2i"
-aria-label="werthers-original.ca/en This link opens in new tab" role="link">
-<span class="ytp-ad-button-text">werthers-original.ca/en</span>
-<span class="ytp-ad-button-icon"><svg fill="#fff" height="100%" version="1.1"
-viewBox="0 0 48 48" width="100%">
-<path d="M0 0h48v48H0z" fill="none"></path>
-<path d="M38 38H10V10h14V6H10c-2.21 0-4 1.79-4 4v28c0 2.21 1.79 4 4 4h28c2.21
-0 4-1.79 4-4V24h-4v14zM28 6v4h7.17L15.51 29.66l2.83 2.83L38 12.83V20h4V6H28z"></path>
-</svg></span></button></div>
-<div class="ytp-ad-player-overlay-skip-or-preview">
-<div class="ytp-ad-skip-ad-slot" style="" id="skip-button:21">
-<div class="ytp-ad-preview-slot" style="display: none;"
-id="preskip-component:22">
-<span class="ytp-ad-preview-container countdown-next-to-thumbnail"
-style="display: none;">
-<div class="ytp-ad-text ytp-ad-preview-text" style="display: none;"
-id="ad-text:23">1</div>
-<span class="ytp-ad-preview-image">
-<img class="ytp-ad-image" style="display: none;"
-id="ad-image:24" src="https://i.ytimg.com/vi/RBxK3CcOQD8/mqdefault.jpg" alt="">
-</span></span></div>
-<div class="ytp-ad-skip-button-slot" style=""
-id="skip-button:25"><span class="ytp-ad-skip-button-container"
-style="opacity: 0.5;"><button class="ytp-ad-skip-button ytp-button">
-<div class="ytp-ad-text ytp-ad-skip-button-text" style=""
-id="ad-text:26">Skip Ads</div><span class="ytp-ad-skip-button-icon">
-<svg height="100%" version="1.1" viewBox="0 0 36 36" width="100%">
-<use class="ytp-svg-shadow" xlink:href="#ytp-id-405"></use>
-<path class="ytp-svg-fill" d="M 12,24 20.5,18 12,12 V 24 z M 22,12 v 12 h
-2 V 12 h -2 z" id="ytp-id-405">
-</path></svg></span></button></span></div></div></div>
-<div class="ytp-ad-player-overlay-progress-bar"></div>
-<div class="ytp-ad-player-overlay-instream-user-sentiment"></div></div></div>
-
-MOST IMPORTANT is buried within classlink above:
-
-<span class="ytp-ad-duration-remaining" style="" id="ad-duration-remaining:2e">
-<div class="ytp-ad-text" style="" id="ad-text:2f">0:07</div></span>
+            1. Get browser (web)
+            2. Open browser (driver)
+            3. Save window ID (hex_win) using `wmctrl` list difference
+            4. Move window with XDOTOOL
+            5. Click 'Play all' element (for the Playlist opened in address bar)
+            6. Set to full screen (send 'f' key)
+            7. Loop forever playing all songs in playlist
+            8. Skip commercials - use .back() and .forward()
+            9. Override when previous song repeats in error - use .refresh()
 
         """
 
+        driver, window = self.openSelenium()
+        if not window:
+            if driver:
+                driver.quit()
+            return  # No window tuple, cannot proceed even if driver succeeded
+
+        driver.get(self.act_description)
+
+        # print("\n window list:", window)
+        # [Window(number=130028740L, name='Mozilla Firefox', x=1920, y=24,
+        #         width=1728, height=978)]
+
+        str_win = str(window.number)  # should remove L in python 2.7.5+
+        int_win = int(str_win)  # https://stackoverflow.com/questions
+        hex_win = hex(int_win)  # /5917203/python-trailing-l-problem
+        #print("\n str_win:", str_win, "int_win:", int_win, "hex_win:", hex_win)
+
+        # If last usage was full screen, reverse it
+        net_states = os.popen('xprop -id ' + str_win).read().strip()
+        # print("net_states:", net_states)
+        if "_NET_WM_STATE_FULLSCREEN" in net_states:
+            os.popen('wmctrl -ir ' + hex_win +
+                     ' -b toggle,fullscreen')  # DOES NOT WORK !!!
+
+        # Remove maximized, don't worry if not maximized already
+        os.popen('wmctrl -ir ' + hex_win +
+                 ' -b remove,maximized_vert,maximized_horz')
+
+        new_x = new_y = 30  # Move to top left monitor @ 30,30 (x, y)
+        os.popen('xdotool windowmove ' + hex_win + ' ' +
+                 str(new_x) + ' ' + str(new_y))
+
+        # Could remove target window's above setting (Always On Top):
+        #   os.popen('wmctrl -ir ' + trg_win + ' -b toggle,above')
+
+        driver.maximize_window()
+        # Making "Above" removes system title bar
+        os.popen('wmctrl -ir ' + hex_win + ' -b add,above')
+
+        # Automated Test Software message suppression (Doesn't work)
+        # https://stackoverflow.com/a/71257995/6929343
+        # Manually position mouse over "Automated Test Software" message
+        os.popen('xdotool mousemove 1890 140')
+        # Send left click (1) after 50ms delay
+        # os.popen('xdotool windowactivate ' + hex_win)  # Verify activate needed
+        os.popen('xdotool click --window ' + hex_win + ' --delay 50 1')
+        #os.popen('xdotool click 1')
+
+        """  PLAY ALL BUTTON
+<div class="play-menu spaced-row wide-screen-form style-scope ytd-playlist-header-renderer">
+          <ytd-button-renderer class="play-button style-scope ytd-playlist-header-renderer" button-renderer="" button-next=""><!--css-build:shady--><yt-button-shape><a class="yt-spec-button-shape-next yt-spec-button-shape-next--filled yt-spec-button-shape-next--overlay yt-spec-button-shape-next--size-m yt-spec-button-shape-next--icon-leading " style="" aria-label="Play all" title="" href="/watch?v=_NTzsPpyA1g&amp;list=PLthF248A1c6_jQlmYagtFXzTQlUoHRfp9&amp;pp=iAQB8AUB" rel="nofollow" target="" force-new-state="true"><div class="yt-spec-button-shape-next__icon" aria-hidden="true"><yt-icon style="width: 24px; height: 24px;"><!--css-build:shady--><!--css-build:shady--><yt-icon-shape class="style-scope yt-icon"><icon-shape class="yt-spec-icon-shape"><div style="width: 100%; height: 100%; fill: currentcolor;"><svg height="24" viewBox="0 0 24 24" width="24" focusable="false" style="pointer-events: none; display: block; width: 100%; height: 100%;"><path d="m7 4 12 8-12 8V4z"></path></svg></div></icon-shape></yt-icon-shape></yt-icon></div><div class="cbox yt-spec-button-shape-next__button-text-content"><span class="yt-core-attributed-string yt-core-attributed-string--white-space-no-wrap" role="text">Play all</span></div><yt-touch-feedback-shape style="border-radius: inherit;"><div class="yt-spec-touch-feedback-shape yt-spec-touch-feedback-shape--overlay-touch-response-inverse" aria-hidden="true"><div class="yt-spec-touch-feedback-shape__stroke" style=""></div><div class="yt-spec-touch-feedback-shape__fill" style=""></div></div></yt-touch-feedback-shape></a></yt-button-shape><tp-yt-paper-tooltip fit-to-visible-bounds="" offset="8" disable-upgrade=""></tp-yt-paper-tooltip></ytd-button-renderer>
+          <ytd-button-renderer class="shuffle-button style-scope ytd-playlist-header-renderer" button-renderer="" button-next=""><!--css-build:shady--><yt-button-shape><a class="yt-spec-button-shape-next yt-spec-button-shape-next--tonal yt-spec-button-shape-next--overlay yt-spec-button-shape-next--size-m yt-spec-button-shape-next--icon-leading " style="" aria-label="Shuffle" title="" href="/watch?v=nyZV4GyEAkQ&amp;list=PLthF248A1c6_jQlmYagtFXzTQlUoHRfp9&amp;pp=iAQB8AUB" rel="nofollow" target="" force-new-state="true"><div class="yt-spec-button-shape-next__icon" aria-hidden="true"><yt-icon style="width: 24px; height: 24px;"><!--css-build:shady--><!--css-build:shady--><yt-icon-shape class="style-scope yt-icon"><icon-shape class="yt-spec-icon-shape"><div style="width: 100%; height: 100%; fill: currentcolor;"><svg enable-background="new 0 0 24 24" height="24" viewBox="0 0 24 24" width="24" focusable="false" style="pointer-events: none; display: block; width: 100%; height: 100%;"><path d="M18.15 13.65 22 17.5l-3.85 3.85-.71-.71L20.09 18H19c-2.84 0-5.53-1.23-7.39-3.38l.76-.65C14.03 15.89 16.45 17 19 17h1.09l-2.65-2.65.71-.7zM19 7h1.09l-2.65 2.65.71.71L22 6.51l-3.85-3.85-.71.71L20.09 6H19c-3.58 0-6.86 1.95-8.57 5.09l-.73 1.34C8.16 15.25 5.21 17 2 17v1c3.58 0 6.86-1.95 8.57-5.09l.73-1.34C12.84 8.75 15.79 7 19 7zM8.59 9.98l.75-.66C7.49 7.21 4.81 6 2 6v1c2.52 0 4.92 1.09 6.59 2.98z"></path></svg></div></icon-shape></yt-icon-shape></yt-icon></div><div class="cbox yt-spec-button-shape-next__button-text-content"><span class="yt-core-attributed-string yt-core-attributed-string--white-space-no-wrap" role="text">Shuffle</span></div><yt-touch-feedback-shape style="border-radius: inherit;"><div class="yt-spec-touch-feedback-shape yt-spec-touch-feedback-shape--overlay-touch-response" aria-hidden="true"><div class="yt-spec-touch-feedback-shape__stroke" style=""></div><div class="yt-spec-touch-feedback-shape__fill" style=""></div></div></yt-touch-feedback-shape></a></yt-button-shape><tp-yt-paper-tooltip fit-to-visible-bounds="" offset="8" disable-upgrade=""></tp-yt-paper-tooltip></ytd-button-renderer>
+        </div>
+        play_all = driver.find_element(
+                   By.CSS_SELECTOR, ".play-button")
+        #if play_all and isinstance(play_all, 'WebElement'):
+        #    print("play_all FOUND")
+        #else:
+        print("play_all <type>:", type(play_all))
+        """
+
+        print(ext.t(short=True, hun=True),
+              "IPL - getPlayerStatus(driver)",
+              self.getPlayerStatus(driver))
+
+        # Find and click to "Play all" button
+        if not self.driverClick(driver, 'link_text', "Play all"):
+            print("Play all button click FAILED!")
+            os.popen('xdotool mousemove 500 790')
+            # Send left click (1) after 3 second delay
+            time.sleep(3.0)  # Wait 3 seconds
+            os.popen('xdotool click --window ' + hex_win + ' 1')
+            # os.popen('xdotool windowactivate ' + hex_win)  # Verify activate needed
+            #os.popen('xdotool click 1')  # Click on play all button
+
+        self.top.after(500)  # Wait 1/2 second to send full screen key 'f'
+
+        last_player_status = player_status = self.getPlayerStatus(driver)
+        if not player_status:
+            driver.quit()
+            title = "Smart Play FAILED"
+            text = "Play All did not work. Try again later\n\n"
+            text += "Possibly ads started playing on open.\n\n"
+            text += "Check console for messages.\n\n"
+            message.ShowInfo(self.top, title, text, icon='error',
+                             thread=self.get_thread_func)
+            return
+
+        #driver.fullscreen_window()
+        #   File "/home/rick/python/mserve.py", line 15834, in you_tree_smart_play_all
+        #     driver.fullscreen_window()
+        # AttributeError: 'WebDriver' object has no attribute 'fullscreen_window'
+
+        actions = ActionChains(driver)
+        actions.send_keys('f')  # tried to replace with driver.fullscreen_window()
+        actions.perform()
+
+        """ LOOP FOREVER:
+                1) If song changes, view it in self.you_tree (second from top)
+                2) If Ad appears
+                    2A) Send back buttons until ad disappears
+                    2B) Send forward button and check if second ad appears
+                    2C) If second ad appears loop back to 2A 
+        """
+        last_link = ""  # When link changes highlight row in self.you_tree
+        double_ad = 0  # track double ads
+        stuck_on_first_song = 0
+        ad_conflict_count = 0
+        you_tree_iid_int = None
+        while True:
+
+            # play top refresh + .after(16). With this, CPU load is 3.5% not 6%
+            if not lcs.fast_refresh(tk_after=True):
+                driver.quit()
+                return False
+
+            link = self.getCurrentLink(driver)
+            if not link:
+                continue  # Error getting link
+
+            #link, link_pre, link_list = self.getPlaylistLinks(driver)
+
+            you_tree_iid_int = None
+            if link != last_link:
+                # print("\nNew song to highlight in list:", link)
+                # https://www.youtube.com/playlist?list=
+                #   PLthF248A1c68TAKl5DBskfJ2fwr1sk9aM
+                # https://www.youtube.com/watch?v=bePCRKGUwAY&list=
+                #   PLthF248A1c68TAKl5DBskfJ2fwr1sk9aM&index=15
+                try:
+                    video_link = link.split("&list=")[0]
+                    you_tree_iid_int = self.you_tree_highlight_row(video_link)
+                except IndexError:
+                    print("Could not find '&list=' in link!")
+                    continue
+
+            if link != last_link and you_tree_iid_int:
+                self.you_tree.see(str(you_tree_iid_int))
+                song_no = str(you_tree_iid_int + 1).ljust(4)
+                last_song_index = you_tree_iid_int + 1
+                print("\n" + ext.t(short=True),
+                      "STARTING Playlist - Song #", song_no, " |", video_link)
+
+                # When YouTube begins by playing ads (once every 20 times?)
+                # Getting spam message:
+                # 18:38:54 STARTING Playlist - Song # 1
+                # 18:38:54 New player_status: 1
+
+                # Try video ID
+                #video_id = self.getVideoId(driver)
+                video_id = self.getMicroFormat(driver)
+                print(ext.t(short=True),
+                      "MicroFormat video_id:", video_id)
+
+                toolkit.tv_tag_remove_all(self.you_tree, 'play_sel')
+                toolkit.tv_tag_add(
+                    self.you_tree, str(you_tree_iid_int), 'play_sel')
+                # Keep second place. See two past, then one above
+                two_past = you_tree_iid_int + 2
+                if two_past < len(self.listYouTube):
+                    self.you_tree.see(str(two_past))
+                one_before = you_tree_iid_int - 1
+                if one_before >= 0:
+                    self.you_tree.see(str(one_before))
+                # TODO Start Duration Countdown
+
+            # Get YouTube Music Player Status
+            player_status = self.getPlayerStatus(driver)
+
+            if link != last_link and not you_tree_iid_int:
+                # First time never finds link.
+                player_status = self.getPlayerStatus(driver)
+                if player_status and player_status == 1:
+                    print("\n" + ext.t(short=True),
+                          "STARTING Playlist - Song # 1     |", video_link)
+                    video_id = self.getMicroFormat(driver)
+                    print(ext.t(short=True, hun=True),
+                          "MicroFormat video_id:", video_id)
+                    toolkit.tv_tag_add(self.you_tree, "0", 'play_sel')
+                    if stuck_on_first_song > 0:
+                        print("stuck_on_first_song:", stuck_on_first_song)
+                    # TODO Start Duration Countdown
+                else:
+                    stuck_on_first_song += 1
+
+            if not player_status:
+                player_status = last_player_status  # Use last know state
+                print(ext.t(short=True, hun=True), "player_status is NONE")
+                pass
+
+            if player_status != last_player_status:
+                #print(ext.t(short=True, hun=True),
+                #      "New player_status:", player_status)
+                pass
+
+            ''' Update button bar with progress display and skip commercials '''
+            #self.updateYouTubeProgress(driver, link, last_link,
+            #                           player_status, last_player_status)
+
+            last_link = link  # Save for next loop check
+            last_player_status = player_status
+
+            # Continue beyond this point when YouTube Ad is running
+            # driver.find_element(By.CSS_SELECTOR, ".ytp-ad-duration-remaining")
+            if not self.isYouTubeAdRunning(driver):
+                if player_status == -1:
+                    ad_conflict_count += 1
+                continue  # Skip while loop below
+
+            if ad_conflict_count > 0:
+                print("player_status == -1 but No Ad Running",
+                      ad_conflict_count)
+                ad_conflict_count = 0
+
+            #if True is True:
+            #    continue  # Old code to skip is below
+
+            # Ad is running
+            """  TODO: At start, quickly ramp down volume over 1/10 second
+                       At end, Slowly ramp up volume over 1/2 second
+                       However, setup mute mode too, so no ramping
+                       Need to capture web browsers sink and then use: 
+                            pav.fade(driver_sink, start, end, time) """
+            count = 0
+            # driver.find_element(By.CSS_SELECTOR, ".ytp-ad-duration-remaining")
+
+            print("\n" + ext.t(short=True, hun=True),
+                  "# 0. Player Status:", self.getPlayerStatus(driver))
+
+            while self.isYouTubeAdRunning(driver):
+                count += 1
+                print(ext.t(short=True, hun=True),
+                      "BACK LOOP Ad still visible:", count, end="\r")
+                # Back button goes to previous song played
+                driver.back()
+                if not lcs.fast_refresh():
+                    driver.quit()
+                    return False
+
+            print("\n" + ext.t(short=True, hun=True),
+                  "driver.back() visible loops:", str(count).ljust(2),
+                  " | Video Index:", self.getCurrentIndex(driver))  # count is always 1
+            print(ext.t(short=True, hun=True),
+                  "# 1. Player Status:", self.getPlayerStatus(driver))
+            print(ext.t(short=True, hun=True),
+                  "# 1. Video Index before FIRST forward:",
+                  self.getCurrentIndex(driver))
+
+            driver.forward()  # Send forward page event
+
+            # TODO: create function that calls lcs.fast_refresh in loop
+            #       until 400ms expires
+            self.top.after(400)  # 350ms was too short for single ad
+            print(ext.t(short=True, hun=True),
+                  "# 2. Player Status after 400ms:", self.getPlayerStatus(driver))
+            print(ext.t(short=True, hun=True),
+                  "# 2. Video Index:", self.getCurrentIndex(driver))
+            video_id = self.getMicroFormat(driver)
+            print(ext.t(short=True, hun=True),
+                  "# 2. getMicroFormat() video_id:", video_id)
+            if self.isYouTubeAdRunning(driver):
+                # Probably within second ad, or delay sometimes too short
+                double_ad += 1
+                # With this test, don't know if ad #1 or #2 is visible...
+                driver.forward()
+                print(ext.t(short=True, hun=True), "THREE FORWARDS",
+                      "Video Index:", self.getCurrentIndex(driver))
+                print(ext.t(short=True, hun=True),
+                      "# 3A. Player Status: BEFORE 2nd forward wait",
+                      self.getPlayerStatus(driver))
+                print(ext.t(short=True, hun=True),
+                      "# 3A. Video Index:", self.getCurrentIndex(driver))
+                video_id = self.getMicroFormat(driver)
+                print(ext.t(short=True, hun=True),
+                      "# 3A. getMicroFormat() video_id:", video_id)
+
+                # TODO: create function that calls lcs.fast_refresh in loop
+                self.top.after(350)  # 300 too short for triple ad
+                print(ext.t(short=True, hun=True),
+                      "# 3B. Player Status after 350ms:",
+                      self.getPlayerStatus(driver))
+                print(ext.t(short=True, hun=True),
+                      "# 3B. URL Index:", self.getCurrentIndex(driver))
+                video_id = self.getMicroFormat(driver)
+                print(ext.t(short=True, hun=True),
+                      "# 3B. getMicroFormat() video_id:", video_id)
+            else:
+                print(ext.t(short=True, hun=True), "TWO FORWARDS",
+                      "Video Index:", self.getCurrentIndex(driver))
+                print(ext.t(short=True, hun=True),
+                      "# 3. Player Status:", self.getPlayerStatus(driver))
+                print(ext.t(short=True, hun=True),
+                      "# 3. Video Index:", self.getCurrentIndex(driver))
+                video_id = self.getMicroFormat(driver)
+                print(ext.t(short=True, hun=True),
+                      "# 3. getMicroFormat() video_id:", video_id)
+
+            # Could be within second ad but extra forward needed for next
+            driver.forward()  # Extra forward needed for next song
+            self.timeForwardYouTube = time.time()
+            print(ext.t(short=True, hun=True),
+                  "# 4. Player Status:", self.getPlayerStatus(driver))
+            print(ext.t(short=True, hun=True),
+                  "# 4. Video Index:", self.getCurrentIndex(driver))
+            video_id = self.getMicroFormat(driver)
+            print(ext.t(short=True, hun=True),
+                  "# 4. getMicroFormat() video_id:", video_id)
+
+    def openSelenium(self):
+        """ Create Selenium browser instance
+            Create Selenium driver instance
+            Get Window ID for driver instance
+
+        :return driver, window: Selenium driver and WM window tuple
+        """
+
+        driver = window = None
+
         web = webbrowser.get()
         #print("browser name:", web.name)  # xdg-open
-        mon = monitor.Monitors()  # Monitors class list of dicts
-        # Start windows
-        start_wins = mon.get_all_windows()
+
+        try:
+            mon = monitor.Monitors()  # Monitors class list of dicts
+            # Start windows
+            end_wins = start_wins = mon.get_all_windows()
+        except Exception as err:
+            print("openSelenium() Exception:", err)
+            return driver, window
+
         if web.name.startswith("xdg-open"):
             xdg_browser = os.popen("xdg-settings get default-web-browser"). \
                 read().strip()
@@ -15810,506 +16046,51 @@ MOST IMPORTANT is buried within classlink above:
 
                 #print("driver = webdriver.Chrome()")
 
-        time.sleep(1.0)  # TODO: Loop for 30 seconds until list changes
-        end_wins = mon.get_all_windows()
-
-        driver.get(self.act_description)
+        start = time.time()
+        while len(end_wins) == len(start_wins):
+            end_wins = mon.get_all_windows()
+            if time.time() - start > 5.0:
+                title = "Could not start Browser"
+                text = "Browser would not start.\n"
+                text += "Check console for error\n"
+                text += "messages and try again."
+                message.ShowInfo(self.top, title, text, icon='error',
+                                 thread=self.get_thread_func)
+                return driver, window
 
         if not len(start_wins) + 1 == len(end_wins):
-            print("Could not find new window")
-            print("start/end window count:", len(start_wins), len(end_wins))
-            return
+            title = "Could not start Browser"
+            text = "Old Window count:" + str(len(start_wins)) + "\n\n"
+            text += "New Window count:" + str(len(end_wins)) + "\n\n"
+            text += "There should only be one new window.\n"
+            text += "Check console for error messages.\n"
+            message.ShowInfo(self.top, title, text, icon='error',
+                             thread=self.get_thread_func)
+            return driver, window
 
         win_list = list(set(end_wins) - set(start_wins))
         window = win_list[0]
-        # print("\n window list:", window)
-        # [Window(number=130028740L, name='Mozilla Firefox', x=1920, y=24,
-        #         width=1728, height=978)]
 
-        str_win = str(window.number)  # should remove L in python 2.7.5+
-        int_win = int(str_win)  # https://stackoverflow.com/questions
-        hex_win = hex(int_win)  # /5917203/python-trailing-l-problem
-        #print("\n str_win:", str_win, "int_win:", int_win, "hex_win:", hex_win)
-
-        # If last usage was full screen, reverse it
-        net_states = os.popen('xprop -id ' + str_win).read().strip()
-        # print("net_states:", net_states)
-        if "_NET_WM_STATE_FULLSCREEN" in net_states:
-            os.popen('wmctrl -ir ' + hex_win +
-                     ' -b toggle,fullscreen')  # DOES NOT WORK !!!
-        # Remove maximized, don't have to test first
-        os.popen('wmctrl -ir ' + hex_win +
-                 ' -b remove,maximized_vert,maximized_horz')
-        # os.popen('wmctrl - r: ACTIVE: -e 0, 300, 168, 740, 470')
-
-        new_x = new_y = 30  # Move to top left monitor @ 30,30 (x, y)
-        os.popen('xdotool windowmove ' + hex_win + ' ' +
-                 str(new_x) + ' ' + str(new_y))
-        # time.sleep(0.5)  # After window move, need a little time
-        # message.ShowInfo(self.top, title, text, icon='warning',
-        #                 thread=self.get_thread_func)
-
-        # Could remove target window's above setting (Always On Top):
-        #   os.popen('wmctrl -ir ' + trg_win + ' -b toggle,above')
-
-        # Make full screen. Have to reverse before closing because setting
-        # remembered by firefox for next window open
-
-        driver.maximize_window()
-        #os.popen('wmctrl -ir ' + hex_win + ' -b add,maximized_vert')
-        #os.popen('wmctrl -ir ' + hex_win + ' -b add,maximized_horz')
-
-        # Making "Above" removes system title bar
-        os.popen('wmctrl -ir ' + hex_win + ' -b add,above')
-
-        # Automated Test Software message suppression (Doesn't work)
-        # https://stackoverflow.com/a/71257995/6929343
-        # Position mouse over "Automated Test Software" message
-        os.popen('xdotool mousemove 1890 140')
-        # Send left click (1) after 50ms delay
-        os.popen('xdotool windowactivate ' + hex_win)
-        os.popen('xdotool click --window ' + hex_win + ' --delay 50 1')
-        #os.popen('xdotool click 1')
-
-        """  PLAY ALL BUTTON
-<div class="play-menu spaced-row wide-screen-form style-scope ytd-playlist-header-renderer">
-          <ytd-button-renderer class="play-button style-scope ytd-playlist-header-renderer" button-renderer="" button-next=""><!--css-build:shady--><yt-button-shape><a class="yt-spec-button-shape-next yt-spec-button-shape-next--filled yt-spec-button-shape-next--overlay yt-spec-button-shape-next--size-m yt-spec-button-shape-next--icon-leading " style="" aria-label="Play all" title="" href="/watch?v=_NTzsPpyA1g&amp;list=PLthF248A1c6_jQlmYagtFXzTQlUoHRfp9&amp;pp=iAQB8AUB" rel="nofollow" target="" force-new-state="true"><div class="yt-spec-button-shape-next__icon" aria-hidden="true"><yt-icon style="width: 24px; height: 24px;"><!--css-build:shady--><!--css-build:shady--><yt-icon-shape class="style-scope yt-icon"><icon-shape class="yt-spec-icon-shape"><div style="width: 100%; height: 100%; fill: currentcolor;"><svg height="24" viewBox="0 0 24 24" width="24" focusable="false" style="pointer-events: none; display: block; width: 100%; height: 100%;"><path d="m7 4 12 8-12 8V4z"></path></svg></div></icon-shape></yt-icon-shape></yt-icon></div><div class="cbox yt-spec-button-shape-next__button-text-content"><span class="yt-core-attributed-string yt-core-attributed-string--white-space-no-wrap" role="text">Play all</span></div><yt-touch-feedback-shape style="border-radius: inherit;"><div class="yt-spec-touch-feedback-shape yt-spec-touch-feedback-shape--overlay-touch-response-inverse" aria-hidden="true"><div class="yt-spec-touch-feedback-shape__stroke" style=""></div><div class="yt-spec-touch-feedback-shape__fill" style=""></div></div></yt-touch-feedback-shape></a></yt-button-shape><tp-yt-paper-tooltip fit-to-visible-bounds="" offset="8" disable-upgrade=""></tp-yt-paper-tooltip></ytd-button-renderer>
-          <ytd-button-renderer class="shuffle-button style-scope ytd-playlist-header-renderer" button-renderer="" button-next=""><!--css-build:shady--><yt-button-shape><a class="yt-spec-button-shape-next yt-spec-button-shape-next--tonal yt-spec-button-shape-next--overlay yt-spec-button-shape-next--size-m yt-spec-button-shape-next--icon-leading " style="" aria-label="Shuffle" title="" href="/watch?v=nyZV4GyEAkQ&amp;list=PLthF248A1c6_jQlmYagtFXzTQlUoHRfp9&amp;pp=iAQB8AUB" rel="nofollow" target="" force-new-state="true"><div class="yt-spec-button-shape-next__icon" aria-hidden="true"><yt-icon style="width: 24px; height: 24px;"><!--css-build:shady--><!--css-build:shady--><yt-icon-shape class="style-scope yt-icon"><icon-shape class="yt-spec-icon-shape"><div style="width: 100%; height: 100%; fill: currentcolor;"><svg enable-background="new 0 0 24 24" height="24" viewBox="0 0 24 24" width="24" focusable="false" style="pointer-events: none; display: block; width: 100%; height: 100%;"><path d="M18.15 13.65 22 17.5l-3.85 3.85-.71-.71L20.09 18H19c-2.84 0-5.53-1.23-7.39-3.38l.76-.65C14.03 15.89 16.45 17 19 17h1.09l-2.65-2.65.71-.7zM19 7h1.09l-2.65 2.65.71.71L22 6.51l-3.85-3.85-.71.71L20.09 6H19c-3.58 0-6.86 1.95-8.57 5.09l-.73 1.34C8.16 15.25 5.21 17 2 17v1c3.58 0 6.86-1.95 8.57-5.09l.73-1.34C12.84 8.75 15.79 7 19 7zM8.59 9.98l.75-.66C7.49 7.21 4.81 6 2 6v1c2.52 0 4.92 1.09 6.59 2.98z"></path></svg></div></icon-shape></yt-icon-shape></yt-icon></div><div class="cbox yt-spec-button-shape-next__button-text-content"><span class="yt-core-attributed-string yt-core-attributed-string--white-space-no-wrap" role="text">Shuffle</span></div><yt-touch-feedback-shape style="border-radius: inherit;"><div class="yt-spec-touch-feedback-shape yt-spec-touch-feedback-shape--overlay-touch-response" aria-hidden="true"><div class="yt-spec-touch-feedback-shape__stroke" style=""></div><div class="yt-spec-touch-feedback-shape__fill" style=""></div></div></yt-touch-feedback-shape></a></yt-button-shape><tp-yt-paper-tooltip fit-to-visible-bounds="" offset="8" disable-upgrade=""></tp-yt-paper-tooltip></ytd-button-renderer>
-        </div>
-        play_all = driver.find_element(
-                   By.CSS_SELECTOR, ".play-button")
-        #if play_all and isinstance(play_all, 'WebElement'):
-        #    print("play_all FOUND")
-        #else:
-        print("play_all <type>:", type(play_all))
-        """
-
-        print(ext.t(short=True, hun=True),
-              "IPL - getPlayerStatus(driver)",
-              self.getPlayerStatus(driver))
-
-        last_player_status = player_status = self.getPlayerStatus(driver) 
-        # Find and click to "Play all" button
-        if not self.driverClick(driver, 'link_text', "Play all"):
-            print("Play all button click FAILED!")
-            os.popen('xdotool mousemove 500 790')
-            # Send left click (1) after 3 second delay
-            time.sleep(3.0)  # Wait 3 seconds
-            #os.popen('xdotool click --window ' + hex_win + ' 1')
-            os.popen('xdotool click 1')  # Click on play all button
-
-        # TODO:
-        self.top.after(500)  # Wait 1/2 second to send full screen key 'f'
-
-        #driver.fullscreen_window()
-        #   File "/home/rick/python/mserve.py", line 15834, in you_tree_smart_play_all
-        #     driver.fullscreen_window()
-        # AttributeError: 'WebDriver' object has no attribute 'fullscreen_window'
-
-        actions = ActionChains(driver)
-        actions.send_keys('f')  # tried to replace with driver.fullscreen_window()
-        actions.perform()
-
-        """ LOOP FOREVER:
-                1) If song changes, view it in self.you_tree (second from top)
-                2) If Ad appears
-                    2A) Send back buttons until ad disappears
-                    2B) Send forward button and check if second ad appears
-                    2C) If second ad appears loop back to 2A 
-        """
-        last_link = ""  # When link changes highlight row in self.you_tree
-        currIndexYouTube = 0  # Starts at 1 for first song
-        LastIndexYouTube = 0  # Starts at 1 for first song
-        nextIndexYouTubeMissingCount = 0
-
-        # last_player_status = 0  # Initialized above after "Play All" picked
-        double_ad = 0  # track double ads
-        duration = 0.0
-        last_time = time.time()
-        while True:
-
-            # play top refresh + .after(16). With this, CPU load is 3.5% not 6%
-            if not lcs.fast_refresh(tk_after=True):
-                driver.quit()
-                return False
-
-            link = self.getCurrentLink(driver)
-            if not link:
-                continue  # Error getting link
-
-            result = None
-            if link != last_link:
-                # print("\nNew song to highlight in list:", link)
-                try:
-                    link_pre = link.split("&list=")[0]
-                    #print("massaged link:", link_pre)
-                    result = self.you_tree_highlight_row(link_pre)
-                    #lastIndexYouTube = currIndexYouTube
-                    #currIndexYouTube = int(link.split("&index=")[1])
-                    nextIndexYouTubeMissingCount = 0
-                    #print("currIndexYouTube:", currIndexYouTube)
-                except IndexError:
-                    print("Could not find '&list=' in link!")
-                    continue
-
-            if link != last_link and result:
-                self.you_tree.see(str(result))
-                song_no = str(result + 1).ljust(4)
-                last_song_index = result + 1
-                print("\n" + ext.t(short=True),
-                      "STARTING Playlist - Song #", song_no, " |", link_pre)
-                toolkit.tv_tag_remove_all(self.you_tree, 'play_sel')
-                toolkit.tv_tag_add(self.you_tree, str(result), 'play_sel')
-                # Keep second place. See two past, then one above
-                two_past = result + 2
-                if two_past < len(self.listYouTube):
-                    self.you_tree.see(str(two_past))
-                one_before = result - 1
-                if one_before >= 0:
-                    self.you_tree.see(str(one_before))
-                # TODO Start Duration Countdown
-            if link != last_link and not result:
-                # First time never finds link.
-                print("\n" + ext.t(short=True),
-                      "STARTING Playlist - Song # 1     |", link_pre)
-                toolkit.tv_tag_add(self.you_tree, "0", 'play_sel')
-
-            player_status = self.getPlayerStatus(driver)
-            if not player_status:
-                player_status = last_player_status
-                print(ext.t(short=True, hun=True), "player_status is NONE")
-
-            if player_status != last_player_status:
-                print(ext.t(short=True), "New player_status:", player_status)
-
-            ''' Update button bar with progress display and skip commercials '''
-            self.updateYouTubeProgress(driver, link, last_link,
-                                       player_status, last_player_status)
-
-            #       P A T C H
-
-            if self.isYouTubeAdRunning(driver):
-                currIndex = self.getCurrentIndex(driver)
-                if not currIndex:
-                    continue  # Error getting link's Index
-                if currIndex != last_song_index:
-                    nextIndexYouTubeMissingCount += 1
-                    print("ad playing at end of song. Must loop and wait",
-                          nextIndexYouTubeMissingCount, end="\r")
-                    if nextIndexYouTubeMissingCount < 500:
-                        continue  # Loop for song index to change
-                last_player_status = player_status
-                #continue
-
-            last_link = link  # Save for next loop check
-            last_video_text = None  # Save for next loop check
-            last_player_status = player_status
-
-            """
-            YouTube Auto Pause feature
-                00:26:04 STARTING Playlist - Song # 10
-                00:26:04 New player_status: 3
-                00:26:05 New player_status: 1
-                00:26:05 New player_status: 2
-            YouTube message: "Video paused. Continue Playing?"
-            Click "Yes" and YouTube splashes: "Thank you for confirming"
-                00:45:15 New player_status: 3
-                00:45:15 New player_status: 1
-
-            Song #11 was supposed to start but it stayed on Song #10
-                00:50:01 STARTING Playlist - Song # 11    | htt=lZf5Zp9Cl90
-                00:50:02 New player_status: 5 <type 'int'>
-                00:50:02 driver.back() visible loops: 1   | htt=lZf5Zp9Cl90
-                00:50:02.469428 # 1. getPlayerStatus(driver) 1
-                00:50:03.129916 # 2. getPlayerStatus(driver) -1
-                00:50:03 3x driver.forward() Total 750ms  | htt=lZf5Zp9Cl90
-                00:50:03.552014 # 3. getPlayerStatus(driver) -1
-                00:50:03.604563 # 4. getPlayerStatus(driver) -1
-                00:50:03 New player_status: -1 
-                00:50:03 driver.back() visible loops: 1   | htt=lZf5Zp9Cl90
-                00:50:03.970142 # 1. getPlayerStatus(driver) 3
-                00:50:04.591082 # 2. getPlayerStatus(driver) 1
-                00:50:04 2x driver.forward() Total 450ms  | htt=lZf5Zp9Cl90
-                00:50:04.620827 # 4. getPlayerStatus(driver) 1
-                00:50:04 New player_status: 1 
-
-            Second time # 11 skipped
-                00:54:51 New player_status: -1
-                00:54:52 driver.back() visible loops: 1   | htt=lZf5Zp9Cl90
-                00:54:52.326989 # 1. getPlayerStatus(driver) 3
-                00:54:53.017465 # 2. getPlayerStatus(driver) -1
-                00:54:53 3x driver.forward() Total 750ms  | htt=lZf5Zp9Cl90
-                00:54:53.390831 # 3. getPlayerStatus(driver) -1
-                00:54:53.402633 # 4. getPlayerStatus(driver) -1
-                00:54:53 driver.back() visible loops: 1   | htt=lZf5Zp9Cl90
-                00:54:53.896423 # 1. getPlayerStatus(driver) 1
-                00:54:54.590004 # 2. getPlayerStatus(driver) 1
-                00:54:54 2x driver.forward() Total 450ms  | htt=lZf5Zp9Cl90
-                00:54:54.671328 # 4. getPlayerStatus(driver) 1
-                00:54:54 New player_status: 1
-
-            # 11 finally starts playing
-                00:59:45 New player_status: 1
-
-            # 12 starts normally            
-                01:03:50 STARTING Playlist - Song # 12    | EqQuihD0hoI
-                01:03:50 New player_status: -1
-
-            """
-
-            # Has YouTube popped up an ad?
-            if self.isYouTubeAdRunning(driver):
-                """  TODO: At start, quickly ramp down volume over 1/10 second
-                           At end, Slowly ramp up volume over 1/2 second
-                           However, setup mute mode too, so no ramping
-                           Need to capture web browsers sink and then use: 
-                                pav.fade(driver_sink, start, end, time) """
-                count = 0
-                while self.isYouTubeAdRunning(driver):
-                    count += 1
-                    print("BACK LOOP Ad still visible:", count, end="\r")
-                    # Back button goes to previous song played
-                    driver.back()
-                    if not lcs.fast_refresh():
-                        driver.quit()
-                        return False
-
-                print(ext.t(short=True), "driver.back() visible loops:",
-                      str(count).ljust(2), " |", link_pre)  # Always 1
-                print(ext.t(short=True, hun=True),
-                      "# 1. getPlayerStatus(driver)",
-                      self.getPlayerStatus(driver))
-                print(ext.t(short=True, hun=True),
-                      "# 1. self.getCurrentIndex(driver)",
-                      self.getCurrentIndex(driver))
-
-                driver.forward()  # Send forward page event
-
-                # TODO: create function that calls lcs.fast_refresh in loop
-                #       until 400ms expires
-                self.top.after(400)  # 350ms was too short for single ad
-                print(ext.t(short=True, hun=True),
-                      "# 2. getPlayerStatus(driver)",
-                      self.getPlayerStatus(driver))
-                print(ext.t(short=True, hun=True),
-                      "# 2. self.getCurrentIndex(driver)",
-                      self.getCurrentIndex(driver))
-                if self.isYouTubeAdRunning(driver):
-                    # Probably within second ad, or delay sometimes too short
-                    double_ad += 1
-                    # With this test, don't know if ad #1 or #2 is visible...
-                    print(ext.t(short=True), "3x driver.forward() Total 750ms",
-                          " |", link_pre)
-                    print(ext.t(short=True, hun=True),
-                          "# 3A. getPlayerStatus(driver) BEFORE forward()",
-                          self.getPlayerStatus(driver))
-                    print(ext.t(short=True, hun=True),
-                          "# 3A. self.getCurrentIndex(driver)",
-                          self.getCurrentIndex(driver))
-                    driver.forward()
-                    # TODO: create function that calls lcs.fast_refresh in loop
-                    self.top.after(350)  # 300 too short for triple ad
-                    print(ext.t(short=True, hun=True),
-                          "# 3B. getPlayerStatus(driver) AFTER forward()",
-                          self.getPlayerStatus(driver))
-                    print(ext.t(short=True, hun=True),
-                          "# 3B. self.getCurrentIndex(driver)",
-                          self.getCurrentIndex(driver))
-                else:
-                    print(ext.t(short=True), "2x driver.forward() Total 450ms",
-                          " |", link_pre)
-                    print(ext.t(short=True, hun=True),
-                          "# 3. getPlayerStatus(driver)",
-                          self.getPlayerStatus(driver))
-                    print(ext.t(short=True, hun=True),
-                          "# 3. self.getCurrentIndex(driver)",
-                          self.getCurrentIndex(driver))
-
-                # Could be within second ad but extra forward needed for next
-                driver.forward()  # Extra forward needed for next song
-                print(ext.t(short=True, hun=True),
-                      "# 4. getPlayerStatus(driver)",
-                      self.getPlayerStatus(driver))
-                print(ext.t(short=True, hun=True),
-                      "# 4. self.getCurrentIndex(driver)",
-                      self.getCurrentIndex(driver))
-
-                """ TWICE Stuck on Song # 8
-
-                    17:54:20 STARTING Playlist - Song # 6      |  cFqVfbRdVUk
-                    17:54:20 driver.back() visible loops:  1   |  cFqVfbRdVUk
-                    17:54:21 3x driver.forward() Total 700ms   |  cFqVfbRdVUk
-                    17:54:22 driver.back() visible loops:  1   |  cFqVfbRdVUk
-                    17:54:23 2x driver.forward() Total 400ms   |  cFqVfbRdVUk
-                    
-                    17:57:12 STARTING Playlist - Song # 7      |  rg7qgde1g-4
-                    
-                    18:01:04 STARTING Playlist - Song # 8      |  VJm7IPrBmLY
-                    18:01:05 driver.back() visible loops:  1   |  VJm7IPrBmLY
-                    18:01:05 3x driver.forward() Total 700ms   |  VJm7IPrBmLY
-                    18:01:06 driver.back() visible loops:  1   |  VJm7IPrBmLY
-                    18:01:07 2x driver.forward() Total 400ms   |  VJm7IPrBmLY
-
-                    18:05:00 driver.back() visible loops:  1   |  VJm7IPrBmLY
-                    18:05:00 3x driver.forward() Total 700ms   |  VJm7IPrBmLY
-                    18:05:01 driver.back() visible loops:  1   |  VJm7IPrBmLY
-                    18:05:02 2x driver.forward() Total 400ms   |  VJm7IPrBmLY
-
-                    18:08:54 driver.back() visible loops:  1   |  VJm7IPrBmLY
-                    18:08:55 3x driver.forward() Total 700ms   |  VJm7IPrBmLY
-                    18:08:56 driver.back() visible loops:  1   |  VJm7IPrBmLY
-                    18:08:56 2x driver.forward() Total 400ms   |  VJm7IPrBmLY
-
-                    18:16:34 STARTING Playlist - Song # 9      |  UprBDDZ8WZg
-                    18:16:35 driver.back() visible loops:  1   |  UprBDDZ8WZg
-                    18:16:36 3x driver.forward() Total 700ms   |  UprBDDZ8WZg
-                    18:16:37 driver.back() visible loops:  1   |  UprBDDZ8WZg
-                    18:16:38 2x driver.forward() Total 400ms   |  UprBDDZ8WZg
-                    
-                    18:20:36 STARTING Playlist - Song # 10     |  Ly7uj0JwgKg
-                    18:20:38 driver.back() visible loops:  1   |  Ly7uj0JwgKg
-                    18:20:39 2x driver.forward() Total 400ms   |  Ly7uj0JwgKg
-
-                """
+        return driver, window
 
 
-                #  O L D   M E T H O D O L O G Y   - -   S K I P P E D
-                if True is True:
-                    continue  # Old xdotool methods below to be ignored.
-
-
-                # Save current window to restore later.
-                win_src = os.popen('xdotool getwindowfocus').read().strip()
-                str_src = str(win_src)  # should remove L in python 2.7.5+
-                int_src = int(str_src)  # https://stackoverflow.com/questions
-                hex_src = hex(int_src)  # /5917203/python-trailing-l-problem
-
-                # Sometimes window must be activated to accept input
-                res = os.popen('xdotool windowactivate ' + hex_win).read().strip()
-                if len(res) > 2:
-                    print("'xdotool windowactivate ' + hex_win:", hex_win)
-                # Short delay 10, 50 it is replaying same song
-                # Long delay 50, 300 replayed same song once out of 25 songs
-                # Long delay 50, 400 replayed same song once out of 30 songs?
-                # 100, 400, is restarting same commercial, then same song?
-                # Above 10 times on: Jessie Reyez - Figures (Official Video) Duration: 3:58
-                # 10, 500, same as above. Did something change?
-                # Only repeated song once though. Next time after commercial repeat
-                #   went to next song https://www.youtube.com/watch?v=yiMtAmH0_vU
-
-
-                # Send Alt-L left-arrow then Alt-L right-arrow
-                os.popen('xdotool key --delay 100 Alt_L+Left')
-                # Add delay because restarting at first video
-                os.popen('xdotool key --delay 500 Alt_L+Right')
-                link = driver.current_url
-                #print("\nLAST link:", last_link)
-                #print("THIS link:", link)
-                # Need extra Right arrow when same song repeats
-                # The new video url is in address bar but last video starts
-                # Right arrow forces the new video address to load
-                os.popen('xdotool key --delay 400 Alt_L+Right')
-                #os.popen('xdotool key --delay 50 Alt_L+Right')
-                #if self.top:
-                #    self.top.after(200)  # little sleep for good measure?
-
-                res = os.popen('xdotool windowactivate ' + hex_src).read().strip()
-                if len(res) > 2:
-                    print("'xdotool windowactivate ' + hex_src:", hex_src)
-
-                """
-                New theory it is only first jumped song that replays commercial
-                and song. Clicking next, after replay starts and everything works.
-                
-                Next broken event happened when ad to try with no thanks button
-                and Try button appeared. What for this no thanks and click
-                
-                Worst case scenario when song repeats highlight window and click
-                next button.
-                
-                When LibreOffice Writer is open it seems like same song always
-                replays? Start test Sep 28/23 at 2:50pm when it's not running.
-                
-                Also when Firefox open with Weather website repeated song at
-                3:05pm.
-                
-                Rebooting now for new testing... 3:10pm: 
-                normal startup, full screen worked.
-                Jump to song # 44 worked perfectly.
-                Next song replayed #44 as unfortunately expected.
-                Automatic jump from #45 went to #47 instead of #46?
-                #47 doubled commercial and replayed #47, manual advance
-                Suspend system.
-                Change delay 50, 200 
-                          to 30, 300
-                Jump to #47 (didn't hear commercial) and it replayed #47
-                Manual advance to #48
-                """
-
-                # Revert to 50, 300 but resend window ID just in case...
-                # Below used to work before windowactivate implemented now broken?
-                # Send Alt-L left-arrow then Alt-L right-arrow
-                #os.popen('xdotool key --window ' + hex_win +
-                #         ' --delay 50 Alt_L+Left')
-                # Add delay because restarting at first video
-                #os.popen('xdotool key  --window ' + hex_win +
-                #         '--delay 300 Alt_L+Right')
-                """
-                Repeat commercial and song analysis:
-                
-                When first selecting song #34 (ndx 33) skip commercial works
-                pyCharm is running
-                LibreOffice Writer is running
-                Gnome has been giving grey windows on save as dialogs for 1 min
-                CPU utilization is 50% and temp is 90 degrees
-
-                Address bar shows Song #11 but it's playing song #10 over
-                When next song comes up it does finally play song #11
-
-                For song #16 address bar showed #17 but after looping
-                #16 something like 4 times it never advanced to #17.
-
-                """
-
-        """  CONVOLUTED and REPEATED TOO OFTEN
-        thread = self.get_thread_func()  # repeated 3 times....
-        if thread:
-            thread()
-        else:
-            driver.quit()
-            return False  # mserve closing down...
-        if not self.top:
-            driver.quit()
-            return  # playlist closed
-        continue
-        """
-        #except WebDriverException:
-        #    return False
-
-        """
-        EXPLORE: https://stackoverflow.com/a/22419815/6929343
-            from selenium.webdriver.firefox import webdriver
-            
-            WIKI_PAGE = 'How_I_Met_Your_Mother'
-            
-            driver = webdriver.WebDriver()
-            driver.get('https://en.wikipedia.org/wiki')
-            
-            script = 'history.pushState({}, "", "%s")' % WIKI_PAGE
-            driver.execute_script(script)
-            
-            driver.get('https://en.wikipedia.org/wiki')
-            
-            ----------
-            Here, wikipedia main page is opened in Firefox browser,
-            then a history item is inserted, then the main page is 
-            opened again. If you'll cl#ick Back in the browser window, 
-            you'll get "How I met your mother" wikipedia page.
-        """
 
     def updateYouTubeProgress(self, driver, link, last_link,
                               player_status, last_player_status):
         """ Update progress display in button bar and skip commercials
+
+        self.nameYouTube = None  # = WEB_PLAY_DIR + os.sep + self.act_name + ".csv"
+        self.linkYouTube = None  # YouTube links retrieved from .csv file
+        self.listYouTube = None  # [dictYouTube, dictYouTube, ... dictYouTube]
+        self.dictYouTube = None  # { name: link: duration: image: }
+        self.validYouTube = None  # Does nameYouTube exist?
+        self.photosYouTube = None  # Photos saved from garbage collector (GIC)
+        self.progressYouTube = None  # Progress (Duration) within playing song
+        self.durationYouTube = None  # Progress (Duration) within playing song
+        self.timeLastYouTube = None  # Last System time playing video (33ms)
+        self.timePlayYouTube = None  # Current System time playing video (33ms)
+        self.timeForwardYouTube = 0.0  # System time driver.forward()
+
 
         :param driver: Selenium WebDriver Instance
         :param link: address bar URL
@@ -16318,8 +16099,6 @@ MOST IMPORTANT is buried within classlink above:
         :param last_player_status: Last Music Player state in loop
         :return: False mserve is closing, else True
         """
-        if True is True:
-            return True
 
         if link != last_link:
             print(ext.t(short=True), "updateYouTubeProgress(link)              :",
@@ -16340,44 +16119,27 @@ MOST IMPORTANT is buried within classlink above:
 
         if player_status not in [-1, 1, 2, 3, 5]:
             print("Unknown player_status: ", player_status)
+            return
 
         """
-        self.nameYouTube = None  # = WEB_PLAY_DIR + os.sep + self.act_name + ".csv"
-        self.linkYouTube = None  # YouTube links retrieved from .csv file
-        self.listYouTube = None  # [dictYouTube, dictYouTube, ... dictYouTube]
-        self.dictYouTube = None  # { name: link: duration: image: }
-        self.validYouTube = None  # Does nameYouTube exist?
-        self.photosYouTube = None  # Photos saved from garbage collector (GIC)
-        self.progressYouTube = None  # Progress (Duration) within playing song
-        self.durationYouTube = None  # Progress (Duration) within playing song
-        self.timeLastYouTube = None  # Last System time playing video (33ms)
-        self.timePlayYouTube = None  # Current System time playing video (33ms)
-        
-        what is "video-title"
-        
-        Click pause then play:
-        
-            14:54:09 updateYouTubeProgress(player_status)     : 2
-            14:54:09 updateYouTubeProgress(last_player_status): 1
 
-            14:54:10 updateYouTubeProgress(player_status)     : 3
-            14:54:10 updateYouTubeProgress(last_player_status): 2
-
-            14:54:10 updateYouTubeProgress(player_status)     : 1
-            14:54:10 updateYouTubeProgress(last_player_status): 3
-        
         """
 
+        # Has YouTube popped up an ad?
         if not self.isYouTubeAdRunning(driver):
             return True  # Nothing to do
 
-        video_title = self.getVideoTitle(driver)
-        if video_title:
-            video_text = video_title.text
-            print("video-title.text:", video_text)
-        else:
-            print("ERROR video-title NOT FOUND!")
+        """  TODO: Calculate previous index.
+                   If previous index == current index, wait until advance.
+                   Send back and loop until previous index appears and Player
+                    Status changes to 5 or 2
+                   Send forward and wait until status changes to -1 or 2
+                   If status == -1 another ad started so loop back
+                   If status == 1 reset duration to 0 and return
 
+            EVERY 10 songs the new song is in address bar but previous song
+                is playing. To fix, send driver.refresh()  
+        """
 
         while True:  # Ad was visible. Loop until status is song playing (1)
             """  TODO: At start, quickly ramp down volume over 1/10 second
@@ -16385,6 +16147,12 @@ MOST IMPORTANT is buried within classlink above:
                        However, setup mute mode too, so no ramping
                        Need to capture web browsers sink and then use: 
                             pav.fade(driver_sink, start, end, time) """
+
+            # play top refresh + .after(16). With this, CPU load is 3.5% not 6%
+            if not lcs.fast_refresh(tk_after=True):
+                driver.quit()
+                return False
+
             if True is True:
                 # Force exit
                 print(ext.t(short=True, hun=True),
@@ -16392,54 +16160,101 @@ MOST IMPORTANT is buried within classlink above:
                       self.getPlayerStatus(driver))
                 return True
 
-            if not lcs.fast_refresh():
-                driver.quit()
-                return False
-
+            # Ad is running
+            """  TODO: At start, quickly ramp down volume over 1/10 second
+                       At end, Slowly ramp up volume over 1/2 second
+                       However, setup mute mode too, so no ramping
+                       Need to capture web browsers sink and then use: 
+                            pav.fade(driver_sink, start, end, time) """
             count = 0
+            # driver.find_element(By.CSS_SELECTOR, ".ytp-ad-duration-remaining")
+
+            print("\n" + ext.t(short=True, hun=True),
+                  "# 0. Player Status:", self.getPlayerStatus(driver))
+
             while self.isYouTubeAdRunning(driver):
                 count += 1
-                print("BACK LOOP Ad still visible:", count, end="\r")
+                print(ext.t(short=True, hun=True),
+                      "BACK LOOP Ad still visible:", count, end="\r")
                 # Back button goes to previous song played
                 driver.back()
                 if not lcs.fast_refresh():
                     driver.quit()
                     return False
 
-            print(ext.t(short=True), "driver.back() visible loops:",
-                  str(count).ljust(2), " |", link_pre)  # Always 1
+
+            print("\n" + ext.t(short=True, hun=True),
+                  "driver.back() visible loops:", str(count).ljust(2),
+                  " | Video Index:", self.getCurrentIndex(driver))  # count is always 1
             print(ext.t(short=True, hun=True),
-                  "# 1. getPlayerStatus(driver)",
-                  self.getPlayerStatus(driver))
+                  "# 1. Player Status:", self.getPlayerStatus(driver))
+            print(ext.t(short=True, hun=True),
+                  "# 1. Video Index before FIRST forward:",
+                  self.getCurrentIndex(driver))
+
             driver.forward()  # Send forward page event
 
             # TODO: create function that calls lcs.fast_refresh in loop
             #       until 400ms expires
             self.top.after(400)  # 350ms was too short for single ad
             print(ext.t(short=True, hun=True),
-                  "# 2. getPlayerStatus(driver)",
-                  self.getPlayerStatus(driver))
+                  "# 2. Player Status after 400ms:", self.getPlayerStatus(driver))
+            print(ext.t(short=True, hun=True),
+                  "# 2. Video Index:", self.getCurrentIndex(driver))
+            video_id = self.getMicroFormat(driver)
+            print(ext.t(short=True, hun=True),
+                  "# 2. getMicroFormat() video_id:", video_id)
+
             if self.isYouTubeAdRunning(driver):
-                # Probably within second ad, or delay sometimes too short
-                double_ad += 1
                 # With this test, don't know if ad #1 or #2 is visible...
-                print(ext.t(short=True), "3x driver.forward() Total 750ms",
-                      " |", link_pre)
                 driver.forward()
+                print(ext.t(short=True, hun=True), "THREE FORWARDS",
+                      "Video Index:", self.getCurrentIndex(driver))
+                print(ext.t(short=True, hun=True),
+                      "# 3A. Player Status: BEFORE 2nd forward wait",
+                      self.getPlayerStatus(driver))
+                print(ext.t(short=True, hun=True),
+                      "# 3A. Video Index:", self.getCurrentIndex(driver))
+                video_id = self.getMicroFormat(driver)
+                print(ext.t(short=True, hun=True),
+                      "# 3A. getMicroFormat() video_id:", video_id)
+
                 # TODO: create function that calls lcs.fast_refresh in loop
                 self.top.after(350)  # 300 too short for triple ad
                 print(ext.t(short=True, hun=True),
-                      "# 3. getPlayerStatus(driver)",
+                      "# 3B. Player Status after 350ms:",
                       self.getPlayerStatus(driver))
+                print(ext.t(short=True, hun=True),
+                      "# 3B. URL Index:", self.getCurrentIndex(driver))
+                video_id = self.getMicroFormat(driver)
+                print(ext.t(short=True, hun=True),
+                      "# 3B. getMicroFormat() video_id:", video_id)
             else:
-                print(ext.t(short=True), "2x driver.forward() Total 450ms",
-                      " |", link_pre)
+                print(ext.t(short=True, hun=True), "TWO FORWARDS",
+                      "Video Index:", self.getCurrentIndex(driver))
+                print(ext.t(short=True, hun=True),
+                      "# 3. Player Status:", self.getPlayerStatus(driver))
+                print(ext.t(short=True, hun=True),
+                      "# 3. Video Index:", self.getCurrentIndex(driver))
+                video_id = self.getMicroFormat(driver)
+                print(ext.t(short=True, hun=True),
+                      "# 3. getMicroFormat() video_id:", video_id)
 
             # Could be within second ad but extra forward needed for next
             driver.forward()  # Extra forward needed for next song
+            self.timeForwardYouTube = time.time()
             print(ext.t(short=True, hun=True),
-                  "# 4. getPlayerStatus(driver)",
-                  self.getPlayerStatus(driver))
+                  "# 4. Player Status:", self.getPlayerStatus(driver))
+            print(ext.t(short=True, hun=True),
+                  "# 4. Video Index:", self.getCurrentIndex(driver))
+            video_id = self.getMicroFormat(driver)
+            print(ext.t(short=True, hun=True),
+                  "# 4. getMicroFormat() video_id:", video_id)
+
+            final_status = self.getPlayerStatus(driver)
+            final_index = self.getCurrentIndex(driver)
+            if final_status and final_status == 1:
+                return True
 
     def cmp_update_files(self):
         """ Called via "Update differences" button on cmp_top """
@@ -16594,20 +16409,43 @@ MOST IMPORTANT is buried within classlink above:
         self.cmp_close()
 
     def getCurrentIndex(self, driver):
-        """ Get link URL from Browser address bar & return index """
+        """ Get link URL from Browser address bar & return index
+
+            Before play all:
+                https://www.youtube.com/playlist?list=
+                   PLthF248A1c68TAKl5DBskfJ2fwr1sk9aM
+            During play all:
+                https://www.youtube.com/watch?v=bePCRKGUwAY&list=
+                   PLthF248A1c68TAKl5DBskfJ2fwr1sk9aM&index=15
+
+        """
         link = self.getCurrentLink(driver) 
         try:
             currIndex = int(link.split("&index=")[1])
             return currIndex
         except IndexError:
-            pass
+            if link:
+                try:
+                    playlist = link.split("&list=")[1]
+                    return playlist
+                except IndexError:
+                    print("ERROR #2 on link = getCurrentIndex()")
+                    return None
 
-        print("ERROR on link = getCurrentIndex")
+        print("ERROR #1 on link = getCurrentIndex()")
         return None
 
     @staticmethod
     def getCurrentLink(driver):
-        """ Get link URL from Browser address bar """
+        """ Get link URL from Browser address bar
+
+            Before play all:
+                https://www.youtube.com/playlist?list=
+                   PLthF248A1c68TAKl5DBskfJ2fwr1sk9aM
+            During play all:
+                https://www.youtube.com/watch?v=bePCRKGUwAY&list=
+                   PLthF248A1c68TAKl5DBskfJ2fwr1sk9aM&index=15
+        """
         try:
             link = driver.current_url
             return link
@@ -16615,6 +16453,45 @@ MOST IMPORTANT is buried within classlink above:
             print("Exception:", err)
             print("ERROR on link = driver.current_url")
             return None
+
+    @staticmethod
+    def getPlaylistLinks(driver):
+        """ Get link URL from Browser address bar
+            Before play all:
+                https://www.youtube.com/playlist?list=
+                   PLthF248A1c68TAKl5DBskfJ2fwr1sk9aM
+            During play all:
+                https://www.youtube.com/watch?v=bePCRKGUwAY&list=
+                   PLthF248A1c68TAKl5DBskfJ2fwr1sk9aM&index=15
+
+
+        USAGE:
+            link, link_pre, link_video, link_list = self.getYouTubeLinks(driver)
+
+        link_pre will be "playlist" or "watch?v=<VIDEO LINK>"
+        link_list will be link_index when playing a song inside the playlist
+
+        """
+        link = link_pre = link_list = video_id = video_index = None
+        try:
+            link = driver.current_url
+        except Exception as err:
+            print("Exception:", err)
+            print("ERROR on link = driver.current_url")
+            return link, link_pre, link_list
+
+        try:
+            link_pre = link.split("&list=")[0]
+        except IndexError:
+            print("Could not find '&list=' in link!")
+            return link, link_pre, link_list
+
+        try:
+            link_list = link.split("&list=")[1]
+        except IndexError:
+            print("Could not find '&list=' in link!")
+            return link, link_pre, link_list
+
 
     @staticmethod
     def driverClick(driver, by, desc):
@@ -16652,7 +16529,6 @@ MOST IMPORTANT is buried within classlink above:
         try:
             video_id = driver.execute_script(
                 "return document.getElementById('video-id')")
-            print("video_id:", video_id)
         except:
             print("return document.getElementById('video-id')  FAILED !")
 
@@ -16681,6 +16557,119 @@ MOST IMPORTANT is buried within classlink above:
             return None
 
     @staticmethod
+    def getVideoId(driver):
+        """ ytd-page-manager class holds:
+
+                video-id="mS8xDo-qM8w"
+                default-layout="" is-four-three-to-sixteen-nine-video_="">
+
+        """
+        wait = WebDriverWait(driver, 10)
+        try:
+            element = wait.until(EC.presence_of_element_located((
+                By.CLASS_NAME, "ytd-page-manager")))
+        except TimeoutException:
+            print("getVideoId(driver) TimeoutException:")
+            return None
+
+        try:
+            # https://stackoverflow.com/a/27307235/6929343
+            script  = 'var items = {}; for '
+            script += '(index = 0; index < arguments[0].attributes.length; '
+            script += '++index) { items[arguments[0].attributes[index].name] '
+            script += '= arguments[0].attributes[index].value }; return items;'
+            attrs = driver.execute_script(script, element)
+            print(attrs)
+
+            # For song # 1 is printing None
+            # For song # 2 other function gave error:
+            #   ERROR on link = getCurrentIndex
+            print("video-id:", element.get_attribute("video-id"))
+            return element.get_attribute("video-id")
+        except WebDriverException as err:
+            print("WebDriverException:", err)
+            return None
+
+    def getMicroFormat(self, driver):
+        """ Rock Song # 10 is playing but Address URL shows # 11 expected.
+
+        microformat:
+
+        <div id="microformat" class="style-scope ytd-watch-flexy">
+        <ytd-player-microformat-renderer
+        class="style-scope ytd-watch-flexy">
+        <!--css-build:shady--><!--css-build:shady-->
+        <script type="application/ld+json"
+        id="scriptTag" nonce="VKUa9bVN8W-_ltE725Jfgw"
+        class="style-scope ytd-player-microformat-renderer">
+        {
+            "@context":"https://schema.org",
+            "@type":"VideoObject",
+            "description":"I wish I could ... My beautiful girl.",
+            "duration":"PT288S",
+            "embedUrl":"https://www.youtube.com/embed/mS8xDo-qM8w
+                       ?list=PLthF248A1c68TAKl5DBskfJ2fwr1sk9aM",
+            "interactionCount":"21422290",
+            "name":"City And Colour - The Girl (Lyrics)",
+            "thumbnailUrl":["https://i.ytimg.com/vi/mS8xDo-qM8w/maxresdefault.jpg?
+                          sqp=-oaymwEmCIAKENAF8quKqQMa8AEB-AG-B4AC0AWKAgwIABABGGU
+                          gVShbMA8=&rs=AOn4CLBTqtLGNpEVXZ8uQBKGUfAZ7MkvnA"],
+            "uploadDate":"2011-12-23",
+            "genre":"Music",
+            "author":"Fran Smyth"
+        }
+        </script> </ytd-player-microformat-renderer></div>
+
+        """
+        try:
+            element = driver.find_element_by_id('microformat')
+        except WebDriverException as err:
+            print("getMicroFormat() WebDriverException:", err)
+            return None
+
+        try:
+            inner = element.get_attribute('innerHTML')
+            dict_list = self.extract_dict(inner)
+            video_id = None
+            if len(dict_list) == 1:
+                inner_dict = dict_list[0]
+                embed = inner_dict.get("embedUrl", None)
+                '''
+                "embedUrl":"https://www.youtube.com/embed/mS8xDo-qM8w
+                       ?list=PLthF248A1c68TAKl5DBskfJ2fwr1sk9aM",
+                '''
+                link = embed.split('?list=')[0]
+                video_id = link.rsplit("/", 1)[1]
+            else:
+                print("getMicroFormat() len(dict_list):", len(dict_list))
+            return video_id
+
+        except WebDriverException as err:
+            print("getMicroFormat() WebDriverException:", err)
+            return None
+
+    @staticmethod
+    def extract_dict(s):
+        """ Extract all valid dicts from a string.
+            https://stackoverflow.com/a/63850091/6929343
+        Args:
+            s (str): A string possibly containing dicts.
+
+        Returns:
+            A list containing all valid dicts.
+
+        """
+        results = []
+        s_ = ' '.join(s.split('\n')).strip()
+        exp = re.compile(r'(\{.*?\})')
+        for i in exp.findall(s_):
+            try:
+                results.append(json.loads(i))
+            except json.JSONDecodeError:
+                pass
+        return results
+
+    @staticmethod
     def isYouTubeAdRunning(driver):
         """
         :param driver: Selenium webdriver instance
@@ -16702,6 +16691,10 @@ MOST IMPORTANT is buried within classlink above:
     def you_tree_highlight_row(self, link_search):
         """ Highlight row black & gold as second entry (see 2 below + 1 before)
             If same link used twice in playlist the first will be highlighted.
+
+            https://www.youtube.com/playlist?list=PLthF248A1c68TAKl5DBskfJ2fwr1sk9aM
+            https://www.youtube.com/watch?v=HAQQUDbuudY
+
         """
         for i, self.dictYouTube in enumerate(self.listYouTube):
             song_name = self.dictYouTube['name']
@@ -16715,7 +16708,6 @@ MOST IMPORTANT is buried within classlink above:
 
         print("Link:", link_search, "  NOT FOUND!")
         return None
-
 
     def you_tree_copy_link(self, item):
         """ Copy Single Song link to clipboard. """
