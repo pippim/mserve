@@ -1177,7 +1177,7 @@ def main(caller=None):
                 ~/website2/programs/mserve_incl.md '''
             import external as ext
             # ext calls timefmt which calls g.init() so want to rewrite
-            ext.write_from_str(parm2, pippim_report)
+            ext.write_from_string(parm2, pippim_report)
         else:
             # No output file so print instead
             print("\nmserve_config.py - No output filename passed in parm #2\n")

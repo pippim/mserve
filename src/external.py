@@ -77,7 +77,7 @@ def t(float_time=None, short=False, hun=False):
     f_time = datetime.datetime.fromtimestamp(float_time)
     if short:
         if hun:
-            return f_time.strftime("%H:%M:%S.%f")
+            return f_time.strftime("%H:%M:%S.%f")[:-5]  # chop off 5 of 6 decs
         else:
             return f_time.strftime("%H:%M:%S")
     else:
@@ -147,7 +147,7 @@ def write_from_list(fname, f_list):
     return True
 
 
-def write_from_str(fname, f_str):
+def write_from_string(fname, f_str):
     """ Read list of lines and write to text file """
 
     if os.path.isfile(fname):

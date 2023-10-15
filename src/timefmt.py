@@ -98,19 +98,34 @@ def add_months(d, months):
 
 
 def get_sec(time_str):
-    """Get Seconds from time: https://stackoverflow.com/a/6402859/6929343 """
+    """ Get Seconds from time: https://stackoverflow.com/a/6402859/6929343
+        If string contains ".99" return float, else return int
+    """
     sections = time_str.count(':')
+    return_float = "." in time_str
     # TODO: Support days in format 'd.hh:mm:ss'
     if sections == 0:
         h = m = 0  # No hours, no minutes
         s = time_str
     elif sections == 1:
-        m, s = time_str.split(':')
         h = 0  # No hours
-    else:
+        m, s = time_str.split(':')
+    elif sections == 2:
         h, m, s = time_str.split(':')  # Split "hh:mm:ss" into separate strings
+    else:
+        print("tmf.get_sec() ERROR: Too many sections!")
+        if return_float:
+            return 0.0
+        else:
+            return 0
 
-    return int(h) * 3600 + int(m) * 60 + int(s)
+    if return_float:
+        try:
+            return float(h) * 3600.0 + float(m) * 60.0 + float(s)
+        except ValueError:
+            return 0.0
+    else:
+        return int(h) * 3600 + int(m) * 60 + int(s)
 
 
 def mm_ss(seconds, brackets=False, trim=True, rem=None):
@@ -123,8 +138,6 @@ def mm_ss(seconds, brackets=False, trim=True, rem=None):
     """
     i = int(seconds)
     d = seconds - i
-    if d == 1.0:
-        d = 0.0                             # Not working to strip out leading 1.?
     m, s = divmod(i, 60)
     result = ""
     ss = str(s)                             # ss is now seconds in string format
@@ -142,6 +155,9 @@ def mm_ss(seconds, brackets=False, trim=True, rem=None):
     elif rem == 'h':
         # hundredths is required # Not working to strip out leading 1.?
         result += str('%.2f' % d).lstrip('0').lstrip('1')
+
+    # mserve.py patch for "01.0"
+    result = result.replace("01.", "1.") if result.startswith("01.") else result
 
     if brackets is True:
         result = "[" + result + "]"         # Add brackets
