@@ -8265,7 +8265,13 @@ class MusicLocationTree(PlayCommonSelf):
         answer = message.AskQuestion(self.lib_top, title, text, 'no',
                                      thread=self.get_refresh_thread)
         text += "\n\t\tAnswer was: " + answer.result
-        self.info.cast(title + "\n\n" + text)
+        self.info.fact(title + "\n\n" + text)  # Change from cast to fact
+
+        ''' 
+            BUG Oct 17/23 - info.cast(piggy_back  -  Chrome temporary files found.)
+                This should not stay as a tooltip. Caused by play top taking
+                more time to create than lifespan of info.cast.
+        '''
 
         if answer.result != 'yes':
             return  # Don't delete files
@@ -10718,7 +10724,8 @@ mark set markName index"
         if self.fine_tune and self.fine_tune.top_is_active:
             self.fine_tune.close()  # Prevents tons of exceptions.
 
-        self.tt.close(self.play_top)  # Close tooltips under top level
+        if self.tt and self.play_top:
+            self.tt.close(self.play_top)  # Close tooltips under top level
         ''' July 9, 2023 - Doesn't matter if volume left turned down '''
         #if self.play_ctl.sink is not "":
         #    pav.set_volume(self.play_ctl.sink, 100)
@@ -11995,7 +12002,8 @@ class FineTune:
         """ Build buttons for top_level, begin sync and sample all """
         if not self.top_is_active:
             return
-        self.tt.close(self.btn_bar_frm)  # Remove old tooltip buttons in play_btn frame
+        if self.tt and self.btn_bar_frm:
+            self.tt.close(self.btn_bar_frm)  # Remove old tooltip buttons in play_btn frame
         self.btn_bar_frm.grid_forget()
         self.btn_bar_frm.destroy()
         self.btn_bar_frm = None  # Extra insurance
@@ -13065,7 +13073,8 @@ class FineTune:
 
         self.ffplay_is_running = False  # Playing and syncing?
         self.top_is_active = False  # Lyrics Time Index window open?
-        self.tt.close(self.top)  # Close tooltips under top level
+        if self.tt and self.top:
+            self.tt.close(self.top)  # Close tooltips under top level
 
         ''' July 5, 2023 - External call to close self.time_ctl_list was None '''
         ''' July 7, 2023 - Change "if self.time_ctl.sink" to "if self.time_ctl" '''
@@ -13469,10 +13478,10 @@ class tvVolume:
             Target=Target, Size=Size, Count=Count, Seconds=Seconds,
             Comments=Comments)
 
-    # noinspection PyUnusedLocal
-    def close(self, *args):
+    ## no inspection PyUnusedLocal
+    def close(self, *_args):
         """ Close Volume During TV Commercials Window """
-        if self.tt:
+        if self.tt and self.top:
             self.tt.close(self.top)
         self.top.destroy()
         self.top = None  # Indicate volume slider is closed
@@ -15685,8 +15694,9 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         menu.add_command(label="Copy Playlist Link", font=g.FONT,
                          command=lambda: self.you_tree_copy_all())
 
-        menu.add_command(label="Simple Play Playlist", font=g.FONT,
-                         command=lambda: self.you_tree_play_all())
+        # NOT TESTED (as of October 16, 2023)
+        #menu.add_command(label="Simple Play Playlist", font=g.FONT,
+        #                 command=lambda: self.you_tree_play_all())
 
         menu.add_separator()
 
@@ -15755,8 +15765,10 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         ndx = int(item)
         webbrowser.open_new(self.listYouTube[ndx]['link'])
 
-    def you_tree_play_all(self):
-        """ Play all songs in treeview (Entire YouTube Playlist). """
+    def you_tree_play_all(self, item):
+        """ Play all songs in treeview (Entire YouTube Playlist). 
+            NOT TESTED YET (October 16, 2023)
+        """
 
         title = "WARNING: Experimental feature"
         text = "Currently this features moves YouTube from right to left monitor."
@@ -15765,6 +15777,8 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         mon = monitor.Monitors()  # Monitors class list of dicts
         # Start windows
         start_wins = mon.get_all_windows()
+
+        ndx = int(item)
         webbrowser.open_new(self.listYouTube[ndx]['link'])
         time.sleep(1.0)  # TODO: Loop for 30 seconds until list changes
         end_wins = mon.get_all_windows()
@@ -17084,8 +17098,11 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
         self.topYouTubeLRC.geometry('%dx%d+%d+%d' % (width, height, xy[0], xy[1]))
         self.topYouTubeLRC.title("LRC Synchronized Lyrics - mserve")
         self.topYouTubeLRC.configure(background="Gray")
-        #self.topYouTubeLRC.columnconfigure(0, weight=1)
-        self.topYouTubeLRC.rowconfigure(0, weight=1)
+        #self.topYouTubeLRC.grid_columnconfigure(0, minsize=320)
+        self.topYouTubeLRC.columnconfigure(0, weight=0)
+        # Next two lines redefined further down with tk.Grid
+        #self.topYouTubeLRC.columnconfigure(1, weight=1)
+        #self.topYouTubeLRC.rowconfigure(0, weight=1)
 
         ''' Set program icon in taskbar '''
         img.taskbar_icon(self.topYouTubeLRC, 64, 'white', 'lightskyblue', 'black')
@@ -17093,13 +17110,15 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
         ''' Bind <Escape> to close window '''
         self.topYouTubeLRC.bind("<Escape>", self.destroyYouTubeLRC)
         self.topYouTubeLRC.protocol("WM_DELETE_WINDOW", self.destroyYouTubeLRC)
+        
+        # <Control + C
 
-        ''' Current Playing Artwork, Song Name, Progress, Time offset '''
+        ''' LRC Artwork, Song Name, Progress, Time offset & highlight Color '''
         info_frame = tk.Frame(self.topYouTubeLRC)
-        info_frame.grid(row=0, column=0, sticky=tk.NSEW)
+        info_frame.grid(row=0, column=0, sticky=tk.NS)
         art_label = tk.Label(info_frame, borderwidth=0,
                              image=self.photosYouTube[int(item)])
-        art_label.grid(row=0, column=0, sticky=tk.EW, padx=5, pady=5)
+        art_label.grid(row=0, column=0, sticky=tk.EW, padx=5, pady=10)
 
         song = tk.Label(info_frame, text=self.listYouTube[int(item)]['name'],
                         font=g.FONT14, wraplength=320, justify="center")
@@ -17126,24 +17145,34 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
                                font=g.FONT, wraplength=320, justify="center")
         time_string.grid(row=4, column=0, sticky=tk.EW, padx=5, pady=(20, 0))
         self.youTimeOffLrcVar = tk.DoubleVar()
-        self.youTimeOffLrc = 0.0
+        ndx = int(item)
+        self.youTimeOffLrc = self.listYouTube[ndx].get('lrc_timeoff', None)
+        if self.youTimeOffLrc is None:
+            self.youTimeOffLrc = 0.0
         self.youTimeOffLrcVar.set(self.youTimeOffLrc)
         time_offset = tk.Entry(info_frame, textvariable=self.youTimeOffLrcVar,
                                font=g.FONT14, justify="center")
-        time_offset.grid(row=5, column=0, sticky=tk.EW, padx=5, pady=(0, 40))
-        time_offset.bind("<FocusOut>", self.time_focusout)
+        time_offset.grid(row=5, column=0, sticky=tk.EW,
+                         padx=5, pady=(0, 40))
+        time_offset.bind("<FocusOut>", lambda e: self.time_focusout(item))
 
         # Highlight background color
-        bg_string = tk.Label(info_frame, text="Yellow / Cyan / Magenta",
+        bg_string = tk.Label(info_frame, text="Red / Green / Blue / Black" +
+                                              " / Yellow / Cyan / Magenta",
                              font=g.FONT, wraplength=320, justify="center")
         bg_string.grid(row=6, column=0, sticky=tk.EW, padx=5, pady=(20, 0))
         self.youBgColorLrcVar = tk.StringVar()
-        self.youBgColorLrc = 'yellow'
+        self.youBgColorLrc = self.listYouTube[ndx].get('lrc_color', None)
+        if self.youBgColorLrc is None:
+            self.youBgColorLrc = 'Yellow'
         self.youBgColorLrcVar.set(self.youBgColorLrc)
         bg_color = tk.Entry(info_frame, textvariable=self.youBgColorLrcVar,
                             font=g.FONT14, justify="center")
-        bg_color.grid(row=7, column=0, sticky=tk.EW, padx=5, pady=(0, 40))
-        bg_color.bind("<FocusOut>", self.bg_color_focusout)
+        # Want to increase X padding but it's forcing info_frame wider?
+        bg_color.grid(row=7, column=0, sticky=tk.EW,
+                      padx=5, pady=(0, 40))
+        #bg_color.bind("<FocusOut>", self.bg_color_focusout)
+        bg_color.bind("<FocusOut>", lambda e: self.bg_color_focusout(item))
 
         ''' Scrolled Text with LRC Lyrics '''
         # Text padding not working: https://stackoverflow.com/a/51823093/6929343
@@ -17155,27 +17184,38 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
         self.scrollYT.config(spacing2=10)  # Spacing between the lines in a block of text
         self.scrollYT.config(spacing3=20)  # Spacing after the last line in a block of text
         self.scrollYT.tag_configure("center", justify='center')
+
+        ''' Insert Lyrics Lines '''
+        self.scrollYT.configure(state="normal")
         for line in self.listYouTubeLRC:
             line_time, line_text = self.parse_LRC_line(line)
             #print("line_time:", line_time, "line_text:", line_text)
-            if not line_time:  # two spaces for background color
+            if not line_time:  # two spaces for background color before & after
+                # one extra leading space for left-margin gutter not highlighted
                 self.scrollYT.insert("end", "   " + line + "  \n")
             else:
                 self.scrollYT.insert("end", "   " + line_text + "  \n")
+        self.scrollYT.configure(state="disabled")
+
         self.scrollYT.tag_add("center", "1.0", "end")
         self.scrollYT.grid(row=0, column=1, padx=3, pady=3, sticky=tk.NSEW)
         tk.Grid.rowconfigure(self.topYouTubeLRC, 0, weight=1)
         tk.Grid.columnconfigure(self.topYouTubeLRC, 1, weight=1)
 
-        self.scrollYT.tag_config('red', foreground='Red')
-        self.scrollYT.tag_config('blue', foreground='Blue')
-        self.scrollYT.tag_config('green', foreground='Green')
-        self.scrollYT.tag_config('black', foreground='Black')
+        self.scrollYT.tag_config('red', background='Red', foreground='White',
+                                 font=font.Font(size=16, weight="bold"))
+        self.scrollYT.tag_config('green', background='Green', foreground='White',
+                                 font=font.Font(size=16, weight="bold"))
+        self.scrollYT.tag_config('blue', background='Blue', foreground='Yellow',
+                                 font=font.Font(size=16, weight="bold"))
+        self.scrollYT.tag_config('black', background='Black', foreground='Gold',
+                                 font=font.Font(size=16, weight="bold"))
         self.scrollYT.tag_config('yellow', background='Yellow',
                                  font=font.Font(size=16, weight="bold"))
-        # tkinter.font
-        self.scrollYT.tag_config('cyan', background='Cyan')
-        self.scrollYT.tag_config('magenta', background='Magenta')
+        self.scrollYT.tag_config('cyan', background='Cyan',
+                                 font=font.Font(size=16, weight="bold"))
+        self.scrollYT.tag_config('magenta', background='Magenta', foreground='White',
+                                 font=font.Font(size=16, weight="bold"))
 
         #self.scrollYT.config(tabs=("2m", "40m", "50m"))  # Apr 9, 2023
         self.scrollYT.config(tabs=("2m", "65m", "80m"))  # Apr 27, 2023
@@ -17183,23 +17223,63 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
         # Fix Control+C  https://stackoverflow.com/a/64938516/6929343
         #self.scrollYT.bind("<Button-1>", lambda event: self.scrollYT.focus_set())
 
-    def time_focusout(self, *_args):
+    def time_focusout(self, item, *_args):
         """ Time Offset has just been changed. """
+        old_time = self.youTimeOffLrc
         self.youTimeOffLrc = self.youTimeOffLrcVar.get()
+        # Sanity check
+        if not -50.0 < self.youTimeOffLrc < 50.0:
+            print("Offset entered:", self.youTimeOffLrc, "is beyond 50 seconds.")
+            self.youTimeOffLrc = old_time
+            self.youTimeOffLrcVar.set(self.youTimeOffLrc)
+            self.topYouTubeLRC.update()
+            return
+        if old_time == 0.0 and self.youTimeOffLrc == 0.0:
+            return  # No point saving default
 
-    def bg_color_focusout(self, *_args):
+        # Write new value to disk
+        ndx = int(item)
+        start = time.time()
+        self.listYouTube[ndx]['lrc_timeoff'] = self.youTimeOffLrc
+        fname = self.nameYouTube.replace(".csv", ".pickle")
+        ext.write_to_pickle(fname, self.listYouTube)
+        print("time_focusout():", self.youTimeOffLrc, "ext.write_to_pickle:",
+              tmf.mm_ss(time.time() - start, rem='h'), "sec")  # 1.55 sec
+
+        self.topYouTubeLRC.update()
+
+    def bg_color_focusout(self, item, *_args):
         """ Time Offset has just been changed. """
         old_color = self.youBgColorLrc
         self.youBgColorLrc = self.youBgColorLrcVar.get()
-        if self.youBgColorLrc.lower() != 'yellow' and \
+        if self.youBgColorLrc.lower() != 'red' and \
+                self.youBgColorLrc.lower() != 'green' and \
+                self.youBgColorLrc.lower() != 'blue' and \
+                self.youBgColorLrc.lower() != 'black' and \
+                self.youBgColorLrc.lower() != 'yellow' and \
                 self.youBgColorLrc.lower() != 'cyan' and \
                 self.youBgColorLrc.lower() != 'magenta':
+            print("Bad color:", self.youBgColorLrc, " | Keeping old:", old_color)
             self.youBgColorLrc = old_color
             self.youBgColorLrcVar.set(self.youBgColorLrc)
-            print("Bad color:", self.youBgColorLrc, " | Keeping old:", old_color)
-        else:
-            self.scrollYT.tag_remove(old_color.lower(), "1.0", "end")
-            print("New color:", self.youBgColorLrc, " | Old color:", old_color)
+            self.topYouTubeLRC.update()
+            return
+        if old_color.lower() == 'yellow' and self.youBgColorLrc.lower() == 'yellow':
+            return  # No point saving default
+
+        self.scrollYT.tag_remove(old_color.lower(), "1.0", "end")
+        print("New color:", self.youBgColorLrc, " | Old color:", old_color)
+
+        # Write new value to disk
+        ndx = int(item)
+        start = time.time()
+        self.listYouTube[ndx]['lrc_color'] = self.youBgColorLrc
+        fname = self.nameYouTube.replace(".csv", ".pickle")
+        ext.write_to_pickle(fname, self.listYouTube)
+        print("bg_focusout():", self.youBgColorLrc, "ext.write_to_pickle:",
+              tmf.mm_ss(time.time() - start, rem='h'), "sec")  # 1.55 sec
+
+        self.topYouTubeLRC.update()
 
     def destroyYouTubeLRC(self, *_args):
         """ Build top level for YouTube Video LRC (synchronized lyrics) """
@@ -17261,7 +17341,7 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
                     #   File "/home/rick/python/mserve.py", line 17226, in updateYouTubeLRC
                     #     self.scrollYT.yview_scroll(lineinfo[1], 'pixels')
                     # TypeError: 'NoneType' object has no attribute '__getitem__'
-
+                    self.topYouTubeLRC.update_idletasks()
                     return
 
     @staticmethod
@@ -17763,11 +17843,13 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
 
     def you_tree_paste_lrc(self, item):
         """ Paste Song's LRC (LyRiCs) to clipboard. """
-        ndx = int(item)
         clip_text = self.you_tree_shared_paste()
-        self.listYouTube[ndx]['lrc'] = clip_text
         # TODO: validate [mm:ss.hh] 'blah blah' exists at least 10 times?
+
+        # Write new value to disk
+        ndx = int(item)
         start = time.time()
+        self.listYouTube[ndx]['lrc'] = clip_text
         fname = self.nameYouTube.replace(".csv", ".pickle")
         ext.write_to_pickle(fname, self.listYouTube)
         print("you_tree_paste_lrc() ext.write_to_pickle:",
@@ -18529,12 +18611,22 @@ class InfoCentre:
         :param collapsed: When true, text is collapsed and click to expand
         :param ms_font: Optional font to use. e.g. ("courier", 11) or "TkFixedFont"
         :return: time assigned to information centre entry. """
+
         ''' 
             PROCESSING STEPS:
                 Create dictionary
                 Insert dictionary in list
                 Call splash function
+
+
+            BUG Oct 17/23 - info.cast(piggy_back  -  Chrome temporary files found.)
+                This should not stay as a tooltip.
+
+                info.fact(piggy_back - Title: Can't Turn Back Year: 1983)
+                This should not stay as a tooltip.
+
         '''
+
         ''' If zoom active and being spammed by .cast() '''
         if self.zoom_is_active:
             self._close_cb()
@@ -18862,9 +18954,37 @@ FADE_OUT_SPAN = 400     # 1/5 second to fade out
         if self.frame:
             self.frame.config(height=7)  # Last height can be 0 - 30px
             self.lib_top.update()  # Update before destroy or last stays
-            if self.tt.check(self.widget):
+
+            ''' BUG Oct 17/23 - info.cast(piggy_back  -  Chrome temporary files found.)
+                    The tooltip is staying. When _close is called, Chronology
+                    button is closed, creating errors on hover. 
+            
+                Suspect problem info.cast called just before play top creation
+                and tt.poll_tips isn't called to process info.cast until it
+                expires. It begins fading out before it has faded in.         
+            '''
+            #self.tt.poll_tips()
+            # RuntimeError: maximum recursion depth exceeded while
+            # calling a Python object
+
+            #print("Checking self.widget")
+            if self.tt.check(self.widget, prefix_only=False):
+                #print("Closing self.widget")
                 self.tt.close(self.widget)  # Remove 'piggy_back' tooltip
-            # Aug 12/23 - For some reason frame is None for first time.
+
+                ''' Oct 18/23 TEST - '''
+                if self.widget == self.text:
+                    #toolkit.print_trace()
+                    print("_close_cb(): Probably closed wrong widget")
+                    tt_dict = self.tt.get_dict(self.widget)  # Not found
+                    if tt_dict is None:
+                        prt_time = datetime.datetime.now().strftime("%M:%S.%f")[:-2]
+                        print(prt_time, "_close_cb() - tt_dict not found for:",
+                              str(self.widget)[-4:])
+                    # Next step is to print widget for Hide Chronology after
+                    # built
+
+            # Aug 12/23 - For some reason, self.frame is None for first time.
             if self.frame:
                 self.frame.destroy()  # Nuke the frame used for info message
             self.frame = None

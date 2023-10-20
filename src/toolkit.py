@@ -1845,7 +1845,7 @@ def gnome_screenshot(geom):
     https://www.geeksforgeeks.org/how-to-change-border-color-in-tkinter-widget/
 """
 
-tt_DEBUG = False        # Print debug events
+D_PRINT = False         # Print debug events
 
 VISIBLE_DELAY = 750     # ms pause until balloon tip appears (1/2 sec)
 VISIBLE_SPAN = 5000     # ms balloon tip remains on screen (5 sec/line)
@@ -2135,15 +2135,22 @@ class ToolTips(CommonTip):
         self.current_mouse_xy = (self.log_nt.x, self.log_nt.y)  # pos in widget
 
         ''' OVERVIEW:
-            Enter, wait, create, fade in, wait, fade out, destroy.  
+            Enter, wait, create, fade in, wait, fade out, close (destroy).  
             self.window_fading_in and self.window_fading_out already 
             setup so just need self.wait_time.
+            
+            BUG October 18/23:
+            Tip created (with info.cast) gets 'enter' event then play top
+            steals 2 seconds of processing time. poll_tips is called and
+            the 'close' event is called. All steps inbetween are skipped.
         '''
         if self.log_nt.action == 'leave' or self.log_nt.action == 'press':
             # Leaving widget - June 20, 2023 treat button press as leave
             self.leave_time = self.log_nt.time
-            prt_time = datetime.datetime.utcnow().strftime("%M:%S.%f")[:-2]
-            d_print(prt_time, 'leaving widget: ', str(self.widget)[-4:])
+            if self.log_nt.action == 'leave':
+                d_print('Leaving widget: ', str(self.widget)[-4:])
+            else:
+                d_print('Clicked widget: ', str(self.widget)[-4:])
 
             if self.window_fading_out:
                 pass  # If already fading out, continue the process
@@ -2156,9 +2163,7 @@ class ToolTips(CommonTip):
                 self.enter_time = 0.0  # Force window to never mount
 
         elif self.log_nt.action == 'enter':
-            # Entering widget
-            prt_time = datetime.datetime.utcnow().strftime("%M:%S.%f")[:-2]
-            d_print(prt_time, 'entering widget:', str(self.widget)[-4:])
+            d_print('Entering widget:', str(self.widget)[-4:])
 
             #print("self.log_nt.action:", self.log_nt.action, str(self.widget)[-4:],
             #      self.text.split("\n")[0])  # debug self.info
@@ -2381,12 +2386,15 @@ class ToolTips(CommonTip):
 
             TODO: Leave event is not passed to InfoCentre() unless fading in/out
         """
-        if not self.widget.winfo_exists():
+        #if not self.widget.winfo_exists():  # Oct 18/23 - enhancement
+        if not self.widget.winfo_exists() and self.tool_type is not 'piggy_back':
             # If parent closed, tool tip is irrelevant. bserve bup_view close
+            d_print("Parent closed, tool tip irrelevant. bserve bup_view close",
+                    str(self.widget)[-4:])
             self.reset_tip()
             return
 
-        # Was window destroyed? eg by toplevel closing.
+        # Was window destroyed? E.G. by toplevel closing.
         if self.tip_window:  # 'piggy_back' doesn't use self.tip_window
             if not self.tip_window.winfo_exists():
                 self.tip_window = None
@@ -2416,6 +2424,12 @@ class ToolTips(CommonTip):
 
         # Tooltip fading out?
         if self.now > fade_out_time:
+            d_print("self.now > fade_out_time:", str(self.widget)[-4:],
+                    "self.now:", self.now, "fade_out_time:", fade_out_time)
+            # 10 occurrences - self.now: 1697681387.38   First
+            #             fade_out_time: 1697681387.37
+            #                  self.now: 1697681387.58
+            #             fade_out_time: 1697681387.37   Tenth
             if self.window_fading_out is False:
                 self.window_fading_out = True
                 self.window_fading_in = False
@@ -2424,6 +2438,10 @@ class ToolTips(CommonTip):
             zero_alpha_time = fade_out_time + float(self.fade_out_span) / 1000
 
             if self.now > zero_alpha_time:
+                d_print("self.now > zero_alpha_time:", str(self.widget)[-4:],
+                        "self.now:", self.now, "zero_alpha_time:", zero_alpha_time)
+                # d_print self.now: 1697681040.39
+                #  zero_alpha_time: 1697681040.39
                 # We've finished fading out
                 if self.pb_close:
                     self.reset_tip()  # pb_close will probably destroy tip next...
@@ -2461,12 +2479,12 @@ class ToolTips(CommonTip):
             diff = abs(self.leave_time - self.enter_time)
             if diff < 0.1:
                 # To Correct:
-                # 45:13.059 ENTER: 8216 59 6
-                # 45:13.061 LEAVE: 8216 59 52
+                # 45:13.059 Log 'enter': 8216 x: 59 y: 6
+                # 45:13.061 Log 'leave': 8216 x: 59 y: 52
                 # 45:13.1039 leaving widget:  8216
                 # 45:13.1041 entering widget: 8216
                 self.enter_time = 0.0  # Prevent tip window creation
-                #print('prevent tip window creation when enter ~.1 of leave')
+                d_print('prevent tip window creation when enter ~.1 of leave')
                 return
 
             if self.window_visible is False:
@@ -2709,7 +2727,7 @@ class ToolTips(CommonTip):
 
     def enter(self, event):
         """ Mouse has entered widget bounding box. """
-        d_print('ENTER:', str(event.widget)[-4:], event.x, event.y)
+        d_print("Log 'enter':", str(event.widget)[-4:], "x:", event.x, "y:", event.y)
         # print("scope of event:", event)  # scope of event: <Tkinter.Event instance at 0x7ffb7aec6dd0>
         self.log_event('enter', event.widget, event.x, event.y)
 
@@ -2719,7 +2737,7 @@ class ToolTips(CommonTip):
 
         TEST: When leaving early button remains "active" so force to "normal".
         """
-        d_print('LEAVE:', str(event.widget)[-4:], event.x, event.y)
+        d_print("Log 'leave':", str(event.widget)[-4:], "x:", event.x, "y:", event.y)
         self.log_event('leave', event.widget, event.x, event.y)
         if self.pb_leave:
             # print("Calling pb_leave():", str(event.widget)[-4:])  # debug self.info
@@ -2755,6 +2773,8 @@ class ToolTips(CommonTip):
         for self.dict in self.tips_list:
             if not str(self.dict['widget']).startswith(str(widget)):
                 new_list.append(self.dict)
+                continue
+            d_print("Closing widget:", str(widget)[-4:])
 
         #diff = len(self.tips_list) - len(new_list)
         #print(diff, 'Tooltips removed on close')
@@ -2767,13 +2787,16 @@ class ToolTips(CommonTip):
             print("Widget(s):", widget)
         self.log_list = []      # Flush out log list for new events
 
-    def check(self, widget):
+    def check(self, widget, prefix_only=True):
         """ Check if widget in ToolTips()
-        :param widget: Parent button.
+        :param widget: Parent button or parent frame and prefix check.
+        :param prefix_only: Check for members of window group
         :returns: Tooltip dictionary if found, else type 'None' """
         for s in self.tips_list:
-            if str(s['widget']).startswith(str(widget)):
-                return s
+            if str(s['widget']) == str(widget):
+                return s  # Full match passes
+            elif prefix_only and str(s['widget']).startswith(str(widget)):
+                return s  # Test prefix and it matches
         return None
 
     def line_dump(self):
@@ -2810,9 +2833,11 @@ class ToolTips(CommonTip):
 
 
 def d_print(*args):
-    """ Only print debugging lines when tt_DEBUG is true """
-    if tt_DEBUG is True:
-        prt_time = datetime.datetime.utcnow().strftime("%M:%S.%f")[:-3]
+    """ Only print debugging lines when D_PRINT is true
+        Prepend current time with four decimal places (chop 2 places off)
+    """
+    if D_PRINT is True:
+        prt_time = datetime.datetime.now().strftime("%M:%S.%f")[:-2]
         print(prt_time, *args)
 
 
