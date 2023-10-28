@@ -1092,7 +1092,7 @@ class PlayCommonSelf:
         self.gone_fishing = None            # Class: Shark eating man
 
         ''' Show/Hide Playlist Chronology button (Frame 4) '''
-        self.chron_is_hidden = None         # True/False=Frame .remove()/.grid()
+        self.chron_is_hidden = None         # True/False=Frame .grid_remove()/.grid()
         self.chron_button = None            # tk.Button(..."🖸 Hide Chronology"
 
         ''' Frame for Playlist Chronology '''
@@ -8268,6 +8268,10 @@ class MusicLocationTree(PlayCommonSelf):
         self.info.fact(title + "\n\n" + text)  # Change from cast to fact
 
         ''' 
+            NOTE Oct 22/23 - When closing lib_top 100MB files are left in /tmp.
+                When closing playlists only 4K (Selenium directory?) are left 
+                in /tmp.
+                
             BUG Oct 17/23 - info.cast(piggy_back  -  Chrome temporary files found.)
                 This should not stay as a tooltip. Caused by play top taking
                 more time to create than lifespan of info.cast.
@@ -14786,7 +14790,14 @@ class PlaylistsCommonSelf:
         self.photosYouTube = None  # Photos saved from garbage collector (GIC)
         self.privateYouTube = "0"  # Saved count of private/unavailable videos
         self.listMergeYouTube = None  # Stored list + new videos
+
+        self.youLastSong = None
+        self.youCurrSong = None
+        self.youNextSong = None
+
         self.topYouTubeLRC = None  # TK window to show lyrics
+        self.youTreeFrame = None  # .grid_remove() for youLrcFrame
+        self.youLrcFrame = None  # .grid_remove() for youPlaylistFrame
         self.scrollYT = None  # Custom Scrolled Text Box
         self.hasYouTubeLRC = None  # Are synchronized lyrics (LRC) stored in dict?
         self.listYouTubeLRC = None  # List of LRC ([mm:ss.hh] "lyrics line text")
@@ -14798,6 +14809,7 @@ class PlaylistsCommonSelf:
         self.youBgColorLrc = None  # LRC highlight yellow/cyan/magenta
         self.durationYouTube = 0.0  # Length of song (Duration)
         self.progressYouTube = 0.0  # Progress (Duration) within playing song
+        self.progressLastYouTube = 0.0  # Last progress, if same then stuck
         self.timeLastYouTube = 0.0  # Last System time playing video (33ms)
         self.timePlayYouTube = 0.0  # Current System time playing video (33ms)
         self.timeForwardYouTube = 0.0  # System time self.driver.forward()
@@ -14808,7 +14820,7 @@ class PlaylistsCommonSelf:
         ''' Megalobiz work fields '''
         self.drvMega = None  # Megalobiz Selenium Web Driver
 
-        ''' Input Window and fields '''
+        ''' Playlists Maintenance Window and fields '''
         self.top = None  # tk.Toplevel
         self.frame = None  # tk.Frame inside self.top
         self.you_btn_frm = None  # Tk.Frame button bar
@@ -14820,9 +14832,9 @@ class PlaylistsCommonSelf:
         self.scr_description = tk.StringVar()
         self.scr_location = tk.StringVar()
 
-        self.fld_count = None  # Field display MicroFormat found early:
-        self.fld_size = None
-        self.fld_seconds = None
+        self.fld_count = None  # Playlist song count
+        self.fld_size = None  # Playlist all songs MB
+        self.fld_seconds = None  # Playlist all songs duration
 
         self.apply_button = None
         self.help_button = None
@@ -15155,12 +15167,12 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         columns = ("detail", "comments", "count", "size", "seconds")
         toolkit.select_dict_columns(columns, history_dict)
         ''' Create treeview frame with scrollbars '''
-        tree_frame = tk.Frame(self.frame, bg="LightGrey", relief=tk.RIDGE)
-        tree_frame.grid(sticky=tk.NSEW, columnspan=4)
-        tree_frame.columnconfigure(0, weight=1)
-        tree_frame.rowconfigure(0, weight=1)
+        self.youTreeFrame = tk.Frame(self.frame, bg="LightGrey", relief=tk.RIDGE)
+        self.youTreeFrame.grid(sticky=tk.NSEW, columnspan=4)
+        self.youTreeFrame.columnconfigure(0, weight=1)
+        self.youTreeFrame.rowconfigure(0, weight=1)
         self.his_view = toolkit.DictTreeview(
-            history_dict, self.top, tree_frame, columns=columns,
+            history_dict, self.top, self.youTreeFrame, columns=columns,
             highlight_callback=self.highlight_callback)
         ''' Override formatting of 'size' column to MB '''
         self.his_view.change_column_format("MB", "size")
@@ -15521,9 +15533,9 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             self.top.update_idletasks()
 
         ''' Create treeview frame with scrollbars '''
-        tree_frame = tk.Frame(self.frame, bg="LightGrey", relief=tk.RIDGE)
-        tree_frame.grid(sticky=tk.NSEW)
-        tree_frame.columnconfigure(0, weight=1)
+        self.youTreeFrame = tk.Frame(self.frame, bg="LightGrey", relief=tk.RIDGE)
+        self.youTreeFrame.grid(sticky=tk.NSEW)
+        self.youTreeFrame.columnconfigure(0, weight=1)
         self.frame.columnconfigure(0, weight=1)
 
         ''' Treeview style is large images in cell 0 '''
@@ -15534,11 +15546,11 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         style.configure("YouTube.Treeview", font=g.FONT14, rowheight=row_height)
 
         # Create Treeview
-        self.you_tree = ttk.Treeview(tree_frame, column=('name',),
+        self.you_tree = ttk.Treeview(self.youTreeFrame, column=('name',),
                                      selectmode='none', height=4,
                                      style="YouTube.Treeview")
         self.you_tree.grid(row=0, column=0, sticky='nsew')
-        v_scroll = tk.Scrollbar(tree_frame, orient=tk.VERTICAL,
+        v_scroll = tk.Scrollbar(self.youTreeFrame, orient=tk.VERTICAL,
                                 width=SCROLL_WIDTH, command=self.you_tree.yview)
         v_scroll.grid(row=0, column=1, sticky=tk.NS)
         self.you_tree.configure(yscrollcommand=v_scroll.set)
@@ -16039,7 +16051,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             self.displayYouTubePlaylist()  # Recreate Treeview see Song #19 added
             # TODO: Write good_links to file for retrieval next time:
             #       E.G. "Playlist name".private
-            print("elapsed time:", time.time() - start)
+            self.youPrint("elapsed time:", time.time() - start)
 
         """  PLAY ALL BUTTON
     <div class="play-menu spaced-row wide-screen-form style-scope ytd-playlist-header-renderer">
@@ -16056,7 +16068,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         # Find and click to "Play all" button
         if not self.driverClick('link_text', "Play all"):
             # TODO: Fails when buried behind Firefox running full screen
-            print("Play all button click FAILED!")
+            self.youPrint("Play all button click FAILED!")
             os.popen('xdotool mousemove 500 790')
             # Send left click (1) after 3 second delay
             time.sleep(3.0)  # Wait 3 seconds
@@ -16105,11 +16117,31 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
 
         #time.sleep(10.0)  # Wait 10 seconds because starting too soon.
 
-        # TODO: Before starting loop, make sure YouTube has loaded first song
-        #       and started playing. Duration is updating every 4 seconds so
-        #       find lags and eliminate or reduce them.
+        # TODO: Create new vars lastSong, currSong, nextSong and use them to
+        #       control which song is playing. The forward/back and
+        #       MicroFormat hacks are not 100% because songs are replaying.
+        #       E.G. #4, #5, #6, #5, #6, #7
 
+        ''' Relevant Details:
+                09:44:59.7 STARTING Playlist - Song # 6     | Ij99dud8-0A
+                09:45:00.7 Forced driver.refresh after: 0.0
+                09:45:00.7 MicroFormat video playing  : bEWHpHlfuVU
+                09:45:03.3 Browser Address URL Link ID: Ij99dud8-0A
+                09:45:03.4 Ad visible. Player status: -1
+        
+                09:45:07.2 STARTING Playlist - Song # 5     | bEWHpHlfuVU
+                09:45:07.8 MicroFormat found after: 0.4     | bEWHpHlfuVU
+                09:50:27.9 Ad visible. Player status: 5
+                09:50:28.9 Ad visible. Player status: -1
+        '''
+        #       Instead of self.topYouTubeLRC for LRC, use two frames inside
+        #       self.top removed to make room for the other. Now the buried
+        #       self.top raises in window stack order for each song's LRC
+        #       and steals focus from pyCharm. Added bonus the progress bar
+        #       and Close button from YouTube Playlists toplevel are there.
+        #       Change the Close tooltip to read "Close Synchronized Lyrics"
         self.isSmartPlayYouTube = True
+        lastHousekeepingTime = time.time()
         while True:
             if not self.top:
                 return False  # Closing down
@@ -16137,7 +16169,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                 #       PLthF248A1c68TAKl5DBskfJ2fwr1sk9aM
                 # SECOND SONG
                 #   https://www.youtube.com/watch?v=bePCRKGUwAY&list=
-                #       PLthF248A1c68TAKl5DBskfJ2fwr1sk9aM&index=15
+                #       PLthF248A1c68TAKl5DBskfJ2fwr1sk9aM&index=2
                 # FIRST SONG
                 #   https://www.youtube.com/watch?v=a-Xfv64uhMI&list=
                 #       PLthF248A1c68TAKl5DBskfJ2fwr1sk9aM
@@ -16152,7 +16184,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                     video_link = link.split("&list=")[0]
                     video_link_id = video_link.split("/watch?v=")[1]
                 except IndexError:
-                    print("Could not find '&list=' in link!", link)
+                    self.youPrint("Could not find '&list=' in link!", link)
                     continue
 
                 if video_link_id:
@@ -16160,23 +16192,21 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                     you_tree_iid_int = self.you_tree_get_link_ndx(make_link)
                     # Don't test you_tree_iid_int for existence because first is 0
                     if you_tree_iid_int is None:
+                        self.youPrint("you_tree_smart_play_all() - " +
+                                      "you_tree_iid_int is type: <None>")
                         print("Error on make_link    :", make_link)
                         print("Original video_link   :", video_link)
                         print("Original video_link_id:", video_link_id)
                         print("len(self.listYouTube) :", len(self.listYouTube))
                         print("self.listYouTube[0]   :", self.listYouTube[0]['link'])
-                        # Why is it taking 10 seconds to highlight row on start?
-                        #self.you_tree_close()
-                        #return  # New video not scanned yet
                 else:
-                    print("Could not find '/watch?v=' in link!")
-
-            ''' Oct 8/23 - "if" line below can be removed '''
+                    self.youPrint("Could not find '/watch?v=' in link!")
 
             # Test you_tree_iid_int for none instead of true because
             # first iid is 0 which translates to false
             if link != last_link and you_tree_iid_int is not None:
                 self.you_tree.see(str(you_tree_iid_int))
+                # Oct 22/23 - no more top destroy, frame to remove
                 self.destroyYouTubeLRC()
                 # Are synchronized lyrics (LRC) stored in dict?
                 # 'values'
@@ -16186,8 +16216,11 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                 if lrc:
                     self.hasYouTubeLRC = True
                     self.listYouTubeLRC = lrc.splitlines()
-                    self.buildYouTubeLRC(item)  # TK Window with scrollbox
+                    # Oct 22/23 - no more top to build, frame to .grid() instead
+                    #self.buildYouTubeLRC(item)  # TK Window with scrollbox
+                    self.buildYouTubeFrameLRC(item)  # TK Frame with scrollbox
                 else:
+                    # Oct 22/23 - no more top destroy, frame to remove
                     self.destroyYouTubeLRC()
                 song_no = str(you_tree_iid_int + 1).ljust(4)
                 print("\n" + ext.t(short=True, hun=True),
@@ -16267,7 +16300,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
 
             if not player_status:
                 player_status = last_player_status  # Use last know state
-                print(ext.t(short=True, hun=True), "player_status is NONE")
+                self.youPrint("player_status is NONE")
                 pass
 
             if player_status != last_player_status:
@@ -16281,6 +16314,12 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             last_link = link  # Save for next loop check
             last_player_status = player_status
 
+            ''' Housekeeping every minute '''
+            now = time.time()
+            if now - lastHousekeepingTime > 60.0:
+                lastHousekeepingTime = now
+                self.youHousekeeping()
+
             # Continue beyond this point when YouTube Ad is running
             # self.driver.find_element(By.CSS_SELECTOR, ".ytp-ad-duration-remaining")
             if not self.isYouTubeAdRunning():
@@ -16289,8 +16328,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                 continue  # Skip while loop below
 
             if ad_conflict_count > 0:
-                print(ext.t(short=True, hun=True),
-                      "player_status == -1 but No Ad Running", ad_conflict_count)
+                self.youPrint("player_status == -1 but No Ad Running", ad_conflict_count)
                 ad_conflict_count = 0
 
 
@@ -16315,8 +16353,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             while self.isYouTubeAdRunning():
                 # Back button goes to previous song played
                 self.driver.back()
-                print(ext.t(short=True, hun=True),
-                      "BACK LOOP Ad still visible:", count, end="\r")
+                self.youPrint("BACK LOOP Ad still visible:", count, end="\r")
                 if self.isYouTubeAdRunning():
                     count += 1
                     if not lcs.fast_refresh():
@@ -16327,82 +16364,62 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             print("\n" + ext.t(short=True, hun=True),
                   "driver.back() visible loops:", str(count).ljust(2),
                   " | Video Index:", self.getCurrentIndex())  # count is always 1
-            print(ext.t(short=True, hun=True),
-                  "# 1. Player Status:", self.getPlayerStatus())
-            print(ext.t(short=True, hun=True),
-                  "# 1. Video Index before FIRST forward:",
-                  self.getCurrentIndex())
+            self.youPrint("# 1. Player Status:", self.getPlayerStatus())
+            self.youPrint("# 1. Video Index before FIRST forward:", self.getCurrentIndex())
 
             self.driver.forward()  # Send forward page event
 
-            print(ext.t(short=True, hun=True),
-                  "# 1.5 Player Status after 0ms:", self.getPlayerStatus())
+            self.youPrint("# 1.5 Player Status after 0ms:", self.getPlayerStatus())
 
             # TODO: create function that calls lcs.fast_refresh in loop
             #       until 400ms expires
             #self.top.after(400)  # 350ms was too short for single ad
             player_status = self.waitYouTubePlayer(debug=True)
             if not player_status:
-                print("Shutting down or player broken")
+                self.youPrint("Shutting down or player broken!")
                 continue
-            print(ext.t(short=True, hun=True),
-                  "# 2. Player Status after 400ms:", self.getPlayerStatus())
-            print(ext.t(short=True, hun=True),
-                  "# 2. Video Index:", self.getCurrentIndex())
+            self.youPrint("# 2. Player Status after 400ms:", self.getPlayerStatus())
+            self.youPrint("# 2. Video Index:", self.getCurrentIndex())
             video_id = self.getMicroFormat()
-            print(ext.t(short=True, hun=True),
-                  "# 2. getMicroFormat() video_id:", video_id)
+            self.youPrint("# 2. getMicroFormat() video_id:", video_id)
             if self.isYouTubeAdRunning():
                 # Probably within second ad, or delay sometimes too short
                 double_ad += 1
                 # With this test, don't know if ad #1 or #2 is visible...
                 self.driver.forward()
-                print(ext.t(short=True, hun=True), "THREE FORWARDS",
-                      "Video Index:", self.getCurrentIndex())
-                print(ext.t(short=True, hun=True),
-                      "# 3A. Player Status: BEFORE 2nd forward wait",
-                      self.getPlayerStatus())
-                print(ext.t(short=True, hun=True),
-                      "# 3A. Video Index:", self.getCurrentIndex())
+                self.youPrint("THREE FORWARDS", "Video Index:",
+                              self.getCurrentIndex())
+                self.youPrint("# 3A. Player Status: BEFORE 2nd forward wait",
+                              self.getPlayerStatus())
+                self.youPrint("# 3A. Video Index:", self.getCurrentIndex())
                 video_id = self.getMicroFormat()
-                print(ext.t(short=True, hun=True),
-                      "# 3A. getMicroFormat() video_id:", video_id)
+                self.youPrint("# 3A. getMicroFormat() video_id:", video_id)
 
                 # TODO: create function that calls lcs.fast_refresh in loop
                 #self.top.after(350)  # 300 too short for triple ad
                 player_status = self.waitYouTubePlayer(debug=True)
                 if not player_status:
-                    print("Shutting down or player broken")
+                    self.youPrint("Shutting down or player broken!")
                     continue
-                print(ext.t(short=True, hun=True),
-                      "# 3B. Player Status after 350ms:",
-                      self.getPlayerStatus())
-                print(ext.t(short=True, hun=True),
-                      "# 3B. URL Index:", self.getCurrentIndex())
+                self.youPrint("# 3B. Player Status after 350ms:", self.getPlayerStatus())
+                self.youPrint("# 3B. URL Index:", self.getCurrentIndex())
                 video_id = self.getMicroFormat()
-                print(ext.t(short=True, hun=True),
-                      "# 3B. getMicroFormat() video_id:", video_id)
+                self.youPrint("# 3B. getMicroFormat() video_id:", video_id)
             else:
-                print(ext.t(short=True, hun=True), "TWO FORWARDS",
-                      "Video Index:", self.getCurrentIndex())
-                print(ext.t(short=True, hun=True),
-                      "# 3. Player Status:", self.getPlayerStatus())
-                print(ext.t(short=True, hun=True),
-                      "# 3. Video Index:", self.getCurrentIndex())
+                self.youPrint("TWO FORWARDS", "Video Index:",
+                              self.getCurrentIndex())
+                self.youPrint("# 3. Player Status:", self.getPlayerStatus())
+                self.youPrint("# 3. Video Index:", self.getCurrentIndex())
                 video_id = self.getMicroFormat()
-                print(ext.t(short=True, hun=True),
-                      "# 3. getMicroFormat() video_id:", video_id)
+                self.youPrint("# 3. getMicroFormat() video_id:", video_id)
 
             # Could be within second ad but extra forward needed for next
             self.driver.forward()  # Extra forward needed for next song
             self.timeForwardYouTube = time.time()
-            print(ext.t(short=True, hun=True),
-                  "# 4. Player Status:", self.getPlayerStatus())
-            print(ext.t(short=True, hun=True),
-                  "# 4. Video Index:", self.getCurrentIndex())
+            self.youPrint("# 4. Player Status:", self.getPlayerStatus())
+            self.youPrint("# 4. Video Index:", self.getCurrentIndex())
             video_id = self.getMicroFormat()
-            print(ext.t(short=True, hun=True),
-                  "# 4. getMicroFormat() video_id:", video_id)
+            self.youPrint("# 4. getMicroFormat() video_id:", video_id)
 
     def openSelenium(self):
         """ Create Selenium browser instance
@@ -16422,7 +16439,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             # Start windows
             end_wins = start_wins = mon.get_all_windows()
         except Exception as err:
-            print("openSelenium() Exception:", err)
+            self.youPrint("openSelenium() Exception:", err)
             return self.driver, window
 
         if web.name.startswith("xdg-open"):
@@ -16559,7 +16576,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                 text = str(err)
                 message.ShowInfo(self.top, title, text, icon='error',
                                  thread=self.get_thread_func)
-                print("id_name = 'items' WebDriverException:\n", err)
+                self.youPrint("id_name = 'items' WebDriverException:\n", err)
                 break
                 # return None
 
@@ -16590,9 +16607,9 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
 
             if u'[Private video]' == link_title:
                 # Link # 119 is private video, get keys
-                print("link_url  :", link_url)
-                print("link_title:", link_title)
-                print("class_list:", class_list)
+                self.youPrint("link_url  :", link_url)
+                self.youPrint("link_title:", link_title)
+                self.youPrint("class_list:", class_list)
                 private_links += 1
                 continue
                 #print("\ndictLink:", dictLink)
@@ -16607,7 +16624,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             part = link_url.split("&list=")[0]
             listVideos.append(link_title + ";https://www.youtube.com" + part)
 
-        print("good_links:", good_links, "bad_links:", bad_links)
+        self.youPrint("good_links:", good_links, "bad_links:", bad_links)
 
         return good_links, private_links, listVideos
 
@@ -16695,21 +16712,21 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
         try:
             result1 = self.driver.find_element(By.XPATH, xpath)
         except Exception as err:
-            print("Exception reading menu hamburger:\n", err)
+            self.youPrint("Exception reading menu hamburger:\n", err)
 
         #print("result1:", result1, "result2:", result2)
         # Hamburger menu is hidden unless action can be taken
         if result1 and result1.is_displayed():
-            print("Clicking xpath:", xpath)
+            self.youPrint("Clicking xpath:", xpath)
             self.driverClick("xpath", xpath)
             try:
                 # Button is hidden until hamburger clicked
                 result2 = self.driver.find_element(By.LINK_TEXT, link_text)
             except Exception as err:
-                print("Exception 'Show unavailable videos':\n", err)
+                self.youPrint("Exception 'Show unavailable videos':\n", err)
 
         if result2:
-            print("Clicking 'Show unavailable videos':", link_text)
+            self.youPrint("Clicking 'Show unavailable videos':", link_text)
             self.driverClick("link_text", link_text)
 
         """ Button to click:
@@ -16767,7 +16784,6 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
         """
         return
 
-
     def getGoodTimes(self, good_links):
         """ Get Relevant Video Durations (4x's more are irrelevant)
         :param good_links: Count to stop at
@@ -16822,7 +16838,7 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
             #print("#", good_times, "duration_str:", duration_str,
             #      "duration:", mins + ":" + secs)
 
-        print("good_times:", good_times, "bad_times:", bad_times)
+        self.youPrint("good_times:", good_times, "bad_times:", bad_times)
 
         return good_times, listTimes
 
@@ -16855,7 +16871,8 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
             #print("Duration:", tmf.mm_ss(self.progressYouTube, rem='d'),
             #      "of:", self.durationYouTube, self.youProVar.get(), end="\r")
 
-            if self.hasYouTubeLRC and self.topYouTubeLRC:
+            #if self.hasYouTubeLRC and self.topYouTubeLRC:
+            if self.hasYouTubeLRC and self.youLrcFrame:  # Oct 22/23
                 self.updateYouTubeLRC()
 
         else:  # mm_ss(seconds, brackets=False, trim=True, rem=None)
@@ -16878,21 +16895,25 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
                 self.isSongRepeating = None  # Turn off future checks
                 if micro_id != link_id:
 
-                    print(ext.t(short=True, hun=True),
-                          "Forced driver.refresh after:",
-                          tmf.mm_ss(elapsed, rem='d'))
+                    self.youPrint("Forced driver refresh after:",
+                                  tmf.mm_ss(elapsed, rem='d'))
+                    #print(ext.t(short=True, hun=True),
+                    #      "Forced driver refresh after:",
+                    #      tmf.mm_ss(elapsed, rem='d'))
                     self.driver.refresh()
-                    print(ext.t(short=True, hun=True),
-                          "MicroFormat video playing  :", micro_id)
+                    self.youPrint("MicroFormat video found playing  |", micro_id)
+                    #print(ext.t(short=True, hun=True),
+                    #      "MicroFormat video found playing  |", micro_id)
                     self.waitYouTubePlayer()
-                    print(ext.t(short=True, hun=True),
-                          "Browser Address URL Link ID:", link_id)
+                    self.youPrint("Browser Address Bar URL Link ID  |", link_id)
+                    #print(ext.t(short=True, hun=True),
+                    #      "Browser Address Bar URL Link ID  |", link_id)
                     self.resetYouTubeDuration()  # Reset one song duration
             elif micro_id == link_id:
                 self.isSongRepeating = None
-                print(ext.t(short=True, hun=True),
-                      "MicroFormat found after:",
-                      tmf.mm_ss(elapsed, rem='d'), "    |", micro_id,)
+                #print(ext.t(short=True, hun=True),
+                self.youPrint("MicroFormat found after:",
+                              tmf.mm_ss(elapsed, rem='d'), "    |", micro_id)
 
         # Has YouTube popped up an ad?
         if not self.isYouTubeAdRunning():
@@ -16935,15 +16956,25 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
                 self.driver.quit()
                 return False
             """
-            print(ext.t(short=True, hun=True),
-                  "Ad visible. Player status:", final_status)
+            self.youPrint("Ad visible. Player status:", final_status)
+            #print(ext.t(short=True, hun=True),
+            #      "Ad visible. Player status:", final_status)
+
+            # TODO: Only all housekeeping when < .1 second since last time
+            #       at this point. E.G.
+            # 20:10:55.2 Ad visible. Player status: -1
+            # 20:10:55.3 Ad visible. Player status: -1
+            # 20:10:55.3 Ad visible. Player status: -1
+            # 20:10:55.4 Ad visible. Player status: -1
+            # 20:10:55.5 Ad visible. Player status: -1
+            self.youHousekeeping()
 
             # Ad is running
-            """  TODO: At start, quickly ramp down volume over 1/10 second
-                       At end, Slowly ramp up volume over 1/2 second
-                       However, setup mute mode too, so no ramping
-                       Need to capture web browsers sink and then use: 
-                            pav.fade(self.driver_sink, start, end, time) """
+            """  TODO: When resuming from suspend, 100's of ads can appear for
+                       duration of sleep. Unlike above where Ads are .1 second
+                       apart, these Ads are 2 seconds apart. Fastest way out is
+                       to reload the last song. 
+            """
             count = 0
             # self.driver.find_element(By.CSS_SELECTOR, ".ytp-ad-duration-remaining")
 
@@ -16955,8 +16986,7 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
                 # Back button goes to previous song played
                 self.driver.back()
                 if debug:
-                    print(ext.t(short=True, hun=True),
-                          "BACK LOOP Ad still visible:", count, end="\r")
+                    self.youPrint("BACK LOOP Ad still visible:", count, end="\r")
                 if self.isYouTubeAdRunning():
                     count += 1
                     if not lcs.fast_refresh():
@@ -16967,67 +16997,58 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
                 print("\n" + ext.t(short=True, hun=True),
                       "driver.back() visible loops:", str(count).ljust(2),
                       " | Video Index:", self.getCurrentIndex())  # count is always 1
-                print(ext.t(short=True, hun=True),
-                      "# 1. Player Status:", self.getPlayerStatus())
-                print(ext.t(short=True, hun=True),
-                      "# 1. Video Index before FIRST forward:",
-                      self.getCurrentIndex())
+                self.youPrint("# 1. Player Status:", self.getPlayerStatus())
+                self.youPrint("# 1. Video Index before FIRST forward:",
+                              self.getCurrentIndex())
 
             self.driver.forward()  # Send forward page event
             player_status = self.waitYouTubePlayer(debug=False)
+            # If status is NONE probably dialog prompt
             if not player_status:
-                print("Shutting down or player broken")
-                continue
+                # Answer dialog box for "Video paused. Continue watching?"
+                self.youHousekeeping()  # Not working as intended...
+                player_status = self.waitYouTubePlayer(debug=True)
+                if not player_status:
+                    self.youPrint("Shutting down, dialog prompt or player broken!")
+                    continue
 
             if debug:
-                print(ext.t(short=True, hun=True),
-                      "# 2. Player Status after 400ms:", self.getPlayerStatus())
-                print(ext.t(short=True, hun=True),
-                      "# 2. Video Index:", self.getCurrentIndex())
+                self.youPrint("# 2. Player Status after 400ms:", self.getPlayerStatus())
+                self.youPrint("# 2. Video Index:", self.getCurrentIndex())
                 video_id = self.getMicroFormat()
-                print(ext.t(short=True, hun=True),
-                      "# 2. getMicroFormat() video_id:", video_id)
+                self.youPrint("# 2. getMicroFormat() video_id:", video_id)
 
             if self.isYouTubeAdRunning():
                 # With this test, don't know if ad #1 or #2 is visible...
                 self.driver.forward()
                 if debug:
-                    print(ext.t(short=True, hun=True), "THREE FORWARDS",
-                          "Video Index:", self.getCurrentIndex())
-                    print(ext.t(short=True, hun=True),
-                          "# 3A. Player Status: BEFORE 2nd forward wait",
-                          self.getPlayerStatus())
-                    print(ext.t(short=True, hun=True),
-                          "# 3A. Video Index:", self.getCurrentIndex())
+                    self.youPrint("THREE FORWARDS", "Video Index:",
+                                  self.getCurrentIndex())
+                    self.youPrint("# 3A. Player Status: BEFORE 2nd forward wait",
+                                  self.getPlayerStatus())
+                    self.youPrint("# 3A. Video Index:", self.getCurrentIndex())
                     video_id = self.getMicroFormat()
-                    print(ext.t(short=True, hun=True),
-                          "# 3A. getMicroFormat() video_id:", video_id)
+                    self.youPrint("# 3A. getMicroFormat() video_id:", video_id)
 
                 #self.top.after(350)  # 300 too short for triple ad
                 player_status = self.waitYouTubePlayer(debug=False)
                 if not player_status:
-                    print("Shutting down or player broken")
+                    self.youPrint("Shutting down or player broken!")
                     continue
                 if debug:
-                    print(ext.t(short=True, hun=True),
-                          "# 3B. Player Status after 350ms:",
-                          self.getPlayerStatus())
-                    print(ext.t(short=True, hun=True),
-                          "# 3B. URL Index:", self.getCurrentIndex())
+                    self.youPrint("# 3B. Player Status after 350ms:",
+                                  self.getPlayerStatus())
+                    self.youPrint("# 3B. URL Index:", self.getCurrentIndex())
                     video_id = self.getMicroFormat()
-                    print(ext.t(short=True, hun=True),
-                          "# 3B. getMicroFormat() video_id:", video_id)
+                    self.youPrint("# 3B. getMicroFormat() video_id:", video_id)
             else:
                 if debug:
                     print(ext.t(short=True, hun=True), "TWO FORWARDS",
                           "Video Index:", self.getCurrentIndex())
-                    print(ext.t(short=True, hun=True),
-                          "# 3. Player Status:", self.getPlayerStatus())
-                    print(ext.t(short=True, hun=True),
-                          "# 3. Video Index:", self.getCurrentIndex())
+                    self.youPrint("# 3. Player Status:", self.getPlayerStatus())
+                    self.youPrint("# 3. Video Index:", self.getCurrentIndex())
                     video_id = self.getMicroFormat()
-                    print(ext.t(short=True, hun=True),
-                          "# 3. getMicroFormat() video_id:", video_id)
+                    self.youPrint("# 3. getMicroFormat() video_id:", video_id)
 
             # Could be within second ad but extra forward needed for next
             self.driver.forward()  # Extra forward needed for next song
@@ -17054,13 +17075,10 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
                 return False  # Weird error
 
             if debug:
-                print(ext.t(short=True, hun=True),
-                      "# 4. Player Status:", self.getPlayerStatus())
-                print(ext.t(short=True, hun=True),
-                      "# 4. Video Index:", self.getCurrentIndex())
+                self.youPrint("# 4. Player Status:", self.getPlayerStatus())
+                self.youPrint("# 4. Video Index:", self.getCurrentIndex())
                 video_id = self.getMicroFormat()  # From mini-player script
-                print(ext.t(short=True, hun=True),
-                      "# 4. getMicroFormat() video_id:", video_id)
+                self.youPrint("# 4. getMicroFormat() video_id:", video_id)
             else:
                 video_id = self.getMicroFormat()  # From mini-player script
 
@@ -17081,6 +17099,7 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
 
     def buildYouTubeLRC(self, item):
         """ Build top level for YouTube Video LRC (synchronized lyrics) """
+        # Oct 22/23 - no more top to build, frame to .grid() instead
         if not self.top:  # Does YouTube Playlist toplevel exist?
             return
         if self.topYouTubeLRC:
@@ -17088,12 +17107,20 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
             return
         # CustomScroll scrollYT based on self.scrollbox =
 
+        # Oct 22/23 - no more top to build, frame to .grid() instead
         self.topYouTubeLRC = tk.Toplevel()  # New window for data dictionary display.
 
         xy = (self.top.winfo_x() + g.PANEL_HGT,
               self.top.winfo_y() + g.PANEL_HGT)
         width = self.top.winfo_width()
         height = self.top.winfo_height()
+
+        # Oct 22/23 - no more top to build, frame to .grid() instead
+        tree_width = self.youTreeFrame.winfo_width()
+        tree_height = self.youTreeFrame.winfo_height()
+        #print("tree_width:", tree_width, " | tree_height:", tree_height)
+        # tree_width: 1451  | tree_height: 845
+
         self.topYouTubeLRC.minsize(width=g.BTN_WID * 10, height=g.PANEL_HGT * 4)
         self.topYouTubeLRC.geometry('%dx%d+%d+%d' % (width, height, xy[0], xy[1]))
         self.topYouTubeLRC.title("LRC Synchronized Lyrics - mserve")
@@ -17108,6 +17135,7 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
         img.taskbar_icon(self.topYouTubeLRC, 64, 'white', 'lightskyblue', 'black')
 
         ''' Bind <Escape> to close window '''
+        # Oct 22/23 - no more top destroy, frame to remove
         self.topYouTubeLRC.bind("<Escape>", self.destroyYouTubeLRC)
         self.topYouTubeLRC.protocol("WM_DELETE_WINDOW", self.destroyYouTubeLRC)
         
@@ -17223,6 +17251,137 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
         # Fix Control+C  https://stackoverflow.com/a/64938516/6929343
         #self.scrollYT.bind("<Button-1>", lambda event: self.scrollYT.focus_set())
 
+    def buildYouTubeFrameLRC(self, item):
+        """ Build Frame for YouTube Video LRC (synchronized lyrics)
+
+            If not created, create frame for LRC to replace treeview.grid_remove()
+            If create, treeview.remove and frame.grid() to replace.
+        """
+        if self.youLrcFrame:
+            self.youTreeFrame.grid_remove()
+            self.youLrcFrame.grid()
+        else:
+
+            tree_width = self.youTreeFrame.winfo_width()
+
+            # Master frame for LRC
+            self.youLrcFrame = tk.Frame(self.top)  # see self.youTreeFrame
+            self.youLrcFrame.grid(sticky=tk.NSEW)
+            self.youLrcFrame.columnconfigure(0, minsize=330, weight=1)
+            self.youLrcFrame.columnconfigure(1, minsize=tree_width - 330, weight=1)
+            #         #self.topYouTubeLRC.grid_columnconfigure(0, minsize=320)
+            #self.frame.columnconfigure(0, weight=1)
+
+        ''' LRC Artwork, Song Name, Progress, Time offset & highlight Color '''
+        info_frame = tk.Frame(self.youLrcFrame)
+        info_frame.grid(row=0, column=0, sticky=tk.NS)
+        art_label = tk.Label(info_frame, borderwidth=0,
+                             image=self.photosYouTube[int(item)])
+        art_label.grid(row=0, column=0, sticky=tk.EW, padx=5, pady=10)
+
+        song = tk.Label(info_frame, text=self.listYouTube[int(item)]['name'],
+                        font=g.FONT14, wraplength=320, justify="center")
+        song.grid(row=1, column=0, sticky=tk.EW, padx=5, pady=40)
+
+        # Links https://stackoverflow.com/a/23482749/6929343
+        link1 = tk.Label(info_frame, text="Google Song Meaning",
+                         fg="blue", cursor="hand2",
+                         font=g.FONT, wraplength=320, justify="center")
+        link1.grid(row=2, column=0, sticky=tk.EW, padx=5, pady=40)
+        url = "https://www.google.com/search?q=song meaning " + \
+              self.listYouTube[int(item)]['name']
+        link1.bind("<Button-1>", lambda e: webbrowser.open_new(url))
+
+        # Song progress seconds into duration
+        self.youProLrcVar = tk.StringVar()
+        self.youProLrcVar.set("Progress: 0.0")
+        position = tk.Label(info_frame, textvariable=self.youProLrcVar,
+                            font=g.FONT, wraplength=320, justify="center")
+        position.grid(row=3, column=0, sticky=tk.EW, padx=5, pady=40)
+
+        # Lyrics Time Offset +/- seconds
+        time_string = tk.Label(info_frame, text="Lyrics Time Offset",
+                               font=g.FONT, wraplength=320, justify="center")
+        time_string.grid(row=4, column=0, sticky=tk.EW, padx=5, pady=(20, 0))
+        self.youTimeOffLrcVar = tk.DoubleVar()
+        ndx = int(item)
+        self.youTimeOffLrc = self.listYouTube[ndx].get('lrc_timeoff', None)
+        if self.youTimeOffLrc is None:
+            self.youTimeOffLrc = 0.0
+        self.youTimeOffLrcVar.set(self.youTimeOffLrc)
+        time_offset = tk.Entry(info_frame, textvariable=self.youTimeOffLrcVar,
+                               font=g.FONT14, justify="center")
+        time_offset.grid(row=5, column=0, sticky=tk.EW,
+                         padx=5, pady=(0, 40))
+        time_offset.bind("<FocusOut>", lambda e: self.time_focusout(item))
+
+        # Highlight background color
+        bg_string = tk.Label(info_frame, text="Red / Green / Blue / Black" +
+                                              " / Yellow / Cyan / Magenta",
+                             font=g.FONT, wraplength=320, justify="center")
+        bg_string.grid(row=6, column=0, sticky=tk.EW, padx=5, pady=(20, 0))
+        self.youBgColorLrcVar = tk.StringVar()
+        self.youBgColorLrc = self.listYouTube[ndx].get('lrc_color', None)
+        if self.youBgColorLrc is None:
+            self.youBgColorLrc = 'Yellow'
+        self.youBgColorLrcVar.set(self.youBgColorLrc)
+        bg_color = tk.Entry(info_frame, textvariable=self.youBgColorLrcVar,
+                            font=g.FONT14, justify="center")
+        # Want to increase X padding but it's forcing info_frame wider?
+        bg_color.grid(row=7, column=0, sticky=tk.EW,
+                      padx=5, pady=(0, 40))
+        # bg_color.bind("<FocusOut>", self.bg_color_focusout)
+        bg_color.bind("<FocusOut>", lambda e: self.bg_color_focusout(item))
+
+        ''' Scrolled Text with LRC Lyrics '''
+        # Text padding not working: https://stackoverflow.com/a/51823093/6929343
+        self.scrollYT = toolkit.CustomScrolledText(
+            self.youLrcFrame, state="normal", font=g.FONT14,
+            borderwidth=15, relief=tk.FLAT)
+        self.scrollYT.configure(background="#eeeeee")  # Replace "LightGrey"
+        self.scrollYT.config(spacing1=20)  # Spacing above the first line in a block of text
+        self.scrollYT.config(spacing2=10)  # Spacing between the lines in a block of text
+        self.scrollYT.config(spacing3=20)  # Spacing after the last line in a block of text
+        self.scrollYT.tag_configure("center", justify='center')
+
+        ''' Insert Lyrics Lines '''
+        self.scrollYT.configure(state="normal")
+        for line in self.listYouTubeLRC:
+            line_time, line_text = self.parse_LRC_line(line)
+            # print("line_time:", line_time, "line_text:", line_text)
+            if not line_time:  # two spaces for background color before & after
+                # one extra leading space for left-margin gutter not highlighted
+                self.scrollYT.insert("end", "   " + line + "  \n")
+            else:
+                self.scrollYT.insert("end", "   " + line_text + "  \n")
+        self.scrollYT.configure(state="disabled")
+
+        self.scrollYT.tag_add("center", "1.0", "end")
+        self.scrollYT.grid(row=0, column=1, padx=3, pady=3, sticky=tk.NSEW)
+        tk.Grid.rowconfigure(self.youLrcFrame, 0, weight=1)
+        tk.Grid.columnconfigure(self.youLrcFrame, 1, weight=1)
+
+        self.scrollYT.tag_config('red', background='Red', foreground='White',
+                                 font=font.Font(size=16, weight="bold"))
+        self.scrollYT.tag_config('green', background='Green', foreground='White',
+                                 font=font.Font(size=16, weight="bold"))
+        self.scrollYT.tag_config('blue', background='Blue', foreground='Yellow',
+                                 font=font.Font(size=16, weight="bold"))
+        self.scrollYT.tag_config('black', background='Black', foreground='Gold',
+                                 font=font.Font(size=16, weight="bold"))
+        self.scrollYT.tag_config('yellow', background='Yellow',
+                                 font=font.Font(size=16, weight="bold"))
+        self.scrollYT.tag_config('cyan', background='Cyan',
+                                 font=font.Font(size=16, weight="bold"))
+        self.scrollYT.tag_config('magenta', background='Magenta', foreground='White',
+                                 font=font.Font(size=16, weight="bold"))
+
+        # self.scrollYT.config(tabs=("2m", "40m", "50m"))  # Apr 9, 2023
+        self.scrollYT.config(tabs=("2m", "65m", "80m"))  # Apr 27, 2023
+        self.scrollYT.tag_configure("margin", lmargin1="2m", lmargin2="65m")
+        # Fix Control+C  https://stackoverflow.com/a/64938516/6929343
+        # self.scrollYT.bind("<Button-1>", lambda event: self.scrollYT.focus_set())
+
     def time_focusout(self, item, *_args):
         """ Time Offset has just been changed. """
         old_time = self.youTimeOffLrc
@@ -17232,7 +17391,11 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
             print("Offset entered:", self.youTimeOffLrc, "is beyond 50 seconds.")
             self.youTimeOffLrc = old_time
             self.youTimeOffLrcVar.set(self.youTimeOffLrc)
-            self.topYouTubeLRC.update()
+            # Oct 22/23 - Change to self.youLrcFrame or self.top
+            if self.topYouTubeLRC:
+                self.topYouTubeLRC.update()
+            else:
+                self.top.update()
             return
         if old_time == 0.0 and self.youTimeOffLrc == 0.0:
             return  # No point saving default
@@ -17246,7 +17409,11 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
         print("time_focusout():", self.youTimeOffLrc, "ext.write_to_pickle:",
               tmf.mm_ss(time.time() - start, rem='h'), "sec")  # 1.55 sec
 
-        self.topYouTubeLRC.update()
+        # Oct 22/23 - Change to self.youLrcFrame or self.top
+        if self.topYouTubeLRC:
+            self.topYouTubeLRC.update()
+        else:
+            self.top.update()
 
     def bg_color_focusout(self, item, *_args):
         """ Time Offset has just been changed. """
@@ -17262,10 +17429,18 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
             print("Bad color:", self.youBgColorLrc, " | Keeping old:", old_color)
             self.youBgColorLrc = old_color
             self.youBgColorLrcVar.set(self.youBgColorLrc)
-            self.topYouTubeLRC.update()
+            # Oct 22/23 - Change to self.youLrcFrame or self.top
+            if self.topYouTubeLRC:
+                self.topYouTubeLRC.update()
+            else:
+                self.top.update()
+
             return
         if old_color.lower() == 'yellow' and self.youBgColorLrc.lower() == 'yellow':
             return  # No point saving default
+
+        if old_color.lower() == self.youBgColorLrc.lower():
+            return  # Color not changed
 
         self.scrollYT.tag_remove(old_color.lower(), "1.0", "end")
         print("New color:", self.youBgColorLrc, " | Old color:", old_color)
@@ -17279,24 +17454,40 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
         print("bg_focusout():", self.youBgColorLrc, "ext.write_to_pickle:",
               tmf.mm_ss(time.time() - start, rem='h'), "sec")  # 1.55 sec
 
-        self.topYouTubeLRC.update()
+        # Oct 22/23 - Change to self.youLrcFrame or self.top
+        if self.topYouTubeLRC:
+            self.topYouTubeLRC.update()
+        else:
+            self.top.update()
 
     def destroyYouTubeLRC(self, *_args):
         """ Build top level for YouTube Video LRC (synchronized lyrics) """
+        if self.youLrcFrame:
+            self.youLrcFrame.grid_remove()
+            self.youTreeFrame.grid()
+            self.topYouTubeLRC = None
+            self.hasYouTubeLRC = None
+            return
+
+        # Oct 22/23 - no more top destroy, frame to remove
         if self.topYouTubeLRC is None:  # Is LRC toplevel window active?
             return
         self.topYouTubeLRC.destroy()
-        self.topYouTubeLRC = None
         self.hasYouTubeLRC = None
+        self.topYouTubeLRC = None
 
     def updateYouTubeLRC(self):
         """ Build top level for YouTube Video LRC (synchronized lyrics) """
 
-        #position = tmf.mm_ss(self.progressYouTube, rem='d')
-        position = tmf.mm_ss(self.progressYouTube)  # decisecond is distracting
+        #position = tmf.mm_ss(self.progressYouTube, rem='d')  # decisecond
+        position = tmf.mm_ss(self.progressYouTube)  # Less distracting seconds
         self.youProLrcVar.set("Progress: " + position)
         progress = self.progressYouTube + self.youTimeOffLrc
         progress = 0.0 if progress < 0.0 else progress
+        if self.progressYouTube and \
+                self.progressYouTube == self.progressLastYouTube:
+            print("video stuck? self.progressYouTube:", self.progressYouTube)
+        self.progressLastYouTube = self.progressYouTube
 
         last_ndx = len(self.listYouTubeLRC) - 1
         for i, line in enumerate(self.listYouTubeLRC):
@@ -17316,8 +17507,13 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
                     #print("New lyrics line:", line_text)
                     # Remove pattern green for all
                     # Apply pattern green for active line
-                    self.scrollYT.tag_remove(self.youBgColorLrc.lower(),
-                                             "1.0", "end")
+                    try:
+                        self.scrollYT.tag_remove(self.youBgColorLrc.lower(),
+                                                 "1.0", "end")
+                    except tk.TclError:  # Oct 22/23 - 8:45pm
+                        # Working fine for week until housekeeping added
+                        print("ERROR self.scrollYT.tag_remove()")
+
                     two_before = i - 1 if i > 2 else 1
                     see = str(two_before) + ".0"
                     # Start highlight 1 char in so gutter isn't highlighted
@@ -17327,9 +17523,14 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
                     #      "text_start:", text_start,
                     #      "text_end:", text_end)
                     # TODO: More efficient using self.scrollYT.tag_add
-                    self.scrollYT.highlight_pattern(
-                        "  " + line_text + "  ", self.youBgColorLrc.lower(),
-                        start=text_start, end=text_end)
+                    try:
+                        self.scrollYT.highlight_pattern(
+                            "  " + line_text + "  ", self.youBgColorLrc.lower(),
+                            start=text_start, end=text_end)
+                    except tk.TclError:  # Oct 22/23 - 8:45pm
+                        # Working fine for week until housekeeping added
+                        print("ERROR self.scrollYT.highlight_pattern()")
+
                     # https://stackoverflow.com/a/62765724/6929343
                     self.scrollYT.see(text_start)
                     lineinfo = self.scrollYT.dlineinfo(see)
@@ -17341,7 +17542,12 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
                     #   File "/home/rick/python/mserve.py", line 17226, in updateYouTubeLRC
                     #     self.scrollYT.yview_scroll(lineinfo[1], 'pixels')
                     # TypeError: 'NoneType' object has no attribute '__getitem__'
-                    self.topYouTubeLRC.update_idletasks()
+
+                    # Oct 22/23 - Change to self.youLrcFrame or self.top
+                    if self.topYouTubeLRC:
+                        self.topYouTubeLRC.update_idletasks()
+                    else:
+                        self.top.update_idletasks()
                     return
 
     @staticmethod
@@ -17421,6 +17627,9 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
             :param startup: When True, IPL (Initial Program Load)
             :return: None or player_status = -1, 1, 2, 3, 5 """
 
+        ''' Housekeeping every 1 second (out of 10) '''
+        lastHousekeepingTime = time.time()
+
         count_none = count_2 = count_3 = count_5 = 0
         start = time.time()
         while True:
@@ -17452,6 +17661,16 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
                     return 99
             elif player_status == 1 or player_status == -1:
                 break
+
+            ''' Housekeeping every 1 second (out of 10) '''
+            now = time.time()
+            if not startup and now - lastHousekeepingTime > 1.0:
+
+                # Prints for song #10, #17
+                print(ext.t(short=True, hun=True),
+                      "waitYouTubePlayer() - 1 second Housekeeping check.")
+                lastHousekeepingTime = now
+                self.youHousekeeping()
 
         if debug:
             print("\n" + ext.t(short=True, hun=True),
@@ -17592,20 +17811,22 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
         try:
             link = self.driver.current_url
         except Exception as err:
-            print("Exception:", err)
-            print("ERROR on link = self.driver.current_url")
+            print("\nException:", err)
+            print("ERROR on link = self.driver.current_url\n")
             return link, link_pre, link_list
 
         try:
             link_pre = link.split("&list=")[0]
         except IndexError:
-            print("Could not find '&list=' in link!")
+            print("\nCould not find '&list=' in link[0]!")
+            print(link, "\n")
             return link, link_pre, link_list
 
         try:
             link_list = link.split("&list=")[1]
         except IndexError:
-            print("Could not find '&list=' in link!")
+            print("\nCould not find '&list=' in link[1]!")
+            print(link, "\n")
             return link, link_pre, link_list
 
 
@@ -17616,13 +17837,17 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
         start = time.time()
         wait = WebDriverWait(self.driver, 10)
         by = by.upper()
-        if by == 'XPATH':
-            wait.until(EC.element_to_be_clickable((By.XPATH, desc))).click()
-        if by == 'ID':
-            wait.until(EC.element_to_be_clickable((By.ID, desc))).click()
-        if by == 'LINK_TEXT':
-            wait.until(EC.element_to_be_clickable((By.LINK_TEXT, desc))).click()
-
+        try:
+            if by == 'XPATH':
+                wait.until(EC.element_to_be_clickable((By.XPATH, desc))).click()
+            if by == 'ID':
+                wait.until(EC.element_to_be_clickable((By.ID, desc))).click()
+            if by == 'LINK_TEXT':
+                wait.until(EC.element_to_be_clickable((By.LINK_TEXT, desc))).click()
+        except TimeoutException:
+            print("\nClickable element not found!")
+            toolkit.print_trace()
+            return False
         return time.time() - start < 9.0
 
     def getPlayerStatus(self):
@@ -17796,6 +18021,97 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
         except WebDriverException:
             return False
 
+    def youHousekeeping(self):
+        """ YouTube Housekeeping once a minute
+            Respond to prompt: "Video paused. Continue Watching?"
+
+                                ......                  "Yes"
+
+        """
+        element = None
+        #try:  # element is never found so comment out to save time
+        #    element = self.driver.find_element_by_xpath(
+        #        "//*[contains(text(), 'Video paused. Continue Watching?')]")
+        #except NoSuchElementException:
+        #    element = None
+        try:
+            element2 = self.driver.find_element_by_id("confirm-button")
+        except NoSuchElementException:
+            element2 = None
+        if not element and not element2:
+            return
+
+        #print("youHousekeeping() - Found element:", element,
+        #      " | element2:", element2)
+        # youHousekeeping() - Found element: None  | element2:
+        #   <selenium.webdriver.remote.webelement.WebElement
+        #   (session="6ac4176d1ef05a453703aea114ac5541",
+        #   element="0.16380191644441688-11")>
+        if element2.is_displayed():
+            # Initially element2 is not present. First time is present during
+            # self.waitYouTubePlayer() after 10 songs have played. Thereafter,
+            # element2 is present during 1 minute check but is not displayed.
+            # element2 is displayed for song #17. It is present every minute
+            # until Song #20 and disappears during Song #21 which is first time
+            # for MicroFormat is forced after 0.9 seconds. Song #30 gets confirm
+            # when ad visible and player status -1 in endless loop.
+            print("\n" + ext.t(short=True, hun=True),
+                  "youHousekeeping() - click ID: 'confirm-button'\n")
+            element2.click()  # result1
+            return
+        '''
+    <yt-button-renderer id="confirm-button" 
+        class="style-scope yt-confirm-dialog-renderer" button-renderer="" 
+        button-next="" dialog-confirm=""><!--css-build:shady--><yt-button-shape>
+        <button class="yt-spec-button-shape-next yt-spec-button-shape-next--text 
+        yt-spec-button-shape-next--call-to-action 
+        yt-spec-button-shape-next--size-m" aria-label="Yes" title="" style="">
+
+        <div class="yt-spec-button-shape-next__button-text-content">
+        <span class="yt-core-attributed-string 
+        yt-core-attributed-string--white-space-no-wrap" 
+        role="text">Yes</span></div>
+
+        <yt-touch-feedback-shape style="border-radius: inherit;">
+        <div class="yt-spec-touch-feedback-shape 
+            yt-spec-touch-feedback-shape--touch-response" aria-hidden="true">
+            <div class="yt-spec-touch-feedback-shape__stroke" style=""></div>
+            <div class="yt-spec-touch-feedback-shape__fill" style=""></div>
+        </div>
+        '''
+        #if not self.driverClick("id", "confirm-button"):
+        #    print("youHousekeeping(): Error clicking 'Yes' button")
+
+        # youHousekeeping() - Found element: None
+        #   element2: <selenium.webdriver.remote.webelement.WebElement
+        #   (session="394498a9a5db08d5b6dbd83e27591f34", 
+        #   element="0.951519416280243-15")>
+        # youHousekeeping() - Found element: None 
+        #   element2: <selenium.webdriver.remote.webelement.WebElement 
+        #   (session="394498a9a5db08d5b6dbd83e27591f34", 
+        #   element="0.951519416280243-15")>
+        # Exception in Tkinter callback
+        # Traceback (most recent call last):
+        #   File "/usr/lib/python2.7/lib-tk/Tkinter.py", line 1540, in __call__
+        #     return self.func(*args)
+        #   File "/home/rick/python/mserve.py", line 15699, in <lambda>
+        #     command=lambda: self.you_tree_smart_play_all())
+        #   File "/home/rick/python/mserve.py", line 16316, in you_tree_smart_play_all
+        #     self.youHousekeeping()
+        #   File "/home/rick/python/mserve.py", line 17879, in youHousekeeping
+        #     if not self.driverClick("id", "confirm-button"):
+        #   File "/home/rick/python/mserve.py", line 17665, in driverClick
+        #     wait.until(EC.element_to_be_clickable((By.ID, desc))).click()
+        #   File "/usr/lib/python2.7/dist-packages/selenium/webdriver/support/wait.py", line 80, in until
+        #     raise TimeoutException(message, screen, stacktrace)
+        # TimeoutException: Message:
+
+        return
+
+    @staticmethod
+    def youPrint(*args):
+        """ Print debug lines """
+        print(ext.t(short=True, hun=True), *args)
 
     def you_tree_get_link_ndx(self, link_search):
         """ Highlight row black & gold as second entry (see 2 below + 1 before)
@@ -18280,6 +18596,7 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
             When called with self.top.protocol("WM_DELETE_WINDOW", self.reset)
             shutdown will contain <Tkinter.Event instance at 0x7f4ebb968ef0>
         :param shutdown: True = shutdown so don't update lib_top """
+        # Oct 22/23 - no more top destroy, frame to remove
         self.destroyYouTubeLRC()  # Lyrics window if open will close
         if self.tt and self.tt.check(self.top):
             self.tt.close(self.top)
