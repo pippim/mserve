@@ -137,10 +137,11 @@ def mm_ss(seconds, brackets=False, trim=True, rem=None):
         :param rem: = 'd' includes deci seconds, 'h' includes hundredths
     """
     i = int(seconds)
-    d = seconds - i
+    seconds = float(seconds)
+    d = seconds - float(i)
     m, s = divmod(i, 60)
     result = ""
-    ss = str(s)                             # ss is now seconds in string format
+    ss = str(s)                             # ss = seconds in string format
 
     if m > 0 or trim is False:
         result += str(m) + ":"              # minutes pass test
@@ -151,7 +152,12 @@ def mm_ss(seconds, brackets=False, trim=True, rem=None):
 
     if rem == 'd':
         # decisecond is required # Not working to strip out leading 1.?
-        result += str('%.1f' % d).lstrip('0').lstrip('1')
+        if len(ss) > 1:
+            # Broken in You Tube Playlists Smart Play
+            result += str('%.1f' % d).lstrip('0').lstrip('1')  # 1.0 becomes 0.0?
+        else:
+            # Broken in regular Music Player
+            result += str('%.1f' % d).lstrip('0')  # 3:26.0 becomes 3:261.0
     elif rem == 'h':
         # hundredths is required # Not working to strip out leading 1.?
         result += str('%.2f' % d).lstrip('0').lstrip('1')
