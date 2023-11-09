@@ -14797,7 +14797,6 @@ class PlaylistsCommonSelf:
         self.youCurrSong = None
         self.youNextSong = None
 
-        self.topYouTubeLRC = None  # TK window to show lyrics
         self.youTreeFrame = None  # .grid_remove() for youLrcFrame
         self.youLrcFrame = None  # .grid_remove() for youPlaylistFrame
         self.scrollYT = None  # Custom Scrolled Text Box
@@ -15628,36 +15627,29 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         ''' Close Button - NOTE: This calls reset() function !!! '''
         self.close_button = tk.Button(self.you_btn_frm, text="✘ Close",
                                       width=g.BTN_WID2 - 4, 
-                                      command=self.you_tree_close)
+                                      command=self.youClosePlayLrc)
         self.close_button.grid(row=0, column=4, padx=(10, 5), pady=5,
                                sticky=tk.E)
-        self.tt.add_tip(self.close_button, "Close Window", anchor="ne")
+        self.tt.add_tip(self.close_button, "Close YouTube Playlist", anchor="ne")
 
-        self.top.bind("<Escape>", self.you_tree_close)
-        self.top.protocol("WM_DELETE_WINDOW", self.you_tree_close)
+        self.top.bind("<Escape>", self.youClosePlayLrc)
+        self.top.protocol("WM_DELETE_WINDOW", self.youClosePlayLrc)
 
         ''' Refresh screen '''
         if self.top:  # May have been closed above.
             self.top.update_idletasks()
 
     def you_tree_click(self, event):
-        """ Popup menu:
-
-            If NOT self.isSmartPlayYouTube:
-                ----
-                Smart Play Playlist
-                Copy Playlist Link
-                ----
-                Play Song # 999
-                Smart Play # 999
-                Copy Link # 999
+        """ Popup menu has two different sets of options:
 
             If self.isSmartPlayYouTube:
-                Close Smart Play
                 ----
-                Smart Play Song # 999
-                Middle 15 Seconds # 999
-                Copy Link # 999
+                return (EXPLICIT)
+
+            ELSE NOT self.isSmartPlayYouTube: (IMPLICIT)
+            ----
+            return (IMPLICIT)
+
         """
         item = self.you_tree.identify_row(event.y)
 
@@ -15673,7 +15665,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         if self.isSmartPlayYouTube:
             # Already smart playing YouTube playlist
             menu.add_command(label="Close Smart Playlist", font=g.FONT,
-                             command=self.you_tree_close)
+                             command=self.youClosePlayLrc)
             menu.add_command(label="Copy Playlist Link", font=g.FONT,
                              command=lambda: self.you_tree_copy_all())
             menu.add_separator()
@@ -15709,9 +15701,9 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         menu.add_command(label="Copy Playlist Link", font=g.FONT,
                          command=lambda: self.you_tree_copy_all())
 
-        # NOT TESTED (as of October 16, 2023)
-        #menu.add_command(label="Simple Play Playlist", font=g.FONT,
-        #                 command=lambda: self.you_tree_play_all())
+        # TODO: Check selenium version installed:
+        #   https://stackoverflow.com/a/76915412/6929343
+        #       ~/.cache/selenium
 
         menu.add_separator()
 
@@ -15725,13 +15717,6 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         if XDOTOOL_INSTALLED and WMCTRL_INSTALLED:
             menu.add_command(label="Smart Play #" + no, font=g.FONT,
                              command=lambda: self.you_tree_smart_play(item))
-        # Exception in Tkinter callback
-        # Traceback (most recent call last):
-        #   File "/usr/lib/python2.7/lib-tk/Tkinter.py", line 1540, in __call__
-        #     return self.func(*args)
-        #   File "/home/rick/python/mserve.py", line 15456, in <lambda>
-        #     command=lambda: self.you_tree_smart_play(item))
-        # AttributeError: Playlists instance has no attribute 'you_tree_smart_play'
 
         menu.add_command(label="Copy Link #" + no, font=g.FONT,
                          command=lambda: self.you_tree_copy_link(item))
@@ -15755,13 +15740,18 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         """ Close the YouTube Playlist popup menu """
         menu.unpost()  # Remove popup menu
 
-    def you_tree_close(self, *_args):
-        """ Close YouTube Playlist. 
-            Need to define self.driver
-            if self.driver:
-                self.driver.quit()
-            self.reset() 
-        """
+    def youClosePlayLrc(self, *_args):
+        """ Close YouTube Playlist or Lrc Frame depending on active frame. """
+
+        # Is Lrc Frame active?
+        if self.hasYouTubeLRC:
+            self.youLrcFrame.grid_remove()  # Remove LRC frame
+            self.youTreeFrame.grid()  # Restore Treeview frame
+            self.hasYouTubeLRC = None
+            self.youSetCloseButton()
+            return
+
+        # Normal close window and destroy top
         if self.driver:
             self.driver.quit()
         self.reset()
@@ -15946,18 +15936,6 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         lastHousekeepingTime = time.time()  # Check resume every minute
 
         ''' 3. Loop forever playing all songs - self.monitorYouTubeLinks() '''
-        # TODO: Create new vars lastSong, currSong, nextSong and use them to
-        #       control which song is playing. The forward/back and
-        #       MicroFormat hacks are not 100% because songs are replaying.
-        #       E.G. #4, #5, #6, #5, #6, #7
-
-        #       Instead of self.topYouTubeLRC for LRC, use two frames inside
-        #       self.top removed to make room for the other. Now the buried
-        #       self.top raises in window stack order for each song's LRC
-        #       and steals focus from pyCharm. Added bonus the progress bar
-        #       and Close button from YouTube Playlists toplevel are there.
-        #       Change the Close tooltip to read "Close Synchronized Lyrics"
-
         while True:
             if not self.top:
                 return False  # Closing down
@@ -16003,7 +15981,8 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                 continue  # Skip while loop below
 
             if ad_conflict_count > 0:
-                self.youPrint("player_status == -1 but No Ad Running", ad_conflict_count)
+                self.youPrint("player_status == '-1' but no Ad running. Count:",
+                              ad_conflict_count)
                 ad_conflict_count = 0  # Reset for next group count
 
     def youOpenSelenium(self):
@@ -16015,6 +15994,17 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         """
 
         self.driver = window = None
+        CHROME_DRIVER_VER = "chromedriver108"
+        # TODO replace 108 with actual version
+        # $ google-chrome --version
+        # Google Chrome 108.0.5359.124
+        ver = os.popen("google-chrome --version").read().strip()
+        ver = ver.split()
+        ver = ver[2].split(".")[0]
+        CHROME_DRIVER_VER = CHROME_DRIVER_VER.replace("108", ver)
+        CHROME_DRIVER_PATH = \
+            g.PROGRAM_DIR + CHROME_DRIVER_VER + os.sep + "chromedriver"
+        print("CHROME_DRIVER_PATH:", CHROME_DRIVER_PATH)
 
         web = webbrowser.get()
         #print("browser name:", web.name)  # xdg-open
@@ -16043,8 +16033,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                 https://stackoverflow.com/questions/38916650/what-are-the-benefits-of-using-marionette-firefoxdriver-instead-of-the-old-selen/38917100#38917100
 
                 """
-                self.driver = webdriver.Chrome(
-                    '/home/rick/python/chromedriver108/chromedriver')
+                self.driver = webdriver.Chrome(CHROME_DRIVER_PATH)
                     # Optional argument, if not specified will search path.
 
                 # Automated Test Software message suppression (Doesn't work)
@@ -16060,8 +16049,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                     https://sites.google.com/chromium.org/driver/downloads?authuser=0
                 """
             if "CHROME" in xdg_browser.upper():
-                self.driver = webdriver.Chrome(
-                    '/home/rick/python/chromedriver108/chromedriver')
+                self.driver = webdriver.Chrome(CHROME_DRIVER_PATH)
                     # Optional argument, if not specified will search path.
 
                 # Automated Test Software message suppression (Doesn't work)
@@ -16695,7 +16683,6 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
             #print("Duration:", tmf.mm_ss(self.progressYouTube, rem='d'),
             #      "of:", self.durationYouTube, self.youProVar.get(), end="\r")
 
-            #if self.hasYouTubeLRC and self.topYouTubeLRC:
             if self.hasYouTubeLRC and self.youLrcFrame:  # Oct 22/23
                 self.updateYouTubeLRC()
 
@@ -16932,6 +16919,7 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
         if self.youLrcFrame:
             self.youTreeFrame.grid_remove()  # Remove row 0 Treeview Frame
             self.youLrcFrame.grid()  # Reactivate row 1 LRC Frame
+            self.youSetCloseButton()  # Set close button text
         else:
 
             tree_width  = self.youTreeFrame.winfo_width()
@@ -17062,7 +17050,7 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
         self.scrollYT.tag_configure("margin", lmargin1="2m", lmargin2="65m")
         # Fix Control+C  https://stackoverflow.com/a/64938516/6929343
         self.scrollYT.bind("<Button-1>", lambda event: self.scrollYT.focus_set())
-        # you_tree_close
+        # youClosePlayLrc
 
     def time_focusout(self, item, *_args):
         """ Time Offset has just been changed. """
@@ -17134,8 +17122,18 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
 
         self.youLrcFrame.grid_remove()  # Remove LRC frame
         self.youTreeFrame.grid()  # Restore Treeview frame
-        self.topYouTubeLRC = None
         self.hasYouTubeLRC = None
+        self.youSetCloseButton()
+
+    def youSetCloseButton(self):
+        """ Set self.close_button tooltip text to:
+            "Close Playlist"
+            "Close Synchronized Lyrics (LRC)" """
+        if self.hasYouTubeLRC:
+            tt_text = "Close Synchronized Lyrics (LRC)"
+        else:
+            tt_text = "Close YouTube Playlist"
+        self.tt.set_text(self.close_button, tt_text)
 
     def updateYouTubeLRC(self):
         """ Highlight LRC (synchronized lyrics) line based on progress """
@@ -17772,10 +17770,10 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
             print("\n" + ext.t(short=True, hun=True),
                   "youHousekeeping() - click ID: 'confirm-button'")
             stat = self.youGetPlayerStatus()
-            self.youPrint("Player Status BEFORE click:", stat)
+            self.youPrint("Player Status BEFORE click:", stat)  # Status = 2
             element2.click()  # result1
-            time.sleep(1.0)
-            stat = self.youGetPlayerStatus()
+            time.sleep(.33)  # Nov 6/23 was 1.0, try shorter time for Status
+            stat = self.youGetPlayerStatus()  # Status = 1
             self.youPrint("Player Status AFTER click :", stat, "\n")
             return
         '''
