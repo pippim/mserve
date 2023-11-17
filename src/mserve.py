@@ -443,6 +443,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
 from selenium.common.exceptions import NoSuchElementException
+from selenium.common.exceptions import StaleElementReferenceException
 from selenium.common.exceptions import WebDriverException
 from selenium.common.exceptions import TimeoutException
 
@@ -1738,6 +1739,9 @@ class MusicLocationTree(PlayCommonSelf):
 
         self.tools_menu.add_command(label="Debug Information", font=g.FONT,
                                     command=self.show_debug)
+
+        self.tools_menu.add_command(label="Pulse Audio", font=g.FONT,
+                                    command=self.show_pulse_audio)
 
         mb.add_cascade(label="Tools", menu=self.tools_menu, font=g.FONT)
         ext.t_end('no_print')  # 0.0006351471
@@ -4555,12 +4559,12 @@ class MusicLocationTree(PlayCommonSelf):
         self.debug_output()  # self.info.fact() + print()
 
 
-        self.debug_header("\nTOOLTIPS - tt.line_dump()")
+        #self.debug_header("\nTOOLTIPS - tt.line_dump()")
         lines = self.tt.line_dump()         # Show Tooltips in memory
-        for line in lines:
-            self.debug_detail(line)
-        self.debug_output()
-
+        #for line in lines:
+        #    self.debug_detail(line)
+        #self.debug_output()
+        self.debug_list("TOOLTIPS - tt.line_dump()", lines)
 
         self.debug_header("\nOpened Location")
         self.debug_detail("lcs.open_code       :", lcs.open_code)
@@ -4749,28 +4753,31 @@ class MusicLocationTree(PlayCommonSelf):
 
             self.debug_detail("Pulse Audio - sink_input_list (sound sources)")
             self.debug_detail("-"*51, "\n")
-            for sink in pav.pulse.sink_input_list():
-                self.debug_detail("sink:", sink, sink.proplist['application.name'])
+            try:
+                for sink in pav.pulse.sink_input_list():
+                    self.debug_detail("sink:", sink, sink.proplist['application.name'])
 
-            self.debug_detail("\nPulse Audio - sink_list (sound cards)")
-            self.debug_detail("-"*51, "\n")
-            for sink in pav.pulse.sink_list():
-                self.debug_detail("sink:", sink)
+                self.debug_detail("\nPulse Audio - sink_list (sound cards)")
+                self.debug_detail("-"*51, "\n")
+                for sink in pav.pulse.sink_list():
+                    self.debug_detail("sink:", sink)
 
-            self.debug_detail("\nPulse Audio - source_list (recording)")
-            self.debug_detail("-"*51, "\n")
-            for sink in pav.pulse.source_list():
-                self.debug_detail("sink:", sink)
+                self.debug_detail("\nPulse Audio - source_list (recording)")
+                self.debug_detail("-"*51, "\n")
+                for sink in pav.pulse.source_list():
+                    self.debug_detail("sink:", sink)
 
-            self.debug_detail("\nPulse Audio - card_list.profile_list")
-            self.debug_detail("-"*51, "\n")
-            card = pav.pulse.card_list()[0]
-            self.debug_detail(card.profile_list)
+                self.debug_detail("\nPulse Audio - card_list.profile_list")
+                self.debug_detail("-"*51, "\n")
+                card = pav.pulse.card_list()[0]
+                self.debug_detail(card.profile_list)
 
-            self.debug_detail("\nPulse Audio - pulse.server_info().default_sink_name")
-            self.debug_detail("-"*51, "\n")
-            self.debug_detail(pav.pulse.server_info().default_sink_name)
-
+                self.debug_detail("\nPulse Audio - pulse.server_info().default_sink_name")
+                self.debug_detail("-"*51, "\n")
+                self.debug_detail(pav.pulse.server_info().default_sink_name)
+            except Exception as err:
+                self.debug_detail("\nPulse Audio - Exception")
+                self.debug_detail(err)
             self.debug_output()
 
 
@@ -4867,6 +4874,17 @@ class MusicLocationTree(PlayCommonSelf):
         if result:  # Should always be a result
             self.debug_title.append(result)
 
+    def debug_list(self, title, lines):
+        """
+        :param title: E.G. "TOOLTIPS - Line Dump()"
+        :param lines: list of lines
+        :return: Nothing
+        """
+        self.debug_header("\n" + title)
+        for line in lines:
+            self.debug_detail(line)
+        self.debug_output()
+
     def debug_print(self, *args):
         """ Bullet-proof printing to print file """
         with open(self.debug_file, mode='a') as file_object:
@@ -4905,6 +4923,62 @@ class MusicLocationTree(PlayCommonSelf):
                        collapsed=True, ms_font="TkFixedFont")
         self.debug_recreate_file(clear_lists=True)  # Clear title & text lists
 
+    def show_pulse_audio(self):
+        """ Debugging - show machine info, monitors, windows, tooltips
+            locations, sql, metadata, global variables """
+
+        ''' Make TMP names unique for multiple FileControls racing at once '''
+        letters = string.ascii_lowercase + string.digits
+        temp_suffix = (''.join(random.choice(letters) for _i in range(6)))
+        self.debug_file = TMP_PRINT_FILE + "_" + temp_suffix  # def debug
+        self.debug_recreate_file()  # Clear print file, title and text lists
+
+        self.debug_header("\nPulse Audio Information")
+
+        pactl_list = os.popen("pactl list").read().splitlines()
+        self.debug_list("PA Control - 'pactl list'", pactl_list)
+
+        pa_list_cards = os.popen("pacmd list-cards").read().splitlines()
+        self.debug_list("PA Command - 'pacmd list-cards'", pa_list_cards)
+
+        cmd = "pacmd list-sinks | " +\
+              "grep -e 'name:'  -e 'alsa.device ' -e 'alsa.subdevice '"
+        pa_list_sink_names = os.popen(cmd).read().splitlines()
+        self.debug_list("'pacmd list-sinks | grep'", pa_list_sink_names)
+
+        aplay_list = os.popen("aplay -l").read().splitlines()
+        self.debug_list("aplay list - 'aplay -l'", aplay_list)
+
+        """ Bluetooth doesn't reconnect after suspend 
+        $ bluetoothctl
+        [NEW] Controller 9C:B6:D0:10:37:F8 Dell AW17R3 [default]
+        [NEW] Device D0:77:14:C8:BD:E4 Moto E (4)
+        [NEW] Device 0C:A6:94:69:AE:D0 SONY:SRS-X5
+        [bluetooth]# connect 0C:A6:94:69:AE:D0
+        Attempting to connect to 0C:A6:94:69:AE:D0
+        [CHG] Device 0C:A6:94:69:AE:D0 Connected: yes
+        Failed to connect: org.bluez.Error.Failed
+        [CHG] Device 0C:A6:94:69:AE:D0 Connected: no
+
+        FINAL SOLUTION:
+        
+        1) bluetoothctl 
+        2) power on
+        3) connect 0C:A6:94:69:AE:D0
+        4) quit
+        
+        USE 'expect' script:
+
+        ~/python$ cat blueresume
+
+        #!/usr/bin/expect -f
+        # Resume bluetooth after sleep for Sony XRS speaker
+        # Requires 'sudo apt install expect'
+        # https://gist.github.com/RamonGilabert/046727b302b4d9fb0055
+        
+        ...
+        
+        """
     # ==============================================================================
     #
     #       Music Location Tree Processing - Top menu: SQL Music & SLQ History
@@ -14792,14 +14866,16 @@ class PlaylistsCommonSelf:
         self.privateYouTube = "0"  # Saved count of private/unavailable videos
         self.listMergeYouTube = None  # Stored list + new videos
         self.youLastLink = None  # Last video ID link found and verified
-
-        self.youLastSong = None
+        self.gotAllGoodLinks = None  # All 100 video chunk lists have scrolled
+        self.good_links = None  # Video links minus private and deleted videos
+        self.youPrevSong = None
         self.youCurrSong = None
         self.youNextSong = None
 
         self.youTreeFrame = None  # .grid_remove() for youLrcFrame
         self.youLrcFrame = None  # .grid_remove() for youPlaylistFrame
         self.scrollYT = None  # Custom Scrolled Text Box
+        self.youFirstSmartPlayNo = None  # First song number reused after last no
         self.hasYouTubeLRC = None  # Are synchronized lyrics (LRC) stored in dict?
         self.listYouTubeLRC = None  # List of LRC ([mm:ss.hh] "lyrics line text")
         self.ndxYouTubeLRC = None  # Current index within listYouTubeLRC
@@ -15233,6 +15309,8 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         :return: None """
         pass
 
+# Playlists Class YouTube Playlist Processing
+
     def checkYouTubePlaylist(self):
         """ Is Playlist from YouTube? """
 
@@ -15479,7 +15557,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             """
             # https://stackoverflow.com/questions/49307497/
             # python-tkinter-treeview-add-an-image-as-a-column-value
-            self.you_tree.insert('', 'end', iid=str(i), text="#" + str(i + 1),
+            self.you_tree.insert('', 'end', iid=str(i), text="№ " + str(i + 1),
                                  image=self.photosYouTube[-1],
                                  value=(song_name,))
             if not lcs.fast_refresh():
@@ -15587,8 +15665,8 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         # Setup column hqdefault
         # YouTube Resolution: default=120x90(2.8K), hqdefault=480x360(35.6K)
         # mqdefault = 320x180
-        self.you_tree.column('#0', width=430, stretch=False)
-        self.you_tree.column('name', anchor='center', width=590, stretch=True)
+        self.you_tree.column('#0', width=450, stretch=False)
+        self.you_tree.column('name', anchor='center', width=570, stretch=True)
 
         # Give some padding between triangles and border, between tree & scroll bars
         self.you_tree["padding"] = (10, 10, 10, 10)  # left, top, right, bottom
@@ -15668,17 +15746,17 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                              command=self.youClosePlayLrc)
             menu.add_command(label="Copy Playlist Link", font=g.FONT,
                              command=lambda: self.you_tree_copy_all())
-            menu.add_separator()
-            menu.add_command(label="Copy Name #" + no, font=g.FONT,
+            menu.add_separator()  # "#" replaced with: "№ "
+            menu.add_command(label="Copy Name № " + no, font=g.FONT,
                              command=lambda: self.you_tree_copy_name(item))
-            menu.add_command(label="Paste LRC #" + no, font=g.FONT,
+            menu.add_command(label="Paste LRC № " + no, font=g.FONT,
                              command=lambda: self.you_tree_paste_lrc(item))
             menu.add_separator()
-            menu.add_command(label="Smart Play Song #" + no, font=g.FONT,
+            menu.add_command(label="Smart Play Song № " + no, font=g.FONT,
                              command=lambda: self.smartPlay(item))
-            menu.add_command(label="Middle 15 Seconds #" + no, font=g.FONT,
+            menu.add_command(label="Middle 15 Seconds № " + no, font=g.FONT,
                              command=lambda: self.smartMiddle(item))
-            menu.add_command(label="Copy Link #" + no, font=g.FONT,
+            menu.add_command(label="Copy Link № " + no, font=g.FONT,
                              command=lambda: self.you_tree_copy_link(item))
             menu.add_separator()
 
@@ -15707,7 +15785,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
 
         menu.add_separator()
 
-        menu.add_command(label="Play Song #" + no, font=g.FONT,
+        menu.add_command(label="Play Song № " + no, font=g.FONT,
                          command=lambda: self.you_tree_play(item))
 
         # TODO: Check Selenium Installed
@@ -15715,16 +15793,16 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         #       Check Firefox Driver installed
 
         if XDOTOOL_INSTALLED and WMCTRL_INSTALLED:
-            menu.add_command(label="Smart Play #" + no, font=g.FONT,
+            menu.add_command(label="Smart Play № " + no, font=g.FONT,
                              command=lambda: self.you_tree_smart_play(item))
 
-        menu.add_command(label="Copy Link #" + no, font=g.FONT,
+        menu.add_command(label="Copy Link № " + no, font=g.FONT,
                          command=lambda: self.you_tree_copy_link(item))
         menu.add_separator()
 
-        menu.add_command(label="Copy Name #" + no, font=g.FONT,
+        menu.add_command(label="Copy Name № " + no, font=g.FONT,
                          command=lambda: self.you_tree_copy_name(item))
-        menu.add_command(label="Paste LRC #" + no, font=g.FONT,
+        menu.add_command(label="Paste LRC № " + no, font=g.FONT,
                          command=lambda: self.you_tree_paste_lrc(item))
         menu.add_separator()
 
@@ -15854,11 +15932,20 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                 self.driver = webdriver.Chrome()
                 print("driver = webdriver.Chrome()")
 
+# Playlists Class YouTube Playlist Smart Play Processing
+
     def smartPlay(self, item):
         """
+        TODO: After playing song, goes off on tangent with songs outside list.
+
+              Instead of opening link, navigate in YouTube to item and send
+              click.
+
         :param item: item (iid) in YouTube playlist
         :return: None
         """
+
+        self.youFirstSmartPlayNo = int(item)  # After list ends, start here
 
         ndx = int(item)
         self.dictYouTube = self.listYouTube[ndx]
@@ -15872,6 +15959,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
 
         # TODO: Watch duration and force next song on list. Otherwise
         #       YouTube plays a random video
+        # Lovely Little Lovable Luscious Leo Lioness
 
     def smartMiddle(self, item):
         """
@@ -15932,6 +16020,8 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         self.resetYouTubeDuration()
         self.buildYouTubeDuration()
         self.isSmartPlayYouTube = True
+        self.youFirstSmartPlayNo = 1  # After list ends, start here
+
         ad_conflict_count = 0  # Player status -1 but No Ad visible (yet).
         lastHousekeepingTime = time.time()  # Check resume every minute
 
@@ -16168,10 +16258,10 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
 
             self.youShowUnavailableVideos()  # When hamburger menu exists
 
-            good_links, private_links, listVideos = \
+            self.good_links, private_links, listVideos = \
                 self.getAllGoodLinks(video_count)
 
-            good_times, listTimes = self.getGoodTimes(good_links)
+            good_times, listTimes = self.getGoodTimes(self.good_links)
 
             # Join two lists in same format as self.listYouTube
             for i, video in enumerate(listVideos):
@@ -16182,8 +16272,6 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
 
             self.mergeYouTubePlaylist(listVideos, private_links)
             self.displayYouTubePlaylist()  # Recreate Treeview see Song #19 added
-            # TODO: Write good_links to file for retrieval next time:
-            #       E.G. "Playlist name".private
             self.youPrint("elapsed time:", time.time() - start)
 
         # Find and click to "Play all" button
@@ -16229,11 +16317,12 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
 
     def getAllGoodLinks(self, video_count):
         """ Get all the good links and private links in playlist. Scrolling
-            is necessary after 100 videos.
+            is necessary after 100 video chunks.
 
         :return: good_links, private_links, listVideos
         """
 
+        self.gotAllGoodLinks = None
         good_links, private_links, listVideos = self.getGoodLinks()
 
         # last_good_links is stop-gap measure until show hidden videos
@@ -16288,11 +16377,14 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                 break
                 # return None
 
+        self.gotAllGoodLinks = True
         return good_links, private_links, listVideos
 
     def getGoodLinks(self):
         """
-
+            TODO: Devine item number to click on.
+                  Note unavailable video setting.
+                  Note stale element errors and video skipped.
         :return: good_links, private_links, listVideos
         """
 
@@ -16300,21 +16392,78 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         good_links = private_links = bad_links = 0
         links = self.driver.execute_script(
             "return document.querySelectorAll('a')")
+
+        # ERROR:
+        # CHROME_DRIVER_PATH: /home/rick/python/chromedriver108/chromedriver
+        #
+        # 07:11:59.3 waitYouTubePlayer 930.478 ms | Null: 0  | Paused: 0  | Starting: 5  | Idle: 5
+        #
+        # 07:12:00.1 STARTING Playlist - Song № 1     | a-Xfv64uhMI
+        #
+        # 07:16:08.3 STARTING Playlist - Song № 2     | HnilTXUQtag
+        # 07:16:08.7 Ad visible. Player status: 5
+        # 07:16:10.8 MicroFormat found after: 0.4     | HnilTXUQtag
+        # CHROME_DRIVER_PATH: /home/rick/python/chromedriver108/chromedriver
+        # 07:17:23.8 Clicking xpath: //*[@id="page-manager"]/ytd-browse/
+        #   ytd-playlist-header-renderer/div/div[2]/div[1]/div/div[1]/div[2]/ytd-menu-renderer
+        # 07:17:24.4 Clicking 'Show unavailable videos': Show unavailable videos
+        # Exception in Tkinter callback
+        # Traceback (most recent call last):
+        #   File "/usr/lib/python2.7/lib-tk/Tkinter.py", line 1540, in __call__
+        #     return self.func(*args)
+        #   File "/home/rick/python/mserve.py", line 15698, in <lambda>
+        #     command=lambda: self.youTreeSmartPlayAll())
+        #   File "/home/rick/python/mserve.py", line 15925, in youTreeSmartPlayAll
+        #     if not self.youPlayAllFullScreen(window):
+        #   File "/home/rick/python/mserve.py", line 16172, in youPlayAllFullScreen
+        #     self.getAllGoodLinks(video_count)
+        #   File "/home/rick/python/mserve.py", line 16237, in getAllGoodLinks
+        #     good_links, private_links, listVideos = self.getGoodLinks()
+        #   File "/home/rick/python/mserve.py", line 16311, in getGoodLinks
+        #     link)
+        #   File "/usr/lib/python2.7/dist-packages/selenium/webdriver/remote/webdriver.py", line 429, in execute_script
+        #     {'script': script, 'args':converted_args})['value']
+        #   File "/usr/lib/python2.7/dist-packages/selenium/webdriver/remote/webdriver.py", line 201, in execute
+        #     self.error_handler.check_response(response)
+        #   File "/usr/lib/python2.7/dist-packages/selenium/webdriver/remote/
+        #       errorhandler.py", line 181, in check_response
+        #     raise exception_class(message, screen, stacktrace)
+        # StaleElementReferenceException: Message: stale element reference: element is not attached to the page document
+        #   (Session info: chrome=108.0.5359.124)
+        #   (Driver info: chromedriver=108.0.5359.71 (1e0e3868ee06e91ad636a874420e3ca3ae3756ac-refs/
+        #       branch-heads/5359@{#1016}),platform=Linux 4.14.216-0414216-generic x86_64)
         for link in links:
-            dictLink = self.driver.execute_script(
-                'var items = {}; \
-                for (index = 0; index < \
-                arguments[0].attributes.length; ++index) \
-                { items[arguments[0].attributes[index].name] = \
-                arguments[0].attributes[index].value }; \
-                return items;',
-                link)
+            # StaleElementReferenceException:
+            #   https://stackoverflow.com/a/40070927/6929343
+            #       wait.until(ExpectedConditions.stalenessOf(whatever element));
+            try:
+                dictLink = self.driver.execute_script(
+                    'var items = {}; \
+                    for (index = 0; index < \
+                    arguments[0].attributes.length; ++index) \
+                    { items[arguments[0].attributes[index].name] = \
+                    arguments[0].attributes[index].value }; \
+                    return items;',
+                    link)
+            except StaleElementReferenceException:
+                print("Stale element")
+                continue
+
             link_url = dictLink.get('href', None)
             link_title = dictLink.get('title', None)
             class_list = dictLink.get('class', None)
 
             if u'[Private video]' == link_title:
                 # Link # 119 is private video, get keys
+                self.youPrint("link_url  :", link_url)
+                self.youPrint("link_title:", link_title)
+                self.youPrint("class_list:", class_list)
+                private_links += 1
+                continue
+                #print("\ndictLink:", dictLink)
+
+            if u'[Deleted video]' == link_title:
+                # Link # 6 is deleted video, get keys
                 self.youPrint("link_url  :", link_url)
                 self.youPrint("link_title:", link_title)
                 self.youPrint("class_list:", class_list)
@@ -16617,7 +16766,7 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
 
         song_no = str(you_tree_iid_int + 1).ljust(4)
         print("\n" + ext.t(short=True, hun=True),
-              "STARTING Playlist - Song #",
+              "STARTING Playlist - Song №",
               song_no, " |", video_link_id)
 
         toolkit.tv_tag_remove_all(self.you_tree, 'play_sel')
@@ -16943,13 +17092,13 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
 
         song = tk.Label(info_frame, text=self.listYouTube[int(item)]['name'],
                         font=g.FONT14, wraplength=320, justify="center")
-        song.grid(row=1, column=0, sticky=tk.EW, padx=5, pady=40)
+        song.grid(row=1, column=0, sticky=tk.EW, padx=5, pady=31)
 
         # Links https://stackoverflow.com/a/23482749/6929343
         link1 = tk.Label(info_frame, text="Google Song Meaning",
                          fg="blue", cursor="hand2",
                          font=g.FONT, wraplength=320, justify="center")
-        link1.grid(row=2, column=0, sticky=tk.EW, padx=5, pady=40)
+        link1.grid(row=2, column=0, sticky=tk.EW, padx=5, pady=31)
         url = "https://www.google.com/search?q=song meaning " + \
               self.listYouTube[int(item)]['name']
         link1.bind("<Button-1>", lambda e: webbrowser.open_new(url))
@@ -16959,7 +17108,7 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
         self.youProLrcVar.set("Progress: 0.0")
         position = tk.Label(info_frame, textvariable=self.youProLrcVar,
                             font=g.FONT, wraplength=320, justify="center")
-        position.grid(row=3, column=0, sticky=tk.EW, padx=5, pady=40)
+        position.grid(row=3, column=0, sticky=tk.EW, padx=5, pady=31)
 
         # Lyrics Time Offset +/- seconds
         time_string = tk.Label(info_frame, text="Lyrics Time Offset",
@@ -17294,8 +17443,6 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
         except IndexError:
             return fmt_line
 
-
-
     def buildYouTubeDuration(self):
         """ Build progress bar under self.you_tree  """
         s = ttk.Style()
@@ -17331,10 +17478,14 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
 
     def waitYouTubePlayer(self, debug=False, startup=False):
         """ self.driver.forward() was just executed. Wait for browser to process.
+            Wait until YouTube music player status is:
+                1 Music Playing or,
+               -1 Ad Playing
 
             :param debug: When True, print debug stats and counts
-            :param startup: When True, IPL (Initial Program Load)
-            :return: None or player_status = -1, 1, 2, 3, 5 """
+            :param startup: When True override 10 second timeout to 1 second
+            :return: None = timeout reached, 99 = startup 1 sec timeout reached,
+                     player_status = -1 ad playing, = 1 music playing """
 
         ''' Housekeeping every 1 second (out of 10) '''
         lastHousekeepingTime = time.time()
@@ -17540,7 +17691,6 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
             print("\nCould not find '&list=' in link[1]!")
             print(link, "\n")
             return link, link_pre, link_list
-
 
     def youDriverClick(self, by, desc):
         """ Credit: https://itecnote.com/tecnote/
@@ -17967,7 +18117,7 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
 
             # Text Draw duration over image & place into self.photosYouTube[]
             self.displayPlaylistCommonDuration(im, duration)
-            self.you_tree.insert('', 'end', iid=str(i), text="#" + str(i + 1),
+            self.you_tree.insert('', 'end', iid=str(i), text="№ " + str(i + 1),
                                  image=self.photosYouTube[-1],
                                  value=(song_name,))
             self.you_tree.see(str(i))
@@ -17983,7 +18133,7 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
         # Below is identical to displayYouTubePlaylist()
         self.displayPlaylistCommonBottom()
 
-# Class Entry Point Methods
+# Playlists Class Invocation Point Methods
 
     def new(self):
         """ Called by lib_top File Menubar "New Playlist"
@@ -18040,7 +18190,7 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
         self.display_lib_title()
         return True
 
-# Data Processing
+# Playlists Class Data Processing
 
     def read_playlist(self, number_str):
         """ Use playlist number to read SQL History Row into work fields """
