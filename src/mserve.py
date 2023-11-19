@@ -15638,13 +15638,13 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         # https://stackoverflow.com/a/17457843/6929343
 
         # Left-click, requires two presses to fire
-        # self.you_tree.bind('<Button-1>', self.you_tree_click)  # Needs 2 clicks
-        # self.you_tree.bind('<ButtonPress-1>', self.you_tree_click)  # Needs 2 clicks
-        # self.you_tree.bind('<ButtonRelease-1>', self.you_tree_click)  # Needs 2 clicks
-        # self.you_tree.bind("<<TreeviewSelect>>", self.you_tree_click)  # 1 click
+        # self.you_tree.bind('<Button-1>', self.youTreeClick)  # Needs 2 clicks
+        # self.you_tree.bind('<ButtonPress-1>', self.youTreeClick)  # Needs 2 clicks
+        # self.you_tree.bind('<ButtonRelease-1>', self.youTreeClick)  # Needs 2 clicks
+        # self.you_tree.bind("<<TreeviewSelect>>", self.youTreeClick)  # 1 click
 
         # Right-click - reliable works on first click, first time, all the time
-        self.you_tree.bind('<Button-3>', self.you_tree_click)  # Right-click
+        self.you_tree.bind('<Button-3>', self.youTreeClick)  # Right-click
 
         # Oct 1, 2023 - MouseWheel event does NOT capture any events
         self.you_tree.bind("<MouseWheel>", lambda event: self.youTreeMouseWheel(event))
@@ -15717,7 +15717,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         if self.top:  # May have been closed above.
             self.top.update_idletasks()
 
-    def you_tree_click(self, event):
+    def youTreeClick(self, event):
         """ Popup menu has two different sets of options:
 
             If self.isSmartPlayYouTube:
@@ -15745,26 +15745,26 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             menu.add_command(label="Close Smart Playlist", font=g.FONT,
                              command=self.youClosePlayLrc)
             menu.add_command(label="Copy Playlist Link", font=g.FONT,
-                             command=lambda: self.you_tree_copy_all())
+                             command=lambda: self.youTreeCopyAll())
             menu.add_separator()  # "#" replaced with: "№ "
             menu.add_command(label="Copy Name № " + no, font=g.FONT,
-                             command=lambda: self.you_tree_copy_name(item))
+                             command=lambda: self.youTreeCopyName(item))
             menu.add_command(label="Paste LRC № " + no, font=g.FONT,
-                             command=lambda: self.you_tree_paste_lrc(item))
+                             command=lambda: self.youTreePasteLrc(item))
             menu.add_separator()
             menu.add_command(label="Smart Play Song № " + no, font=g.FONT,
                              command=lambda: self.smartPlay(item))
             menu.add_command(label="Middle 15 Seconds № " + no, font=g.FONT,
                              command=lambda: self.smartMiddle(item))
             menu.add_command(label="Copy Link № " + no, font=g.FONT,
-                             command=lambda: self.you_tree_copy_link(item))
+                             command=lambda: self.youTreeCopyLink(item))
             menu.add_separator()
 
             menu.add_command(label="Ignore click", font=g.FONT,
-                             command=lambda: self.close_you_popup(menu, item))
+                             command=lambda: self.youClosePopup(menu, item))
 
             menu.tk_popup(event.x_root, event.y_root)
-            menu.bind("<FocusOut>", lambda _: self.close_you_popup(menu, item))
+            menu.bind("<FocusOut>", lambda _: self.youClosePopup(menu, item))
             return
 
         global XDOTOOL_INSTALLED, WMCTRL_INSTALLED
@@ -15777,7 +15777,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             menu.add_separator()
 
         menu.add_command(label="Copy Playlist Link", font=g.FONT,
-                         command=lambda: self.you_tree_copy_all())
+                         command=lambda: self.youTreeCopyAll())
 
         # TODO: Check selenium version installed:
         #   https://stackoverflow.com/a/76915412/6929343
@@ -15797,24 +15797,24 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                              command=lambda: self.you_tree_smart_play(item))
 
         menu.add_command(label="Copy Link № " + no, font=g.FONT,
-                         command=lambda: self.you_tree_copy_link(item))
+                         command=lambda: self.youTreeCopyLink(item))
         menu.add_separator()
 
         menu.add_command(label="Copy Name № " + no, font=g.FONT,
-                         command=lambda: self.you_tree_copy_name(item))
+                         command=lambda: self.youTreeCopyName(item))
         menu.add_command(label="Paste LRC № " + no, font=g.FONT,
-                         command=lambda: self.you_tree_paste_lrc(item))
+                         command=lambda: self.youTreePasteLrc(item))
         menu.add_separator()
 
         menu.add_command(label="Ignore click", font=g.FONT,
-                         command=lambda: self.close_you_popup(menu, item))
+                         command=lambda: self.youClosePopup(menu, item))
 
         menu.tk_popup(event.x_root, event.y_root)
-        menu.bind("<FocusOut>", lambda _: self.close_you_popup(menu, item))
+        menu.bind("<FocusOut>", lambda _: self.youClosePopup(menu, item))
         # '_' prevents: TypeError: <lambda>() takes no arguments (1 given)
 
     @staticmethod
-    def close_you_popup(menu, _item):
+    def youClosePopup(menu, _item):
         """ Close the YouTube Playlist popup menu """
         menu.unpost()  # Remove popup menu
 
@@ -15840,7 +15840,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         webbrowser.open_new(self.listYouTube[ndx]['link'])
 
     def you_tree_smart_play(self):
-        """ Smart Play entire YouTube Playlist. """
+        """ Smart Play single YouTube song for unopened Playlist. """
         title = "NOT IMPLEMENTED."
         text = "Calling regular play"
         message.ShowInfo(self.top, title, text, icon='warning',
@@ -15950,16 +15950,15 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         ndx = int(item)
         self.dictYouTube = self.listYouTube[ndx]
         link = self.dictYouTube['link']
+
+        # TODO: Loop through items to find correct link and click on it.
+
         self.driver.get(link)
         status = self.waitYouTubePlayer(debug=True, startup=True)
         while status == 99 or self.isYouTubeAdRunning():
             self.driver.back()
             self.driver.forward()
             status = self.waitYouTubePlayer(debug=True, startup=True)
-
-        # TODO: Watch duration and force next song on list. Otherwise
-        #       YouTube plays a random video
-        # Lovely Little Lovable Luscious Leo Lioness
 
     def smartMiddle(self, item):
         """
@@ -17092,13 +17091,13 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
 
         song = tk.Label(info_frame, text=self.listYouTube[int(item)]['name'],
                         font=g.FONT14, wraplength=320, justify="center")
-        song.grid(row=1, column=0, sticky=tk.EW, padx=5, pady=31)
+        song.grid(row=1, column=0, sticky=tk.EW, padx=5, pady=21)
 
         # Links https://stackoverflow.com/a/23482749/6929343
         link1 = tk.Label(info_frame, text="Google Song Meaning",
                          fg="blue", cursor="hand2",
                          font=g.FONT, wraplength=320, justify="center")
-        link1.grid(row=2, column=0, sticky=tk.EW, padx=5, pady=31)
+        link1.grid(row=2, column=0, sticky=tk.EW, padx=5, pady=21)
         url = "https://www.google.com/search?q=song meaning " + \
               self.listYouTube[int(item)]['name']
         link1.bind("<Button-1>", lambda e: webbrowser.open_new(url))
@@ -17108,7 +17107,7 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
         self.youProLrcVar.set("Progress: 0.0")
         position = tk.Label(info_frame, textvariable=self.youProLrcVar,
                             font=g.FONT, wraplength=320, justify="center")
-        position.grid(row=3, column=0, sticky=tk.EW, padx=5, pady=31)
+        position.grid(row=3, column=0, sticky=tk.EW, padx=5, pady=21)
 
         # Lyrics Time Offset +/- seconds
         time_string = tk.Label(info_frame, text="Lyrics Time Offset",
@@ -17995,22 +17994,22 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
         print("Link:", link_search, "  NOT FOUND!")
         return None
 
-    def you_tree_copy_link(self, item):
+    def youTreeCopyLink(self, item):
         """ Copy Single Song link to clipboard. """
         ndx = int(item)
-        self.you_tree_shared_copy_text(self.listYouTube[ndx]['link'])
+        self.youTreeSharedCopyText(self.listYouTube[ndx]['link'])
 
-    def you_tree_copy_name(self, item):
+    def youTreeCopyName(self, item):
         """ Copy Single Song Name to clipboard. """
         ndx = int(item)
         search_name = "megalobiz.com " + self.listYouTube[ndx]['name']
-        self.you_tree_shared_copy_text(search_name)
+        self.youTreeSharedCopyText(search_name)
 
-    def you_tree_copy_all(self):
+    def youTreeCopyAll(self):
         """ Copy Playlist link to clipboard. """
-        self.you_tree_shared_copy_text(self.act_description)
+        self.youTreeSharedCopyText(self.act_description)
 
-    def you_tree_shared_copy_text(self, text):
+    def youTreeSharedCopyText(self, text):
         """ Copy text to clipboard. """
         r = tk.Tk()
         r.withdraw()
@@ -18024,9 +18023,9 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
         message.ShowInfo(self.top, title, msg,
                          thread=self.get_thread_func)
 
-    def you_tree_paste_lrc(self, item):
+    def youTreePasteLrc(self, item):
         """ Paste Song's LRC (LyRiCs) to clipboard. """
-        clip_text = self.you_tree_shared_paste()
+        clip_text = self.youTreeSharedPaste()
         # TODO: validate [mm:ss.hh] 'blah blah' exists at least 10 times?
 
         # Write new value to disk
@@ -18035,7 +18034,7 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
         self.listYouTube[ndx]['lrc'] = clip_text
         fname = self.nameYouTube.replace(".csv", ".pickle")
         ext.write_to_pickle(fname, self.listYouTube)
-        print("you_tree_paste_lrc() ext.write_to_pickle:",
+        print("youTreePasteLrc() ext.write_to_pickle:",
               tmf.mm_ss(time.time() - start, rem='h'), "sec")  # 1.55 sec
         #  New file self.lrcYouTube list[ list[], list[]... list[] ]?
 
@@ -18050,7 +18049,7 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
         self.you_tree.item(item, values=(song_name,))
         self.you_tree.update_idletasks()
 
-    def you_tree_shared_paste(self):
+    def youTreeSharedPaste(self):
         """ Read clipboard. """
         r = tk.Tk()
         r.withdraw()
