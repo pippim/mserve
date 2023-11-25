@@ -14867,7 +14867,8 @@ class PlaylistsCommonSelf:
         self.listMergeYouTube = None  # Stored list + new videos
         self.youLastLink = None  # Last video ID link found and verified
         self.gotAllGoodLinks = None  # All 100 video chunk lists have scrolled
-        self.good_links = None  # Video links minus private and deleted videos
+        self.youValidLinks = None  # Video links minus private and deleted videos
+        self.youUnavailableShown = None  # Unavailable videos displayed?
         self.youPrevSong = None
         self.youCurrSong = None
         self.youNextSong = None
@@ -15938,8 +15939,22 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         """
         TODO: After playing song, goes off on tangent with songs outside list.
 
+        OPTION A)
+
               Instead of opening link, navigate in YouTube to item and send
               click.
+
+              If full screen, set to regular screen to make items appear.
+
+              If window too small, items may not appear. Will window have to be
+              stretched for item scroll-to and subsequent click-to-play?
+
+              Remember window settings and restore after clicking on item.
+
+        OPTION B)
+
+              Monitor links opened by YouTube. If link isn't in list, open next
+              scheduled video. If last video just played, restart at first video.
 
         :param item: item (iid) in YouTube playlist
         :return: None
@@ -15950,6 +15965,8 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         ndx = int(item)
         self.dictYouTube = self.listYouTube[ndx]
         link = self.dictYouTube['link']
+        # self.youValidLinks, private_links, listVideos = \
+        #     self.getAllGoodLinks(video_count)
 
         # TODO: Loop through items to find correct link and click on it.
 
@@ -16257,10 +16274,10 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
 
             self.youShowUnavailableVideos()  # When hamburger menu exists
 
-            self.good_links, private_links, listVideos = \
+            self.youValidLinks, private_links, listVideos = \
                 self.getAllGoodLinks(video_count)
 
-            good_times, listTimes = self.getGoodTimes(self.good_links)
+            good_times, listTimes = self.getGoodTimes(self.youValidLinks)
 
             # Join two lists in same format as self.listYouTube
             for i, video in enumerate(listVideos):
@@ -16271,6 +16288,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
 
             self.mergeYouTubePlaylist(listVideos, private_links)
             self.displayYouTubePlaylist()  # Recreate Treeview see Song #19 added
+            self.youShowUnavailableVideos(show=False)  # When hamburger menu exists
             self.youPrint("elapsed time:", time.time() - start)
 
         # Find and click to "Play all" button
@@ -16484,7 +16502,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
 
         return good_links, private_links, listVideos
 
-    def youShowUnavailableVideos(self):
+    def youShowUnavailableVideos(self, show=True):
         """
 
         WHEN MENU BUTTON APPEARS:
@@ -16562,7 +16580,11 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
 
         xpath = '//*[@id="page-manager"]/ytd-browse/ytd-playlist-header-renderer'
         xpath += "/div/div[2]/div[1]/div/div[1]/div[2]/ytd-menu-renderer"
-        link_text = "Show unavailable videos"
+        if show:
+            link_text = "Show unavailable videos"
+        else:
+            link_text = "Hide unavailable videos"
+        # Reverse is "Hide unavailable videos"
         result1 = result2 = None
         try:
             result1 = self.driver.find_element(By.XPATH, xpath)
@@ -16581,8 +16603,14 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
                 self.youPrint("Exception 'Show unavailable videos':\n", err)
 
         if result2:
-            self.youPrint("Clicking 'Show unavailable videos':", link_text)
+            self.youPrint("Clicking: '" + link_text + "'.")
             self.youDriverClick("link_text", link_text)
+            if self.youUnavailableShown is None:
+                self.youUnavailableShown = True
+        elif self.youUnavailableShown:
+            self.youPrint("Cannot click: '" + link_text + "'.")
+            self.youPrint("link_text not found!")
+            self.youUnavailableShown = None
 
         """ Button to click:
         
@@ -17542,6 +17570,9 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
     def getCurrentIndex(self):
         """ Get link URL from Browser address bar & return index
 
+            QUESTION: What is index that follows a deleted video in playlist
+                      when unavailable videos are displayed?
+
             Before play all:
                 https://www.youtube.com/playlist?list=
                    PLthF248A1c68TAKl5DBskfJ2fwr1sk9aM
@@ -17552,6 +17583,8 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
             self.driver.refresh() will increment index beyond reality.
             Lookup video ID to get the real index.
 
+            :returns: None = closing down. 0 = Not found, invalid link.
+                      >=1 = playlist video 1's index
         """
 
         """ Oct 4/23 - Method broken by self.driver.refresh().
@@ -17585,15 +17618,17 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
             return 0
 
         index0s = self.youTreeNdxByLink(currVideo)
-        if index0s is not None:
-            duration_str = self.dictYouTube['duration']
-            self.durationYouTube = float(tmf.get_sec(duration_str))
-            index1s = int(index0s) + 1
-            return index1s
-        else:
+        if index0s is None:
             print("getCurrentIndex() Playing video not in saved list")
             print("Unknown results and instability may occur.")
+            print("currVideo not found:", currVideo)
             return 0
+
+        # Found valid index
+        duration_str = self.dictYouTube['duration']
+        self.durationYouTube = float(tmf.get_sec(duration_str))
+        index1s = int(index0s) + 1
+        return index1s
 
     def getCurrentVideoId(self):
         """ Get link URL from Browser address bar & return Video ID
