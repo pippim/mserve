@@ -14869,14 +14869,10 @@ class PlaylistsCommonSelf:
         self.gotAllGoodLinks = None  # All 100 video chunk lists have scrolled
         self.youValidLinks = None  # Video links minus private and deleted videos
         self.youUnavailableShown = None  # Unavailable videos displayed?
-        self.youPrevSong = None
-        self.youCurrSong = None
-        self.youNextSong = None
 
         self.youTreeFrame = None  # .grid_remove() for youLrcFrame
         self.youLrcFrame = None  # .grid_remove() for youPlaylistFrame
         self.scrollYT = None  # Custom Scrolled Text Box
-        self.youFirstSmartPlayNo = None  # First song number reused after last no
         self.hasYouTubeLRC = None  # Are synchronized lyrics (LRC) stored in dict?
         self.listYouTubeLRC = None  # List of LRC ([mm:ss.hh] "lyrics line text")
         self.ndxYouTubeLRC = None  # Current index within listYouTubeLRC
@@ -14887,15 +14883,22 @@ class PlaylistsCommonSelf:
         self.youBgColorLrc = None  # LRC highlight yellow/cyan/magenta
         self.youFirstLrcTimeNdx = None  # 0-Index of first line with [mm:ss.99]
         self.youFirstLrcTime = None  # Float Seconds of [mm:ss.99]
+
+        ''' YouTube video progress and player controls '''
         self.durationYouTube = 0.0  # Length of song (Duration)
         self.progressYouTube = 0.0  # Progress (Duration) within playing song
         self.progressLastYouTube = 0.0  # Last progress, if same then stuck
         self.timeLastYouTube = 0.0  # Last System time playing video (33ms)
-        self.timePlayYouTube = 0.0  # Current System time playing video (33ms)
         self.timeForwardYouTube = 0.0  # System time self.driver.forward()
         self.isSongRepeating = None  # Fall out from .back() and .forward()
         self.youProVar = None  # YouTube Video progress TK variable, percent float
         self.youProBar = None  # YouTube Video TK Progress Bar element / instance
+        self.youPlayerButton = None  # Tkinter element mounted with .grid
+        self.youPlayerCurrText = None  # "None" / "Pause" / "Play" button
+        self.youPlayerNoneText = "?  None"  # Music Player Text options
+        self.youPlayerPlayText = "▶  Play"  # used when music player status
+        self.youPlayerPauseText = "❚❚ Pause"  # changes between 1 & 2
+        self.youPlayerSink = None  # Audio Sink (sink_no_str)
 
         ''' Playlists Maintenance Window and fields '''
         self.top = None  # tk.Toplevel
@@ -15565,7 +15568,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                 self.driver.quit()
                 return False
 
-        self.displayPlaylistCommonBottom()
+        self.displayPlaylistCommonBottom(player_button=True)
 
         if len(self.listYouTube) < 1:
             title = "YouTube Playlist Unknown"
@@ -15693,15 +15696,31 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         photo = ImageTk.PhotoImage(im)
         self.photosYouTube.append(photo)  # Save from GIC
 
-    def displayPlaylistCommonBottom(self):
+    def displayPlaylistCommonBottom(self, player_button=False):
         """ Shared by: displayYouTubePlaylist and displayMusicIds 
             Column 1 has progress bar hidden until music playing.
+            Column 3 has None / Pause / Play button player button.
             Column 4 has Close button. 
         """
 
         ''' button frame '''
         self.you_btn_frm = tk.Frame(self.frame)
         self.you_btn_frm.grid(row=4, columnspan=4, sticky=tk.NSEW)
+
+        ''' Player Button - NOTE: Starts as "None" '''
+        if player_button:
+            # self.youPlayerButton = None  # Tkinter element mounted with .grid
+            # self.youPlayerCurrText = None  # "None" / "Pause" / "Play" button
+            # self.youPlayerNoneText = "?  None"  # Music Player Text options
+            # self.youPlayerPlayText = "▶  Play"  # used when music player status
+            # self.youPlayerPauseText = "❚❚ Pause"  # changes between 1 & 2
+            self.youPlayerButton = tk.Button(self.you_btn_frm, text="None",
+                                             width=g.BTN_WID2 - 4,
+                                             command=self.youTogglePlayer)
+            self.youPlayerButton.grid(row=0, column=3, padx=(10, 5),
+                                      pady=5, sticky=tk.E)
+            self.tt.add_tip(self.youPlayerButton,
+                            "Music not playing", anchor="ne")
 
         ''' Close Button - NOTE: This calls reset() function !!! '''
         self.close_button = tk.Button(self.you_btn_frm, text="✘ Close",
@@ -15713,6 +15732,9 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
 
         self.top.bind("<Escape>", self.youClosePlayLrc)
         self.top.protocol("WM_DELETE_WINDOW", self.youClosePlayLrc)
+
+        ''' Snapshot Pulse Audio '''
+        pav.get_all_sinks
 
         ''' Refresh screen '''
         if self.top:  # May have been closed above.
@@ -15743,22 +15765,22 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
 
         if self.isSmartPlayYouTube:
             # Already smart playing YouTube playlist
-            menu.add_command(label="Close Smart Playlist", font=g.FONT,
-                             command=self.youClosePlayLrc)
-            menu.add_command(label="Copy Playlist Link", font=g.FONT,
-                             command=lambda: self.youTreeCopyAll())
-            menu.add_separator()  # "#" replaced with: "№ "
-            menu.add_command(label="Copy Name № " + no, font=g.FONT,
-                             command=lambda: self.youTreeCopyName(item))
-            menu.add_command(label="Paste LRC № " + no, font=g.FONT,
-                             command=lambda: self.youTreePasteLrc(item))
-            menu.add_separator()
             menu.add_command(label="Smart Play Song № " + no, font=g.FONT,
                              command=lambda: self.smartPlay(item))
             menu.add_command(label="Middle 15 Seconds № " + no, font=g.FONT,
                              command=lambda: self.smartMiddle(item))
             menu.add_command(label="Copy Link № " + no, font=g.FONT,
                              command=lambda: self.youTreeCopyLink(item))
+            menu.add_separator()  # "#" replaced with: "№ "
+            menu.add_command(label="Copy Name № " + no, font=g.FONT,
+                             command=lambda: self.youTreeCopyName(item))
+            menu.add_command(label="Paste LRC № " + no, font=g.FONT,
+                             command=lambda: self.youTreePasteLrc(item))
+            menu.add_separator()
+            menu.add_command(label="Close Smart Playlist", font=g.FONT,
+                             command=self.youClosePlayLrc)
+            menu.add_command(label="Copy Playlist Link", font=g.FONT,
+                             command=lambda: self.youTreeCopyAll())
             menu.add_separator()
 
             menu.add_command(label="Ignore click", font=g.FONT,
@@ -15786,16 +15808,16 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
 
         menu.add_separator()
 
-        menu.add_command(label="Play Song № " + no, font=g.FONT,
-                         command=lambda: self.you_tree_play(item))
+        #menu.add_command(label="Play Song № " + no, font=g.FONT,
+        #                 command=lambda: self.you_tree_play(item))
 
         # TODO: Check Selenium Installed
         #       Check ChromeDriver installed & matches version
         #       Check Firefox Driver installed
 
-        if XDOTOOL_INSTALLED and WMCTRL_INSTALLED:
-            menu.add_command(label="Smart Play № " + no, font=g.FONT,
-                             command=lambda: self.you_tree_smart_play(item))
+        #if XDOTOOL_INSTALLED and WMCTRL_INSTALLED:
+        #    menu.add_command(label="Smart Play № " + no, font=g.FONT,
+        #                     command=lambda: self.you_tree_smart_play(item))
 
         menu.add_command(label="Copy Link № " + no, font=g.FONT,
                          command=lambda: self.youTreeCopyLink(item))
@@ -15937,40 +15959,42 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
 
     def smartPlay(self, item):
         """
-        TODO: After playing song, goes off on tangent with songs outside list.
-
-        OPTION A)
-
-              Instead of opening link, navigate in YouTube to item and send
-              click.
-
-              If full screen, set to regular screen to make items appear.
-
-              If window too small, items may not appear. Will window have to be
-              stretched for item scroll-to and subsequent click-to-play?
-
-              Remember window settings and restore after clicking on item.
-
-        OPTION B)
-
-              Monitor links opened by YouTube. If link isn't in list, open next
-              scheduled video. If last video just played, restart at first video.
+        Build: https://www.youtube.com/watch
+            ?v=0n3cUPTKnl0
+            &list=PLthF248A1c68TAKl5DBskfJ2fwr1sk9aM
+            &index=17
 
         :param item: item (iid) in YouTube playlist
         :return: None
         """
 
-        self.youFirstSmartPlayNo = int(item)  # After list ends, start here
+        # Shared function to start playing at playlist index
+        self.youPlaylistIndexStartPlay(item)
 
+    def youPlaylistIndexStartPlay(self, item):
+        """ Shared by smartPlay and smartMiddle methods
+
+            Build full_link containing:
+                https://www.youtube.com/watch
+                ?v=0n3cUPTKnl0
+                &list=PLthF248A1c68TAKl5DBskfJ2fwr1sk9aM
+                &index=17
+
+            self.act_description =
+            	https://www.youtube.com/
+            	playlist?list=PLthF248A1c68TAKl5DBskfJ2fwr1sk9aM
+
+        :param item: item (iid) in YouTube playlist
+        :return: None
+        """
         ndx = int(item)
         self.dictYouTube = self.listYouTube[ndx]
         link = self.dictYouTube['link']
-        # self.youValidLinks, private_links, listVideos = \
-        #     self.getAllGoodLinks(video_count)
+        youPlaylistName = self.act_description.split("list=")[1]
+        full_link = link + "&list=" + youPlaylistName
+        full_link += "&index=" + item
 
-        # TODO: Loop through items to find correct link and click on it.
-
-        self.driver.get(link)
+        self.driver.get(full_link)
         status = self.waitYouTubePlayer(debug=True, startup=True)
         while status == 99 or self.isYouTubeAdRunning():
             self.driver.back()
@@ -15978,21 +16002,13 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             status = self.waitYouTubePlayer(debug=True, startup=True)
 
     def smartMiddle(self, item):
-        """
+        """ Start playing video then advance to middle of song
         :param item: item (iid) in YouTube playlist
         :return: None
         """
 
-        ndx = int(item)
-        self.dictYouTube = self.listYouTube[ndx]
-        link = self.dictYouTube['link']
-        self.driver.get(link)
-        status = self.waitYouTubePlayer(debug=True, startup=True)
-        while status == 99 or self.isYouTubeAdRunning():
-            self.driver.back()
-            self.driver.forward()
-            status = self.waitYouTubePlayer(debug=True, startup=True)
-
+        self.youPlaylistIndexStartPlay(item)
+        # Advance to middle of song
         duration_str = self.dictYouTube['duration']
         duration = int(tmf.get_sec(duration_str))
         mid_start = (duration / 2) - 8
@@ -16000,9 +16016,6 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             self.driver.execute_script(
                 'document.getElementsByTagName("video")[0].currentTime += ' +
                 str(mid_start) + ';')
-
-        # TODO: Watch duration and force next song on list. Otherwise
-        #       YouTube plays a random video
 
     def youTreeSmartPlayAll(self):
         """ Smart Play entire YouTube Playlist.
@@ -16036,7 +16049,6 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         self.resetYouTubeDuration()
         self.buildYouTubeDuration()
         self.isSmartPlayYouTube = True
-        self.youFirstSmartPlayNo = 1  # After list ends, start here
 
         ad_conflict_count = 0  # Player status -1 but No Ad visible (yet).
         lastHousekeepingTime = time.time()  # Check resume every minute
@@ -16191,7 +16203,11 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         return self.driver, window
 
     def youPlayAllFullScreen(self, window):
-        """ Open YouTube Playlist, Move window, 'Play all', full screen """
+        """ Open YouTube Playlist, Move window, 'Play all', full screen
+            self.act_description =
+            	https://www.youtube.com/
+            	playlist?list=PLthF248A1c68TAKl5DBskfJ2fwr1sk9aM
+        """
 
         self.driver.get(self.act_description)  # Open Youtube playlist
         #print("self.act_description   :", self.act_description)
@@ -16851,20 +16867,21 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
             # 5 = Status prior to Play All and starting Ad
             return
 
+        now = time.time()
         if player_status == 1:
-            now = time.time()
             delta = now - self.timeLastYouTube
             self.timeLastYouTube = now
             self.progressYouTube += delta
             #print("Duration:", tmf.mm_ss(self.progressYouTube, rem='d'),
             #      "of:", self.durationYouTube, self.youProVar.get(), end="\r")
+            # mm_ss(seconds, brackets=False, trim=True, rem=None)
 
             if self.hasYouTubeLRC and self.youLrcFrame:  # Oct 22/23
                 self.updateYouTubeLRC()
+        else:  
+            self.timeLastYouTube = now
 
-        else:  # mm_ss(seconds, brackets=False, trim=True, rem=None)
-            self.timeLastYouTube = time.time()
-
+        self.youUpdatePlayerButton(player_status)
         self.updateYouTubeDuration()
 
         # Must wait to fix repeating song until "microformat" is refreshed
@@ -17389,6 +17406,8 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
                 ...
              '[03:37.20]Ooh'
             ]
+
+        When ndx == None populating scroll box. Else get line time.
         """
         time_float = None
         lyrics_text = None
@@ -17410,10 +17429,11 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
             if len(lyrics_text) == 0:
                 # Scroll through Metadata Tags prior to first lyrics line
                 if ndx is not None and self.youFirstLrcTimeNdx is not None and \
-                        self.youFirstLrcTimeNdx > 0:
+                        ndx < self.youFirstLrcTimeNdx:
                     # Calculate metadata tag artificial time
                     step = self.youFirstLrcTime / self.youFirstLrcTimeNdx
-                    time_float = step * (ndx + 1)
+                    #time_float = step * (ndx + 1)
+                    time_float = step * ndx  # 2023-11-25 17:55
                     time_float = float(time_float)  # just in case
                     lyrics_text = self.youParseLrcMeta(line)  # For highlighting
                     #print("step:", step, "time_float:", time_float)
@@ -17479,7 +17499,7 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
         self.youProVar = tk.DoubleVar()  # Close"
         self.youProBar = ttk.Progressbar(
             self.you_btn_frm, style="TProgressbar", variable=self.youProVar,
-            length=1200)
+            length=1000)
         # https://stackoverflow.com/a/4027297/6929343
         self.youProBar.grid(row=0, column=1, padx=20, pady=30, sticky=tk.NSEW)
         self.you_btn_frm.pack_slaves()
@@ -17567,11 +17587,78 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
 
         return player_status
 
+    def youUpdatePlayerButton(self, player_status):
+        """ YouTube Music Player Status determines button text. 
+            1 = Music video is playing
+            2 = Music video is paused
+            otherwise button text is "None"
+        """
+        if player_status == 1:
+            # self.youPlayerButton = None  # Tkinter element mounted with .grid
+            # self.youPlayerCurrText = None  # "None" / "Pause" / "Play" button
+            # self.youPlayerNoneText = "?  None"  # Music Player Text options
+            # self.youPlayerPlayText = "▶  Play"  # used when music player status
+            # self.youPlayerPauseText = "❚❚ Pause"  # changes between 1 & 2
+            self.youSetPlayerButton(self.youPlayerPauseText)
+            return  # Can't divide by zero
+
+        if player_status == 2:
+            self.youSetPlayerButton(self.youPlayerPlayText)
+            return  # Can't divide by zero
+
+        self.youSetPlayerButton(self.youPlayerNoneText)
+
+    def youSetPlayerButton(self, new):
+        """ YouTube Music Player Status determines button text. 
+            1 = Music video is playing
+            2 = Music video is paused
+            otherwise button text is "None"
+        """
+        if new == self.youPlayerCurrText:
+            # self.youPlayerButton = None  # Tkinter element mounted with .grid
+            # self.youPlayerCurrText = None  # "None" / "Pause" / "Play" button
+            # self.youPlayerNoneText = "?  None"  # Music Player Text options
+            # self.youPlayerPlayText = "▶  Play"  # used when music player status
+            # self.youPlayerPauseText = "❚❚ Pause"  # changes between 1 & 2
+            return  # Can't divide by zero
+        self.youPlayerCurrText = new
+        self.youPlayerButton.config(text=new)
+        if "None" in new:
+            self.tt.set_text(self.youPlayerButton, "Nothing can be done")
+        if "Play" in new:
+            self.tt.set_text(self.youPlayerButton, "Resume playing video")
+        if "Pause" in new:
+            self.tt.set_text(self.youPlayerButton, "Pause music video")
+
+        # Set Audio Sink number
+        self.youPlayerSink = None
+        sinks_old = list(pav.sinks_now)  # Python 2+ .copy() for 3.3+
+        pav.get_all_sinks()
+        print("len(pav.sinks_now):", len(pav.sinks_now))
+        list(set(pav.sinks_now) - set(sinks_old))
+        for Sink in pav.sinks_now:
+            if "Chrome" in Sink.name:
+                print("Sink:", Sink)
+                self.youPlayerSink = Sink  # Audio Sink (sink_no_str)
+
+    def youTogglePlayer(self):
+        """ Button has been clicked.
+        """
+        if self.youPlayerNoneText == self.youPlayerCurrText:
+            # self.youPlayerButton = None  # Tkinter element mounted with .grid
+            # self.youPlayerCurrText = None  # "None" / "Pause" / "Play" button
+            # self.youPlayerNoneText = "?  None"  # Music Player Text options
+            # self.youPlayerPlayText = "▶  Play"  # used when music player status
+            # self.youPlayerPauseText = "❚❚ Pause"  # changes between 1 & 2
+            return  # Can't divide by zero
+
+        ''' YouTube toggle player with space bar '''
+        actions = ActionChains(self.driver)
+        actions.send_keys(' ')  # Send space
+        actions.perform()
+
     def getCurrentIndex(self):
         """ Get link URL from Browser address bar & return index
-
-            QUESTION: What is index that follows a deleted video in playlist
-                      when unavailable videos are displayed?
 
             Before play all:
                 https://www.youtube.com/playlist?list=
@@ -17683,48 +17770,6 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
             print("Exception:", err)
             print("ERROR on link = self.driver.current_url")
             return None
-
-    def getPlaylistLinks(self):
-        """
-            NOT USED
-
-            Get link URL from Browser address bar
-            Before play all:
-                https://www.youtube.com/playlist?list=
-                   PLthF248A1c68TAKl5DBskfJ2fwr1sk9aM
-            During play all:
-                https://www.youtube.com/watch?v=bePCRKGUwAY&list=
-                   PLthF248A1c68TAKl5DBskfJ2fwr1sk9aM&index=15
-
-
-        USAGE:
-            link, link_pre, link_video, link_list = self.getYouTubeLinks(self.driver)
-
-        link_pre will be "playlist" or "watch?v=<VIDEO LINK>"
-        link_list will be link_index when playing a song inside the playlist
-
-        """
-        link = link_pre = link_list = None
-        try:
-            link = self.driver.current_url
-        except Exception as err:
-            print("\nException:", err)
-            print("ERROR on link = self.driver.current_url\n")
-            return link, link_pre, link_list
-
-        try:
-            link_pre = link.split("&list=")[0]
-        except IndexError:
-            print("\nCould not find '&list=' in link[0]!")
-            print(link, "\n")
-            return link, link_pre, link_list
-
-        try:
-            link_list = link.split("&list=")[1]
-        except IndexError:
-            print("\nCould not find '&list=' in link[1]!")
-            print(link, "\n")
-            return link, link_pre, link_list
 
     def youDriverClick(self, by, desc):
         """ Credit: https://itecnote.com/tecnote/
@@ -18458,7 +18503,7 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
                         self.act_size, self.act_count, self.act_seconds,
                         self.act_description)
 
-    def website_play(self):
+    def open_playlist_with_browser(self):
         """ Play music from website """
         try:
             webbrowser.open_new(self.act_description)
@@ -18539,7 +18584,7 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
         elif self.state == 'open' and self.act_description.startswith("http"):
             self.info.cast("Opening Web Browser for: " + self.act_name + " at " +
                            self.act_description)
-            self.website_play()
+            self.open_playlist_with_browser()
             self.reset()  # Close everything down, E.G. destroy window
 
         elif self.state == 'open':
