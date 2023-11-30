@@ -14843,6 +14843,7 @@ class PlaylistsCommonSelf:
         ''' YouTube Playlist work fields '''
         self.isSmartPlayYouTube = False  # is Smart YouTube Player running?
         self.driver = None  # Is Selenium Webdriver opened?
+        self.youWindow = None  # DM Browser Window
         self.nameYouTube = None  # = WEB_PLAY_DIR + os.sep + self.act_name + ".csv"
         self.linkYouTube = None  # YouTube links retrieved from .csv file
         self.listYouTube = None  # [dictYouTube, dictYouTube, ... dictYouTube]
@@ -14854,6 +14855,8 @@ class PlaylistsCommonSelf:
         self.gotAllGoodLinks = None  # All 100 video chunk lists have scrolled
         self.youValidLinks = None  # Video links minus private and deleted videos
         self.youUnavailableShown = None  # Unavailable videos displayed?
+        self.youFullScreen = None  # Was YouTube full screen before?
+        self.youForceVideoFull = None  # After video starts send "f" key
 
         self.youTreeFrame = None  # .grid_remove() for youLrcFrame
         self.youLrcFrame = None  # .grid_remove() for youPlaylistFrame
@@ -15973,6 +15976,10 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         :param item: item (iid) in YouTube playlist
         :return: None
         """
+        
+        # Is last video playing in full screen?
+        self.youForceVideoFull = self.youCheckVideoFullScreen()
+
         ndx = int(item)
         self.dictYouTube = self.listYouTube[ndx]
         link = self.dictYouTube['link']
@@ -16098,7 +16105,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         :return self.driver, window: Selenium self.driver and WM window tuple
         """
 
-        self.driver = window = None
+        self.driver = self.youWindow = None
         CHROME_DRIVER_VER = "chromedriver108"
         # TODO replace 108 with actual version
         # $ google-chrome --version
@@ -16172,7 +16179,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                 text += "messages and try again."
                 message.ShowInfo(self.top, title, text, icon='error',
                                  thread=self.get_thread_func)
-                return self.driver, window
+                return self.driver, self.youWindow
 
         if not len(start_wins) + 1 == len(end_wins):
             title = "Could not start Browser"
@@ -16182,12 +16189,12 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             text += "Check console for error messages.\n"
             message.ShowInfo(self.top, title, text, icon='error',
                              thread=self.get_thread_func)
-            return self.driver, window
+            return self.driver, self.youWindow
 
         win_list = list(set(end_wins) - set(start_wins))
-        window = win_list[0]
+        self.youWindow = win_list[0]
 
-        return self.driver, window
+        return self.driver, self.youWindow
 
     def youPlayAllFullScreen(self, window):
         """ Open YouTube Playlist, Move window, 'Play all', full screen
@@ -16217,6 +16224,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         net_states = os.popen('xprop -id ' + str_win).read().strip()
         # print("net_states:", net_states)
         if "_NET_WM_STATE_FULLSCREEN" in net_states:
+            self.youFullScreen = True  # Was YouTube full screen before?
             os.popen('wmctrl -ir ' + hex_win +
                      ' -b toggle,fullscreen')  # DOES NOT WORK !!!
 
@@ -16324,7 +16332,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                              thread=self.get_thread_func)
             return False
 
-        ''' Make You Tube full screen '''
+        ''' Make YouTube full screen '''
         actions = ActionChains(self.driver)
         actions.send_keys('f')  # work around self.driver.fullscreen_window()
         actions.perform()
@@ -16335,6 +16343,71 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         # AttributeError: 'WebDriver' object has no attribute 'fullscreen_window'
 
         return True
+
+    def youCheckVideoFullScreen(self):
+        """ Check if YouTube Browser Window is currently full screen
+            Use new self.youWindow variable. Called during startup and
+            when video link changes (new video started)
+
+            There is Full Screen in Desktop Manager (DM):
+
+                _NET_WM_STATE(ATOM) =
+                    _NET_WM_STATE_MAXIMIZED_VERT,
+                    _NET_WM_STATE_MAXIMIZED_HORZ,
+                    _NET_WM_STATE_FULLSCREEN,
+                    _NET_WM_STATE_ABOVE
+
+            DM not full screen:
+
+                _NET_WM_STATE(ATOM) =
+
+            To check if Video taking all of window in YouTube:
+
+                full_screen = True
+                try:
+                    path = '//input[@id="search"]'
+                    search_area = self.driver.find_element(By.XPATH, path)
+                    full_screen = search_area.is_displayed()
+                except:
+                    print("Bad element path or too soon:", path)
+
+        """
+        # print("\n Browser Window:", self.youWindow)
+        # [Window(number=130028740L, name='Mozilla Firefox', x=1920, y=24,
+        #         width=1728, height=978)]
+
+        str_win = str(self.youWindow.number)  # Remove L in python 2.7.5+
+        int_win = int(str_win)  # https://stackoverflow.com/questions
+        hex_win = hex(int_win)  # /5917203/python-trailing-l-problem
+        #print("\n str_win:", str_win, "int_win:", int_win, "hex_win:", hex_win)
+
+        # If last usage was full screen, reverse it
+        net_states = os.popen('xprop -id ' + str_win).read().strip()
+        # print("net_states:", net_states)
+        self.youFullScreen = None  # Was YouTube full screen before?
+        if "_NET_WM_STATE_FULLSCREEN" in net_states:
+            self.youFullScreen = True  # YouTube is full screen
+
+        self.youPrint("Full screen state:", self.youFullScreen)
+        #self.youPrint("str_win:", str_win, "net_states:", net_states)
+        self.youPrint("Window:", self.youWindow)
+
+        self.youForceVideoFull = False
+        if not self.youFullScreen:
+            self.youPrint("self.youForceVideoFull:", self.youForceVideoFull)
+            return self.youForceVideoFull
+
+        try:
+            # https://stackoverflow.com/a/72820435/6929343
+            path = '//input[@id="search"]'
+            search_area = self.driver.find_element(By.XPATH, path)
+            self.youForceVideoFull = search_area.is_displayed() is not True
+            self.youPrint("self.youForceVideoFull:", self.youForceVideoFull)
+        except Exception as err:
+            self.youPrint("youCheckVideoFullScreen() Exception:", err)
+            print("Bad XPATH name or need to wait:", path)
+
+        return self.youForceVideoFull
 
     def youGetAllGoodLinks(self, video_count):
         """ Get all the good links and private links in playlist. Scrolling
@@ -16918,6 +16991,25 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
 
         # Has YouTube popped up an ad?
         if not self.youCheckAdRunning():
+
+            # DRY - Reset full screen if last video playing in full screen
+            if self.youForceVideoFull:
+                ''' Make YouTube full screen '''
+                self.youPrint("Make YouTube full screen")
+                actions = ActionChains(self.driver)
+                actions.send_keys('f')  # Send full screen key
+                actions.perform()
+                self.youForceVideoFull = None
+
+            # NOT WORKING:
+            # 19:02:29.0 STARTING Playlist - Song № 2     | HnilTXUQtag
+            # 19:02:29.0 Assume Ad. Automatically turn down volume.
+            # 19:02:29.0 Reversing self.youAssumeAd
+            # 19:02:29.2 Make YouTube full screen
+            #
+            # 19:02:30.7 STARTING Playlist - Song № 2     | HnilTXUQtag
+            # 19:02:30.7 Assume Ad. Automatically turn down volume.
+            # 19:02:31.0 Reversing self.youAssumeAd
             return True  # Nothing to do
 
         self.youVolumeOverride(True)  # Ad playing override
@@ -17090,6 +17182,16 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
             if final_status == 1 and not self.youCheckAdRunning():
                 self.isSongRepeating = True  # Means we have to check
                 self.resetYouTubeDuration()  # Reset one song duration
+
+                # DRY - Reset full screen if last video playing in full screen
+                if self.youForceVideoFull:
+                    ''' Make YouTube full screen '''
+                    self.youPrint("Make YouTube full screen")
+                    actions = ActionChains(self.driver)
+                    actions.send_keys('f')  # Send full screen key
+                    actions.perform()
+                    self.youForceVideoFull = None
+
                 return True
 
     def youWaitMusicPlayer(self, debug=False, startup=False):
