@@ -14862,14 +14862,14 @@ class PlaylistsCommonSelf:
         self.youLrcFrame = None  # .grid_remove() for youPlaylistFrame
         self.scrollYT = None  # Custom Scrolled Text Box
         self.youAssumedAd = None  # Volume was forced automatically down
-        self.hasYouTubeLRC = None  # Are synchronized lyrics (LRC) stored in dict?
-        self.listYouTubeLRC = None  # List of LRC ([mm:ss.hh] "lyrics line text")
-        self.ndxYouTubeLRC = None  # Current index within listYouTubeLRC
+        self.hasLrcForVideo = None  # Are synchronized lyrics (LRC) stored in dict?
+        self.listLrcLines = None  # List of LRC ([mm:ss.hh] "lyrics line text")
+        self.ndxLrcCurrentLine = None  # Current index within listYouTubeLRC
         self.youProLrcVar = None  # Progress label variable tk string
-        self.youTimeOffLrcVar = None  # LRC time offset (+/- seconds)
-        self.youTimeOffLrc = None  # LRC time offset (+/- seconds)
-        self.youBgColorLrcVar = None  # LRC highlight yellow/cyan/magenta
-        self.youBgColorLrc = None  # LRC highlight yellow/cyan/magenta
+        self.youLrcTimeOffsetVar = None  # LRC time offset (+/- seconds)
+        self.youLrcTimeOffset = None  # LRC time offset (+/- seconds)
+        self.youLrcBgColorVar = None  # LRC highlight yellow/cyan/magenta
+        self.youLrcBgColor = None  # LRC highlight yellow/cyan/magenta
         self.youFirstLrcTimeNdx = None  # 0-Index of first line with [mm:ss.99]
         self.youFirstLrcTime = None  # Float Seconds of [mm:ss.99]
 
@@ -15765,6 +15765,8 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                              command=lambda: self.youTreeCopyName(item))
             menu.add_command(label="Paste LRC № " + no, font=g.FONT,
                              command=lambda: self.youTreePasteLrc(item))
+            menu.add_command(label="Delete LRC № " + no, font=g.FONT,
+                             command=lambda: self.youTreeDeleteLrc(item))
             menu.add_separator()
             menu.add_command(label="Close Smart Playlist", font=g.FONT,
                              command=self.youClosePlayLrc)
@@ -15816,6 +15818,8 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                          command=lambda: self.youTreeCopyName(item))
         menu.add_command(label="Paste LRC № " + no, font=g.FONT,
                          command=lambda: self.youTreePasteLrc(item))
+        menu.add_command(label="Delete LRC № " + no, font=g.FONT,
+                         command=lambda: self.youTreeDeleteLrc(item))
         menu.add_separator()
 
         menu.add_command(label="Ignore click", font=g.FONT,
@@ -15834,10 +15838,10 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         """ Close YouTube Playlist or Lrc Frame depending on active frame. """
 
         # Is Lrc Frame active?
-        if self.hasYouTubeLRC:
+        if self.hasLrcForVideo:
             self.youLrcFrame.grid_remove()  # Remove LRC frame
             self.youTreeFrame.grid()  # Restore Treeview frame
-            self.hasYouTubeLRC = None
+            self.hasLrcForVideo = None
             self.youSetCloseButton()
             return
 
@@ -16894,8 +16898,8 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
         ''' Get lyrics from list of dictionaries '''
         lrc = self.listYouTube[you_tree_iid_int].get('lrc', None)
         if lrc:
-            self.hasYouTubeLRC = True
-            self.listYouTubeLRC = lrc.splitlines()
+            self.hasLrcForVideo = True
+            self.listLrcLines = lrc.splitlines()
             self.youLrcBuildFrame(str(you_tree_iid_int))
 
         return link
@@ -16946,7 +16950,7 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
             #      "of:", self.durationYouTube, self.youProVar.get(), end="\r")
             # mm_ss(seconds, brackets=False, trim=True, rem=None)
 
-            if self.hasYouTubeLRC and self.youLrcFrame:  # Oct 22/23
+            if self.hasLrcForVideo and self.youLrcFrame:  # Oct 22/23
                 self.youLrcHighlightLine()
         else:  
             self.timeLastYouTube = now
@@ -17320,13 +17324,13 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
         time_string = tk.Label(info_frame, text="Lyrics Time Offset",
                                font=g.FONT, wraplength=320, justify="center")
         time_string.grid(row=4, column=0, sticky=tk.EW, padx=5, pady=(20, 0))
-        self.youTimeOffLrcVar = tk.DoubleVar()
+        self.youLrcTimeOffsetVar = tk.DoubleVar()
         ndx = int(item)
-        self.youTimeOffLrc = self.listYouTube[ndx].get('lrc_timeoff', None)
-        if self.youTimeOffLrc is None:
-            self.youTimeOffLrc = 0.0
-        self.youTimeOffLrcVar.set(self.youTimeOffLrc)
-        time_offset = tk.Entry(info_frame, textvariable=self.youTimeOffLrcVar,
+        self.youLrcTimeOffset = self.listYouTube[ndx].get('lrc_timeoff', None)
+        if self.youLrcTimeOffset is None:
+            self.youLrcTimeOffset = 0.0
+        self.youLrcTimeOffsetVar.set(self.youLrcTimeOffset)
+        time_offset = tk.Entry(info_frame, textvariable=self.youLrcTimeOffsetVar,
                                font=g.FONT14, justify="center")
         time_offset.grid(row=5, column=0, sticky=tk.EW,
                          padx=5, pady=(0, 40))
@@ -17337,12 +17341,12 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
                                               " / Yellow / Cyan / Magenta",
                              font=g.FONT, wraplength=320, justify="center")
         bg_string.grid(row=6, column=0, sticky=tk.EW, padx=5, pady=(20, 0))
-        self.youBgColorLrcVar = tk.StringVar()
-        self.youBgColorLrc = self.listYouTube[ndx].get('lrc_color', None)
-        if self.youBgColorLrc is None:
-            self.youBgColorLrc = 'Yellow'
-        self.youBgColorLrcVar.set(self.youBgColorLrc)
-        bg_color = tk.Entry(info_frame, textvariable=self.youBgColorLrcVar,
+        self.youLrcBgColorVar = tk.StringVar()
+        self.youLrcBgColor = self.listYouTube[ndx].get('lrc_color', None)
+        if self.youLrcBgColor is None:
+            self.youLrcBgColor = 'Yellow'
+        self.youLrcBgColorVar.set(self.youLrcBgColor)
+        bg_color = tk.Entry(info_frame, textvariable=self.youLrcBgColorVar,
                             font=g.FONT14, justify="center")
         # Want to increase X padding but it's forcing info_frame wider?
         bg_color.grid(row=7, column=0, sticky=tk.EW,
@@ -17365,7 +17369,7 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
         self.youFirstLrcTimeNdx = None  # 0-Index of first line with [mm:ss.99]
         self.youFirstLrcTime = None
         self.scrollYT.configure(state="normal")
-        for ndx, line in enumerate(self.listYouTubeLRC):
+        for ndx, line in enumerate(self.listLrcLines):
             line_time, line_text = self.youLrcParseLine(line)
             # print("line_time:", line_time, "line_text:", line_text)
             if not line_time:  # two spaces for background color before & after
@@ -17409,63 +17413,63 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
 
     def youLrcUpdateTimeOffset(self, item, *_args):
         """ Time Offset has just been changed. """
-        old_time = self.youTimeOffLrc
-        self.youTimeOffLrc = self.youTimeOffLrcVar.get()
+        old_time = self.youLrcTimeOffset
+        self.youLrcTimeOffset = self.youLrcTimeOffsetVar.get()
         # Sanity check
-        if not -150.0 < self.youTimeOffLrc < 150.0:
-            print("Offset entered:", self.youTimeOffLrc, "is beyond 150 seconds.")
-            self.youTimeOffLrc = old_time
-            self.youTimeOffLrcVar.set(self.youTimeOffLrc)
+        if not -150.0 < self.youLrcTimeOffset < 150.0:
+            print("Offset entered:", self.youLrcTimeOffset, "is beyond 150 seconds.")
+            self.youLrcTimeOffset = old_time
+            self.youLrcTimeOffsetVar.set(self.youLrcTimeOffset)
             self.top.update()
             return
 
-        if old_time == 0.0 and self.youTimeOffLrc == 0.0:
+        if old_time == 0.0 and self.youLrcTimeOffset == 0.0:
             return  # No point saving default
 
         # Write new value to disk
         ndx = int(item)
         start = time.time()
-        self.listYouTube[ndx]['lrc_timeoff'] = self.youTimeOffLrc
+        self.listYouTube[ndx]['lrc_timeoff'] = self.youLrcTimeOffset
         fname = self.nameYouTube.replace(".csv", ".pickle")
         ext.write_to_pickle(fname, self.listYouTube)
-        print("youLrcUpdateTimeOffset():", self.youTimeOffLrc, "ext.write_to_pickle:",
+        print("youLrcUpdateTimeOffset():", self.youLrcTimeOffset, "ext.write_to_pickle:",
               tmf.mm_ss(time.time() - start, rem='h'), "sec")  # 1.55 sec
 
         self.top.update()
 
     def youLrcUpdateBgColor(self, item, *_args):
         """ Time Offset has just been changed. """
-        old_color = self.youBgColorLrc
-        self.youBgColorLrc = self.youBgColorLrcVar.get()
-        if self.youBgColorLrc.lower() != 'red' and \
-                self.youBgColorLrc.lower() != 'green' and \
-                self.youBgColorLrc.lower() != 'blue' and \
-                self.youBgColorLrc.lower() != 'black' and \
-                self.youBgColorLrc.lower() != 'yellow' and \
-                self.youBgColorLrc.lower() != 'cyan' and \
-                self.youBgColorLrc.lower() != 'magenta':
-            print("Bad color:", self.youBgColorLrc, " | Keeping old:", old_color)
-            self.youBgColorLrc = old_color
-            self.youBgColorLrcVar.set(self.youBgColorLrc)
+        old_color = self.youLrcBgColor
+        self.youLrcBgColor = self.youLrcBgColorVar.get()
+        if self.youLrcBgColor.lower() != 'red' and \
+                self.youLrcBgColor.lower() != 'green' and \
+                self.youLrcBgColor.lower() != 'blue' and \
+                self.youLrcBgColor.lower() != 'black' and \
+                self.youLrcBgColor.lower() != 'yellow' and \
+                self.youLrcBgColor.lower() != 'cyan' and \
+                self.youLrcBgColor.lower() != 'magenta':
+            print("Bad color:", self.youLrcBgColor, " | Keeping old:", old_color)
+            self.youLrcBgColor = old_color
+            self.youLrcBgColorVar.set(self.youLrcBgColor)
             self.top.update()
             return
 
-        if old_color.lower() == 'yellow' and self.youBgColorLrc.lower() == 'yellow':
+        if old_color.lower() == 'yellow' and self.youLrcBgColor.lower() == 'yellow':
             return  # No point saving default
 
-        if old_color.lower() == self.youBgColorLrc.lower():
+        if old_color.lower() == self.youLrcBgColor.lower():
             return  # Color not changed
 
         self.scrollYT.tag_remove(old_color.lower(), "1.0", "end")
-        print("New color:", self.youBgColorLrc, " | Old color:", old_color)
+        print("New color:", self.youLrcBgColor, " | Old color:", old_color)
 
         # Write new value to disk
         ndx = int(item)
         start = time.time()
-        self.listYouTube[ndx]['lrc_color'] = self.youBgColorLrc
+        self.listYouTube[ndx]['lrc_color'] = self.youLrcBgColor
         fname = self.nameYouTube.replace(".csv", ".pickle")
         ext.write_to_pickle(fname, self.listYouTube)
-        print("bg_focusout():", self.youBgColorLrc, "ext.write_to_pickle:",
+        print("bg_focusout():", self.youLrcBgColor, "ext.write_to_pickle:",
               tmf.mm_ss(time.time() - start, rem='h'), "sec")  # 1.55 sec
 
         self.top.update()
@@ -17477,14 +17481,14 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
 
         self.youLrcFrame.grid_remove()  # Remove LRC frame
         self.youTreeFrame.grid()  # Restore Treeview frame
-        self.hasYouTubeLRC = None
+        self.hasLrcForVideo = None
         self.youSetCloseButton()
 
     def youSetCloseButton(self):
         """ Set self.close_button tooltip text to:
             "Close Playlist"
             "Close Synchronized Lyrics (LRC)" """
-        if self.hasYouTubeLRC:
+        if self.hasLrcForVideo:
             tt_text = "Close Synchronized Lyrics (LRC)"
         else:
             tt_text = "Close YouTube Playlist"
@@ -17493,10 +17497,11 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
     def youLrcHighlightLine(self):
         """ Highlight LRC (synchronized lyrics) line based on progress """
 
+        # Calculate progress
         #position = tmf.mm_ss(self.progressYouTube, rem='d')  # decisecond
         position = tmf.mm_ss(self.progressYouTube)  # Less distracting seconds
         self.youProLrcVar.set("Progress: " + position)
-        progress = self.progressYouTube + self.youTimeOffLrc
+        progress = self.progressYouTube + self.youLrcTimeOffset
         progress = 0.0 if progress < 0.0 else progress
         if self.progressYouTube and \
                 self.progressYouTube == self.progressLastYouTube:
@@ -17504,60 +17509,101 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
                           self.progressYouTube)
         self.progressLastYouTube = self.progressYouTube
 
-        last_ndx = len(self.listYouTubeLRC) - 1
-        for i, line in enumerate(self.listYouTubeLRC):
+        # Find line matching progress
+        last_ndx = len(self.listLrcLines) - 1
+        for i, line in enumerate(self.listLrcLines):
             line_time, line_text = self.youLrcParseLine(line, i)
             #if i == 4:
             #    print(line_time, line_text)
             if i < last_ndx:
-                next_line = self.listYouTubeLRC[i + 1]
-                next_time, _next_text = self.youLrcParseLine(next_line, i + 1)
+                next_line = self.listLrcLines[i + 1]
+                next_time, _next_text = \
+                    self.youLrcParseLine(next_line, i + 1)
             else:
                 next_time = 9999999999999.9
-            if line_time and next_time:
-                if line_time < progress < next_time:
-                    if i == self.ndxYouTubeLRC:
-                        return  # index is same
-                    self.ndxYouTubeLRC = i
-                    #print("New lyrics line:", line_text)
-                    # Remove pattern green for all
-                    # Apply pattern green for active line
-                    try:
-                        self.scrollYT.tag_remove(self.youBgColorLrc.lower(),
-                                                 "1.0", "end")
-                    except tk.TclError:  # Oct 22/23 - 8:45pm
-                        # Working fine for week until housekeeping added
-                        self.youPrint("ERROR self.scrollYT.tag_remove()")
 
-                    two_before = i - 1 if i > 2 else 1
-                    see = str(two_before) + ".0"
-                    # Start highlight 1 char in so gutter isn't highlighted
-                    text_start = str(i + 1) + ".0+1c"
-                    text_end = str(i + 2) + ".0-1c"
-                    #print("see:", see, "progress:", progress,
-                    #      "text_start:", text_start,
-                    #      "text_end:", text_end)
-                    # TODO: More efficient using self.scrollYT.tag_add
-                    try:
-                        self.scrollYT.highlight_pattern(
-                            "  " + line_text + "  ", self.youBgColorLrc.lower(),
-                            start=text_start, end=text_end)
-                    except tk.TclError:  # Oct 22/23 - 8:45pm
-                        # Working fine for week until housekeeping added
-                        self.youPrint("ERROR self.scrollYT.highlight_pattern()")
+            if line_time is None or next_time is None:
+                continue  # Cannot test None
 
-                    # https://stackoverflow.com/a/62765724/6929343
-                    self.scrollYT.see(text_start)
-                    lineinfo = self.scrollYT.dlineinfo(see)
-                    try:
-                        self.scrollYT.yview_scroll(lineinfo[1], 'pixels')
-                    except Exception as err:
-                        self.youPrint("lineinfo[1] Exception:\n", err)
-                        print("", line_time, ":", line_text)
-                        print("", lineinfo)
+            if not line_time < progress < next_time:
+                continue  # Line is the wrong time
 
-                    self.top.update_idletasks()
-                    return
+            if i == self.ndxLrcCurrentLine:
+                return  # index hasn't changed
+            self.ndxLrcCurrentLine = i
+
+            #print("New lyrics line:", line_text)
+            # Remove pattern green for all
+            # Apply pattern green for active line
+            try:
+                self.scrollYT.tag_remove(
+                    self.youLrcBgColor.lower(), "1.0", "end")
+            except tk.TclError:  # Oct 22/23 - 8:45pm
+                # Working fine for week until housekeeping added
+                self.youPrint("ERROR self.scrollYT.tag_remove()")
+
+            two_before = i - 1 if i > 2 else 1
+            see = str(two_before) + ".0"
+            # Start highlight 1 char in so gutter isn't highlighted
+            text_start = str(i + 1) + ".0+1c"
+            text_end = str(i + 2) + ".0-1c"
+            #print("see:", see, "progress:", progress,
+            #      "text_start:", text_start,
+            #      "text_end:", text_end)
+            # TODO: More efficient using self.scrollYT.tag_add
+            try:
+                self.scrollYT.highlight_pattern(
+                    "  " + line_text + "  ", self.youLrcBgColor.lower(),
+                    start=text_start, end=text_end)
+            except tk.TclError:  # Oct 22/23 - 8:45pm
+                # Working fine for week until housekeeping added
+                self.youPrint("ERROR self.scrollYT.highlight_pattern()")
+
+            # https://stackoverflow.com/a/62765724/6929343
+            self.scrollYT.see(text_start)
+            lineinfo = self.scrollYT.dlineinfo(see)
+            try:
+                self.scrollYT.yview_scroll(lineinfo[1], 'pixels')
+            except Exception as err:
+                self.youPrint("lineinfo[1] Exception:\n", err)
+                print("", line_time, ":", line_text)
+                print("", lineinfo)
+
+            self.top.update_idletasks()
+            return
+
+    # First time lyrics used after suspend / startup / confirm playing:
+
+    # 05:45:40.3 STARTING Playlist - Song № 8     | zQAd7eQzLus
+    # 05:45:40.3 Assume Ad. Automatically turn down volume.
+    # 05:45:40.4 Reversing self.youAssumeAd
+    # 05:45:40.4 lineinfo[1] Exception:
+    #  'NoneType' object has no attribute '__getitem__'
+    #  0.02 : 00:01.12]Put your loving hand out, baby
+    #  None
+    # 05:45:40.7 MicroFormat found after: 0.4     | zQAd7eQzLus
+    # 05:45:51.1 lineinfo[1] Exception:
+    #  'NoneType' object has no attribute '__getitem__'
+    #  11.5 : 'Cause I'm beggin'
+    #  None
+
+    # Every 8 songs or so:
+
+    # 21:29:11.1 STARTING Playlist - Song № 28    | 5W_lQewmIwI
+    # 21:29:11.1 Assume Ad. Automatically turn down volume.
+    # 21:29:11.6 Ad visible. Player status: -1
+    # _close_cb(): Probably closed wrong widget
+    # toolkit.py ToolTips.get_dict(): self.dict for "widget" not found
+    # .139811858132792.139811853234256.139811853234400.139811565532224
+    # .139811565537040
+    # 29:13.2209 _close_cb() - tt_dict not found for: 7040
+    # 21:29:14.0 Reversing self.youAssumeAd
+    # 21:29:14.2 MicroFormat found after: 0.4     | 5W_lQewmIwI
+
+    # Probably caused by error:
+
+    # vu_pulse_audio.py PulseAudio.get_volume(): unable to find sink#: 2730
+    # This probably isn't real sink but rather phantom
 
     def youLrcParseLine(self, line, ndx=None):
         """ Split line into seconds float and lyrics text
@@ -18219,7 +18265,7 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
     def youTreeCopyName(self, item):
         """ Copy Single Song Name to clipboard. """
         ndx = int(item)
-        search_name = "megalobiz.com " + self.listYouTube[ndx]['name']
+        search_name = "synchronized lyrics lrc " + self.listYouTube[ndx]['name']
         self.youTreeSharedCopyText(search_name)
 
     def youTreeCopyAll(self):
@@ -18245,7 +18291,7 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
         clip_text = self.youTreeSharedPaste()
         # TODO: validate [mm:ss.hh] 'blah blah' exists at least 10 times?
 
-        # Write new value to disk
+        # Write new LRC to disk
         ndx = int(item)
         start = time.time()
         self.listYouTube[ndx]['lrc'] = clip_text
@@ -18254,6 +18300,41 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
         print("youTreePasteLrc() ext.write_to_pickle:",
               tmf.mm_ss(time.time() - start, rem='h'), "sec")  # 1.55 sec
         #  New file self.lrcYouTube list[ list[], list[]... list[] ]?
+
+        # Strip "\n\n" + old lyrics line 1 and insert new "\n\n" lyrics line 1.
+        all_values = self.you_tree.item(item)['values']
+        song_name = all_values[0].split("\n\n")[0]
+        lrc = self.listYouTube[ndx].get('lrc', None)
+        if lrc:
+            lrc_list = lrc.splitlines()
+            song_name += "\n\n" + lrc_list[0]  # first lrc line into treeview
+            print("append lyrics[0]:", song_name)
+        self.you_tree.item(item, values=(song_name,))
+        self.you_tree.update_idletasks()
+
+    def youTreeDeleteLrc(self, item):
+        """ Delete Song's LRC (LyRiCs).
+            Confirm intent then delete.
+        """
+
+        # Delete old LRC from disk
+        ndx = int(item)
+        start = time.time()
+
+        #result = self.listYouTube.pop([ndx]['lrc'], None)
+        try:
+            result = self.listYouTube[ndx].get('lrc', None)
+            del self.listYouTube[ndx]['lrc']
+        except KeyError:
+            self.youPrint("KeyError no LRC in dictionary")
+            return
+
+        if result is not None:
+            # If None the key didn't exist
+            fname = self.nameYouTube.replace(".csv", ".pickle")
+            ext.write_to_pickle(fname, self.listYouTube)
+            print("youTreeDeleteLrc() ext.write_to_pickle:",
+                  tmf.mm_ss(time.time() - start, rem='h'), "sec")  # 1.55 sec
 
         # Strip "\n\n" + old lyrics line 1 and insert new "\n\n" lyrics line 1.
         all_values = self.you_tree.item(item)['values']
