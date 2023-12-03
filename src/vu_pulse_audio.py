@@ -18,6 +18,7 @@ from __future__ import with_statement  # Error handling for file opens
 #       July 12 2023 - Interface to/from mserve_config.py
 #       Aug. 23 2023 - get_volume() return 25.0 when sink not found.
 #       Sep. 04 2023 - Fix crash when sink has no 'application.name' key
+#       Dec. 03 2023 - YouTube Playlists was breaking get_volume() info.cast() 
 #
 # ==============================================================================
 """
@@ -327,7 +328,15 @@ AttributeError: 'module' object has no attribute 'pulsectl'
             if Sink.sink_no_str == sink_no_str:
                 return Sink.volume
 
-        self.info.cast(who + "unable to find sink#: " + sink_no_str)
+        #self.info.cast(who + "unable to find sink#: " + sink_no_str)
+        # 2023-12-03 - Above breaks from YouTube Playlists
+        # 06:51:23.5 Ad visible. Player status: -1
+        # _close_cb(): Probably closed wrong widget
+        # toolkit.py ToolTips.get_dict(): self.dict for "widget" not found
+        # .140205735977040.140205735977256.140205735977472.140205516979664.140205517321136
+        # 51:24.3509 _close_cb() - tt_dict not found for: 1136
+        # 06:51:24.8 Reversing self.youAssumeAd
+        print(who + "unable to find sink#: " + sink_no_str)
         return 25.0  # returning None breaks callers
 
     def set_volume(self, target_sink, percent):

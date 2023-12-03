@@ -613,7 +613,6 @@ $ pico2wave -w=/tmp/test.wav "m serve version 1.0"
 $ aplay /tmp/test.wav
 $ rm /tmp/test.wav
 '''
-# inspection SpellCheckingInspection
 
 TV_BREAK1 = 90          # Hockey TV commercial break is 90 seconds
 TV_BREAK2 = 1080        # Hockey TV intermission is 18 minutes
@@ -13168,7 +13167,6 @@ class FineTune:
 #       BatchSelect() class. Speed up processing from .82 second to .15 seconds
 #
 # ==============================================================================
-
 class BatchSelect:
     """ Usage:
 
@@ -15065,6 +15063,8 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         ''' Save between Playlist Maintenance calls '''
         self.name = None  # Playlist name that is being played right now
 
+# Playlists Class Toplevel Methods used by all entry points
+
     def create_window(self, name=None):
         """ Mount window with Playlist Treeview or placeholder text when none.
             :param name: "New Playlist", "Open Playlist", etc.
@@ -15586,7 +15586,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
 
         ''' create_top() shared with create_window() '''
         common_name = " Playlist: " + self.act_name
-        common_name += " - " + str(self.act_count) + " Songs." 
+        common_name += " - " + str(self.act_count) + " Videos."
         common_name += " - " + tmf.days(self.act_seconds)
         if name == "YouTube":
             # create_top does name += " - mserve"
@@ -15851,14 +15851,22 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         self.reset()
 
     def you_tree_play(self, item):
-        """ Play song highlighted in YouTube treeview. """
+        """ Play song highlighted in YouTube treeview.
+            2023-12-02 - Not called by popup menu.
+        """
+        title = "NOT IMPLEMENTED."
+        text = "Calling YouTube regular play"
+        message.ShowInfo(self.top, title, text, icon='warning',
+                         thread=self.get_thread_func)
         ndx = int(item)
         webbrowser.open_new(self.listYouTube[ndx]['link'])
 
     def you_tree_smart_play(self):
-        """ Smart Play single YouTube song for unopened Playlist. """
+        """ Smart Play single YouTube song for unopened Playlist.
+            2023-12-02 - Not called by popup menu.
+        """
         title = "NOT IMPLEMENTED."
-        text = "Calling regular play"
+        text = "Calling YouTube regular play"
         message.ShowInfo(self.top, title, text, icon='warning',
                          thread=self.get_thread_func)
         ndx = int(item)
@@ -15948,7 +15956,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                 self.driver = webdriver.Chrome()
                 print("driver = webdriver.Chrome()")
 
-# Playlists Class YouTube Playlist Smart Play Processing
+# Playlists Class YouTube Video Player
 
     def youSmartPlaySong(self, item):
         """
@@ -15964,7 +15972,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         # Shared function to start playing at playlist index
         self.youPlaylistIndexStartPlay(item)
 
-    def youPlaylistIndexStartPlay(self, item):
+    def youPlaylistIndexStartPlay(self, item, restart=False):
         """ Shared by youSmartPlaySong and youSmartPlaySample methods
 
             Build full_link containing:
@@ -15978,6 +15986,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             	playlist?list=PLthF248A1c68TAKl5DBskfJ2fwr1sk9aM
 
         :param item: item (iid) in YouTube playlist
+        :param restart: End of Playlist, restart from beginning.
         :return: None
         """
         
@@ -15998,6 +16007,17 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             self.driver.back()
             self.driver.forward()
             status = self.youWaitMusicPlayer(debug=True, startup=True)
+
+        if restart:
+            self.youPrint("Forced refresh at beginning:", full_link)
+            # EXPECT:&list=PLthF248A1c68TAKl5DBskfJ2fwr1sk9aM
+            # SHOWN: &list=PLthF248A1c68TAKl5DBskfJ2fwr1sk9aM
+            # 01:20:38.8 STARTING Playlist - Song № 1     | a-Xfv64uhMI
+            # https://www.youtube.com/watch?v=a-Xfv64uhMI&list=PLthF248A1c68TAKl5DBskfJ2fwr1sk9aM&index=1
+            # 01:20:38.0 STARTING Playlist - Song № 1     | nYSdFra_Amc
+            # 01:24:59.6 STARTING Playlist - Song № 1     | kuoZTxfe6tA
+            time.sleep(2.0)
+            self.driver.refresh()
 
     def youSmartPlaySample(self, item):
         """ Start playing video then advance to middle of song
@@ -16867,7 +16887,9 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
                 Link: https://www.youtube.com/watch?v=DLOth-BuCNY   NOT FOUND!
                                            Should be: bEWHpHlfuVU
             '''
-            return link
+            # May have hit end of list. Start over with first video.
+            you_tree_iid_int = 0
+            self.youPlaylistIndexStartPlay("0", restart=True)
 
         song_no = str(you_tree_iid_int + 1).ljust(4)
         print("\n" + ext.t(short=True, hun=True),
@@ -18430,7 +18452,7 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
         # Below is identical to displayYouTubePlaylist()
         self.displayPlaylistCommonBottom()
 
-# Playlists Class Invocation Point Methods
+# Playlists Class Methods called from Dropdown Menus
 
     def new(self):
         """ Called by lib_top File Menubar "New Playlist"
@@ -18845,58 +18867,8 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
 # ==============================================================================
 #
 #       InfoCentre() class.
-
-# noinspection SpellCheckingInspection
-'''
-    Thoughts.
-
-    Currently pushing down lib_tree is smooth. It is annoying if checking
-    boxes though.
-    
-    Sweeping over is jagged and annoying. Sweeping over is preferrable for
-    checking boxes that don't move, or at least don't move much. If checking
-    at the top then zoom covers it up.
-
-    That said, if working on checking boxes and a new song starts the list
-    is totally arranged to highlight new song. An indicator that boxes are
-    being checked or albums are being expanded for last few seconds is
-    needed. Then after idle, highlight current song in green. If clicking
-    in tree go back to last position worked on.
-
-    Text can be copied to clipboard. Enable entry state.  CTRL+C DOESN'T WORK.
-    PLUS COLORS INTERRUPT MOUSE HIGHLIGHTING
-    
-    What about icon='error', icon='warning' option?
-
-    Hamburger button at top right?    
-
-    What does this mean button with hyperlink to pippim website for help text.
-    
-    Save message button? Where would save go?    
-    
-    Message recurs until acknowledged? E.G. New songs added to device and
-        library can be refreshed.
-
-    Interface to IoT? E.G. TV Powered / Eyesome
-    
-    Notes about song pops up when play starts? 
-
-    Send message if mouse hasn't entered a monitor in say 15 minutes and offer
-        to shut off the picture to save 100 watts? (TV stays on with sound).
-        BASICALLY INCORPORATE DIMMER TECHNOLOGY?
-
-======================================================================        
-
-Opening playlists slows down from <1 second to over 7 seconds.
-
-----------------------------------------------------------------------
-SLOWDOWN BUG: https://gitlab.gnome.org/GNOME/gnome-shell/-/issues/3125
-SLOWDOWN BUG: https://gitlab.gnome.org/GNOME/gnome-shell/-/issues/2674
-'''
 #
 # ==============================================================================
-
-
 class InfoCentre:
     """ Usage:
 
@@ -18922,9 +18894,55 @@ class InfoCentre:
 
     def __init__(self, lib_top=None, lib_tree=None, banner_frm=None,
                  tooltips=None):
-        """
-            
-        """
+        """  __init__ """
+        # noinspection SpellCheckingInspection
+        '''
+            Thoughts.
+
+            Currently pushing down lib_tree is smooth. It is annoying if checking
+            boxes though.
+
+            Sweeping over is jagged and annoying. Sweeping over is preferrable for
+            checking boxes that don't move, or at least don't move much. If checking
+            at the top then zoom covers it up.
+
+            That said, if working on checking boxes and a new song starts the list
+            is totally arranged to highlight new song. An indicator that boxes are
+            being checked or albums are being expanded for last few seconds is
+            needed. Then after idle, highlight current song in green. If clicking
+            in tree go back to last position worked on.
+
+            Text can be copied to clipboard. Enable entry state.  CTRL+C DOESN'T WORK.
+            PLUS COLORS INTERRUPT MOUSE HIGHLIGHTING
+
+            What about icon='error', icon='warning' option?
+
+            Hamburger button at top right?    
+
+            What does this mean button with hyperlink to pippim website for help text.
+
+            Save message button? Where would save go?    
+
+            Message recurs until acknowledged? E.G. New songs added to device and
+                library can be refreshed.
+
+            Interface to IoT? E.G. TV Powered / Eyesome
+
+            Notes about song pops up when play starts? 
+
+            Send message if mouse hasn't entered a monitor in say 15 minutes and offer
+                to shut off the picture to save 100 watts? (TV stays on with sound).
+                BASICALLY INCORPORATE DIMMER TECHNOLOGY?
+
+        ======================================================================        
+
+        Opening playlists slows down from <1 second to over 7 seconds.
+
+        ----------------------------------------------------------------------
+        SLOWDOWN BUG: https://gitlab.gnome.org/GNOME/gnome-shell/-/issues/3125
+        SLOWDOWN BUG: https://gitlab.gnome.org/GNOME/gnome-shell/-/issues/2674
+        '''
+
         ''' self-ize parameter list '''
         self.lib_top = lib_top
         self.lib_tree = lib_tree  # Used in development version will probably drop
