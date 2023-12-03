@@ -15747,7 +15747,6 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             # self.info.cast("Cannot click on an empty row.")
             return  # Empty row, nothing to do
 
-
         menu = tk.Menu(root, tearoff=0)
         menu.post(event.x_root, event.y_root)
         no = str(int(item) + 1)  # file_menu.add  # font=(None, MED_FONT)
@@ -15761,10 +15760,13 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             menu.add_command(label="Copy Link № " + no, font=g.FONT,
                              command=lambda: self.youTreeCopyLink(item))
             menu.add_separator()  # "#" replaced with: "№ "
-            menu.add_command(label="Copy Name № " + no, font=g.FONT,
-                             command=lambda: self.youTreeCopyName(item))
+            menu.add_command(label="Copy LRC Search № " + no, font=g.FONT,
+                             command=lambda: self.youTreeCopySearchLrc(item))
             menu.add_command(label="Paste LRC № " + no, font=g.FONT,
                              command=lambda: self.youTreePasteLrc(item))
+            # TODO: Next two appear only when LRC dictionary exists
+            menu.add_command(label="View LRC № " + no, font=g.FONT,
+                             command=lambda: self.youTreeViewLrc(item))
             menu.add_command(label="Delete LRC № " + no, font=g.FONT,
                              command=lambda: self.youTreeDeleteLrc(item))
             menu.add_separator()
@@ -15814,10 +15816,13 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                          command=lambda: self.youTreeCopyLink(item))
         menu.add_separator()
 
-        menu.add_command(label="Copy Name № " + no, font=g.FONT,
-                         command=lambda: self.youTreeCopyName(item))
+        menu.add_command(label="Copy LRC Search № " + no, font=g.FONT,
+                         command=lambda: self.youTreeCopySearchLrc(item))
         menu.add_command(label="Paste LRC № " + no, font=g.FONT,
                          command=lambda: self.youTreePasteLrc(item))
+        # TODO: Next two appear only when LRC dictionary exists
+        menu.add_command(label="View LRC № " + no, font=g.FONT,
+                         command=lambda: self.youTreeViewLrc(item))
         menu.add_command(label="Delete LRC № " + no, font=g.FONT,
                          command=lambda: self.youTreeDeleteLrc(item))
         menu.add_separator()
@@ -18284,8 +18289,8 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
         ndx = int(item)
         self.youTreeSharedCopyText(self.listYouTube[ndx]['link'])
 
-    def youTreeCopyName(self, item):
-        """ Copy Single Song Name to clipboard. """
+    def youTreeCopySearchLrc(self, item):
+        """ Copy Single Song Name with search prefix to clipboard. """
         ndx = int(item)
         search_name = "synchronized lyrics lrc " + self.listYouTube[ndx]['name']
         self.youTreeSharedCopyText(search_name)
@@ -18305,8 +18310,9 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
         title = "Copy Complete."
         msg = "The following was copied to the Clipboard:\n\n"
         msg += text
-        message.ShowInfo(self.top, title, msg,
-                         thread=self.get_thread_func)
+        #message.ShowInfo(self.top, title, msg,
+        #                 thread=self.get_thread_func)
+        self.info.cast(title + "\n\n" + msg)
 
     def youTreePasteLrc(self, item):
         """ Paste Song's LRC (LyRiCs) to clipboard. """
@@ -18334,6 +18340,22 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
         self.you_tree.item(item, values=(song_name,))
         self.you_tree.update_idletasks()
 
+    def youTreeViewLrc(self, item):
+        """ View Song's LRC (LyRiCs). """
+
+        # Verify LRC exists in dictionary
+        ndx = int(item)
+        result = self.listYouTube[ndx].get('lrc', None)
+        title = "View LRC № " + str(int(item) + 1)
+        if result is None:
+            text = "LRC not found!"
+            message.ShowInfo(self.top, title, text,
+                             thread=self.get_thread_func)
+            return
+
+        message.ShowInfo(self.top, title, result,
+                         thread=self.get_thread_func)
+
     def youTreeDeleteLrc(self, item):
         """ Delete Song's LRC (LyRiCs).
             Confirm intent then delete.
@@ -18343,12 +18365,22 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
         ndx = int(item)
         start = time.time()
 
-        #result = self.listYouTube.pop([ndx]['lrc'], None)
+        # Verify LRC exists in dictionary
+        result = self.listYouTube[ndx].get('lrc', None)
+        title = "Delete LRC № " + str(int(item) + 1)
+        if result is None:
+            text = "LRC not found!"
+            message.ShowInfo(self.top, title, text,
+                             thread=self.get_thread_func)
+            return
+
         try:
             result = self.listYouTube[ndx].get('lrc', None)
             del self.listYouTube[ndx]['lrc']
+            text = "LRC successfully deleted"
         except KeyError:
             self.youPrint("KeyError no LRC in dictionary")
+            text = "LRC not found!"
             return
 
         if result is not None:
@@ -18383,8 +18415,9 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
         title = "Paste Complete."
         text = "The following was read from the Clipboard:\n\n"
         text += c
-        message.ShowInfo(self.top, title, text,
-                         thread=self.get_thread_func)
+        #message.ShowInfo(self.top, title, text,
+        #                 thread=self.get_thread_func)
+        self.info.cast(title + "\n\n" + msg)
         return c
 
     @staticmethod
