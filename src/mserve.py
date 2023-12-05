@@ -15788,8 +15788,8 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         WMCTRL_INSTALLED = ext.check_command('wmctrl')
 
         if XDOTOOL_INSTALLED and WMCTRL_INSTALLED:
-            menu.add_command(label="Smart Play Playlist", font=g.FONT,
-                             command=lambda: self.youTreeSmartPlayAll())
+            menu.add_command(label="Smart Play All", font=g.FONT,
+                             command=lambda: self.youSmartPlayAll())
             menu.add_separator()
 
         menu.add_command(label="Copy Playlist Link", font=g.FONT,
@@ -15977,6 +15977,22 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         # Shared function to start playing at playlist index
         self.youPlaylistIndexStartPlay(item)
 
+    def youSmartPlaySample(self, item):
+        """ Start playing video then advance to middle of song
+        :param item: item (iid) in YouTube playlist
+        :return: None
+        """
+
+        self.youPlaylistIndexStartPlay(item)
+        # Advance to middle of song
+        duration_str = self.dictYouTube['duration']
+        duration = int(tmf.get_sec(duration_str))
+        mid_start = (duration / 2) - 8
+        if mid_start > 0:
+            self.driver.execute_script(
+                'document.getElementsByTagName("video")[0].currentTime += ' +
+                str(mid_start) + ';')
+
     def youPlaylistIndexStartPlay(self, item, restart=False):
         """ Shared by youSmartPlaySong and youSmartPlaySample methods
 
@@ -16024,23 +16040,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             time.sleep(2.0)
             self.driver.refresh()
 
-    def youSmartPlaySample(self, item):
-        """ Start playing video then advance to middle of song
-        :param item: item (iid) in YouTube playlist
-        :return: None
-        """
-
-        self.youPlaylistIndexStartPlay(item)
-        # Advance to middle of song
-        duration_str = self.dictYouTube['duration']
-        duration = int(tmf.get_sec(duration_str))
-        mid_start = (duration / 2) - 8
-        if mid_start > 0:
-            self.driver.execute_script(
-                'document.getElementsByTagName("video")[0].currentTime += ' +
-                str(mid_start) + ';')
-
-    def youTreeSmartPlayAll(self):
+    def youSmartPlayAll(self):
         """ Smart Play entire YouTube Playlist.
 
             1. youOpenSelenium() Get browser (web) and Open browser (self.driver)
@@ -16900,10 +16900,11 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
         print("\n" + ext.t(short=True, hun=True),
               "STARTING Playlist - Song №",
               song_no, " |", video_link_id)
+
         self.youPrint("Assume Ad. Automatically turn down volume.")
-        self.youVolumeOverride(ad=True)  # Save .5 seconds turning down
+        self.youVolumeOverride(ad=True)  # Set volume 25% for last sink
         # Some songs do not have ads at start so need to reverse manually
-        self.youAssumedAd = True
+        self.youAssumedAd = True  # Reset after player status == 1
 
         self.youLrcDestroyFrame()  # If last song had lyrics, swap frames
         self.you_tree.see(str(you_tree_iid_int))
@@ -17049,25 +17050,8 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
         self.isSongRepeating = None
         self.resetYouTubeDuration()  # Reset one song duration
 
-        """  TODO: Calculate previous index.
-                   If previous index == current index, wait until advance.
-                   Send back and loop until previous index appears and Player
-                    Status changes to 5 or 2
-                   Send forward and wait until status changes to -1 or 2
-                   If status == -1 another ad started so loop back
-                   If status == 1 reset duration to 0 and return
-
-            EVERY 10 songs YouTube can prompt to confirm if you still want to
-                keep playing. This happens when window is buried under others.  
-
-            EVERY 10 songs the new song is in address bar but previous song
-                is playing. To fix, send self.driver.refresh()  
-
-        """
-
         # Music Player final_status printed at top of loop below.
         final_status = self.youWaitMusicPlayer(debug=False)
-
 
         while True:  # Ad was visible. Loop until status is song playing (1)
             """  TODO: At start, quickly ramp down volume over 1/10 second
@@ -17291,7 +17275,12 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
 
         # Potentially reverse volume override earlier.
         ad = player_status == -1 or ad_playing
-        self.youVolumeOverride(ad)
+        if not ad:  # Music Video is playing
+            self.youVolumeOverride(ad)  # Restore volume 100%
+            self.youAssumedAd = None
+        elif not self.youAssumedAd:  # Ad is running
+            self.youVolumeOverride(ad)  # Turn down volume 25%
+            self.youAssumedAd = True
 
         return player_status
 
@@ -17774,15 +17763,23 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
         """ If commercial at 100% set to 25%. If not commercial and
             25%, set to 100% """
 
-        if self.youPlayerSink is None:
-            self.youGetChromeSink()
+        second = self.youGetChromeSink()  # Set active self.youPlayerSink
+        first = self.youPlayerSink  # 2023-12-04 used to be 2nd, but swapped
 
         if self.youPlayerSink is None:
             self.youPrint("youVolumeOverride() sink failure!")
+            # First video after age restricted video that won't play
             return
 
+        sink_no = self.youPlayerSink.sink_no_str
+        if self.youPlayerSink != first:
+            self.youPrint("Multiple Google Chrome Audio Sinks !!!",
+                          first.sink_no_str, sink_no)
+            print("First :", first)
+            print("Second:", second)
+
         try:
-            vol = pav.get_volume(self.youPlayerSink.sink_no_str)
+            vol = pav.get_volume(sink_no)
         except Exception as err:
             self.youPrint("youVolumeOverride() Exception:", err)
             return
@@ -17791,14 +17788,18 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
             #self.youPrint("Sink:", self.youPlayerSink.sink_no_str,
             #              "Volume during commercial:", vol, type(vol))
             if vol == 100:
-                pav.set_volume(self.youPlayerSink.sink_no_str, 25.0)
-                self.youPrint("Volume forced to 25%")
+                pav.set_volume(sink_no, 25.0)
+                self.youPrint("Sink No:", sink_no, "Volume forced to 25%")
+            else:
+                self.youPrint("Sink No:", sink_no, "Volume NOT forced:", vol)
         else:
-            #self.youPrint("Sink:", self.youPlayerSink.sink_no_str,
+            #self.youPrint("Sink:", sink_no,
             #              "Volume NO commercial:", vol, type(vol))
             if vol == 25:
-                pav.set_volume(self.youPlayerSink.sink_no_str, 100.0)
-                self.youPrint("Volume forced to 100%")
+                pav.set_volume(sink_no, 100.0)
+                self.youPrint("Sink No:", sink_no, "Volume forced to 100%")
+            else:
+                self.youPrint("Sink No:", sink_no, "Volume NOT forced:", vol)
 
     def youUpdatePlayerButton(self, player_status):
         """ YouTube Music Player Status determines button text. 
@@ -17839,17 +17840,21 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
         self.youGetChromeSink()
 
     def youGetChromeSink(self):
-        """ Get Audio Sink. """
+        """ Get Audio Sink.
+            There is often two sinks for Chrome and the last is set
+            The first is returned.
+        """
 
         self.youPlayerSink = None
-        sinks_old = list(pav.sinks_now)  # Python 2+ .copy() for 3.3+
+        second = self.youPlayerSink = None
         pav.get_all_sinks()
-        #print("len(pav.sinks_now):", len(pav.sinks_now))
-        list(set(pav.sinks_now) - set(sinks_old))
         for Sink in pav.sinks_now:
             if "Chrome" in Sink.name:
                 self.youPlayerSink = Sink  # Audio Sink (sink_no_str)
+                if self.youPlayerSink:
+                    second = Sink
                 #self.youPrint(self.youPlayerSink)
+        return second
 
     def youTogglePlayer(self):
         """ Button has been clicked.
@@ -18417,7 +18422,7 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
         text += c
         #message.ShowInfo(self.top, title, text,
         #                 thread=self.get_thread_func)
-        self.info.cast(title + "\n\n" + msg)
+        self.info.cast(title + "\n\n" + text)
         return c
 
     @staticmethod
