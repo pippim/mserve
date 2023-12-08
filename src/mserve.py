@@ -8318,12 +8318,13 @@ class MusicLocationTree(PlayCommonSelf):
 
         tmp = "/tmp/.com.google.Chrome.*"
         results = os.popen("du "+tmp+" -csh --time").read().splitlines()
-        print("\ncheck_chrome_tmp_files() 'du "+tmp+" -csh --time' last line:")
+        print("\ncheck_chrome_tmp_files() 'du", tmp,
+              "-csh --time' last line:")
         if results:
             print(results[-1])
         else:
             print("\nERROR - check_chrome_tmp_files() - No results found!")
-            print("Command used: 'du "+tmp+" -csh --time'")
+            print("Command used: 'du ", tmp, " -csh --time'")
             return
 
         CHROME_TMP_FILES = False  # Don't show message again this session
@@ -8350,7 +8351,7 @@ class MusicLocationTree(PlayCommonSelf):
             return  # Don't delete files
 
         results = os.popen("rm -rfv "+tmp).read()
-        print("\ncheck_chrome_tmp_files() 'rm -rfv "+tmp+"' results:")
+        print("\ncheck_chrome_tmp_files() 'rm -rfv ", tmp, "' results:")
         print(results)
 
     def update_lib_tree_song(self, iid):
@@ -14839,6 +14840,7 @@ class PlaylistsCommonSelf:
         self.pending_counts = None
 
         ''' YouTube Playlist work fields '''
+        self.youDebug = 1  # Debug level. 0=None, 1=min(default), 7=max
         self.isSmartPlayYouTube = False  # is Smart YouTube Player running?
         self.driver = None  # Is Selenium Webdriver opened?
         self.youWindow = None  # DM Browser Window
@@ -15729,6 +15731,16 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         if self.top:  # May have been closed above.
             self.top.update_idletasks()
 
+    def youSetCloseButton(self):
+        """ Set self.close_button tooltip text to:
+            "Close Playlist"
+            "Close Synchronized Lyrics (LRC)" """
+        if self.hasLrcForVideo:
+            tt_text = "Close Synchronized Lyrics (LRC)"
+        else:
+            tt_text = "Close YouTube Playlist"
+        self.tt.set_text(self.close_button, tt_text)
+
     def youTreeClick(self, event):
         """ Popup menu has two different sets of options:
 
@@ -15776,6 +15788,8 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                              command=lambda: self.youTreeCopyAll())
             menu.add_separator()
 
+            menu.add_command(label="Set Debug Level", font=g.FONT,
+                             command=lambda: self.youSetDebug())
             menu.add_command(label="Ignore click", font=g.FONT,
                              command=lambda: self.youClosePopup(menu, item))
 
@@ -15827,6 +15841,8 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                          command=lambda: self.youTreeDeleteLrc(item))
         menu.add_separator()
 
+        menu.add_command(label="Set Debug Level", font=g.FONT,
+                         command=lambda: self.youSetDebug())
         menu.add_command(label="Ignore click", font=g.FONT,
                          command=lambda: self.youClosePopup(menu, item))
 
@@ -16897,11 +16913,10 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
             self.youPlaylistIndexStartPlay("0", restart=True)
 
         song_no = str(you_tree_iid_int + 1).ljust(4)
-        print("\n" + ext.t(short=True, hun=True),
-              "STARTING Playlist - Song №",
-              song_no, " |", video_link_id)
+        self.youPrint("\n" + "STARTING Playlist - Song №",
+                      song_no, " |", video_link_id)
 
-        self.youPrint("Assume Ad. Automatically turn down volume.")
+        #self.youPrint("Assume Ad. Automatically turn down volume.")
         self.youVolumeOverride(ad=True)  # Set volume 25% for last sink
         # Some songs do not have ads at start so need to reverse manually
         self.youAssumedAd = True  # Reset after player status == 1
@@ -16968,7 +16983,7 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
         if player_status == 1:
             # If volume was forced down set it back
             if self.youAssumedAd:
-                self.youPrint("Reversing self.youAssumeAd")
+                #self.youPrint("Reversing self.youAssumeAd")
                 self.youAssumedAd = None
                 self.youVolumeOverride(ad=False)
             delta = now - self.timeLastYouTube
@@ -16989,37 +17004,32 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
         # Must wait to fix repeating song until "microformat" is refreshed
         MICRO_FORMAT_WAIT = 0.9  # 1.5x longest known early found of 0.6
 
-        # Problem first video is actually playlist when is returned as
-        # first video in playlist.
-        # Problem forcing refresh if ad is running again.
-        #if self.isSongRepeating and not self.isYouTubAdRunning():
         if self.isSongRepeating:
             micro_id = self.youGetMicroFormat()
             link_id = self.youCurrentVideoId()
             elapsed = time.time() - self.timeForwardYouTube
+
+            # Has elapsed time reached wait limit?
             if elapsed > MICRO_FORMAT_WAIT:
                 self.isSongRepeating = None  # Turn off future checks
+                # Is micro_id inside video different than link?
                 if micro_id != link_id:
-
                     self.youPrint("Force browser refresh after:",
                                   tmf.mm_ss(elapsed, rem='d'), "|", link_id)
-                    #print(ext.t(short=True, hun=True),
-                    #      "Forced driver refresh after:",
-                    #      tmf.mm_ss(elapsed, rem='d'))
                     self.driver.refresh()
                     self.youPrint("MicroFormat video found playing  |", micro_id)
-                    #print(ext.t(short=True, hun=True),
-                    #      "MicroFormat video found playing  |", micro_id)
-                    self.youWaitMusicPlayer()
+                    self.youWaitMusicPlayer()  # wait for music player
                     self.youPrint("Browser Address Bar URL Link ID  |", link_id)
-                    #print(ext.t(short=True, hun=True),
-                    #      "Browser Address Bar URL Link ID  |", link_id)
                     self.resetYouTubeDuration()  # Reset one song duration
+
+            # Is micro_id inside video different than link?
             elif micro_id == link_id:
+                # ID inside video matches address bar url
                 self.isSongRepeating = None
                 #print(ext.t(short=True, hun=True),
-                self.youPrint("MicroFormat found after:",
-                              tmf.mm_ss(elapsed, rem='d'), "    |", micro_id)
+                # Need debug level printing
+                #self.youPrint("MicroFormat found after:",
+                #              tmf.mm_ss(elapsed, rem='d'), "    |", micro_id)
 
         # Has YouTube popped up an ad?
         if not self.youCheckAdRunning():
@@ -17066,7 +17076,10 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
                 self.driver.quit()
                 return False
             """
-            self.youPrint("Ad visible. Player status:", final_status)
+
+            ''' TODO: if self.youDebugLevel == 1: '''
+            #self.youPrint("Ad visible. Player status:", final_status)
+
             #print(ext.t(short=True, hun=True),
             #      "Ad visible. Player status:", final_status)
 
@@ -17230,13 +17243,12 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
                 return None
             elapsed = (time.time() - start) * 1000
             if elapsed > 10000.0:  # Greater than 10 seconds?
-                print("\n" + ext.t(short=True, hun=True),
-                      "youWaitMusicPlayer() took more than 10,000 milliseconds")
-                print(ext.t(short=True, hun=True),
-                      "Elapsed:", '{:n}'.format(elapsed),
-                      "ms  | Null:", count_none, " | Paused:", count_2,
-                      " | Starting:", count_3, " | Idle:", count_5)
-                print()
+                self.youPrint("\n" + "youWaitMusicPlayer() took",
+                              "more than 10,000 milliseconds")
+                self.youPrint(
+                    "Elapsed:", '{:n}'.format(elapsed),
+                    "ms  | Null:", count_none, " | Paused:", count_2,
+                    " | Starting:", count_3, " | Idle:", count_5, "\n")
                 return None
 
             ad_playing = None
@@ -17274,15 +17286,86 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
                   " | Starting:", count_3, " | Idle:", count_5)
 
         # Potentially reverse volume override earlier.
+        # Getting many false positives as already at desired volume...
         ad = player_status == -1 or ad_playing
         if not ad:  # Music Video is playing
-            self.youVolumeOverride(ad)  # Restore volume 100%
+            #self.youPrint("Reversing self.youAssumeAd")
             self.youAssumedAd = None
+            self.youVolumeOverride(ad)  # Restore volume 100%
         elif not self.youAssumedAd:  # Ad is running
             self.youVolumeOverride(ad)  # Turn down volume 25%
             self.youAssumedAd = True
 
         return player_status
+
+    def youVolumeOverride(self, ad=True):
+        """ If commercial at 100% set to 25%. If not commercial and
+            25%, set to 100% """
+
+        second = self.youGetChromeSink()  # Set active self.youPlayerSink
+        first = self.youPlayerSink  # 2023-12-04 used to be 2nd, but swapped
+
+        if self.youPlayerSink is None:
+            self.youPrint("youVolumeOverride() sink failure!")
+            # First video after age restricted video that won't play
+            return
+
+        sink_no = self.youPlayerSink.sink_no_str
+        if self.youPlayerSink != first:
+            self.youPrint("Multiple Google Chrome Audio Sinks !!!",
+                          first.sink_no_str, sink_no)
+            print("First :", first)
+            print("Second:", second)
+
+        try:
+            vol = pav.get_volume(sink_no)
+        except Exception as err:
+            self.youPrint("youVolumeOverride() Exception:", err)
+            return
+
+        '''
+Redundant calls after turning down to 25% and up to 100%:
+
+18:18:10.3 STARTING Playlist - Song № 65    | rgWr2nln83s
+18:18:10.3 Assume Ad. Automatically turn down volume.
+18:18:10.3 Sink No: 870 Volume forced to 25%
+18:18:11.0 Sink No: 870 Volume NOT forced: 25
+18:18:11.2 Ad visible. Player status: -1
+18:18:11.4 Sink No: 870 Volume NOT forced: 25
+18:18:12.7 Sink No: 870 Volume forced to 100%
+18:18:13.1 Sink No: 870 Volume NOT forced: 100
+18:18:13.7 MicroFormat found after: 0.3     | rgWr2nln83s
+18:22:02.3 Sink No: 870 Volume forced to 25%
+18:22:02.4 Sink No: 870 Volume NOT forced: 25
+18:22:02.4 Ad visible. Player status: -1
+18:22:02.5 Sink No: 870 Volume NOT forced: 25
+18:22:03.7 Ad visible. Player status: -1
+18:22:04.3 Sink No: 870 Volume NOT forced: 25
+18:22:05.2 Sink No: 870 Volume forced to 100%
+18:22:05.3 Sink No: 870 Volume NOT forced: 100
+        '''
+
+        if vol != 25 and vol != 100:
+            self.youPrint("Sink:", sink_no,
+                          "Invalid VOLUME:", vol, type(vol))
+        if ad:
+            # self.youPrint("Sink:", self.youPlayerSink.sink_no_str,
+            #              "Volume during commercial:", vol, type(vol))
+            if vol == 100:
+                pav.set_volume(sink_no, 25.0)
+                # self.youPrint("Sink No:", sink_no, "Volume forced to 25%")
+            else:
+                # self.youPrint("Sink No:", sink_no, "Volume NOT forced:", vol)
+                pass
+        else:
+            # self.youPrint("Sink:", sink_no,
+            #              "Volume NO commercial:", vol, type(vol))
+            if vol == 25:
+                pav.set_volume(sink_no, 100.0)
+                    # self.youPrint("Sink No:", sink_no, "Volume forced to 100%")
+            else:
+                # self.youPrint("Sink No:", sink_no, "Volume NOT forced:", vol)
+                pass
 
     def youLrcBuildFrame(self, item):
         """ Build Frame for YouTube Video LRC (synchronized lyrics)
@@ -17499,16 +17582,6 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
         self.youTreeFrame.grid()  # Restore Treeview frame
         self.hasLrcForVideo = None
         self.youSetCloseButton()
-
-    def youSetCloseButton(self):
-        """ Set self.close_button tooltip text to:
-            "Close Playlist"
-            "Close Synchronized Lyrics (LRC)" """
-        if self.hasLrcForVideo:
-            tt_text = "Close Synchronized Lyrics (LRC)"
-        else:
-            tt_text = "Close YouTube Playlist"
-        self.tt.set_text(self.close_button, tt_text)
 
     def youLrcHighlightLine(self):
         """ Highlight LRC (synchronized lyrics) line based on progress """
@@ -17758,48 +17831,6 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
         percent = float(100.0 * self.progressYouTube / self.durationYouTube)
         self.youProVar.set(percent)
         self.youProBar.update_idletasks()
-
-    def youVolumeOverride(self, ad=True):
-        """ If commercial at 100% set to 25%. If not commercial and
-            25%, set to 100% """
-
-        second = self.youGetChromeSink()  # Set active self.youPlayerSink
-        first = self.youPlayerSink  # 2023-12-04 used to be 2nd, but swapped
-
-        if self.youPlayerSink is None:
-            self.youPrint("youVolumeOverride() sink failure!")
-            # First video after age restricted video that won't play
-            return
-
-        sink_no = self.youPlayerSink.sink_no_str
-        if self.youPlayerSink != first:
-            self.youPrint("Multiple Google Chrome Audio Sinks !!!",
-                          first.sink_no_str, sink_no)
-            print("First :", first)
-            print("Second:", second)
-
-        try:
-            vol = pav.get_volume(sink_no)
-        except Exception as err:
-            self.youPrint("youVolumeOverride() Exception:", err)
-            return
-
-        if ad:
-            #self.youPrint("Sink:", self.youPlayerSink.sink_no_str,
-            #              "Volume during commercial:", vol, type(vol))
-            if vol == 100:
-                pav.set_volume(sink_no, 25.0)
-                self.youPrint("Sink No:", sink_no, "Volume forced to 25%")
-            else:
-                self.youPrint("Sink No:", sink_no, "Volume NOT forced:", vol)
-        else:
-            #self.youPrint("Sink:", sink_no,
-            #              "Volume NO commercial:", vol, type(vol))
-            if vol == 25:
-                pav.set_volume(sink_no, 100.0)
-                self.youPrint("Sink No:", sink_no, "Volume forced to 100%")
-            else:
-                self.youPrint("Sink No:", sink_no, "Volume NOT forced:", vol)
 
     def youUpdatePlayerButton(self, player_status):
         """ YouTube Music Player Status determines button text. 
@@ -18269,10 +18300,60 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
 
         return
 
-    @staticmethod
-    def youPrint(*args):
-        """ Print debug lines """
-        print(ext.t(short=True, hun=True), *args)
+    def youSetDebug(self, *_args):
+        """ Set Debug level (self.youDebug) for self.youPrint(level). """
+
+        title = "Set YouTube Debug Level"
+
+        text = \
+            "Current Debug Level: " + str(self.youDebug) + "\n\n" + \
+            "Print debug lines based on debug level" + "\n\n" + \
+            "0 = Nothing\n" + \
+            "1 = Song numbers and initialization (Default)\n" + \
+            "2 = Continue watching dialogs\n" + \
+            "3 = Ad playing & player status\n" + \
+            "4 = Video MicroFormat monitoring\n" + \
+            "5 = Ad Volume up/down overrides\n" + \
+            "6 = Multiple Audio Sinks when discovered\n" + \
+            "7 = Selenium driver.back() / driver.forward()\n\n" + \
+            "Enter 0 to 7 below\n\n"
+
+        answer = message.AskString(
+            self.top, thread=self.get_thread_func,  # update_display()
+            title=title, text=text, icon="information")
+
+        if answer.result != "yes":
+            return False
+
+        # print('answer.string:', answer.string)
+        if len(answer.string) != 1:
+            # TODO: ShowInfo that single digit from 0 to 7 is required.
+            return False
+
+        try:
+            int_answer = int(answer.string)
+        except Exception as err:
+            print("self.youSetDebug() Exception:", err)
+            return False
+
+        self.youDebug = int_answer
+        return True
+
+    def youPrint(self, *args, **kwargs):
+        """ Print debug lines based on debug level (self.youDebug):
+                0 = Nothing prints, except level=0
+                1 = Song numbers and initialization (Default)
+                2 = 1 and continue watching dialogs
+                3 = 2 and Ad playing & player status
+                4 = 3 and Video MicroFormat monitoring
+                5 = 4 and Ad Volume up/down overrides
+                6 = 5 and Multiple Audio Sinks when discovered
+                7 = 6 and driver.back / driver.forward
+        """
+        # https://stackoverflow.com/a/37308684/6929343
+        level = kwargs.pop('level', 1)  # 1 is default level
+        if self.youDebug >= level:
+            print(ext.t(short=True, hun=True), *args)
 
     def youTreeNdxByLink(self, link_search):
         """ Highlight row black & gold as second entry (see 2 below + 1 before)
