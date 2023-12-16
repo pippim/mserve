@@ -34,18 +34,16 @@ warnings.simplefilter('default')  # in future Python versions.
 #       Aug. 15 2023 - Support M4A gstreamer and mutagen.
 #       Aug. 16 2023 - Album level overrides & track level metadata editing.
 #       Aug. 17 2023 - Large radio buttons easier to see.
-#       Aug. 18 2023 - Fix nasty SQL bugs bump version to 3.3.13.
+#       Aug. 18 2023 - Fix nasty SQL bugs bump SQL version to 3.3.13.
 #       Aug. 19 2023 - Add MP3 support and more MP4 tags.
 #       Aug. 20 2023 - Get Composer/Writer/Producer lists from MusicBrainz.
 #       Aug. 22 2023 - Don't download images over 4 mb.
+#       Dec. 10 2023 - Code review and typo corrections.
 #
 # ==============================================================================
 # noinspection SpellCheckingInspection
 """
 TODO:
-
-    After setting 'Genre' at Album level, override for tracks.  Build into
-        out_name2 as first field. Add into treeview values.
 
     If only 1 MBZ release passes filtration, automatically mark the checkboxes 
         for Album Date, Tracks and the bottom artwork resolution.
@@ -58,8 +56,8 @@ TODO:
         
 NOTES:
 
-    Hijack the m4a 'catg' tag from podcast category for "discid"
-    Hijack the m4a 'keyw' tag from podcast keywords for "musicbrainz_discid"
+    Hijacked the m4a 'catg' tag from podcast category for "discid"
+    Hijacked the m4a 'keyw' tag from podcast keywords for "musicbrainz_discid"
 
 How ffmpeg uses tags:
     https://gist.github.com/eyecatchup/0757b3d8b989fe433979db2ea7d95a01
@@ -101,8 +99,8 @@ try:  # Python 3
     import tkinter.messagebox as messagebox
     import tkinter.scrolledtext as scrolledtext
     import tkinter.simpledialog as simpledialog
-
     PYTHON_VER = "3"
+
 except ImportError:  # Python 2
     import Tkinter as tk
     import ttk
@@ -111,8 +109,8 @@ except ImportError:  # Python 2
     import tkMessageBox as messagebox
     import ScrolledText as scrolledtext
     import tkSimpleDialog as simpledialog
-
     PYTHON_VER = "2"
+
 # print ("Python version: ", PYTHON_VER)
 from PIL import Image, ImageTk, ImageDraw, ImageFont
 from ttkwidgets import CheckboxTreeview
@@ -165,17 +163,14 @@ RIP_ARTWORK = ext.join(g.TEMP_DIR, "mserve_encoding_artwork")
 
 # ==============================================================================
 #
-#       RipCD class - Encode songs on CD
+#       RipCD class - Encode songs from CD to MP3, M4A, OGA, WAV or FLAC
 #
 # ==============================================================================
-
-
 # noinspection PyProtectedMember,PyBroadException
 class RipCD:
     """ Create self.cd_tree = tk.Treeview()
         Resizeable, Scroll Bars, select songs, play songs.
     """
-
     def __init__(self, toplevel, tooltips, info, rip_ctl, lcs,
                  caller_disc=None, thread=None, sbar_width=14):
 
@@ -1040,7 +1035,6 @@ class RipCD:
     #       RipCD class - Process programs in background
     #
     # ==============================================================================
-
     # noinspection PyTypeChecker
     def cd_run_to_close(self):
         """ This function is ALWAYS running at 30 fps and it loads external
@@ -1749,8 +1743,7 @@ class RipCD:
         text = "Track(s) changed with new Album Level Overrides."
         message.ShowInfo(self.cd_top, title, text, thread=self.update_display)
 
-    # noinspection PyUnusedLocal
-    def get_compilation(self, *args):
+    def get_compilation(self, *_args):
         """ Use AskQuestion to set "1" (yes) or "0" (no) """
         title = "Set Compilation Flag"
         text = "If a compilation, the Album is created under the sub-directory '"
@@ -1765,8 +1758,7 @@ class RipCD:
         else:
             self.compilation_var.set("0")
 
-    # noinspection PyUnusedLocal
-    def get_gapless_playback(self, *args):
+    def get_gapless_playback(self, *_args):
         """ Use AskQuestion to set "1" (yes) or "0" (no)
             Popup dialog appears for entry when clicked on field but not when
             tabbed into field.
@@ -1783,8 +1775,7 @@ class RipCD:
         else:
             self.gapless_playback_var.set("0")
 
-    # noinspection PyUnusedLocal
-    def confirm_cancel(self, *args):
+    def confirm_cancel(self, *_args):
         """ Clicked 'Cancel' or called from confirm_proceed() """
         if self.tt and self.confirm_top:
             self.tt.close(self.confirm_top)
@@ -1862,10 +1853,11 @@ class RipCD:
         ''' BIG EVENT TRIGGER '''
         self.disc_enc_active = True  # Start background processing
 
-#
-#  Ripping Methods
-#
-
+    # ==============================================================================
+    #
+    #       RipCD class - Ripping Methods
+    #
+    # ==============================================================================
     # noinspection SpellCheckingInspection,PyPep8Naming
     def set_gst_encoding(self):
 
@@ -2650,7 +2642,6 @@ SQL Whitelist substitutes
     #   Rip_CD class: populate_cd_tree - Takes a second to run
     #
     # ============================================================================
-
     def parse_medium(self, d):
         """ Parse:   'medium-list': [{'disc-count': 1, """
         # noinspection SpellCheckingInspection
@@ -3197,8 +3188,8 @@ L O O K   A T   M E   ! !   "type": "composer",
                                     text=d['image'], 
                                     tags=("image_id", "unchecked"))
 
-    # noinspection PyUnusedLocal
-    def cd_close(self, *args):
+    # noinspection
+    def cd_close(self, *_args):
         """ Wrapup """
         global RIP_CD_IS_ACTIVE
         RIP_CD_IS_ACTIVE = False
@@ -3223,7 +3214,6 @@ L O O K   A T   M E   ! !   "type": "composer",
     #       RipCD class - Get image from clipboard and other image functions
     #
     # ==============================================================================
-
     def image_from_clipboard(self):
         """ Doesn't work. Use xclip instead
         try:
@@ -3340,7 +3330,6 @@ L O O K   A T   M E   ! !   "type": "composer",
     #       RipCD class - Select songs and art in CD treeview
     #
     # ==============================================================================
-
     def button_1_click(self, event):
         """ Call CheckboxTreeview to manage "checked" and "unchecked" tags.
             When it finishes validate what was just checked or unchecked and
@@ -3962,7 +3951,6 @@ L O O K   A T   M E   ! !   "type": "composer",
 #       MetaScan class - Search Metadata for Artwork
 #
 # ==============================================================================
-
 class MetaScan:
     """ Search Metadata for artwork
 

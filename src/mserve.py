@@ -864,7 +864,7 @@ def make_sorted_list(start_dir, toplevel=None, idle=None, check_only=False):
 #       Music Location Tree class - Define lib (library of music)
 #
 # ==============================================================================
-class PlayCommonSelf:
+class MusicLocTreeCommonSelf:
     """ Class Variables used by play_selected_list().
         Must appear before Music Location Tree() class
         
@@ -1242,7 +1242,7 @@ class PlayCommonSelf:
         self.last_sleep_time = time.time()
 
 
-class MusicLocationTree(PlayCommonSelf):
+class MusicLocationTree(MusicLocTreeCommonSelf):
     """ Create self.lib_tree = tk.Treeview() via CheckboxTreeview()
 
         Resizeable, Scroll Bars, select songs, play songs.
@@ -1253,7 +1253,7 @@ class MusicLocationTree(PlayCommonSelf):
 
     def __init__(self, toplevel, song_list, sbar_width=14):
 
-        PlayCommonSelf.__init__(self)  # Define self. variables
+        MusicLocTreeCommonSelf.__init__(self)  # Define self. variables
         ext.t_init('MusicLocationTree() __init__(toplevel, song_list, sbar_width=14)')
 
         # If we are started by splash screen get object, else it will be None
@@ -6390,7 +6390,7 @@ class MusicLocationTree(PlayCommonSelf):
         ''' Call:
          m.main()
           mserve.main()
-           MusicLocationTree(PlayCommonSelf)  # Builds lib_top, lib_tree, etc. 
+           MusicLocationTree(MusicLocTreeCommonSelf)  # Builds lib_top, lib_tree, etc. 
             load_last_selections()  # Load favorites for location
              play_selected_list()  # Builds play_top, chronology, etc.
               play_one_song()  # Setup song art, lyrics, etc.
@@ -6637,7 +6637,7 @@ class MusicLocationTree(PlayCommonSelf):
         ''' Call:
          m.main()
           mserve.main()
-           MusicLocationTree(PlayCommonSelf)  # Builds lib_top, lib_tree, etc. 
+           MusicLocationTree(MusicLocTreeCommonSelf)  # Builds lib_top, lib_tree, etc. 
             load_last_selections()  # Load favorites for location
              play_selected_list()  # Builds play_top, chronology, etc.
               play_one_song()  # Setup song art, lyrics, etc.
@@ -8001,7 +8001,7 @@ class MusicLocationTree(PlayCommonSelf):
         ''' Call:
          m.main()
           mserve.main()
-           MusicLocationTree(PlayCommonSelf)  # Builds lib_top, lib_tree, etc. 
+           MusicLocationTree(MusicLocTreeCommonSelf)  # Builds lib_top, lib_tree, etc. 
             load_last_selections()  # Load favorites for location
              play_selected_list()  # Builds play_top, chronology, etc.
               play_one_song()  # Setup song art, lyrics, etc.
@@ -8400,7 +8400,7 @@ class MusicLocationTree(PlayCommonSelf):
             ''' Call:
              m.main()
               mserve.main()
-               MusicLocationTree(PlayCommonSelf)  # Builds lib_top, lib_tree, etc. 
+               MusicLocationTree(MusicLocTreeCommonSelf)  # Builds lib_top, lib_tree, etc. 
                 load_last_selections()  # Load favorites for location
                  play_selected_list()  # Builds play_top, chronology, etc.
                   play_one_song()  # Setup song art, lyrics, etc.
@@ -14812,7 +14812,7 @@ class Refresh:
 #
 # ==============================================================================
 class PlaylistsCommonSelf:
-    """ Class Variables used by Locations() class """
+    """ Class Variables used by Playlistss() class """
     def __init__(self):
         """ Called on mserve.py startup and for Playlists maintenance """
 
@@ -14842,6 +14842,8 @@ class PlaylistsCommonSelf:
         ''' YouTube Playlist work fields '''
         self.youDebug = 1  # Debug level. 0=None, 1=min(default), 7=max
         self.isSmartPlayYouTube = False  # is Smart YouTube Player running?
+        self.isViewCountBoost = False  # 30 second play to boost view counts?
+        self.youViewCountSkipped = 0  # How many videos skipped so far?
         self.driver = None  # Is Selenium Webdriver opened?
         self.youWindow = None  # DM Browser Window
         self.nameYouTube = None  # = WEB_PLAY_DIR + os.sep + self.act_name + ".csv"
@@ -14852,6 +14854,7 @@ class PlaylistsCommonSelf:
         self.privateYouTube = "0"  # Saved count of private/unavailable videos
         self.listMergeYouTube = None  # Stored list + new videos
         self.youLastLink = None  # Last video ID link found and verified
+        self.listYouTubeCurrIndex = None  # Same as YouTube Tree 0's-Index (Integer)
         self.gotAllGoodLinks = None  # All 100 video chunk lists have scrolled
         self.youValidLinks = None  # Video links minus private and deleted videos
         self.youUnavailableShown = None  # Unavailable videos displayed?
@@ -15294,6 +15297,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             self.scr_location.set(self.act_loc_id)
             self.fld_count['text'] = '{:n}'.format(self.act_count)
             self.fld_size['text'] = toolkit.human_mb(self.act_size)
+            self.youDebug = self.act_size  # YouTube Print Debug level
             self.fld_seconds['text'] = tmf.days(self.act_seconds)
             self.top.update_idletasks()
             #print("Music IDs", self.act_id_list)
@@ -15337,7 +15341,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                 if len(self.linkYouTube) == len(self.listYouTube):
                     return True
 
-        self.act_count = 0
+        self.act_count = 0  # Music video count (excludes private & deleted)
         self.act_seconds = 0.0  # Duration of all songs
 
         ''' dtb for retrieving YouTube Images first time. '''
@@ -15348,9 +15352,10 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                 song_name = link.rsplit(";", 2)[0]
                 link_name = link.rsplit(";", 2)[1]
                 duration = link.rsplit(";", 2)[2].strip()
-                video_name = link_name.split("/watch?v=")[1]
+                video_name = link_name.split("/watch?v=")[1]  # 7lYOmkBRs3s
                 image_name = "https://i.ytimg.com/vi/" + video_name
                 image_name += "/" + YOUTUBE_RESOLUTION
+                # YOUTUBE_RESOLUTION = "mqdefault.jpg"  # 63 videos = 176.4 KB
             except ValueError:
                 print("buildYouTubePlaylist() Value Error.")
                 continue
@@ -15776,7 +15781,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                              command=lambda: self.youTreeCopySearchLrc(item))
             menu.add_command(label="Paste LRC № " + no, font=g.FONT,
                              command=lambda: self.youTreePasteLrc(item))
-            # TODO: Next two appear only when LRC dictionary exists
+            # TODO: Next two Active only when LRC dictionary exists
             menu.add_command(label="View LRC № " + no, font=g.FONT,
                              command=lambda: self.youTreeViewLrc(item))
             menu.add_command(label="Delete LRC № " + no, font=g.FONT,
@@ -15788,6 +15793,8 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                              command=lambda: self.youTreeCopyAll())
             menu.add_separator()
 
+            menu.add_command(label="30 Second View Counts", font=g.FONT,
+                             command=lambda: self.youViewCountBoost())
             menu.add_command(label="Set Debug Level", font=g.FONT,
                              command=lambda: self.youSetDebug())
             menu.add_command(label="Ignore click", font=g.FONT,
@@ -16087,7 +16094,8 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         self.durationYouTube = 0.0  # Extra insurance
         self.resetYouTubeDuration()
         self.buildYouTubeDuration()
-        self.isSmartPlayYouTube = True
+        self.isSmartPlayYouTube = True  # Smart Play is active
+        self.youDebug = self.act_size  # Print Debug level from last save
 
         ad_conflict_count = 0  # Player status -1 but No Ad visible (yet).
         lastHousekeepingTime = time.time()  # Check resume every minute
@@ -16161,7 +16169,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         CHROME_DRIVER_VER = CHROME_DRIVER_VER.replace("108", ver)
         CHROME_DRIVER_PATH = \
             g.PROGRAM_DIR + CHROME_DRIVER_VER + os.sep + "chromedriver"
-        print("CHROME_DRIVER_PATH:", CHROME_DRIVER_PATH)
+        self.youPrint("CHROME_DRIVER_PATH:", CHROME_DRIVER_PATH, nl=True)
 
         web = webbrowser.get()
         #print("browser name:", web.name)  # xdg-open
@@ -16297,10 +16305,6 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         #os.popen('xdotool windowactivate ' + hex_win)  # Verify activate needed
         #os.popen('xdotool click 1')
 
-        #print("\n" + ext.t(short=True, hun=True),
-        #      "IPL - youGetPlayerStatus(self.driver)",
-        #      self.youGetPlayerStatus())  # 5
-
         byline = self.driver.find_element(By.CLASS_NAME, 'byline-item')
         """ byline-item has video count in YouTube Playlist
             <span dir="auto" class="style-scope yt-formatted-string">47</span>
@@ -16311,7 +16315,10 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                 ytd-playlist-byline-renderer/div/yt-formatted-string[1] """
         video_count = byline.get_attribute('innerHTML').split("</span>")[0]
         video_count = video_count.split(">")[1]
-        # TODO: Need to store private_links count
+
+        self.youPrint("youPlayAllFullScreen() video_count:", video_count,
+                      lv=8, nl=True)
+
         fname2 = self.nameYouTube.replace(".csv", ".private")
         self.privateYouTube = ext.read_into_string(fname2)
         if self.privateYouTube:  # Saved count of private videos in playlist
@@ -16893,12 +16900,14 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
         # Don't test you_tree_iid_int for True because first index is 0
         if you_tree_iid_int is None:
             self.youPrint("youTreeSmartPlayAll() - " +
-                          "you_tree_iid_int is type: <None>")
-            print("Error on make_link    :", make_link)
-            print("Original video_link   :", video_link)
-            print("Original video_link_id:", video_link_id)
-            print("len(self.listYouTube) :", len(self.listYouTube))
-            print("self.listYouTube[0]   :", self.listYouTube[0]['link'])
+                          "you_tree_iid_int is type: <None>", nl=True)
+            self.youPrint("Error on make_link    :", make_link)
+            self.youPrint("Original video_link   :", video_link)
+            self.youPrint("Original video_link_id:", video_link_id)
+            self.youPrint("len(self.listYouTube) :", len(self.listYouTube))
+            self.youPrint("self.listYouTube[0]   :", self.listYouTube[0]['link'])
+            self.youPrint("youViewCountSkipped   :",
+                          self.youViewCountSkipped, lv=0)  # 2023-12-16 Always print
             self.youPrint("Remove:   '", self.act_description,
                           "'.csv', '.pickle' and '.private'")
             self.youPrint("Directory: '" + g.USER_DATA_DIR +
@@ -16913,8 +16922,8 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
             self.youPlaylistIndexStartPlay("0", restart=True)
 
         song_no = str(you_tree_iid_int + 1).ljust(4)
-        self.youPrint("\n" + "STARTING Playlist - Song №",
-                      song_no, " |", video_link_id)
+        self.youPrint("STARTING Playlist - Song №",
+                      song_no, " |", video_link_id, nl=True)
 
         #self.youPrint("Assume Ad. Automatically turn down volume.")
         self.youVolumeOverride(ad=True)  # Set volume 25% for last sink
@@ -16945,6 +16954,7 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
             self.listLrcLines = lrc.splitlines()
             self.youLrcBuildFrame(str(you_tree_iid_int))
 
+        self.listYouTubeCurrIndex = you_tree_iid_int
         return link
 
     def youMonitorPlayerStatus(self, player_status, debug=False):
@@ -16983,7 +16993,7 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
         if player_status == 1:
             # If volume was forced down set it back
             if self.youAssumedAd:
-                #self.youPrint("Reversing self.youAssumeAd")
+                self.youPrint("Reversing self.youAssumeAd", level=5)
                 self.youAssumedAd = None
                 self.youVolumeOverride(ad=False)
             delta = now - self.timeLastYouTube
@@ -17015,21 +17025,19 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
                 # Is micro_id inside video different than link?
                 if micro_id != link_id:
                     self.youPrint("Force browser refresh after:",
-                                  tmf.mm_ss(elapsed, rem='d'), "|", link_id)
+                                  tmf.mm_ss(elapsed, rem='d'), "|", link_id, level=4)
                     self.driver.refresh()
-                    self.youPrint("MicroFormat video found playing  |", micro_id)
+                    self.youPrint("MicroFormat video found playing  |", micro_id, level=4)
                     self.youWaitMusicPlayer()  # wait for music player
-                    self.youPrint("Browser Address Bar URL Link ID  |", link_id)
+                    self.youPrint("Browser Address Bar URL Link ID  |", link_id, level=4)
                     self.resetYouTubeDuration()  # Reset one song duration
 
             # Is micro_id inside video different than link?
             elif micro_id == link_id:
                 # ID inside video matches address bar url
                 self.isSongRepeating = None
-                #print(ext.t(short=True, hun=True),
-                # Need debug level printing
-                #self.youPrint("MicroFormat found after:",
-                #              tmf.mm_ss(elapsed, rem='d'), "    |", micro_id)
+                self.youPrint("MicroFormat found after:",
+                              tmf.mm_ss(elapsed, rem='d'), "    |", micro_id, level=4)
 
         # Has YouTube popped up an ad?
         if not self.youCheckAdRunning():
@@ -17102,15 +17110,15 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
             # self.driver.find_element(By.CSS_SELECTOR, ".ytp-ad-duration-remaining")
 
             if debug:
-                print("\n" + ext.t(short=True, hun=True),
-                      "# 0. Player Status:", self.youGetPlayerStatus())
+                self.youPrint("# 0. Player Status:",
+                              self.youGetPlayerStatus(), lv=9, nl=True)
 
             while self.youCheckAdRunning():
                 # Back button goes to previous song played
                 self.youVolumeOverride(True)  # Ad playing override
                 self.driver.back()
                 if debug:
-                    self.youPrint("BACK LOOP Ad still visible:", count, end="\r")
+                    self.youPrint("BACK LOOP Ad still visible:", count, end="\r", level=9)
                 if self.youCheckAdRunning():
                     count += 1
                     if not lcs.fast_refresh():
@@ -17118,12 +17126,12 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
                         return False
 
             if debug:
-                print("\n" + ext.t(short=True, hun=True),
-                      "driver.back() visible loops:", str(count).ljust(2),
-                      " | Video Index:", self.youCurrentIndex())  # count is always 1
-                self.youPrint("# 1. Player Status:", self.youGetPlayerStatus())
+                print("driver.back() visible loops:", str(count).ljust(2),
+                      " | Video Index:", self.youCurrentIndex(), lv=9, nl=True)
+                # count is always 1?
+                self.youPrint("# 1. Player Status:", self.youGetPlayerStatus(), lv=9)
                 self.youPrint("# 1. Video Index before FIRST forward:",
-                              self.youCurrentIndex())
+                              self.youCurrentIndex(), lv=9)
 
             self.driver.forward()  # Send forward page event
             player_status = self.youWaitMusicPlayer(debug=False)
@@ -17134,26 +17142,28 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
                 # Check now inside self.youWaitMusicPlayer
                 player_status = self.youWaitMusicPlayer(debug=True)
                 if not player_status:
-                    self.youPrint("Shutting down, dialog prompt or player broken!")
+                    self.youPrint("Shutting down, dialog prompt or player broken!",
+                                  level=0)  # 0 = forced printing all the time
                     continue
 
             if debug:
-                self.youPrint("# 2. Player Status after 400ms:", self.youGetPlayerStatus())
-                self.youPrint("# 2. Video Index:", self.youCurrentIndex())
+                self.youPrint("# 2. Player Status after 400ms:",
+                              self.youGetPlayerStatus(), level=9)
+                self.youPrint("# 2. Video Index:", self.youCurrentIndex(), level=9)
                 video_id = self.youGetMicroFormat()
-                self.youPrint("# 2. youGetMicroFormat() video_id:", video_id)
+                self.youPrint("# 2. youGetMicroFormat() video_id:", video_id, level=9)
 
             if self.youCheckAdRunning():
                 # With this test, don't know if ad #1 or #2 is visible...
                 self.driver.forward()
                 if debug:
                     self.youPrint("THREE FORWARDS", "Video Index:",
-                                  self.youCurrentIndex())
+                                  self.youCurrentIndex(), level=9)
                     self.youPrint("# 3A. Player Status: BEFORE 2nd forward wait",
-                                  self.youGetPlayerStatus())
-                    self.youPrint("# 3A. Video Index:", self.youCurrentIndex())
+                                  self.youGetPlayerStatus(), level=9)
+                    self.youPrint("# 3A. Video Index:", self.youCurrentIndex(), level=9)
                     video_id = self.youGetMicroFormat()
-                    self.youPrint("# 3A. youGetMicroFormat() video_id:", video_id)
+                    self.youPrint("# 3A. youGetMicroFormat() video_id:", video_id, level=9)
 
                 #self.top.after(350)  # 300 too short for triple ad
                 player_status = self.youWaitMusicPlayer(debug=False)
@@ -17162,18 +17172,18 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
                     continue
                 if debug:
                     self.youPrint("# 3B. Player Status after 350ms:",
-                                  self.youGetPlayerStatus())
-                    self.youPrint("# 3B. URL Index:", self.youCurrentIndex())
+                                  self.youGetPlayerStatus(), level=9)
+                    self.youPrint("# 3B. URL Index:", self.youCurrentIndex(), level=9)
                     video_id = self.youGetMicroFormat()
-                    self.youPrint("# 3B. youGetMicroFormat() video_id:", video_id)
+                    self.youPrint("# 3B. youGetMicroFormat() video_id:", video_id, level=9)
             else:
                 if debug:
-                    print(ext.t(short=True, hun=True), "TWO FORWARDS",
-                          "Video Index:", self.youCurrentIndex())
-                    self.youPrint("# 3. Player Status:", self.youGetPlayerStatus())
-                    self.youPrint("# 3. Video Index:", self.youCurrentIndex())
+                    self.youPrint("TWO FORWARDS",
+                                  "Video Index:", self.youCurrentIndex(), level=9)
+                    self.youPrint("# 3. Player Status:", self.youGetPlayerStatus(), level=9)
+                    self.youPrint("# 3. Video Index:", self.youCurrentIndex(), level=9)
                     video_id = self.youGetMicroFormat()
-                    self.youPrint("# 3. youGetMicroFormat() video_id:", video_id)
+                    self.youPrint("# 3. youGetMicroFormat() video_id:", video_id, level=9)
 
             # Could be within second ad but extra forward needed for next
             self.driver.forward()  # Extra forward needed for next song
@@ -17200,10 +17210,10 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
                 return False  # Weird error
 
             if debug:
-                self.youPrint("# 4. Player Status:", self.youGetPlayerStatus())
-                self.youPrint("# 4. Video Index:", self.youCurrentIndex())
+                self.youPrint("# 4. Player Status:", self.youGetPlayerStatus(), level=9)
+                self.youPrint("# 4. Video Index:", self.youCurrentIndex(), level=9)
                 video_id = self.youGetMicroFormat()  # From mini-player script
-                self.youPrint("# 4. youGetMicroFormat() video_id:", video_id)
+                self.youPrint("# 4. youGetMicroFormat() video_id:", video_id, level=9)
             else:
                 video_id = self.youGetMicroFormat()  # From mini-player script
 
@@ -17243,12 +17253,12 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
                 return None
             elapsed = (time.time() - start) * 1000
             if elapsed > 10000.0:  # Greater than 10 seconds?
-                self.youPrint("\n" + "youWaitMusicPlayer() took",
-                              "more than 10,000 milliseconds")
+                self.youPrint("youWaitMusicPlayer() took",
+                              "more than 10,000 milliseconds", lv=1, nl=True)
                 self.youPrint(
                     "Elapsed:", '{:n}'.format(elapsed),
                     "ms  | Null:", count_none, " | Paused:", count_2,
-                    " | Starting:", count_3, " | Idle:", count_5, "\n")
+                    " | Starting:", count_3, " | Idle:", count_5, "\n", lv=1)
                 return None
 
             ad_playing = None
@@ -17274,16 +17284,14 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
             now = time.time()
             if not startup and now - lastHousekeepingTime > 1.0:
                 # Prints for song #10, #17
-                print(ext.t(short=True, hun=True),
-                      "youWaitMusicPlayer() - 1 second Housekeeping check.")
+                self.youPrint(
+                     "youWaitMusicPlayer() - 1 second Housekeeping check.")
                 lastHousekeepingTime = now
                 self.youHousekeeping()
 
-        if debug:
-            print("\n" + ext.t(short=True, hun=True),
-                  "youWaitMusicPlayer", '{:n}'.format(elapsed),
-                  "ms | Null:", count_none, " | Paused:", count_2,
-                  " | Starting:", count_3, " | Idle:", count_5)
+        self.youPrint("youWaitMusicPlayer", '{:n}'.format(elapsed),
+                      "ms | Null:", count_none, " | Paused:", count_2,
+                      " | Starting:", count_3, " | Idle:", count_5, lv=7, nl=True)
 
         # Potentially reverse volume override earlier.
         # Getting many false positives as already at desired volume...
@@ -17353,18 +17361,18 @@ Redundant calls after turning down to 25% and up to 100%:
             #              "Volume during commercial:", vol, type(vol))
             if vol == 100:
                 pav.set_volume(sink_no, 25.0)
-                # self.youPrint("Sink No:", sink_no, "Volume forced to 25%")
+                self.youPrint("Sink No:", sink_no, "Volume forced to 25%", level=5)
             else:
-                # self.youPrint("Sink No:", sink_no, "Volume NOT forced:", vol)
+                self.youPrint("Sink No:", sink_no, "Volume NOT forced:", vol, level=5)
                 pass
         else:
-            # self.youPrint("Sink:", sink_no,
-            #              "Volume NO commercial:", vol, type(vol))
+            self.youPrint("Sink:", sink_no,
+                          "Volume NO commercial:", vol, type(vol), level=5)
             if vol == 25:
                 pav.set_volume(sink_no, 100.0)
-                    # self.youPrint("Sink No:", sink_no, "Volume forced to 100%")
+                self.youPrint("Sink No:", sink_no, "Volume forced to 100%", level=5)
             else:
-                # self.youPrint("Sink No:", sink_no, "Volume NOT forced:", vol)
+                self.youPrint("Sink No:", sink_no, "Volume NOT forced:", vol, level=5)
                 pass
 
     def youLrcBuildFrame(self, item):
@@ -17508,7 +17516,7 @@ Redundant calls after turning down to 25% and up to 100%:
         self.scrollYT.tag_configure("margin", lmargin1="2m", lmargin2="65m")
         # Fix Control+C  https://stackoverflow.com/a/64938516/6929343
         self.scrollYT.bind("<Button-1>", lambda event: self.scrollYT.focus_set())
-        # youClosePlayLrc
+        self.youLrcFrame.update()  # 2023-12-15 - Fix .dlineinfo() errors?
 
     def youLrcUpdateTimeOffset(self, item, *_args):
         """ Time Offset has just been changed. """
@@ -17632,13 +17640,11 @@ Redundant calls after turning down to 25% and up to 100%:
                 self.youPrint("ERROR self.scrollYT.tag_remove()")
 
             two_before = i - 1 if i > 2 else 1
-            see = str(two_before) + ".0"
+            two_before = str(two_before) + ".0"
             # Start highlight 1 char in so gutter isn't highlighted
-            text_start = str(i + 1) + ".0+1c"
-            text_end = str(i + 2) + ".0-1c"
-            #print("see:", see, "progress:", progress,
-            #      "text_start:", text_start,
-            #      "text_end:", text_end)
+            text_start = str(i + 1) + ".0+1c"  # start line + 1 for gutter
+            text_end = str(i + 2) + ".0-1c"  # next line - 1 char = end line
+
             # TODO: More efficient using self.scrollYT.tag_add
             try:
                 self.scrollYT.highlight_pattern(
@@ -17649,50 +17655,34 @@ Redundant calls after turning down to 25% and up to 100%:
                 self.youPrint("ERROR self.scrollYT.highlight_pattern()")
 
             # https://stackoverflow.com/a/62765724/6929343
-            self.scrollYT.see(text_start)
-            lineinfo = self.scrollYT.dlineinfo(see)
-            try:
-                self.scrollYT.yview_scroll(lineinfo[1], 'pixels')
-            except Exception as err:
-                self.youPrint("lineinfo[1] Exception:\n", err)
-                print("", line_time, ":", line_text)
-                print("", lineinfo)
+            self.scrollYT.see(text_start)  # 2023-12-12 no errors
+            self.top.update_idletasks()  # 2023-12-10 - Fixes NoneType error
+            #self.top.update()  # 2023-12-12 - causes flashing
 
-            self.top.update_idletasks()
+            # This is scrolling line which .see() already did?  No it prevents
+            # scrolling all the way to bottom.
+            two_bbox = self.scrollYT.dlineinfo(two_before)  # bounding box
+            if not two_bbox:  # Attempt Fix of 1.5% error rate getting pixels
+                thread = self.get_thread_func()
+                thread()
+                two_bbox = self.scrollYT.dlineinfo(two_before)  # bounding box
+                if two_bbox:
+                    self.youPrint("Second dlineinfo(two_before) WORKS!",
+                                  nl=True, lv=0)
+
+            if two_bbox:
+                # Scroll to top pixel of two lines before current lyric line
+                self.scrollYT.yview_scroll(two_bbox[1], 'pixels')
+            else:
+                self.youPrint("youLrcHighlightLine() two_bbox is NoneType!",
+                              two_before, nl=True, lv=0)
+                print("dict['name']:", self.dictYouTube.get('name', None))
+                print("Video No.   :", self.listYouTubeCurrIndex + 1,
+                      " | line_time   :", line_time)
+                print("text_start  :", text_start, " | line_text:", line_text)
+
+            #self.top.update_idletasks()  # 2023-12-10 - Fixes NoneType error
             return
-
-    # First time lyrics used after suspend / startup / confirm playing:
-
-    # 05:45:40.3 STARTING Playlist - Song № 8     | zQAd7eQzLus
-    # 05:45:40.3 Assume Ad. Automatically turn down volume.
-    # 05:45:40.4 Reversing self.youAssumeAd
-    # 05:45:40.4 lineinfo[1] Exception:
-    #  'NoneType' object has no attribute '__getitem__'
-    #  0.02 : 00:01.12]Put your loving hand out, baby
-    #  None
-    # 05:45:40.7 MicroFormat found after: 0.4     | zQAd7eQzLus
-    # 05:45:51.1 lineinfo[1] Exception:
-    #  'NoneType' object has no attribute '__getitem__'
-    #  11.5 : 'Cause I'm beggin'
-    #  None
-
-    # Every 8 songs or so:
-
-    # 21:29:11.1 STARTING Playlist - Song № 28    | 5W_lQewmIwI
-    # 21:29:11.1 Assume Ad. Automatically turn down volume.
-    # 21:29:11.6 Ad visible. Player status: -1
-    # _close_cb(): Probably closed wrong widget
-    # toolkit.py ToolTips.get_dict(): self.dict for "widget" not found
-    # .139811858132792.139811853234256.139811853234400.139811565532224
-    # .139811565537040
-    # 29:13.2209 _close_cb() - tt_dict not found for: 7040
-    # 21:29:14.0 Reversing self.youAssumeAd
-    # 21:29:14.2 MicroFormat found after: 0.4     | 5W_lQewmIwI
-
-    # Probably caused by error:
-
-    # vu_pulse_audio.py PulseAudio.get_volume(): unable to find sink#: 2730
-    # This probably isn't real sink but rather phantom
 
     def youLrcParseLine(self, line, ndx=None):
         """ Split line into seconds float and lyrics text
@@ -17761,7 +17751,7 @@ Redundant calls after turning down to 25% and up to 100%:
                      "al": "Album",
                      "ti": "Song Title",
                      "au": "Composer",
-                     "length": "Duration",
+                     "length": "Length",
                      "by": "LRC Creator",
                      "offset": "Timestamp adjustment in milliseconds",
                      "re": "LRC App",
@@ -17780,7 +17770,7 @@ Redundant calls after turning down to 25% and up to 100%:
         try:
             key = parts[0]
             value = parts[1].strip()
-            tag = meta_dict.get(key, key)
+            tag = meta_dict.get(key.lower(), key)
             #print("key:", key, " | value:", value, " | tag:", tag)
             fmt_line = tag + ": " + value
             return fmt_line
@@ -17814,7 +17804,335 @@ Redundant calls after turning down to 25% and up to 100%:
         self.youPlayerCurrText = "?"  # Force button text & tooltip setup
 
     def updateYouTubeDuration(self):
-        """ Query YouTube duration and update progress bar """
+        """ Query YouTube duration and update progress bar.
+            If self.isViewCountBoost active then click next video.
+
+"How often does YouTube update view count?
+Though YouTube doesn't publish this information,
+we know that it updates views approximately every
+24 to 48 hours. It does not update views instantly.
+Apr 13, 2021"
+
+Yesterday 7,261 views.
+Start 06:00. In 4 hours ~60 views last night ~80 views (7,461 est.)
+2023-12-10 10:00 - video count boost start.
+2023-12-10 13:25 - 371 boost views (program is counting)
+2023-12-10 14:25 - 502 boost views
+2023-12-10 15:25 - 627 boost views (shut down)
+2023-12-10 19:35 - YT says 7,447 views, turn off speed boost.
+2023-12-10 22:30 - Suspend
+
+2023-12-11 05:33 - Restarted yesterday so far 57 views of 98 on Rock
+2023-12-11 07:00 - 74 views (14 boosted)
+2023-12-11 07:30 - 81 views (Suspend)
+2023-12-11-16:32 - 82 views (Resume, YT still says 7,447 views)
+2023-12-11-18:30 - 98 +  8 views (YT 7,447 views)
+2023-12-11-19:05 - 98 + 16 views (stop playing)
+2023-12-11-19:13 - Waiting for YT view count to update also at:
+                19:25, 19:57, 20:20, finally at 20:23 ---
+                YT reports 8,171 views. So 30 second video count
+                boost has 1 day lag? 7,447 + 114 s/b 7,561 count.
+                There are 8,171 - 7,561 = 610 extra videos
+2023-12-11-20:28 - Speed boost on start 8,171 YT views
+2023-12-11-20:53 - 50 speed views. Close program:
+2023-12-11-20:57 - Restart with end of playlist printing:
+                print("youViewCountSkipped   :", ...)
+2023-12-11-21:48 - youViewCountSkipped   : 142
+2023-12-11-22:10 - Suspend
+
+2023-12-12-06:01 - youViewCountSkipped   : 261 (diff = 119)
+2023-12-12-06:52 - youViewCountSkipped   : 364 (diff = 103)
+2023-12-12-07:31 - Suspend (#74 of 98)
+2023-12-12-16:33 - Resume
+2023-12-12-16:47 - youViewCountSkipped   : 465 (diff = 101)
+2023-12-12-17:39 - youViewCountSkipped   : 568 (diff = 103)
+2023-12-12-18:32 - youViewCountSkipped   : 668 (diff = 100)
+2023-12-12-19:24 - youViewCountSkipped   : 778 (diff = 110)
+2023-12-12-19:25 - CHECK FOR UPDATE from 8,171 views also at:
+                19:30, 19:45, 20:00, finally at 20:06
+2023-12-12-20:06 - 8,437 views - 8,171 previous = 266 new views
+
+2023-12-12-20:12 - Skipped: 0 - Restart for new YouTube Day
+2023-12-12-21:05 - Skipped: 103, duplicates: 5, errors: 6
+2023-12-12-21:58 - Skipped: 205, duplicates: 4, errors: 4
+2023-12-12-22:08 - Suspend at song # 19 of 98
+
+2023-12-13-05:33 - Resume at song # 19 of 98
+2023-12-13-06:15 - Skipped: 307, duplicates: 4, errors: 2
+2023-12-13-06:30 - SURVEY ERROR at skipped count ~340 crashed mserve:
+                Restart mserve at 0 skipped #33 of 98
+2023-12-13-07:11 - Bug Crash at list end. Previous skipped: ~400:
+                Restart mserve at 0 skipped #41 of 98
+2023-12-13-07:23 - Smart Play song # 96 of 98 to test code change
+                Remember to add 400 to day totals !!!
+2023-12-13-06:15 - Skipped: 26, duplicates: 0, errors: 0
+2023-12-13-17:00 - Resume (#14 of 99 says YT author added 1 song)
+2023-12-13-17:47 - Skipped: 130, duplicates: ?, errors: 3
+2023-12-13-18:37 - Skipped: 237, duplicates: 9, errors: 4
+2023-12-13-19:31 - Skipped: 344, duplicates: 6, errors: 3
+2023-12-13-19:20 - CHECK FOR UPDATE from 8,171 views at:
+                19:35, 19:50, 19:55 - YT updated at 9,293
+2023-12-13-19:31 - Skipped: 391, duplicates: ?, errors: 2
+2023-12-13-19:55 - 9,293 views - 8,437 previous = 856 new views
+                Actual 391 + 400 est. = 791 view skipped count
+
+2023-12-13-19:56 - Restart with 99 videos in mserve Rock playlist.
+2023-12-13-20:50 - Skipped: 102, duplicates: 3, errors: 5
+2023-12-13-21:43 - Skipped: 209, duplicates: 8, errors: 3
+2023-12-13-22:10 - Suspend. Resume on 14th at 05:26
+
+2023-12-14-05:56 - Skipped: 310, duplicates: 2, errors: 6
+2023-12-14-06:49 - Skipped: 409, duplicates: 0, errors: 5
+2023-12-14-07:31 - Suspend while playing #79 of 99. Resume at 16:51.
+2023-12-14-17:03 - Skipped: 508, duplicates: 0, errors: 5
+2023-12-14-17:56 - Skipped: 610, duplicates: 3, errors: 3
+2023-12-14-18:50 - Skipped: 712, duplicates: 3, errors: 4
+2023-12-14-19:43 - Skipped: 818, duplicates: 7, errors: 3
+2023-12-14-20:11 - Skipped: 870, duplicates: 2, errors: 2 (stop at #50)
+                YT updated: 10,053 - 9,293 previous = 760 new views
+                870 view skipped count (missing 90 due to lag)
+
+2023-12-14-20:15 - Restart mserve with new code
+2023-12-14-21:05 - Skipped: 112, duplicates: 12, errors: 2
+2023-12-14-22:03 - Skipped: 219, duplicates: 8, errors: 3
+2023-12-14-22:21 - Suspend at song #34. Resume at 23:30 (est. time)
+2023-12-14-23:59 - Skipped: 376, duplicates: 8, errors: 2
+2023-12-14-23:59 - Suspend (glitches in the Matrix...)
+2023-12-15-06:15 - Skipped: 479, duplicates: 4, errors: 6
+2023-12-15-07:11 - Skipped: 589, duplicates: 1, errors: 3
+2023-12-15-07:29 - Suspend while playing #32 of 99.
+2023-12-15-16:40 - Resume #33 of 99.
+2023-12-15-17:15 - Skipped: 695, duplicates: 7, errors: 6
+2023-12-15-18:09 - Skipped: 807, duplicates: 13, errors: 3
+2023-12-15-19:03 - Skipped: 916, duplicates: 10, errors: 1
+2023-12-15-20:00 - Shutdown for concise counts. Skipped= 1,024.
+2023-12-15-21:24 - Just noticed 10,982 views - 10,053 = 929 views
+
+2023-12-16-08:19 - Restart mserve @ 10,982 views. dlineinfo() errors gone now.
+2023-12-16-09:09 - Skipped: 102, duplicates: 3, errors: (one link not found)
+2023-12-16-09:10 - Skipped: 103, duplicates: 4, errors: (two links not found)
+2023-12-16-10:13 - Skipped: 209, duplicates: 7, errors: (only one link not found)
+
+===============================================================================
+
+                Link: https://www.youtube.com/watch?v=YUH1IeR1sqo   NOT FOUND!
+2023-12-16-09:09 - youTreeSmartPlayAll() - you_tree_iid_int is type: <None>
+Error on make_link    : https://www.youtube.com/watch?v=YUH1IeR1sqo
+self.listYouTube[0]   : https://www.youtube.com/watch?v=a-Xfv64uhMI
+youViewCountSkipped   : 102
+
+2023-12-14-20:15 - Restart mserve with new code
+                1.5 minute delay starting 30 second video count boost and
+                got strange error after many video and commercial restarts:
+
+                20:17:35.7 Shutting down, dialog prompt or player broken!
+
+#1 - Before 142
+self.dictYouTube['name']: Pixies - Where Is My Mind? (Official Lyric Video)
+line_time: 0.01  | line_text: Ooh, stop
+lineinfo: None  | see: 2.0
+self.dictYouTube['name']: Pixies - Where Is My Mind? (Official Lyric Video)
+line_time: 26.56  | line_text: With your feet on the air and your head on the ground
+lineinfo: None  | see: 3.0
+self.dictYouTube['name']: Pour Some Sugar On Me Def Leppard Lyrics
+line_time: 0.0933333333333  | line_text: LRC App Version: v1.2.3
+lineinfo: None  | see: 1.0
+#2 - Before 261
+self.dictYouTube['name']: Måneskin - Beggin' (Lyric Video) | i'm on my knees when i'm beggin, cause I don't wanna lose you
+line_time: 0.02  | line_text: 00:01.12]Put your loving hand out, baby
+lineinfo: None  | see: 2.0
+self.dictYouTube['name']: Måneskin - Beggin' (Lyric Video) | i'm on my knees when i'm beggin, cause I don't wanna lose you
+line_time: 11.5  | line_text: 'Cause I'm beggin'
+lineinfo: None  | see: 3.0
+self.dictYouTube['name']: R.E.M. - Losing My Religion (Official Music Video)
+line_time: 1.135  | line_text: LRC Creator: Marlon
+
+[by:Marlon]
+
+lineinfo: None  | see: 2.0
+#3 - Before 364
+self.dictYouTube['name']: Pour Some Sugar On Me Def Leppard Lyrics
+line_time: 0.0466666666667  | line_text: LRC App: www.megalobiz.com/lrc/maker
+lineinfo: None  | see: 1.0
+#4 - Before 465
+self.dictYouTube['name']: Måneskin - Beggin' (Lyric Video) | i'm on my knees when i'm beggin, cause I don't wanna lose you
+line_time: 0.02  | line_text: 00:01.12]Put your loving hand out, baby
+lineinfo: None  | see: 2.0
+self.dictYouTube['name']: Måneskin - Beggin' (Lyric Video) | i'm on my knees when i'm beggin, cause I don't wanna lose you
+line_time: 11.5  | line_text: 'Cause I'm beggin'
+lineinfo: None  | see: 3.0
+self.dictYouTube['name']: Runaround Sue
+line_time: 0.363333333333  | line_text: LRC App: www.megalobiz.com/lrc/maker
+lineinfo: None  | see: 1.0
+self.dictYouTube['name']: Pour Some Sugar On Me Def Leppard Lyrics
+line_time: 0.0933333333333  | line_text: LRC App Version: v1.2.3
+lineinfo: None  | see: 1.0
+
+[ve:v1.2.3]
+[00:00.14]Step inside, walk this way
+
+#5 - Before 568
+self.dictYouTube['name']: R.E.M. - Losing My Religion (Official Music Video)
+line_time: 1.135  | line_text: LRC Creator: Marlon
+lineinfo: None  | see: 2.0
+self.dictYouTube['name']: Bullet For My Valentine - All These Things I Hate Lyrics
+line_time: 1.16  | line_text: Duration: 03:40.37
+lineinfo: None  | see: 1.0
+#6 - Before 668
+self.dictYouTube['name']: R.E.M. - Losing My Religion (Official Music Video)
+line_time: 0.378333333333  | line_text: Song Title: Losing my religion
+lineinfo: None  | see: 1.0
+self.dictYouTube['name']: R.E.M. - Losing My Religion (Official Music Video)
+line_time: 1.51333333333  | line_text: LRC App: www.megalobiz.com/lrc/maker
+lineinfo: None  | see: 3.0
+#7 - Before 778
+NO RECORDS PRINTED
+#8 - Before 888
+19:53:42.5 lineinfo[1] Exception:
+ 'NoneType' object has no attribute '__getitem__'
+self.dictYouTube['name']: The Number of the Beast (2015 Remaster)
+line_time: 3.25125  | line_text: Duration: 04:50.93
+lineinfo: None  | see: 2.0
+20:03:08.4 lineinfo[1] Exception:
+ 'NoneType' object has no attribute '__getitem__'
+self.dictYouTube['name']: Pour Some Sugar On Me Def Leppard Lyrics
+line_time: 0.0933333333333  | line_text: LRC App Version: v1.2.3
+lineinfo: None  | see: 1.0
+
+19:53:42.5 lineinfo[1] Exception:
+ 'NoneType' object has no attribute '__getitem__'
+self.dictYouTube['name']: The Number of the Beast (2015 Remaster)
+line_time: 3.25125  | line_text: Duration: 04:50.93
+lineinfo: None  | see: 2.0
+
+#1 - Before 142
+line_time: 0.01  | line_text: Ooh, stop
+line_time: 26.56  | line_text: With your feet on the air and your head on the ground
+line_time: 0.0933333333333  | line_text: LRC App Version: v1.2.3
+#2 - Before 261
+line_time: 0.02  | line_text: 00:01.12]Put your loving hand out, baby
+line_time: 11.5  | line_text: 'Cause I'm beggin'
+line_time: 1.135  | line_text: LRC Creator: Marlon
+#3 - Before 364
+line_time: 0.0466666666667  | line_text: LRC App: www.megalobiz.com/lrc/maker
+#4 - Before 465
+line_time: 0.02  | line_text: 00:01.12]Put your loving hand out, baby
+line_time: 11.5  | line_text: 'Cause I'm beggin'
+line_time: 0.363333333333  | line_text: LRC App: www.megalobiz.com/lrc/maker
+line_time: 0.0933333333333  | line_text: LRC App Version: v1.2.3
+#5 - Before 568
+line_time: 1.135  | line_text: LRC Creator: Marlon
+line_time: 1.16  | line_text: Duration: 03:40.37
+#6 - Before 668
+line_time: 0.378333333333  | line_text: Song Title: Losing my religion
+line_time: 1.51333333333  | line_text: LRC App: www.megalobiz.com/lrc/maker
+#7 - Before 778
+NO RECORDS PRINTED
+#8 - Before 888
+line_time: 3.25125  | line_text: Duration: 04:50.93
+
+#1 - Before 142
+self.dictYouTube['name']: Pixies - Where Is My Mind? (Official Lyric Video)
+self.dictYouTube['name']: Pixies - Where Is My Mind? (Official Lyric Video)
+self.dictYouTube['name']: Pour Some Sugar On Me Def Leppard Lyrics
+#2 - Before 261
+self.dictYouTube['name']: Måneskin - Beggin' (Lyric Video) | i'm on my knees when i'm beggin, cause I don't wanna lose you
+self.dictYouTube['name']: Måneskin - Beggin' (Lyric Video) | i'm on my knees when i'm beggin, cause I don't wanna lose you
+self.dictYouTube['name']: R.E.M. - Losing My Religion (Official Music Video)
+#3 - Before 364
+self.dictYouTube['name']: Pour Some Sugar On Me Def Leppard Lyrics
+#4 - Before 465
+self.dictYouTube['name']: Måneskin - Beggin' (Lyric Video) | i'm on my knees when i'm beggin, cause I don't wanna lose you
+self.dictYouTube['name']: Måneskin - Beggin' (Lyric Video) | i'm on my knees when i'm beggin, cause I don't wanna lose you
+self.dictYouTube['name']: Runaround Sue
+self.dictYouTube['name']: Pour Some Sugar On Me Def Leppard Lyrics
+#5 - Before 568
+self.dictYouTube['name']: R.E.M. - Losing My Religion (Official Music Video)
+self.dictYouTube['name']: Bullet For My Valentine - All These Things I Hate Lyrics
+#6 - Before 668
+self.dictYouTube['name']: R.E.M. - Losing My Religion (Official Music Video)
+self.dictYouTube['name']: R.E.M. - Losing My Religion (Official Music Video)
+#7 - Before 778
+NO RECORDS PRINTED
+#8 - Before 888
+self.dictYouTube['name']: The Number of the Beast (2015 Remaster)
+
+ALL OF REM:
+
+05:28:10.7 lineinfo[1] Exception:
+ 'NoneType' object has no attribute '__getitem__'
+self.dictYouTube['name']: R.E.M. - Losing My Religion (Official Music Video)
+line_time: 1.135  | line_text: LRC Creator: Marlon
+lineinfo: None  | see: 2.0
+Link: https://www.youtube.com/watch?v=OpvRrhJ-JiQ   NOT FOUND!
+
+17:11:03.2 lineinfo[1] Exception:
+ 'NoneType' object has no attribute '__getitem__'
+self.dictYouTube['name']: R.E.M. - Losing My Religion (Official Music Video)
+line_time: 1.135  | line_text: LRC Creator: Marlon
+lineinfo: None  | see: 2.0
+
+18:03:40.5 lineinfo[1] Exception:
+ 'NoneType' object has no attribute '__getitem__'
+self.dictYouTube['name']: R.E.M. - Losing My Religion (Official Music Video)
+line_time: 0.378333333333  | line_text: Song Title: Losing my religion
+lineinfo: None  | see: 1.0
+
+18:03:41.9 lineinfo[1] Exception:
+ 'NoneType' object has no attribute '__getitem__'
+self.dictYouTube['name']: R.E.M. - Losing My Religion (Official Music Video)
+line_time: 1.51333333333  | line_text: LRC App: www.megalobiz.com/lrc/maker
+lineinfo: None  | see: 3.0
+
+=============================================================================
+Survey error on click next:
+"How are your recommendations today?
+N/A, Bad, Fair, Good, Very Good, Extremely Good"
+
+Exception in Tkinter callback
+Traceback (most recent call last):
+  File "/usr/lib/python2.7/lib-tk/Tkinter.py", line 1540, in __call__
+    return self.func(*args)
+  File "/home/rick/python/mserve.py", line 15812, in <lambda>
+    command=lambda: self.youSmartPlayAll())
+  File "/home/rick/python/mserve.py", line 16135, in youSmartPlayAll
+    self.youMonitorPlayerStatus(player_status, debug=False)
+  File "/home/rick/python/mserve.py", line 17009, in youMonitorPlayerStatus
+    self.updateYouTubeDuration()
+  File "/home/rick/python/mserve.py", line 18053, in updateYouTubeDuration
+    except Exception as err:
+  File "/usr/lib/python2.7/dist-packages/selenium/webdriver/remote/webelement.py",
+        line 75, in click
+    self._execute(Command.CLICK_ELEMENT)
+  File "/usr/lib/python2.7/dist-packages/selenium/webdriver/remote/webelement.py",
+        line 454, in _execute
+    return self._parent.execute(command, params)
+  File "/usr/lib/python2.7/dist-packages/selenium/webdriver/remote/webdriver.py",
+        line 201, in execute
+    self.error_handler.check_response(response)
+  File "/usr/lib/python2.7/dist-packages/selenium/webdriver/remote/errorhandler.py",
+        line 181, in check_response
+    raise exception_class(message, screen, stacktrace)
+WebDriverException: Message: element click intercepted:
+        Element <a class="ytp-next-button ytp-button" role="button"
+        data-title-no-tooltip="Next" aria-keyshortcuts="SHIFT+n"
+        aria-disabled="false" aria-label="Next keyboard shortcut SHIFT+n"
+        title="Next (SHIFT+n)"
+        data-preview="https://i1.ytimg.com/vi/n6P0SitRwy8/mqdefault.jpg"
+        data-tooltip-text="Nirvana - Heart-Shaped Box (Official Music Video)"
+        href="https://www.youtube.com/watch?
+        list=PLthF248A1c68TAKl5DBskfJ2fwr1sk9aM&amp;v=n6P0SitRwy8">...</a>
+        is not clickable at point (152, 302). Other element would receive the click:
+        <ytd-single-option-survey-option-renderer
+        class="style-scope ytd-single-option-survey-renderer"
+        vertical="">...</ytd-single-option-survey-option-renderer>
+  (Session info: chrome=108.0.5359.124)
+  (Driver info: chromedriver=108.0.5359.71
+        (1e0e3868ee06e91ad636a874420e3ca3ae3756ac-refs/branch-heads/5359@{#1016}),
+        platform=Linux 4.14.216-0414216-generic x86_64)
+=============================================================================
+
+        """
         if self.durationYouTube == 0.0:
             return  # Can't divide by zero
 
@@ -17826,6 +18144,24 @@ Redundant calls after turning down to 25% and up to 100%:
             print("updateYouTubeDuration() 'video[0].currentTime' not found!")
             print(err)
             time_video = 0.0
+
+        # Over 45 seconds and view count speed boost active?
+        if time_video >= 31.0 and self.isViewCountBoost:
+            self.youViewCountSkipped += 1
+            elem = self.driver.find_element_by_xpath(
+                '//*[@class="ytp-next-button ytp-button"]')
+            try:
+                elem.click()  # survey can block next button
+                return
+            except WebDriverException as err:
+                title = "updateYouTubeDuration WebDriverException"
+                text = str(err)
+                message.ShowInfo(self.top, title, text, icon='error',
+                                 thread=self.get_thread_func)
+                self.youPrint("updateYouTubeDuration WebDriverException:\n", err,
+                              nl=True, lv=0)
+                # Can't really do anything until user finishes survey or 'X' it
+
         if time_video > 0.0:
             self.progressYouTube = time_video
         percent = float(100.0 * self.progressYouTube / self.durationYouTube)
@@ -18038,7 +18374,21 @@ Redundant calls after turning down to 25% and up to 100%:
         return time.time() - start < 9.0
 
     def youGetPlayerStatus(self):
-        """ Credit: https://stackoverflow.com/q/29706101/6929343 """
+        """ Credit: https://stackoverflow.com/q/29706101/6929343
+
+2023-12-08 Resume from suspend error:
+
+  File "/home/rick/python/mserve.py", line 16128, in youSmartPlayAll
+    self.youMonitorPlayerStatus(player_status, debug=False)
+  File "/home/rick/python/mserve.py", line 17133, in youMonitorPlayerStatus
+    player_status = self.youWaitMusicPlayer(debug=True)
+  File "/home/rick/python/mserve.py", line 17255, in youWaitMusicPlayer
+    player_status = self.youGetPlayerStatus()
+  File "/home/rick/python/mserve.py", line 18042, in youGetPlayerStatus
+    player_status = self.driver.execute_script(
+AttributeError: 'NoneType' object has no attribute 'execute_script'
+
+        """
         try:
             # Player status for accurate duration countdown
             player_status = self.driver.execute_script(
@@ -18115,10 +18465,9 @@ Redundant calls after turning down to 25% and up to 100%:
                 link = embed.split('?list=')[0]
                 video_id = link.rsplit("/", 1)[1]
             else:
-                print("\n" + ext.t(short=True, hun=True),
-                      "youGetMicroFormat() innerHTML:", inner)
+                self.youPrint("youGetMicroFormat() innerHTML:", inner, nl=True)
                 stat = self.youGetPlayerStatus()
-                print(ext.t(short=True, hun=True), "self.youGetPlayerStatus():", stat)
+                self.youPrint("self.youGetPlayerStatus():", stat)
                 """ PROBLEM TWO DICTIONARIES:
                     {
                     "@context":"https://schema.org",
@@ -18242,14 +18591,13 @@ Redundant calls after turning down to 25% and up to 100%:
             # until Song #20 and disappears during Song #21 which is first time
             # for MicroFormat is forced after 0.9 seconds. Song #30 gets confirm
             # when ad visible and player status -1 in endless loop.
-            print("\n" + ext.t(short=True, hun=True),
-                  "youHousekeeping() - click ID: 'confirm-button'")
-            stat = self.youGetPlayerStatus()
-            self.youPrint("Player Status BEFORE click:", stat)  # Status = 2
+            self.youPrint("youHousekeeping() - click ID: 'confirm-button'", lv=2, nl=True)
+            stat = self.youGetPlayerStatus()  # Status = 2
+            self.youPrint("Player Status BEFORE click:", stat, lv=2)
             element2.click()  # result1
             time.sleep(.33)  # Nov 6/23 was 1.0, try shorter time for Status
             stat = self.youGetPlayerStatus()  # Status = 1
-            self.youPrint("Player Status AFTER click :", stat, "\n")
+            self.youPrint("Player Status AFTER click :", stat, "\n", lv=2)
             return
         '''
     <yt-button-renderer id="confirm-button" 
@@ -18300,6 +18648,20 @@ Redundant calls after turning down to 25% and up to 100%:
 
         return
 
+    def youViewCountBoost(self, *_args):
+        """ Toggle self.isViewCountBoost. """
+
+        self.isViewCountBoost = not self.isViewCountBoost
+
+        title = "30 second View Count Boost"
+        text = \
+            "View Count Boost active?: " + str(self.isViewCountBoost) + "\n\n" + \
+            "Number of videos skipped: " + str(self.youViewCountSkipped) + "\n\n" + \
+            "When View Count Boost is active, only the first 30 seconds" + "\n" + \
+            "plays. This creates more view counts in YouTube tomorrow.\n"
+
+        message.ShowInfo(self.top, title, text, thread=self.get_thread_func)
+
     def youSetDebug(self, *_args):
         """ Set Debug level (self.youDebug) for self.youPrint(level). """
 
@@ -18307,16 +18669,18 @@ Redundant calls after turning down to 25% and up to 100%:
 
         text = \
             "Current Debug Level: " + str(self.youDebug) + "\n\n" + \
-            "Print debug lines based on debug level" + "\n\n" + \
-            "0 = Nothing\n" + \
+            "Print debug lines for the debug level and below:" + "\n\n" + \
+            "0 = Nothing prints to console\n" + \
             "1 = Song numbers and initialization (Default)\n" + \
             "2 = Continue watching dialogs\n" + \
             "3 = Ad playing & player status\n" + \
             "4 = Video MicroFormat monitoring\n" + \
             "5 = Ad Volume up/down overrides\n" + \
             "6 = Multiple Audio Sinks when discovered\n" + \
-            "7 = Selenium driver.back() / driver.forward()\n\n" + \
-            "Enter 0 to 7 below\n\n"
+            "7 = Selenium driver.back() / driver.forward()\n" + \
+            "8 = Selenium query results\n" + \
+            "9 = Detailed driver.back() / driver.forward()\n" + \
+            "Enter single digit from '0' to '9' below\n\n"
 
         answer = message.AskString(
             self.top, thread=self.get_thread_func,  # update_display()
@@ -18337,6 +18701,10 @@ Redundant calls after turning down to 25% and up to 100%:
             return False
 
         self.youDebug = int_answer
+        self.youPrint("Debug level set to:", self.youDebug, "\n", lv=0, nl=True)
+        self.act_size = self.youDebug
+        # Write history record from act_size
+        self.save_act()
         return True
 
     def youPrint(self, *args, **kwargs):
@@ -18351,8 +18719,15 @@ Redundant calls after turning down to 25% and up to 100%:
                 7 = 6 and driver.back / driver.forward
         """
         # https://stackoverflow.com/a/37308684/6929343
-        level = kwargs.pop('level', 1)  # 1 is default level
+        level = kwargs.pop('level', 1)  # 1 is default level (old name)
+        lv = kwargs.pop('lv', 1)  # New level= being converted
+        if lv != 1:
+            level = lv
+        nl = kwargs.pop('nl', False)  # New line before?
+
         if self.youDebug >= level:
+            if nl:
+                print()
             print(ext.t(short=True, hun=True), *args)
 
     def youTreeNdxByLink(self, link_search):
@@ -18367,7 +18742,9 @@ Redundant calls after turning down to 25% and up to 100%:
             if link_search == self.dictYouTube['link']:
                 return i
 
-        print("Link:", link_search, "  NOT FOUND!")
+        self.youPrint("youTreeNdxByLink():", link_search,
+                      "NOT FOUND!", nl=True, lv=0)
+        # Always print error line (lv=0) with new line before (nl=True)
         return None
 
     def youTreeCopyLink(self, item):
@@ -18639,13 +19016,15 @@ Redundant calls after turning down to 25% and up to 100%:
         return True
 
     def make_act_from_hist(self, d):
-        """ The History Column: 'Type' will always contains: 'playlist' """
+        """ Active Playlist being edited. Not to be confused with "open".
+            The History Column: 'Type' will always contain: 'playlist' """
         self.act_row_id = d['Id']  # History record number
         self.act_code = d['Action']  # E.G. "P000001"
         self.act_loc_id = d['SourceMaster']  # E.G. "L004"
         self.act_name = d['SourceDetail']  # E.G. "Oldies"
         self.act_id_list = json.loads(d['Target'])  # Music Id's in play order
         self.act_size = d['Size']  # Size of all song files in bytes
+        # For YouTube Playlist size self.youDebug (Print Debug) is used.
         self.act_count = d['Count']  # len(self.music_id_list)
         self.act_seconds = d['Seconds']  # Duration of all songs in seconds
         self.act_description = d['Comments']  # E.G. "Songs from 60's & 70's
