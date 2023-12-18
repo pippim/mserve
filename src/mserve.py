@@ -17655,23 +17655,12 @@ Redundant calls after turning down to 25% and up to 100%:
                 self.youPrint("ERROR self.scrollYT.highlight_pattern()")
 
             # https://stackoverflow.com/a/62765724/6929343
-            self.scrollYT.see(text_start)  # 2023-12-12 no errors
-            self.top.update_idletasks()  # 2023-12-10 - Fixes NoneType error
-            #self.top.update()  # 2023-12-12 - causes flashing
-
-            # This is scrolling line which .see() already did?  No it prevents
-            # scrolling all the way to bottom.
-            two_bbox = self.scrollYT.dlineinfo(two_before)  # bounding box
-            if not two_bbox:  # Attempt Fix of 1.5% error rate getting pixels
-                thread = self.get_thread_func()
-                thread()
-                two_bbox = self.scrollYT.dlineinfo(two_before)  # bounding box
-                if two_bbox:
-                    self.youPrint("Second dlineinfo(two_before) WORKS!",
-                                  nl=True, lv=0)
-
+            self.scrollYT.see(text_start)  # Ensure highlighted line is visible
+            self.top.update_idletasks()  # 2023-12-10 - Required before dlineinfo()
+            # Prevent scrolling down to bottom.
+            two_bbox = self.scrollYT.dlineinfo(two_before)  # bbox=[L,T,R,B]
             if two_bbox:
-                # Scroll to top pixel of two lines before current lyric line
+                # Scroll to top pixel of two lines before highlighted lyric line
                 self.scrollYT.yview_scroll(two_bbox[1], 'pixels')
             else:
                 self.youPrint("youLrcHighlightLine() two_bbox is NoneType!",
@@ -17680,9 +17669,6 @@ Redundant calls after turning down to 25% and up to 100%:
                 print("Video No.   :", self.listYouTubeCurrIndex + 1,
                       " | line_time   :", line_time)
                 print("text_start  :", text_start, " | line_text:", line_text)
-
-            #self.top.update_idletasks()  # 2023-12-10 - Fixes NoneType error
-            return
 
     def youLrcParseLine(self, line, ndx=None):
         """ Split line into seconds float and lyrics text
@@ -17906,186 +17892,60 @@ Start 06:00. In 4 hours ~60 views last night ~80 views (7,461 est.)
 2023-12-15-18:09 - Skipped: 807, duplicates: 13, errors: 3
 2023-12-15-19:03 - Skipped: 916, duplicates: 10, errors: 1
 2023-12-15-20:00 - Shutdown for concise counts. Skipped= 1,024.
-2023-12-15-21:24 - Just noticed 10,982 views - 10,053 = 929 views
+2023-12-15-21:24 - Noticed 10,982 views - 10,053 = 929 new YT views (missing 95)
 
 2023-12-16-08:19 - Restart mserve @ 10,982 views. dlineinfo() errors gone now.
 2023-12-16-09:09 - Skipped: 102, duplicates: 3, errors: (one link not found)
-2023-12-16-09:10 - Skipped: 103, duplicates: 4, errors: (two links not found)
+2023-12-16-09:10 - Skipped: 103, duplicates: 1, errors: (two links not found)
 2023-12-16-10:13 - Skipped: 209, duplicates: 7, errors: (only one link not found)
+2023-12-16-10:56 - Skipped: 310, duplicates: 2, errors: (only one link not found)
+2023-12-16-11:50 - Skipped: 412, duplicates: 3,     "       "       "
+2023-12-16-12:43 - Skipped: 516, duplicates: 5,     "       "       "
+2023-12-16-13:37 - Skipped: 614, duplicates: 0,     "       "       "
+2023-12-16-14:30 - Skipped: 718, duplicates: 5, errors: 1 - OLD dlineinfo() bug
+2023-12-16-17:36 - Skipped: 818, duplicates: 5, errors: 6 - OLD dlineinfo() bug
+Shutdown - Google not updating daily count. Must add 818 (minimum) later.
+2023-12-16-22:30 - Restart at song #3. YT playlist has 100 songs
+2023-12-16-23:33 - Skipped: 98, duplicates: 0, errors: 3
+2023-12-17-00:26 - Skipped: 198, duplicates: 0, errors: 1
+2023-12-17-01:19 - Skipped: 299, duplicates: 1, errors: 2
+2023-12-17-01:50 - Skipped: 356, SUSPEND at #59. Skipped = 1,174
+2023-12-17-03:?? - Overnight 11,890 views - 10,982 = 908 new YT views (missing 266)
+
+2023-12-17-09:00 - Restart mserve @ 11,890 views - Update song #92 lyrics for errors
+2023-12-17-09:55 - Skipped: 110, duplicates: 10, error: 1 #92, line 5.0+1c
+                Song #46 (Loosing My Religion) metadata tags had time index
+                Song #92 (Chelsea Smile Lyrics) first lyrics line had [00:00.0]
+2023-12-17-10:51 - Skipped: 215, duplicates: 5, errors: 0
+2023-12-17-11:45 - Skipped: 321, duplicates: 6, errors: 0
+2023-12-17-12:39 - Skipped: 423, duplicates: 2, errors: 0
+2023-12-17-13:33 - Skipped: 528, duplicates: 5, errors: 0
+2023-12-17-14:27 - Skipped: 633, duplicates: 5, errors: 0
+2023-12-17-15:20 - Skipped: 733, duplicates: 0, errors: 0
+2023-12-17-16:14 - Skipped: 837, duplicates: 4, errors: 1 - song #92 again
+2023-12-17-16:25 - accidental CTRL+C at song #21/100
+2023-12-17-16:30 - Restart.  Must add 858 skipped to Dec 17th total.
+2023-12-17-17:20 - Skipped: 111+858, duplicates: 11, errors: 0
+2023-12-17-18:10 - Skipped: 211+858, duplicates: 11, errors: 0
 
 ===============================================================================
 
-                Link: https://www.youtube.com/watch?v=YUH1IeR1sqo   NOT FOUND!
-2023-12-16-09:09 - youTreeSmartPlayAll() - you_tree_iid_int is type: <None>
-Error on make_link    : https://www.youtube.com/watch?v=YUH1IeR1sqo
-self.listYouTube[0]   : https://www.youtube.com/watch?v=a-Xfv64uhMI
-youViewCountSkipped   : 102
 
-2023-12-14-20:15 - Restart mserve with new code
-                1.5 minute delay starting 30 second video count boost and
-                got strange error after many video and commercial restarts:
+===============================================================================
 
-                20:17:35.7 Shutting down, dialog prompt or player broken!
+When pasting lyrics self.info.cast is called but Close button is missing. An
+error is printed in console from ToolTips():
 
-#1 - Before 142
-self.dictYouTube['name']: Pixies - Where Is My Mind? (Official Lyric Video)
-line_time: 0.01  | line_text: Ooh, stop
-lineinfo: None  | see: 2.0
-self.dictYouTube['name']: Pixies - Where Is My Mind? (Official Lyric Video)
-line_time: 26.56  | line_text: With your feet on the air and your head on the ground
-lineinfo: None  | see: 3.0
-self.dictYouTube['name']: Pour Some Sugar On Me Def Leppard Lyrics
-line_time: 0.0933333333333  | line_text: LRC App Version: v1.2.3
-lineinfo: None  | see: 1.0
-#2 - Before 261
-self.dictYouTube['name']: Måneskin - Beggin' (Lyric Video) | i'm on my knees when i'm beggin, cause I don't wanna lose you
-line_time: 0.02  | line_text: 00:01.12]Put your loving hand out, baby
-lineinfo: None  | see: 2.0
-self.dictYouTube['name']: Måneskin - Beggin' (Lyric Video) | i'm on my knees when i'm beggin, cause I don't wanna lose you
-line_time: 11.5  | line_text: 'Cause I'm beggin'
-lineinfo: None  | see: 3.0
-self.dictYouTube['name']: R.E.M. - Losing My Religion (Official Music Video)
-line_time: 1.135  | line_text: LRC Creator: Marlon
-
-[by:Marlon]
-
-lineinfo: None  | see: 2.0
-#3 - Before 364
-self.dictYouTube['name']: Pour Some Sugar On Me Def Leppard Lyrics
-line_time: 0.0466666666667  | line_text: LRC App: www.megalobiz.com/lrc/maker
-lineinfo: None  | see: 1.0
-#4 - Before 465
-self.dictYouTube['name']: Måneskin - Beggin' (Lyric Video) | i'm on my knees when i'm beggin, cause I don't wanna lose you
-line_time: 0.02  | line_text: 00:01.12]Put your loving hand out, baby
-lineinfo: None  | see: 2.0
-self.dictYouTube['name']: Måneskin - Beggin' (Lyric Video) | i'm on my knees when i'm beggin, cause I don't wanna lose you
-line_time: 11.5  | line_text: 'Cause I'm beggin'
-lineinfo: None  | see: 3.0
-self.dictYouTube['name']: Runaround Sue
-line_time: 0.363333333333  | line_text: LRC App: www.megalobiz.com/lrc/maker
-lineinfo: None  | see: 1.0
-self.dictYouTube['name']: Pour Some Sugar On Me Def Leppard Lyrics
-line_time: 0.0933333333333  | line_text: LRC App Version: v1.2.3
-lineinfo: None  | see: 1.0
-
-[ve:v1.2.3]
-[00:00.14]Step inside, walk this way
-
-#5 - Before 568
-self.dictYouTube['name']: R.E.M. - Losing My Religion (Official Music Video)
-line_time: 1.135  | line_text: LRC Creator: Marlon
-lineinfo: None  | see: 2.0
-self.dictYouTube['name']: Bullet For My Valentine - All These Things I Hate Lyrics
-line_time: 1.16  | line_text: Duration: 03:40.37
-lineinfo: None  | see: 1.0
-#6 - Before 668
-self.dictYouTube['name']: R.E.M. - Losing My Religion (Official Music Video)
-line_time: 0.378333333333  | line_text: Song Title: Losing my religion
-lineinfo: None  | see: 1.0
-self.dictYouTube['name']: R.E.M. - Losing My Religion (Official Music Video)
-line_time: 1.51333333333  | line_text: LRC App: www.megalobiz.com/lrc/maker
-lineinfo: None  | see: 3.0
-#7 - Before 778
-NO RECORDS PRINTED
-#8 - Before 888
-19:53:42.5 lineinfo[1] Exception:
- 'NoneType' object has no attribute '__getitem__'
-self.dictYouTube['name']: The Number of the Beast (2015 Remaster)
-line_time: 3.25125  | line_text: Duration: 04:50.93
-lineinfo: None  | see: 2.0
-20:03:08.4 lineinfo[1] Exception:
- 'NoneType' object has no attribute '__getitem__'
-self.dictYouTube['name']: Pour Some Sugar On Me Def Leppard Lyrics
-line_time: 0.0933333333333  | line_text: LRC App Version: v1.2.3
-lineinfo: None  | see: 1.0
-
-19:53:42.5 lineinfo[1] Exception:
- 'NoneType' object has no attribute '__getitem__'
-self.dictYouTube['name']: The Number of the Beast (2015 Remaster)
-line_time: 3.25125  | line_text: Duration: 04:50.93
-lineinfo: None  | see: 2.0
-
-#1 - Before 142
-line_time: 0.01  | line_text: Ooh, stop
-line_time: 26.56  | line_text: With your feet on the air and your head on the ground
-line_time: 0.0933333333333  | line_text: LRC App Version: v1.2.3
-#2 - Before 261
-line_time: 0.02  | line_text: 00:01.12]Put your loving hand out, baby
-line_time: 11.5  | line_text: 'Cause I'm beggin'
-line_time: 1.135  | line_text: LRC Creator: Marlon
-#3 - Before 364
-line_time: 0.0466666666667  | line_text: LRC App: www.megalobiz.com/lrc/maker
-#4 - Before 465
-line_time: 0.02  | line_text: 00:01.12]Put your loving hand out, baby
-line_time: 11.5  | line_text: 'Cause I'm beggin'
-line_time: 0.363333333333  | line_text: LRC App: www.megalobiz.com/lrc/maker
-line_time: 0.0933333333333  | line_text: LRC App Version: v1.2.3
-#5 - Before 568
-line_time: 1.135  | line_text: LRC Creator: Marlon
-line_time: 1.16  | line_text: Duration: 03:40.37
-#6 - Before 668
-line_time: 0.378333333333  | line_text: Song Title: Losing my religion
-line_time: 1.51333333333  | line_text: LRC App: www.megalobiz.com/lrc/maker
-#7 - Before 778
-NO RECORDS PRINTED
-#8 - Before 888
-line_time: 3.25125  | line_text: Duration: 04:50.93
-
-#1 - Before 142
-self.dictYouTube['name']: Pixies - Where Is My Mind? (Official Lyric Video)
-self.dictYouTube['name']: Pixies - Where Is My Mind? (Official Lyric Video)
-self.dictYouTube['name']: Pour Some Sugar On Me Def Leppard Lyrics
-#2 - Before 261
-self.dictYouTube['name']: Måneskin - Beggin' (Lyric Video) | i'm on my knees when i'm beggin, cause I don't wanna lose you
-self.dictYouTube['name']: Måneskin - Beggin' (Lyric Video) | i'm on my knees when i'm beggin, cause I don't wanna lose you
-self.dictYouTube['name']: R.E.M. - Losing My Religion (Official Music Video)
-#3 - Before 364
-self.dictYouTube['name']: Pour Some Sugar On Me Def Leppard Lyrics
-#4 - Before 465
-self.dictYouTube['name']: Måneskin - Beggin' (Lyric Video) | i'm on my knees when i'm beggin, cause I don't wanna lose you
-self.dictYouTube['name']: Måneskin - Beggin' (Lyric Video) | i'm on my knees when i'm beggin, cause I don't wanna lose you
-self.dictYouTube['name']: Runaround Sue
-self.dictYouTube['name']: Pour Some Sugar On Me Def Leppard Lyrics
-#5 - Before 568
-self.dictYouTube['name']: R.E.M. - Losing My Religion (Official Music Video)
-self.dictYouTube['name']: Bullet For My Valentine - All These Things I Hate Lyrics
-#6 - Before 668
-self.dictYouTube['name']: R.E.M. - Losing My Religion (Official Music Video)
-self.dictYouTube['name']: R.E.M. - Losing My Religion (Official Music Video)
-#7 - Before 778
-NO RECORDS PRINTED
-#8 - Before 888
-self.dictYouTube['name']: The Number of the Beast (2015 Remaster)
-
-ALL OF REM:
-
-05:28:10.7 lineinfo[1] Exception:
- 'NoneType' object has no attribute '__getitem__'
-self.dictYouTube['name']: R.E.M. - Losing My Religion (Official Music Video)
-line_time: 1.135  | line_text: LRC Creator: Marlon
-lineinfo: None  | see: 2.0
-Link: https://www.youtube.com/watch?v=OpvRrhJ-JiQ   NOT FOUND!
-
-17:11:03.2 lineinfo[1] Exception:
- 'NoneType' object has no attribute '__getitem__'
-self.dictYouTube['name']: R.E.M. - Losing My Religion (Official Music Video)
-line_time: 1.135  | line_text: LRC Creator: Marlon
-lineinfo: None  | see: 2.0
-
-18:03:40.5 lineinfo[1] Exception:
- 'NoneType' object has no attribute '__getitem__'
-self.dictYouTube['name']: R.E.M. - Losing My Religion (Official Music Video)
-line_time: 0.378333333333  | line_text: Song Title: Losing my religion
-lineinfo: None  | see: 1.0
-
-18:03:41.9 lineinfo[1] Exception:
- 'NoneType' object has no attribute '__getitem__'
-self.dictYouTube['name']: R.E.M. - Losing My Religion (Official Music Video)
-line_time: 1.51333333333  | line_text: LRC App: www.megalobiz.com/lrc/maker
-lineinfo: None  | see: 3.0
+_close_cb(): Probably closed wrong widget
+toolkit.py ToolTips.get_dict(): self.dict for "widget" not found
+    .140563907705384.140563907705600.140563907705816.140563753007800.140563686969288
+16:31.3687 _close_cb() - tt_dict not found for: 9288
+youTreePasteLrc() ext.write_to_pickle: 2.75 sec
+append lyrics[0]: Bring Me The Horizon - Chelsea Smile lyrics
 
 =============================================================================
-Survey error on click next:
+
+Survey Popup Window causes error when clicking play next:
 "How are your recommendations today?
 N/A, Bad, Fair, Good, Very Good, Extremely Good"
 
