@@ -14844,6 +14844,7 @@ class PlaylistsCommonSelf:
         self.isSmartPlayYouTube = False  # is Smart YouTube Player running?
         self.isViewCountBoost = False  # 30 second play to boost view counts?
         self.youViewCountSkipped = 0  # How many videos skipped so far?
+        self.youViewSkippedTime = 0.0  # What time was video last skipped?
         self.driver = None  # Is Selenium Webdriver opened?
         self.youWindow = None  # DM Browser Window
         self.nameYouTube = None  # = WEB_PLAY_DIR + os.sep + self.act_name + ".csv"
@@ -16917,9 +16918,12 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
                 Link: https://www.youtube.com/watch?v=DLOth-BuCNY   NOT FOUND!
                                            Should be: bEWHpHlfuVU
             '''
-            # May have hit end of list. Start over with first video.
-            you_tree_iid_int = 0
-            self.youPlaylistIndexStartPlay("0", restart=True)
+            # May have hit end of list or YouTube playing recommendation 2023-12-18
+            if self.listYouTubeCurrIndex < len(self.listYouTube) - 1:
+                you_tree_iid_int = self.listYouTubeCurrIndex + 1
+            else:
+                you_tree_iid_int = 0
+            self.youPlaylistIndexStartPlay(str(you_tree_iid_int), restart=True)
 
         song_no = str(you_tree_iid_int + 1).ljust(4)
         self.youPrint("STARTING Playlist - Song №",
@@ -17905,7 +17909,7 @@ Start 06:00. In 4 hours ~60 views last night ~80 views (7,461 est.)
 2023-12-16-14:30 - Skipped: 718, duplicates: 5, errors: 1 - OLD dlineinfo() bug
 2023-12-16-17:36 - Skipped: 818, duplicates: 5, errors: 6 - OLD dlineinfo() bug
 Shutdown - Google not updating daily count. Must add 818 (minimum) later.
-2023-12-16-22:30 - Restart at song #3. YT playlist has 100 songs
+2023-12-16-22:30 - Restart at song #3. YT playlist expanded from 99 to 100 songs
 2023-12-16-23:33 - Skipped: 98, duplicates: 0, errors: 3
 2023-12-17-00:26 - Skipped: 198, duplicates: 0, errors: 1
 2023-12-17-01:19 - Skipped: 299, duplicates: 1, errors: 2
@@ -17926,10 +17930,59 @@ Shutdown - Google not updating daily count. Must add 818 (minimum) later.
 2023-12-17-16:25 - accidental CTRL+C at song #21/100
 2023-12-17-16:30 - Restart.  Must add 858 skipped to Dec 17th total.
 2023-12-17-17:20 - Skipped: 111+858, duplicates: 11, errors: 0
-2023-12-17-18:10 - Skipped: 211+858, duplicates: 11, errors: 0
+2023-12-17-18:14 - Skipped: 216+858, duplicates: 11, errors: 0
+2023-12-17-18:48 - Speed Boost 'Play Next' button overridden by SURVEY WINDOW:
+    Other element would receive the click: <ytd-single-option-survey-option-renderer
+                class="style-scope ytd-single-option-survey-renderer"
+                vertical="">...</ytd-single-option-survey-option-renderer>
+2023-12-17-19:09 - Skipped: 320+858, duplicates: 4, errors: 0
+2023-12-17-19:30 - Skipped: 362+858 = 1,220. SHUTDOWN & Wait for YT to update.
+2023-12-17-22:30 - 12,938 YT views - 11,890 previous = 1,048 (missing 172)
+
+2023-12-18.05:40 - Start new day
+2023-12-18.06:15 - #70 not found - https://www.youtube.com/watch?v=21D_TD-yQ8Q
+                SLIPKNOT x DISTURBED x KORN x SYSTEM OF A DOWN
+                Also not found at skip count #: 102, 121, 131, 140, 150 & 159
+2023-12-18.07:04 - Restart mserve after skipping: 160
+                Random videos playing at skip #: 15, 24, 33, 42, 52
+2023-12-18.07:31 - Shutdown while playing song # 57, Add 217 to day total
+2023-12-18.17:00 - Go to next video if YouTube deviates from Playlist.
+2023-12-18-17:51 - Skipped: 122, duplicates: 22, errors: 1 - song #3, line 4
+2023-12-18-18:03 - Fix error and restart. Must add 160+57+100 (317) to total
+2023-12-18-18:56 - Skipped: 125, duplicates: 25, errors: 0
+2023-12-18-19:50 - Skipped: 238, duplicates: 13, errors: 0
+2023-12-18-19:58 - YT updated video count 14,133 - 12,938 = 1,195 new views
+                1,195 - 517 = 678 extra views, catching up for missing days...
+2023-12-18-20:43 - Skipped: 337, duplicates: -1, errors: 1
+2023-12-18-21:37 - Skipped: 449, duplicates: 12, errors: 0
+2023-12-18-22:18 - Suspend on song # 76
+
+2023-12-19-05:27 - Resume
+2023-12-19-05:40 - Skipped: 563, duplicates: 14, errors: 0
+2023-12-19-06:34 - Skipped: 673, duplicates: 10, errors: 0
+2023-12-19-07:28 - Skipped: 783, duplicates: 10, errors: 1 Song # 63, line 3
+2023-12-19-07:28 - Suspend on song # 1. Resume at 17:35
+2023-12-19-18:28 - Skipped: 892, duplicates: 9, errors: 1 Song # 63, line 4
+2023-12-19-18:29 - Skipped: 893, After song # 99 YouTube went off playlist:
+                https://www.youtube.com/watch?v=dSlYFtXENPo
+                However this is song #18 - "Teenage Dirtbag"
+2023-12-19-19:23 - Skipped: 1,003, duplicates: 10, errors: 3 Songs # 56, 57, 65
+2023-12-19-19:23 - Skipped: 1,112, duplicates: 9, errors: 3 Songs # 65, 70, 92
+
+2023-12-19-21:00 - Restart with code to fix duplicates. Add 75 to new count.
+                YT still stuck at 14,133 views from yesterday.
+2023-12-19-21:50 - YT update 14,905 - 14,133 = 722 new views.
+2023-12-19-21:55 - Skipped: 99
+2023-12-19-22:32 - Suspend at cycle 2, song # 72
+2023-12-20:05:00 - Resume
+2023-12-20:05:16 - Skipped: 198
 
 ===============================================================================
 
+===============================================================================
+
+2023-12-18.05:35 - Play Next button not clickable in full screen mode.
+                Send <SHIFT>+N key codes instead.
 
 ===============================================================================
 
@@ -18007,26 +18060,52 @@ WebDriverException: Message: element click intercepted:
 
         # Over 45 seconds and view count speed boost active?
         if time_video >= 31.0 and self.isViewCountBoost:
-            self.youViewCountSkipped += 1
-            elem = self.driver.find_element_by_xpath(
-                '//*[@class="ytp-next-button ytp-button"]')
-            try:
-                elem.click()  # survey can block next button
-                return
-            except WebDriverException as err:
-                title = "updateYouTubeDuration WebDriverException"
-                text = str(err)
-                message.ShowInfo(self.top, title, text, icon='error',
-                                 thread=self.get_thread_func)
-                self.youPrint("updateYouTubeDuration WebDriverException:\n", err,
-                              nl=True, lv=0)
-                # Can't really do anything until user finishes survey or 'X' it
+            self.youPlayNext()
+            #if not self.youPlayNext():
+            #    print("self.isViewCountBoost TURNED OFF!")
+            #    self.isViewCountBoost = None
 
         if time_video > 0.0:
             self.progressYouTube = time_video
         percent = float(100.0 * self.progressYouTube / self.durationYouTube)
         self.youProVar.set(percent)
         self.youProBar.update_idletasks()
+
+    def youPlayNext(self):
+        """ Play next video in YouTube Playlist.
+            Called with Video Count Speed Boost is active. """
+        now = time.time()
+        if self.youViewSkippedTime and now - self.youViewSkippedTime < 20.0:
+            self.youPrint("Last video skipped < 20 seconds ago.",
+                          "Song index:", self.listYouTubeCurrIndex)
+            return False
+
+        self.youViewSkippedTime = now
+        self.youViewCountSkipped += 1
+
+        actions = ActionChains(self.driver)
+        actions.key_down(Keys.SHIFT)
+        actions.send_keys('N')  # PLAY NEXT VIDEO
+        actions.perform()
+        if True is True:
+            return True
+
+        # OLD code to archive
+
+        elem = self.driver.find_element_by_xpath(
+            '//*[@class="ytp-next-button ytp-button"]')
+        try:
+            elem.click()  # survey can block next button
+            return True
+        except WebDriverException as err:
+            title = "updateYouTubeDuration WebDriverException"
+            text = str(err)
+            message.ShowInfo(self.top, title, text, icon='error',
+                             thread=self.get_thread_func)
+            self.youPrint("updateYouTubeDuration WebDriverException:\n", err,
+                          nl=True, lv=0)
+            # Can't really do anything until user finishes survey or 'X' it
+        return False
 
     def youUpdatePlayerButton(self, player_status):
         """ YouTube Music Player Status determines button text. 
@@ -18263,6 +18342,19 @@ AttributeError: 'NoneType' object has no attribute 'execute_script'
             #       branch-heads/5359@{#1016}),
             #       platform=Linux 4.14.216-0414216-generic x86_64)
             #print("WebDriverException:", err)
+            return None
+        except AttributeError:
+            #   File "/home/rick/python/mserve.py", line 16137, in youSmartPlayAll
+            #     self.youMonitorPlayerStatus(player_status, debug=False)
+            #   File "/home/rick/python/mserve.py", line 17141, in youMonitorPlayerStatus
+            #     player_status = self.youWaitMusicPlayer(debug=False)
+            #   File "/home/rick/python/mserve.py", line 17269, in youWaitMusicPlayer
+            #     player_status = self.youGetPlayerStatus()
+            #   File "/home/rick/python/mserve.py", line 18328, in youGetPlayerStatus
+            #     player_status = self.driver.execute_script(
+            # AttributeError: 'NoneType' object has no attribute 'execute_script'
+            print("youGetPlayerStatus() self.driver is 'NoneType'")
+            print("Was video paused at very start then resumed?")
             return None
 
     def youGetMicroFormat(self):
@@ -18603,8 +18695,7 @@ AttributeError: 'NoneType' object has no attribute 'execute_script'
                 return i
 
         self.youPrint("youTreeNdxByLink():", link_search,
-                      "NOT FOUND!", nl=True, lv=0)
-        # Always print error line (lv=0) with new line before (nl=True)
+                      "NOT FOUND!", nl=True)
         return None
 
     def youTreeCopyLink(self, item):
