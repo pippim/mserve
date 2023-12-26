@@ -8311,10 +8311,14 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
             ext.kill_pid_running(pid)
 
     def check_chrome_tmp_files(self):
-        """ Over a few days, chrome can chew up 5 GB of disk space. """
+        """ Over a few days, chrome can chew up 5 GB of disk space.
+            Everytime driver.quit() isn't run, 150 MB of temp files remain.
+            If driver.quit() is run, Chrome still leaves 4k directory behind.
+            Check for over 1 MB of Chrome files and prompt to delete them.
+        """
         global CHROME_TMP_FILES
         if not CHROME_TMP_FILES:
-            return  # Already done or don't want to kill pids
+            return  # Already done or don't want to clear Chrome temp files
 
         tmp = "/tmp/.com.google.Chrome.*"
         results = os.popen("du "+tmp+" -csh --time").read().splitlines()
@@ -8322,10 +8326,15 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
               "-csh --time' last line:")
         if results:
             print(results[-1])
+            size = toolkit.computer_bytes(results[-1])
+            print("size:", size, " | human:", toolkit.human_bytes(int(size)))
         else:
             print("\nERROR - check_chrome_tmp_files() - No results found!")
             print("Command used: 'du ", tmp, " -csh --time'")
             return
+
+        if size < 1000 * 1000:
+            return  # Less than 1 MB, don't nag every time mserve starts
 
         CHROME_TMP_FILES = False  # Don't show message again this session
 
@@ -14843,8 +14852,9 @@ class PlaylistsCommonSelf:
         self.youDebug = 1  # Debug level. 0=None, 1=min(default), 7=max
         self.isSmartPlayYouTube = False  # is Smart YouTube Player running?
         self.isViewCountBoost = False  # 30 second play to boost view counts?
-        self.youViewCountSkipped = 0  # How many videos skipped so far?
-        self.youViewSkippedTime = 0.0  # What time was video last skipped?
+        self.youViewCountSkipped = 1  # How many videos skipped so far?
+        # 2023-12-24-17:00 - ^^^-- First cycle is 1 video short --^^^
+        self.youViewSkippedTime = 0.0  # Time a video last skipped
         self.driver = None  # Is Selenium Webdriver opened?
         self.youWindow = None  # DM Browser Window
         self.nameYouTube = None  # = WEB_PLAY_DIR + os.sep + self.act_name + ".csv"
@@ -15033,12 +15043,11 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         """
         Usage:
 
-        self.playlists = Playlists(parent, name, title, text, tooltips=self.tt,
-                                   thread=self.get_refresh_thread,
-                                   get_pending=self.get_pending_cnt_total,
-                                   display_lib_title=self.display_lib_title)
-              - Geometry in Type-'window', action-'pls_top'.
-              - build_lib_menu will look at self.playlists.status
+        self.playlists = Playlists(
+            self.lib_top, apply_callback=self.apply_playlists, tooltips=self.tt,
+            pending=self.get_pending_cnt_total, enable_lib_menu=self.enable_lib_menu,
+            thread=self.get_refresh_thread, play_close=self.play_close,
+            display_lib_title=self.display_lib_title, info=self.info)
 
         """
         PlaylistsCommonSelf.__init__(self)  # Define self. variables
@@ -15737,6 +15746,16 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         if self.top:  # May have been closed above.
             self.top.update_idletasks()
 
+    def displayPlaylistCommonTitle(self):
+        """ Set title for Playlist without LRC or for LRC Frame """
+        ''' create_top() shared with create_window() '''
+        common_name = "YouTube Playlist: " + self.act_name
+        common_name += " - " + str(self.act_count) + " Videos."
+        common_name += " - " + tmf.days(self.act_seconds)
+        if self.listYouTubeCurrIndex:
+            common_name += " - Video № " + str(self.listYouTubeCurrIndex + 1)
+        self.top.title(common_name + " - mserve")
+
     def youSetCloseButton(self):
         """ Set self.close_button tooltip text to:
             "Close Playlist"
@@ -16160,13 +16179,19 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         """
 
         self.driver = self.youWindow = None
-        CHROME_DRIVER_VER = "chromedriver108"
-        # TODO replace 108 with actual version
-        # $ google-chrome --version
-        # Google Chrome 108.0.5359.124
+        useChrome = useChromium = useFirefox = False
+        CHROME_DRIVER_VER = "chromedriver108"  # 108 replaced with actual version
         ver = os.popen("google-chrome --version").read().strip()
         ver = ver.split()
-        ver = ver[2].split(".")[0]
+        try:
+            ver = ver[2].split(".")[0]
+            #_ver_int = int(ver)
+            useChrome = True
+        except IndexError:
+            ver = os.popen("chromium --version").read().strip()
+            ver = ver.split()
+            ver = ver[1].split(".")[0]
+            useChromium = True
         CHROME_DRIVER_VER = CHROME_DRIVER_VER.replace("108", ver)
         CHROME_DRIVER_PATH = \
             g.PROGRAM_DIR + CHROME_DRIVER_VER + os.sep + "chromedriver"
@@ -16174,7 +16199,6 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
 
         web = webbrowser.get()
         #print("browser name:", web.name)  # xdg-open
-
         try:
             mon = monitor.Monitors()  # Monitors class list of dicts
             # Start windows
@@ -16199,29 +16223,48 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                 https://stackoverflow.com/questions/38916650/what-are-the-benefits-of-using-marionette-firefoxdriver-instead-of-the-old-selen/38917100#38917100
 
                 """
-                self.driver = webdriver.Chrome(CHROME_DRIVER_PATH)
+                if useChrome:
+                    self.driver = webdriver.Chrome(CHROME_DRIVER_PATH)
+                    # Automated Test Software message suppression (Doesn't work)
+                    # https://stackoverflow.com/a/71257995/6929343
+                    chromeOptions = webdriver.ChromeOptions()
+                    chromeOptions.add_experimental_option("excludeSwitches", ['enable-automation']);
+                elif useChromium:
+                    print("Using Chromium Branch 1")
+                    #self.driver = webdriver.Chrome(CHROME_DRIVER_PATH)
+                    # executable_path = "/usr/bin/chromedriver
+                    #self.driver = webdriver.chromium.Chrome(CHROME_DRIVER_PATH)
                     # Optional argument, if not specified will search path.
+                    self.driver = webdriver.Chrome()  # It will search path
 
-                # Automated Test Software message suppression (Doesn't work)
-                # https://stackoverflow.com/a/71257995/6929343
-                chromeOptions = webdriver.ChromeOptions()
-                chromeOptions.add_experimental_option("excludeSwitches", ['enable-automation']);
 
                 """
+                    Maintainer: https://chromedriver.chromium.org/home
                     WebDriverException: Message: 'chromedriver' executable 
                     needs to be in PATH. Please see 
                     https://sites.google.com/a/chromium.org/chromedriver/home
                     New download links:
                     https://sites.google.com/chromium.org/driver/downloads?authuser=0
+                    
+                    For chrome > 115: https://googlechromelabs.github.io/chrome-for-testing/
+                    E.G. version 120: https://edgedl.me.gvt1.com/edgedl/chrome/chrome-for-testing/
+                                      120.0.6099.109/linux64/chromedriver-linux64.zip
+
+                    To use Chromium instead of Chrome use:
+                    sudo apt install chromium-chromedriver
+                    Credit: https://stackoverflow.com/a/75241037/6929343
                 """
             if "CHROME" in xdg_browser.upper():
-                self.driver = webdriver.Chrome(CHROME_DRIVER_PATH)
-                    # Optional argument, if not specified will search path.
+                if useChrome:
+                    self.driver = webdriver.Chrome(CHROME_DRIVER_PATH)
+                    # Automated Test Software message suppression (Doesn't work)
+                    # https://stackoverflow.com/a/71257995/6929343
+                    chromeOptions = webdriver.ChromeOptions()
+                    chromeOptions.add_experimental_option("excludeSwitches", ['enable-automation']);
+                elif useChromium:
+                    print("Using Chromium Branch 2")
+                    self.driver = webdriver.Chrome()  # It will search path
 
-                # Automated Test Software message suppression (Doesn't work)
-                # https://stackoverflow.com/a/71257995/6929343
-                chromeOptions = webdriver.ChromeOptions()
-                chromeOptions.add_experimental_option("excludeSwitches", ['enable-automation']);
 
         start = time.time()
         while len(end_wins) == len(start_wins):
@@ -16923,6 +16966,9 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
                 you_tree_iid_int = self.listYouTubeCurrIndex + 1
             else:
                 you_tree_iid_int = 0
+                self.youViewSkippedTime = time.time()
+                self.youViewCountSkipped += 1
+
             self.youPlaylistIndexStartPlay(str(you_tree_iid_int), restart=True)
 
         song_no = str(you_tree_iid_int + 1).ljust(4)
@@ -16959,6 +17005,7 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
             self.youLrcBuildFrame(str(you_tree_iid_int))
 
         self.listYouTubeCurrIndex = you_tree_iid_int
+        self.displayPlaylistCommonTitle()
         return link
 
     def youMonitorPlayerStatus(self, player_status, debug=False):
@@ -17520,7 +17567,8 @@ Redundant calls after turning down to 25% and up to 100%:
         self.scrollYT.tag_configure("margin", lmargin1="2m", lmargin2="65m")
         # Fix Control+C  https://stackoverflow.com/a/64938516/6929343
         self.scrollYT.bind("<Button-1>", lambda event: self.scrollYT.focus_set())
-        self.youLrcFrame.update()  # 2023-12-15 - Fix .dlineinfo() errors?
+        self.displayPlaylistCommonTitle()  # is self.top.update() needed?
+        self.youLrcFrame.update()  # 2023-12-15 - Fixes .dlineinfo() errors
 
     def youLrcUpdateTimeOffset(self, item, *_args):
         """ Time Offset has just been changed. """
@@ -17663,6 +17711,10 @@ Redundant calls after turning down to 25% and up to 100%:
             self.top.update_idletasks()  # 2023-12-10 - Required before dlineinfo()
             # Prevent scrolling down to bottom.
             two_bbox = self.scrollYT.dlineinfo(two_before)  # bbox=[L,T,R,B]
+            '''
+
+            
+            '''
             if two_bbox:
                 # Scroll to top pixel of two lines before highlighted lyric line
                 self.scrollYT.yview_scroll(two_bbox[1], 'pixels')
@@ -17796,7 +17848,8 @@ Redundant calls after turning down to 25% and up to 100%:
     def updateYouTubeDuration(self):
         """ Query YouTube duration and update progress bar.
             If self.isViewCountBoost active then click next video.
-
+        """
+        '''
 "How often does YouTube update view count?
 Though YouTube doesn't publish this information,
 we know that it updates views approximately every
@@ -17832,7 +17885,7 @@ Start 06:00. In 4 hours ~60 views last night ~80 views (7,461 est.)
 
 2023-12-12-06:01 - youViewCountSkipped   : 261 (diff = 119)
 2023-12-12-06:52 - youViewCountSkipped   : 364 (diff = 103)
-2023-12-12-07:31 - Suspend (#74 of 98)
+2023-12-12-07:31 - Suspend (№74 of 98)
 2023-12-12-16:33 - Resume
 2023-12-12-16:47 - youViewCountSkipped   : 465 (diff = 101)
 2023-12-12-17:39 - youViewCountSkipped   : 568 (diff = 103)
@@ -17845,18 +17898,18 @@ Start 06:00. In 4 hours ~60 views last night ~80 views (7,461 est.)
 2023-12-12-20:12 - Skipped: 0 - Restart for new YouTube Day
 2023-12-12-21:05 - Skipped: 103, duplicates: 5, errors: 6
 2023-12-12-21:58 - Skipped: 205, duplicates: 4, errors: 4
-2023-12-12-22:08 - Suspend at song # 19 of 98
+2023-12-12-22:08 - Suspend at song № 19 of 98
 
-2023-12-13-05:33 - Resume at song # 19 of 98
+2023-12-13-05:33 - Resume at song № 19 of 98
 2023-12-13-06:15 - Skipped: 307, duplicates: 4, errors: 2
 2023-12-13-06:30 - SURVEY ERROR at skipped count ~340 crashed mserve:
-                Restart mserve at 0 skipped #33 of 98
+                Restart mserve at 0 skipped №33 of 98
 2023-12-13-07:11 - Bug Crash at list end. Previous skipped: ~400:
-                Restart mserve at 0 skipped #41 of 98
-2023-12-13-07:23 - Smart Play song # 96 of 98 to test code change
+                Restart mserve at 0 skipped №41 of 98
+2023-12-13-07:23 - Smart Play song № 96 of 98 to test code change
                 Remember to add 400 to day totals !!!
 2023-12-13-06:15 - Skipped: 26, duplicates: 0, errors: 0
-2023-12-13-17:00 - Resume (#14 of 99 says YT author added 1 song)
+2023-12-13-17:00 - Resume (№14 of 99 says YT author added 1 song)
 2023-12-13-17:47 - Skipped: 130, duplicates: ?, errors: 3
 2023-12-13-18:37 - Skipped: 237, duplicates: 9, errors: 4
 2023-12-13-19:31 - Skipped: 344, duplicates: 6, errors: 3
@@ -17873,25 +17926,25 @@ Start 06:00. In 4 hours ~60 views last night ~80 views (7,461 est.)
 
 2023-12-14-05:56 - Skipped: 310, duplicates: 2, errors: 6
 2023-12-14-06:49 - Skipped: 409, duplicates: 0, errors: 5
-2023-12-14-07:31 - Suspend while playing #79 of 99. Resume at 16:51.
+2023-12-14-07:31 - Suspend while playing №79 of 99. Resume at 16:51.
 2023-12-14-17:03 - Skipped: 508, duplicates: 0, errors: 5
 2023-12-14-17:56 - Skipped: 610, duplicates: 3, errors: 3
 2023-12-14-18:50 - Skipped: 712, duplicates: 3, errors: 4
 2023-12-14-19:43 - Skipped: 818, duplicates: 7, errors: 3
-2023-12-14-20:11 - Skipped: 870, duplicates: 2, errors: 2 (stop at #50)
+2023-12-14-20:11 - Skipped: 870, duplicates: 2, errors: 2 (stop at №50)
                 YT updated: 10,053 - 9,293 previous = 760 new views
                 870 view skipped count (missing 90 due to lag)
 
 2023-12-14-20:15 - Restart mserve with new code
 2023-12-14-21:05 - Skipped: 112, duplicates: 12, errors: 2
 2023-12-14-22:03 - Skipped: 219, duplicates: 8, errors: 3
-2023-12-14-22:21 - Suspend at song #34. Resume at 23:30 (est. time)
+2023-12-14-22:21 - Suspend at song №34. Resume at 23:30 (est. time)
 2023-12-14-23:59 - Skipped: 376, duplicates: 8, errors: 2
 2023-12-14-23:59 - Suspend (glitches in the Matrix...)
 2023-12-15-06:15 - Skipped: 479, duplicates: 4, errors: 6
 2023-12-15-07:11 - Skipped: 589, duplicates: 1, errors: 3
-2023-12-15-07:29 - Suspend while playing #32 of 99.
-2023-12-15-16:40 - Resume #33 of 99.
+2023-12-15-07:29 - Suspend while playing №32 of 99.
+2023-12-15-16:40 - Resume №33 of 99.
 2023-12-15-17:15 - Skipped: 695, duplicates: 7, errors: 6
 2023-12-15-18:09 - Skipped: 807, duplicates: 13, errors: 3
 2023-12-15-19:03 - Skipped: 916, duplicates: 10, errors: 1
@@ -17974,10 +18027,119 @@ Shutdown - Google not updating daily count. Must add 818 (minimum) later.
 2023-12-19-21:50 - YT update 14,905 - 14,133 = 722 new views.
 2023-12-19-21:55 - Skipped: 99
 2023-12-19-22:32 - Suspend at cycle 2, song # 72
-2023-12-20:05:00 - Resume
-2023-12-20:05:16 - Skipped: 198
+2023-12-20-05:00 - Resume
+2023-12-20-05:16 - Skipped: 198, error: Song # 92, line # 3
+2023-12-20-06:09 - Skipped: 297. Shutdown at 200 for the YT day count so far today.
+2023-12-20-06:09 - Restart mserve with new skipped count +1 for last playlist video.
+2023-12-20-07:04 - Skipped: 99, error: Song # 3 line 4
+2023-12-20-07:30 - Suspend, resume at 16:45
+2023-12-20-17:15 - Skipped: 199 (Must add 200 for YT count + ~200-300 day before?)
+2023-12-20-18:08 - Skipped: 299 (Add ~400-500 for YT day count)
+2023-12-20-19:02 - Skipped: 399
+2023-12-20-19:56 - Skipped: 499
+2023-12-20-20:48 - Skipped: 599, error: Song # 42, line 3
+2023-12-20-20:50 - YT update 15,673 - 14,905 = 768 new views (missing ~232)
+
+2023-12-20-21:00 - Restart with code to fix first video skipped count.
+2023-12-20-21:52 - Skipped: 100, error: Song # 3, line 4
+2023-12-21-05:49 - Skipped: 200 (suspend & resume inbetween)
+2023-12-21-06:43 - Skipped: 300
+2023-12-21-16:52 - Skipped: 400 (suspend & resume inbetween)
+2023-12-21-17:06 - Skipped: 429, Caused by YT straying off playlist
+2023-12-21-17:44 - Skipped: 500
+2023-12-21-18:38 - Skipped: 600
+2023-12-21-19:31 - Skipped: 700, error: Song #11, line 3
+2023-12-21-19:55 - Sometime previous. YT view 16,598 - 15,673 = 925 (extra 225)
+2023-12-21-20:05 - Error - Song # 63, line 5
+2023-12-21-20:06 - Skipped: 764, Caused by YT straying off playlist?
+2023-12-21-20:25 - Skipped: 800
+2023-12-21-20:31 - Error - Song # 12, line 5 (a.k.a.: S#12/L#5.)
+2023-12-21-21:19 - Skipped: 900
+21:21-S#4/L#6. 21:37-S#33/L#3. 21:49-S#56/L#4. 21:54-S#65/L#3. 22:08-S#92/L#9.
+2023-12-21-22:13 - Skipped: 1000
+2023-12-22-05:56 - Skipped: 1100 (suspend & resume inbetween)
+06:02-S#12/L#6. 06:03-S#14/L#5. 06:26-S#56/L#4. 06:31-S#65/L#4. 06:45-S#92/L#9.
+2023-12-22-06:50 - Skipped: 1200
+06:56-S#12/L#6. 07:07-S#33/L#4. 07:10-S#38/L#5.
+2023-12-22-16:28 - Skipped: 1300 (suspend & resume inbetween)
+2023-12-22-17:35 - Skipped: 1400, Error: 17:24-S#82/L#3.
+2023-12-22-18:29 - Skipped: 1500, 17:48-S#25/L#7. 18:12-S#69/L#6. 18:19-S#82/L#4.
+18:37-S#14/L#5. 18:53-S#44/L#3. 18:55-S#48/L#3. 19:05-S#67/L#2. 19:05-S#67/L#3.
+2023-12-22-19:23 - Skipped: 1600
+19:40-S#3/L#5. 19:57-S#64/L#5. 19:59-S#67/L#6. 19:59-S#67/L#7. 20:01-S#70/L#8.
+2023-12-22-20:17 - Skipped: 1700
+20:20-S#4/L#14. 20:32-S#26/L#4. 20:48-S#57/L#7. 20:48-S#57/L#8. 20:54-S#67/L#3.
+20:54-S#67/L#4. 21:08-S#92/L#11. 21:08-S#92/L#12.
+2023-12-22-21:12 - Skipped: 1800
+21:15-S#6/L#3. 21:16-S#7/L#6. 21:16-S#7/L#7. 21:25-S#24/L#11. 21:29:34.6 +7 more
+2023-12-22-22:07 - Skipped: 1900, End until next day resets from 16,381
+
+2023-12-23-06:57 - mserve restart. YT stuck at 16,381 views for two days
+2023-12-23-07:50 - Skipped: 99, Errors: 06:57-S#3/L#4
+2023-12-23-08:43 - Skipped: 199 (add ~1200 to next YT day's view count update)
+2023-12-23-09:37 - Skipped: 299
+2023-12-23-10:31 - Skipped: 399
+2023-12-23-11:24 - Skipped: 499
+2023-12-23-12:18 - Skipped: 599 (add ~1200 to next YT day's view count update)
+2023-12-23-13:11 - Skipped: 699, Errors: 12:48-S#57/L#3.
+2023-12-23-14:04 - Skipped: 799, Errors: 13:17-S#11/L#5. 13:41-S#57/L#4.
+2023-12-23-14:54 - Skipped: 892, 14:10-S#12/L#3. 14:35-S#57/L#5. 14:37-S#63/L#5.
+2023-12-23-14:58 - Skipped: 899, 14:43-S#73/L#4. 14:53-S#92/L#8.
+2023-12-23-15:52 - Skipped: 999, 15:04-S#12/L#4. 15:32-S#65/L#5.
+2023-12-23-16:47 - Skipped: 1099, Errors: 16:22-S#56/L#5.
+2023-12-23-16:49 - S#4/L#6. 17:05-S#33/L#5. 17:37-S#92/L#9. 17:37-S#92/L#10.
+2023-12-23-17:42 - Skipped: 1199, Errors are increasing as system lags more
+2023-12-23-17:44 - S#4 /L#8. 17:50-S#14/L#4. 17:52-S#18/L#4. 17:52-S#18/L#5.
+2023-12-23-18:37 - Skipped: 1299, Errors: 17:55-S#24/L#6. 18:03-S#38/L#5.
+2023-12-23-18:58 - S#38/L#6. 19:07-S#53/L#2.
+2023-12-23-19:09 - YT update 17,247 - 16,381 = 866 views (missing 1600 views)
+                ibus-daemon at 20% cpu, 1 minute for playtop to close, libtop
+                still up after two minutes so use kill -9. Reboot needed...
+
+2023-12-23-21:06 - Reboot Ubuntu and Restart mserve
+2023-12-24-08:30 - Skipped: 300 plus yesterdays missing 1600 = 1900.
+2023-12-24-09:25 - Skipped: 99 (99 is true because video #30 requires sign-on)
+2023-12-24-10:19 - Skipped: 199
+2023-12-24-10:30 - Accidental CTRL+C (Add 2120 to today's YT count)
+2023-12-24-11:24 - Skipped: 99, Error: 10:34-S#8/L#3.
+2023-12-24-11:35 - Skipped: 119 (Accidentally played song #100)
+2023-12-24-12:28 - Skipped: 219
+2023-12-24-13:11 - Skipped: 300 (close when skipping to song # 81 and restart)
+2023-12-24-14:08 - Skipped: 99, Errors: 13:16-S#3/L#4.0 13:48-S#63/L#3. 
+2023-12-24-15:01 - Skipped: 199, Error: 15:00-S#99/L#5. (Add 2420 to YT count)
+2023-12-24-15:54 - Skipped: 299, Error: 15:40-S#73/L#2. 
+2023-12-24-16:48 - Skipped: 399, Error: 15:56-S#3/L#3.
+2023-12-24-17:42 - Skipped: 499 (add 2420 to YT today's view count)
+2023-12-24-18:36 - Skipped: 599
+2023-12-24-19:29 - Skipped: 699, Error: 19:24-S#92/L#7.
+19:35-S#12/L#3. 19:46-S#33/L#3. 19:59-S#57/L#5. 20:00-S#57/L#5. (not reprint)
+2023-12-24-20:43 - YT views 18,796 - 17,247 = 1,549 new vies. (missing 1,550)
+
+2023-12-25-08:00 - Skipped: 100 (Fresh Start with +1 on first cycle)
+2023-12-25-08:53 - Skipped: 200 (Using Chrome version 108 from 2022-12-02)
+2023-12-25-09:47 - Skipped: 300 (Will upgrade to Chrome 120 from 2023-12-11)
+2023-12-25-10:40 - Skipped: 400 (pippim.com website updated today)
+2023-12-25-11:33 - Skipped: 500 (Only prompt if Chrome temporary files > 1 MB)
+
+2023-12-25-11:39 - S#11/L#3. Restart mserve @ 11:45 w/ 540 views today
+2023-12-25-13:14 - Skipped: 100 (Need to add 540 from earlier today)
+2023-12-25-14:08 - Skipped: 200
+2023-12-25-15:01 - Skipped: 300
+2023-12-25-15:54 - Skipped: 400
+2023-12-25-16:48 - Skipped: 500
+2023-12-25-17:41 - Skipped: 600, Errors: 17:37-S#92/L#7. 17:38-S#94/L#3. 
+2023-12-25-18:00 - Add 634 + 540 (1174) to today's count 
+2023-12-25-19:28 - Restart using Chromium version 120 snap YT = 20,061 views
+                minus previous 18,796 = 1,295 views (extra 91 views)
+
+2023-12-25-20:22 - Skipped: 101 (YT playlist is now 101 videos)
+2023-12-25-21:16 - Skipped: 202 (Chromium 120 is using less CPU than Chrome 108)
+2023-12-25-22:11 - Skipped: 303 (Suspend @ 22:27, song # 30 of 101)
+2023-12-26-06:04 - Skipped: 404 (Resume @ 05:27)
+2023-12-26-06:58 - Skipped: 505
 
 ===============================================================================
+
 
 ===============================================================================
 
@@ -17985,18 +18147,6 @@ Shutdown - Google not updating daily count. Must add 818 (minimum) later.
                 Send <SHIFT>+N key codes instead.
 
 ===============================================================================
-
-When pasting lyrics self.info.cast is called but Close button is missing. An
-error is printed in console from ToolTips():
-
-_close_cb(): Probably closed wrong widget
-toolkit.py ToolTips.get_dict(): self.dict for "widget" not found
-    .140563907705384.140563907705600.140563907705816.140563753007800.140563686969288
-16:31.3687 _close_cb() - tt_dict not found for: 9288
-youTreePasteLrc() ext.write_to_pickle: 2.75 sec
-append lyrics[0]: Bring Me The Horizon - Chelsea Smile lyrics
-
-=============================================================================
 
 Survey Popup Window causes error when clicking play next:
 "How are your recommendations today?
@@ -18045,7 +18195,7 @@ WebDriverException: Message: element click intercepted:
         platform=Linux 4.14.216-0414216-generic x86_64)
 =============================================================================
 
-        """
+        '''
         if self.durationYouTube == 0.0:
             return  # Can't divide by zero
 
@@ -18075,7 +18225,9 @@ WebDriverException: Message: element click intercepted:
         """ Play next video in YouTube Playlist.
             Called with Video Count Speed Boost is active. """
         now = time.time()
-        if self.youViewSkippedTime and now - self.youViewSkippedTime < 20.0:
+        if self.youViewSkippedTime != 0.0 and \
+                now - self.youViewSkippedTime < 20.0:
+            # TODO: What about deleted, private & age restricted videos?
             self.youPrint("Last video skipped < 20 seconds ago.",
                           "Song index:", self.listYouTubeCurrIndex)
             return False
@@ -18607,12 +18759,13 @@ AttributeError: 'NoneType' object has no attribute 'execute_script'
 
         title = "30 second View Count Boost"
         text = \
-            "View Count Boost active?: " + str(self.isViewCountBoost) + "\n\n" + \
-            "Number of videos skipped: " + str(self.youViewCountSkipped) + "\n\n" + \
+            "View Count Boost active?: " + str(self.isViewCountBoost) + "\n" + \
+            "Number of videos skipped: " + str(self.youViewCountSkipped) + "\n" + \
             "When View Count Boost is active, only the first 30 seconds" + "\n" + \
-            "plays. This creates more view counts in YouTube tomorrow.\n"
+            "plays. This creates more view counts for YouTube Playlist.\n"
 
-        message.ShowInfo(self.top, title, text, thread=self.get_thread_func)
+        self.youPrint(text, nl=True, lv=0)
+        message.ShowInfo(self.top, title, text, 'left', thread=self.get_thread_func)
 
     def youSetDebug(self, *_args):
         """ Set Debug level (self.youDebug) for self.youPrint(level). """
@@ -19905,14 +20058,17 @@ FADE_OUT_SPAN = 400     # 1/5 second to fade out
                 ''' Oct 18/23 TEST - '''
                 if self.widget == self.text:
                     #toolkit.print_trace()
-                    print("_close_cb(): Probably closed wrong widget")
-                    tt_dict = self.tt.get_dict(self.widget)  # Not found
-                    if tt_dict is None:
-                        prt_time = datetime.datetime.now().strftime("%M:%S.%f")[:-2]
-                        print(prt_time, "_close_cb() - tt_dict not found for:",
-                              str(self.widget)[-4:])
+                    # 2023-12-24 - Comment out errors below, no Close button
+                    # during info.cast()
+                    #print("_close_cb(): Probably closed wrong widget")
+                    #tt_dict = self.tt.get_dict(self.widget)  # Not found
+                    #if tt_dict is None:
+                        #prt_time = datetime.datetime.now().strftime("%M:%S.%f")[:-2]
+                        #print(prt_time, "_close_cb() - tt_dict not found for:",
+                        #      str(self.widget)[-4:])
                     # Next step is to print widget for Hide Chronology after
                     # built
+                    pass
 
             # Aug 12/23 - For some reason, self.frame is None for first time.
             if self.frame:

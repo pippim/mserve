@@ -1172,6 +1172,47 @@ def human_bytes(size, decimals=1, space=True):
     return rounded + pad + uom[off]
 
 
+def computer_bytes(size):
+    """ Passed 127.38 MB, 12K, 15.1GB, 876 KB, etc.
+        Returns float
+
+        Credit: https://stackoverflow.com/a/5917250/6929343
+    """
+    match = re.match(r'^\D*\.?\D+$', size, re.I)
+    # Credit: https://stackoverflow.com/a/430102/6929343
+    match = re.match(r"([a-z]+)([0-9]+)", size, re.I)
+    # https: // stackoverflow.com / a / 430296 / 6929343
+    size = size.strip()  # attempt to get rid of leading null, no luck :(
+    results = re.split(r'(\d+)', size)
+    # Passed: 16K	2023-12-24 23:21	total
+    # results: ['', '16', 'K\t', '2023', '-', '12', '-', '24', ' ', '23', ':', '21', '\ttotal']
+    #print("results:", results)
+    #if match:
+    #    results = match.groups()
+    #else:
+    #    print("computer_bytes(size) NO match", match, "size:", size)
+    #    return 0
+    #print("computer_bytes(size) results:", results)
+    size = float(results[1])
+    if size == 0:
+        return 0
+    uom = results[2].lstrip()  # Grab Unit of Measure
+    uom = uom[0].upper()  # First non-blank character
+    uom_dict = {
+        "K": 1000.0,
+        "M": 1000000.0,
+        "G": 1000000000.0,
+        "T": 1000000000000.0,
+        "E": 1000000000000000.0,
+        "P": 1000000000000000000.0,
+        "Y": 1000000000000000000000.0,
+        "Z": 1000000000000000000000000.0
+    }
+    multiplier = uom_dict.get(uom, 1.0)  # If not found multiply by 1.0
+    converted = size * multiplier
+    return int(converted)
+
+
 class SearchText:
     """ Search for string in text and highlight it from:
     https://www.geeksforgeeks.org/search-string-in-text-using-python-tkinter/
