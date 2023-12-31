@@ -1460,11 +1460,14 @@ active-plugins "['core', 'composite', 'opengl', 'regex', 'mousepoll',
 
     # noinspection SpellCheckingInspection
     def trg_check_full_screen(self):
-        """  The target window can stay maximized for undecorated windows only. We need to get
-             "always on top" (above) state, Maximized Vertically and Maximized Horizontally
-              states.
+        """
 
-        NOT USED - Because taking out of full screen brings up chat window for hockey game.
+            NOT USED - NOT USED - NOT USED - NOT USED - NOT USED - NOT USED
+          
+        The target window can stay maximized for undecorated windows only. Get
+        "always on top", Maximized Vertically and Maximized Horizontally states.
+
+        NOT USED - Because taking out of full screen brings up chat window.
 
         Change mind - CBC doesn't have chat window and stays in full screen on top.
                       YouTube doesn't work coming out of full screen either.

@@ -17434,6 +17434,7 @@ Redundant calls after turning down to 25% and up to 100%:
 
         """
         if self.youLrcFrame:
+            # 2023-12-28 - This branch never executed. Too laggy after 500 x.
             self.youTreeFrame.grid_remove()  # Remove row 0 Treeview Frame
             self.youLrcFrame.grid()  # Reactivate row 1 LRC Frame
             self.youSetCloseButton()  # Set close button text
@@ -17473,7 +17474,7 @@ Redundant calls after turning down to 25% and up to 100%:
 
         # Song progress seconds into duration
         self.youProLrcVar = tk.StringVar()
-        self.youProLrcVar.set("Progress: 0.0")
+        self.youProLrcVar.set("Progress: 0")
         position = tk.Label(info_frame, textvariable=self.youProLrcVar,
                             font=g.FONT, wraplength=320, justify="center")
         position.grid(row=3, column=0, sticky=tk.EW, padx=5, pady=21)
@@ -17517,11 +17518,6 @@ Redundant calls after turning down to 25% and up to 100%:
         self.scrollYT = toolkit.CustomScrolledText(
             self.youLrcFrame, state="normal", font=g.FONT14,
             borderwidth=15, relief=tk.FLAT)
-        self.scrollYT.configure(background="#eeeeee")  # Replace "LightGrey"
-        self.scrollYT.config(spacing1=20)  # Spacing above the first line in a block of text
-        self.scrollYT.config(spacing2=10)  # Spacing between the lines in a block of text
-        self.scrollYT.config(spacing3=20)  # Spacing after the last line in a block of text
-        self.scrollYT.tag_configure("center", justify='center')
 
         ''' Insert Lyrics Lines '''
         self.youFirstLrcTimeNdx = None  # 0-Index of first line with [mm:ss.99]
@@ -17539,8 +17535,13 @@ Redundant calls after turning down to 25% and up to 100%:
                 if self.youFirstLrcTimeNdx is None:  # don't test for not 0
                     self.youFirstLrcTimeNdx = ndx
                     self.youFirstLrcTime = line_time
-
         self.scrollYT.configure(state="disabled")
+
+        self.scrollYT.configure(background="#eeeeee")  # Replace "LightGrey"
+        self.scrollYT.config(spacing1=20)  # Spacing above the first line in a block of text
+        self.scrollYT.config(spacing2=10)  # Spacing between the lines in a block of text
+        self.scrollYT.config(spacing3=20)  # Spacing after the last line in a block of text
+        self.scrollYT.tag_configure("center", justify='center')
 
         self.scrollYT.tag_add("center", "1.0", "end")
         self.scrollYT.grid(row=0, column=1, padx=3, pady=3, sticky=tk.NSEW)
@@ -17567,7 +17568,9 @@ Redundant calls after turning down to 25% and up to 100%:
         self.scrollYT.tag_configure("margin", lmargin1="2m", lmargin2="65m")
         # Fix Control+C  https://stackoverflow.com/a/64938516/6929343
         self.scrollYT.bind("<Button-1>", lambda event: self.scrollYT.focus_set())
+
         self.displayPlaylistCommonTitle()  # is self.top.update() needed?
+
         self.youLrcFrame.update()  # 2023-12-15 - Fixes .dlineinfo() errors
 
     def youLrcUpdateTimeOffset(self, item, *_args):
@@ -17638,10 +17641,14 @@ Redundant calls after turning down to 25% and up to 100%:
         if self.youLrcFrame is None:
             return  # Frame hasn't been created yet
 
-        self.youLrcFrame.grid_remove()  # Remove LRC frame
+        #self.youLrcFrame.grid_remove()  # Remove LRC frame
+        self.youLrcFrame.destroy()  # Destroy LRC frame
+        self.youLrcFrame = None  # Reflect LRC frame is NOT mounted
+        # Above: Quick and dirty speed test after 600 videos is remove slow?
         self.youTreeFrame.grid()  # Restore Treeview frame
         self.hasLrcForVideo = None
         self.youSetCloseButton()
+        self.top.update_idletasks()
 
     def youLrcHighlightLine(self):
         """ Highlight LRC (synchronized lyrics) line based on progress """
@@ -18133,12 +18140,67 @@ Shutdown - Google not updating daily count. Must add 818 (minimum) later.
                 minus previous 18,796 = 1,295 views (extra 91 views)
 
 2023-12-25-20:22 - Skipped: 101 (YT playlist is now 101 videos)
-2023-12-25-21:16 - Skipped: 202 (Chromium 120 is using less CPU than Chrome 108)
+2023-12-25-21:16 - Skipped: 202 (Chromium 120 uses less CPU than Chrome 108)
 2023-12-25-22:11 - Skipped: 303 (Suspend @ 22:27, song # 30 of 101)
-2023-12-26-06:04 - Skipped: 404 (Resume @ 05:27)
-2023-12-26-06:58 - Skipped: 505
+2023-12-26-06:04 - Skipped: 404 (Resume @ 5:27)
+2023-12-26-06:59 - Skipped: 505 (Suspend @ 7:27)
+2023-12-26-17:05 - Skipped: 606, Error: 07:05-S#11/L#4.
+2023-12-26-18:00 - Skipped: 707, 17:35-S#56/L#3. 17:39-S#63/L#5. 17:40-S#65/L#3.
+2023-12-26-18:54 - Skipped: 808, S#12/L#5. S#41/L#4. S#56/L#4. S#99/L#8.
+2023-12-26-19:02 - S#12/L#5. 19:02-S#12/L#6. 19:31-S#65/L#5. 19:32-S#67/L#2.
+2023-12-26-19:32 - S#67/L#3. Taking 7 seconds to paint self.youLrcFrame.
+2023-12-26-19:51 - Skipped: 909, Errors: 19:43-S#88/L#3. 19:50-S#100/L#4.
+                YT Count 21,489 - previous 20,061 = 1,428 (extra 519 views)
+
+2023-12-26-20:05 - Restart with new self.youLrcFrame.destroy()
+2023-12-26-20:59 - Skipped: 101
+2023-12-26-21:54 - Skipped: 202 (Suspend @ 22:20, song # 48 of 101)
+2023-12-27-06:01 - Skipped: 303 (Resume @ 5:33)
+2023-12-27-06:55 - Skipped: 404 (Suspend @ 07:32, song # 67 of 101)
+2023-12-27-17:11 - Skipped: 505 (Resume @ 16:54)
+2023-12-27-18:06 - Skipped: 606, Errors: 17:12-S#3/L#3. 17:12-S#3/L#4.
+2023-12-27-19:01 - Skipped: 707, Errors: 18:41-S#66/L#5.
+2023-12-27-19:56 - Skipped: 808 check updates 20:20, 20:45
+2023-12-27-20:51 - Skipped: 909 check updates 20:51, 21:07, song #28 (937 total)
+                YT views 22,424 - 21,489 = 935 (26 extra views)
+
+2023-12-27-21:10 - Restart speed boost with 0 views
+2023-12-27-22:04 - Skipped: 101, Error: 21:58-S#90/L#4. 
+2023-12-28-05:41 - Skipped: 202 (Suspend and resume inbetween)  
+2023-12-28-17:03 - Skipped: 306 (Suspend and resume w/o hover over ads)  
+2023-12-28-17:58 - Skipped: 407, Error: 17:25-S#42/L#3.
+2023-12-28-18:52 - Skipped: 508
+2023-12-28-19:46 - Skipped: 609, check updates 20:07, 20:43
+2023-12-28-20:41 - Skipped: 710, check updates 21:02, 21:21
+2023-12-28-21:35 - Skipped: 811
+2023-12-28-22:00 - YT view count 22,056 - 22,424 = -368 lost views? 
+
+2023-12-29-05:33 - Fresh start new day at 0
+2023-12-29-06:28 - Skipped: 101
+2023-12-29-07:22 - Skipped: 202
+2023-12-29-17:30 - Skipped: 303
+2023-12-29-18:24 - Skipped: 404, Error: 17:52-S#42/L#3.
+2023-12-29-19:19 - Skipped: 505
+2023-12-29-20:12 - Skipped: 606
+2023-12-29-23:41 - YT 21,496 - 22,056 = -560 views lost. Kill program for day.
+
+SWITCH to Playlist Chill with 891 views
+2023-12-30-09:16 - Start View Count Boost on song #4 of 122 of Chill Playlist
+2023-12-30-10:20 - Skipped: 117
+2023-12-30-11:25 - Skipped: 235, Error: 10:23-S#7/L#3.
+2023-12-30-12:29 - Skipped: 353
+2023-12-30-13:34 - Skipped: 471
+2023-12-30-14:38 - Skipped: 589 (Suspend for a while)
+2023-12-30-16:48 - Skipped: 707 (Resume after awhile)
+2023-12-30-17:52 - Skipped: 825
+2023-12-30-18:56 - Skipped: 943
+2023-12-30-20:00 - Skipped: 1060 - shutdown at 1070
+
+2023-12-31-05:00 - Rock Playlist 21,492 - 21,496 = -4 views lost
+                Chill Playlist 891 views (unchanged)
 
 ===============================================================================
+
 
 
 ===============================================================================
@@ -18197,6 +18259,7 @@ WebDriverException: Message: element click intercepted:
 
         '''
         if self.durationYouTube == 0.0:
+            self.youPrint("updateYouTubeDuration() video duration is ZERO!")
             return  # Can't divide by zero
 
         try:
