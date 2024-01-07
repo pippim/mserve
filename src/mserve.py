@@ -8326,7 +8326,7 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
               "-csh --time' last line:")
         if results:
             print(results[-1])
-            size = toolkit.computer_bytes(results[-1])
+            size = toolkit.computer_bytes(results[-1], decimals=True)
             print("size:", size, " | human:", toolkit.human_bytes(int(size)))
         else:
             print("\nERROR - check_chrome_tmp_files() - No results found!")
@@ -18139,6 +18139,8 @@ Shutdown - Google not updating daily count. Must add 818 (minimum) later.
 2023-12-25-19:28 - Restart using Chromium version 120 snap YT = 20,061 views
                 minus previous 18,796 = 1,295 views (extra 91 views)
 
+NOTE: Chromium 120 doesn't leave temporary files behind like Chrome 108. 
+
 2023-12-25-20:22 - Skipped: 101 (YT playlist is now 101 videos)
 2023-12-25-21:16 - Skipped: 202 (Chromium 120 uses less CPU than Chrome 108)
 2023-12-25-22:11 - Skipped: 303 (Suspend @ 22:27, song # 30 of 101)
@@ -18196,66 +18198,78 @@ SWITCH to Playlist Chill with 891 views
 2023-12-30-18:56 - Skipped: 943
 2023-12-30-20:00 - Skipped: 1060 - shutdown at 1070
 
-2023-12-31-05:00 - Rock Playlist 21,492 - 21,496 = -4 views lost
-                Chill Playlist 891 views (unchanged)
+2023-12-31-05:00 - Chill Playlist 891 views (unchanged) 
+                Rock Playlist 21,492 - 21,496 = -4 views lost
+2023-12-31-21:42 - Chill 2,030 - 891 = 1,139 new views (s/b 1070 extra 69 new)
+                Rock 21,542 - 21,492 = 50 new views.
+
+2024-01-01-08:14 - START Rock Playlist with speed boost. YT Views: 21,542
+2024-01-01-09:06 - Skipped: 102, 10:03-204, 10:57-306, 11:52-408, 12:46-510
+2024-01-01-13:40 - Skipped: 612, 14:35-714, 15:29-816, 16:23-918, 17:18-1,020
+2024-01-01-16:45 - Runaround Sue  | Video No.: 42  | text_start: 3.0+1c
+2024-01-01-17:18 - Skipped   : 1020
+2024-01-01-17:40 - Runaround Sue  | Video No.: 42  | text_start: 3.0+1c
+2024-01-01-18:12 - Skipped: 1,122, 19:07-1,224, 20:02-1,326
+2024-01-01-20:04 - Stop for YT update. Total 1,330 view boost on Rock Playlist
+2024-01-01-21:00 - Chill 2,030 - 2,030 = 0 new views
+                Rock 21,563 - 21,542 = 19 new views (missing 1,311)
+
+2024-01-01-21:06 - START Chill Playlist with speed boost. YT Views: 2,030
+2024-01-01-21:39 - Skipped: 58, 22:12-118 +40? = 158?
+2024-01-02-05:34 - Reboot from 0
+2024-01-02-07:12 - Restart Add 110 for this morning + 158 = ~258.
+2024-01-02-18:36 - Skipped: 118, 19:40-236 + 36 = 272 + 258 = 580 day total
+2024-01-02-20:00 - YT Chill 2,212 - 2,030 = 182 new views (~400 short)
+                YT Rock 22,853 - 21,563 = 1,290 new views (21 short)
+
+2024-01-02-20:05 - START Rock Playlist with speed boost. YT Views: 22,853
+2024-01-02-20:58 - Guns N' Roses - Don't Cry (Lyrics) ?  | Video No.: 99
+2024-01-02-20:58 - text_start: 7.0+1c  | line_text: Talk to me softly
+2024-01-02-21:00 - Skipped: 102, 21:54-204 (suspend at #41 of 102)
+2024-01-03-06:03 - Skipped: 306, 06:57-408 (suspend at #56 of 102)
+2024-01-03-17:55 - Scorpions - Still Loving  | line 6: To win back
+2024-01-03-17:59 - Skipped: 510, 18:53-612, 19:20-660 
+2024-01-03-19:20 - YT Chill 1,514 - 2,212 = -698 new views (missing ~1,100)
+                YT Rock 23,093 - 22,853 = 240 new views (missing 461)
+
+2024-01-03-19:22 - START Chill Playlist with speed boost. YT Views: 1,514
+2024-01-03-20:26 - Skipped: 118, 21:30-236, 22:34-354 (Suspend on song #1)
+2024-01-04-05:08 - Pastlives (Lyrics) Don't wake me I'm not dreaming
+2024-01-04-05:08 - No.: 1  | line 4: PAST LIVE COULDN'T EVER HOLD ME DOWN
+2024-01-04-05:09 - Skipped: 356, 06:12-474 #6:31 suspend song #36
+2024-01-04-05:09 - Skipped: 592, 18:26-710, 19:29-828, 20:33-946, 21:07-1012
+2024-01-04-21:11 - YT Chill 1,514 unchanged (missing ~2,112)
+                YT Rock 23,507 - 23,093 = 414 new views (now missing 47)
+
+2024-01-04-21:13 - START Rock Playlist with speed boost. YT Views: 23,507
+2024-01-04-22:39 - Skipped: 100 (suspend around song# 8)
+2024-01-05-06:02 - Skipped: 204 (suspend at song# 53 )
+2024-01-05-17:48 - Skipped: 308, 18:44-412, 19:40-516
+2024-01-05-19:40 - YT Chill 1,514 unchanged (missing ~2,112)
+                YT Rock 23,507 (unchanged missing ~516+47)
+
+2024-01-06-06:56 - YT Chill 2,342 - 1,514 = 828 new (missing ~1,284)
+                YT Rock 22,368 - 23,507 = -1139 new (now missing ~1,702)
+
+2024-01-06-07:15 - START Chill Playlist with speed boost. YT Views: 2,342
+2024-01-06-07:15 - "Shutting down, dialog prompt or player broken!"
+2024-01-06-07:24 - Hey  | Video No.: 16  | line # 8.0+1c  | line_text: hey
+2024-01-06-08:20 - Skipped: 118, 09:23-236, 10:27-354 
+2024-01-06-10:41 - Måneskin - Beggin' (Lyric Video) | Video: 27  | Line: 7
+                i'm on my knees when i'm beggin, cause I don't wanna lose you
+2024-01-06-11:30 - Skipped: 472, 12:34-590, 13:37-708, 14:41-826, 15:44-944
+2024-01-06-16:48 - Skipped: 1,062 + 83
+2024-01-06-20:20 - YT Chill 2,342 - 2,342 = 0 new (now missing ~2,429)
+                YT Rock 22,787 - 22,368 = 419 new (now missing ~1,283)
+
+2024-01-07-09:00 - START Rock Playlist with speed boost. YT Views: 22,787
+2024-01-07-10:00 - Skipped: 104
 
 ===============================================================================
 
-
-
 ===============================================================================
 
-2023-12-18.05:35 - Play Next button not clickable in full screen mode.
-                Send <SHIFT>+N key codes instead.
-
 ===============================================================================
-
-Survey Popup Window causes error when clicking play next:
-"How are your recommendations today?
-N/A, Bad, Fair, Good, Very Good, Extremely Good"
-
-Exception in Tkinter callback
-Traceback (most recent call last):
-  File "/usr/lib/python2.7/lib-tk/Tkinter.py", line 1540, in __call__
-    return self.func(*args)
-  File "/home/rick/python/mserve.py", line 15812, in <lambda>
-    command=lambda: self.youSmartPlayAll())
-  File "/home/rick/python/mserve.py", line 16135, in youSmartPlayAll
-    self.youMonitorPlayerStatus(player_status, debug=False)
-  File "/home/rick/python/mserve.py", line 17009, in youMonitorPlayerStatus
-    self.updateYouTubeDuration()
-  File "/home/rick/python/mserve.py", line 18053, in updateYouTubeDuration
-    except Exception as err:
-  File "/usr/lib/python2.7/dist-packages/selenium/webdriver/remote/webelement.py",
-        line 75, in click
-    self._execute(Command.CLICK_ELEMENT)
-  File "/usr/lib/python2.7/dist-packages/selenium/webdriver/remote/webelement.py",
-        line 454, in _execute
-    return self._parent.execute(command, params)
-  File "/usr/lib/python2.7/dist-packages/selenium/webdriver/remote/webdriver.py",
-        line 201, in execute
-    self.error_handler.check_response(response)
-  File "/usr/lib/python2.7/dist-packages/selenium/webdriver/remote/errorhandler.py",
-        line 181, in check_response
-    raise exception_class(message, screen, stacktrace)
-WebDriverException: Message: element click intercepted:
-        Element <a class="ytp-next-button ytp-button" role="button"
-        data-title-no-tooltip="Next" aria-keyshortcuts="SHIFT+n"
-        aria-disabled="false" aria-label="Next keyboard shortcut SHIFT+n"
-        title="Next (SHIFT+n)"
-        data-preview="https://i1.ytimg.com/vi/n6P0SitRwy8/mqdefault.jpg"
-        data-tooltip-text="Nirvana - Heart-Shaped Box (Official Music Video)"
-        href="https://www.youtube.com/watch?
-        list=PLthF248A1c68TAKl5DBskfJ2fwr1sk9aM&amp;v=n6P0SitRwy8">...</a>
-        is not clickable at point (152, 302). Other element would receive the click:
-        <ytd-single-option-survey-option-renderer
-        class="style-scope ytd-single-option-survey-renderer"
-        vertical="">...</ytd-single-option-survey-option-renderer>
-  (Session info: chrome=108.0.5359.124)
-  (Driver info: chromedriver=108.0.5359.71
-        (1e0e3868ee06e91ad636a874420e3ca3ae3756ac-refs/branch-heads/5359@{#1016}),
-        platform=Linux 4.14.216-0414216-generic x86_64)
-=============================================================================
 
         '''
         if self.durationYouTube == 0.0:

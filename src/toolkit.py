@@ -23,6 +23,7 @@ from __future__ import with_statement       # Error handling for file opens
 #       Jun. 15 2023 - New Tooltip anchor "sc" South Centered for banner_btn
 #       July 11 2023 - Delete unused methods to simplify mserve_config.py
 #       Aug. 15 2023 - Fix 'menu' tooltips on left monitor with self.menu_tuple
+#       Jan. 01 2024 - computer_bytes(size) converts '4.0K blah' to 4000, etc.
 #
 #==============================================================================
 
@@ -1172,18 +1173,45 @@ def human_bytes(size, decimals=1, space=True):
     return rounded + pad + uom[off]
 
 
-def computer_bytes(size):
+def computer_bytes(size, decimals=False):
     """ Passed 127.38 MB, 12K, 15.1GB, 876 KB, etc.
         Returns float
 
         Credit: https://stackoverflow.com/a/5917250/6929343
     """
+    import locale
     match = re.match(r'^\D*\.?\D+$', size, re.I)
     # Credit: https://stackoverflow.com/a/430102/6929343
     match = re.match(r"([a-z]+)([0-9]+)", size, re.I)
     # https: // stackoverflow.com / a / 430296 / 6929343
     size = size.strip()  # attempt to get rid of leading null, no luck :(
-    results = re.split(r'(\d+)', size)
+
+    # 2024-01-02: Doesn't work
+    results = re.split(r'^\D*\.?\D+$', size)
+    print("Experimental results:", results)
+    # Experimental results: ['4.0K\t2023-12-25 12:21\ttotal']
+
+    if decimals:
+        # 2024-01-01 '4.0K' returns '4 bytes'
+        decimal_point = locale.localeconv()["decimal_point"]
+        parts = size.split(decimal_point)
+        whole = parts[0]
+        results = re.split(r'(\d+)', parts[1])
+        if int(results[1]) == 0:
+            size = float(whole)
+        else:
+            size = float(whole) + float(1 / int(results[1]))
+        print("whole:", whole, " | results:", results, " | size:", size)
+    else:
+        results = re.split(r'(\d+)', size)  # 2024-01-01 '4.0K' returns '4 bytes'
+        size = float(results[1])
+    #results = re.split(r'^\D*\.?\D+$', size)  # 2024-01-01 Catch 4.0K
+    #   File "/home/rick/python/mserve.py", line 8329, in check_chrome_tmp_files
+    #     size = toolkit.computer_bytes(results[-1])
+    #   File "/home/rick/python/toolkit.py", line 1198, in computer_bytes
+    #     size = float(results[1])
+    # IndexError: list index out of range
+
     # Passed: 16K	2023-12-24 23:21	total
     # results: ['', '16', 'K\t', '2023', '-', '12', '-', '24', ' ', '23', ':', '21', '\ttotal']
     #print("results:", results)
@@ -1193,7 +1221,6 @@ def computer_bytes(size):
     #    print("computer_bytes(size) NO match", match, "size:", size)
     #    return 0
     #print("computer_bytes(size) results:", results)
-    size = float(results[1])
     if size == 0:
         return 0
     uom = results[2].lstrip()  # Grab Unit of Measure

@@ -16,6 +16,7 @@ from __future__ import with_statement  # Error handling for file opens
 #
 #       July 05 2023 - Make display optional when bserve indirectly imports.
 #       July 12 2023 - Interface to/from mserve_config.py
+#       Dec. 31 2023 - Add back import PIL Image
 #
 # ==============================================================================
 
@@ -288,22 +289,6 @@ def build_windows_list():
 def screenshot(x, y, width, height):
     """ Take screenshot """
     raw = r.get_image(x, y, width, height, Xlib.X.ZPixmap, 0xffffffff)
-    """ 2023-12-31 - System Crash:
-Exception in Tkinter callback
-Traceback (most recent call last):
-  File "/usr/lib/python2.7/lib-tk/Tkinter.py", line 1540, in __call__
-    return self.func(*args)
-  File "/home/rick/python/mserve.py", line 7352, in <lambda>
-    s=self: s.start_hockey(TV_BREAK1))
-  File "/home/rick/python/mserve.py", line 7933, in start_hockey
-    self.gone_fishing = img.GoneFishing(self.play_top)
-  File "/home/rick/python/image.py", line 1010, in __init__
-    self.src_geom.width, self.src_geom.height)
-  File "/home/rick/python/x11.py", line 288, in screenshot
-    image = Image.frombytes("RGB", (width, height), raw.data, "raw", "BGRX")
-NameError: global name 'Image' is not defined
-    
-    """
     image = Image.frombytes("RGB", (width, height), raw.data, "raw", "BGRX")
     return image
 
