@@ -86,7 +86,10 @@ warnings.simplefilter('default')  # in future Python versions.
 #       Sep. 21 2023 - Slide Show Carousel (beta < 1 hour coding)
 #       Sep. 23 2023 - Playlists class save_act() for Rename Playlist function.
 #       Sep. 24 2023 - YouTube Playlists - View in mserve and Open in browser.
-#       Oct. 29 2023 - YouTube Playlists - Condense youTreeSmartPlayAll().
+#       Oct. 29 2023 - YouTube Playlists - Condense youSmartPlayAll().
+#       Jan. 17 2024 - Add 'locale.localeconv()["decimal_point"]' support.
+#       Jan. 20 2024 - Duplicate video in YT Playlist repeats with Play Next.
+#       Jan. 28 2024 - YT Playlist notes for error correction. Kill datafiles.
 
 # noinspection SpellCheckingInspection
 """
@@ -417,6 +420,7 @@ import time
 import datetime
 import re
 import traceback  # To display call stack (functions that got us here)
+import locale  # Use decimals or commas for float remainder?
 import webbrowser
 import requests  # retrieve YouTube thumbnail images
 from io import BytesIO  # convert YouTube thumbnail images to TK image format
@@ -697,7 +701,7 @@ def make_sorted_list(start_dir, toplevel=None, idle=None, check_only=False):
     global PRUNED_COUNT  # No topdir. Started pointing at artist or album.
     global PRUNED_DIR    # The real topdir. E.G. = '../' or '../../'
 
-    who = "mserve.py make_sorted_list() - "
+    _who = "mserve.py make_sorted_list() - "
     if NEW_LOCATION:
         # print('WIP:', start_dir, "may point to topdir, Artist or Album")
         pass
@@ -938,7 +942,7 @@ class MusicLocTreeCommonSelf:
             ''' TODO: python-magic to ensure only image files included'''
             if len(self.listSlideNames) > 1:
                 self.runSlideShow = True
-                for image in self.listSlideNames:
+                for _image in self.listSlideNames:
                     #print("image:", image)
                     pass
 
@@ -1839,14 +1843,14 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
         self.lib_tree.update()  # If not done song_sel tags still visible
         # Above first time 0, second time 17
         self.lib_top.update()  # If not done song_sel tags still visible
-        items = self.lib_tree.tag_has("song_sel")
-        #print("len(song_sel) items:", len(items))
-        items = self.lib_tree.tag_has("checked")
-        #print("len(checked) items:", len(items))
-        items = self.lib_tree.tag_has("tristate")
-        #print("len(tristate) items:", len(items))
-        items = self.lib_tree.tag_has("unchecked")
-        #print("len(unchecked) items:", len(items))
+        _items = self.lib_tree.tag_has("song_sel")
+        #print("len(song_sel) items:", len(_items))
+        _items = self.lib_tree.tag_has("checked")
+        #print("len(checked) items:", len(_items))
+        _items = self.lib_tree.tag_has("tristate")
+        #print("len(tristate) items:", len(_items))
+        _items = self.lib_tree.tag_has("unchecked")
+        #print("len(unchecked) items:", len(_items))
 
         # Build playlist_paths using Music Ids
         for music_id in self.playlists.open_id_list:
@@ -3927,7 +3931,7 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
         """
         if not self.lib_top_is_active:
             return  # mserve is shutting down
-        who = "mserve.py checked_copy_one_file() - "
+        _who = "mserve.py checked_copy_one_file() - "
         src_path = self.make_variable_path(Id)
         src_base, src_ext = src_path.rsplit(u".", 1)
         lrc_src_path = toolkit.uni_str(src_base) + u'.lrc'
@@ -4184,7 +4188,7 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
         self.lib_top.destroy()  # Was left visible to last second
         #time.sleep(RESTART_SLEEP)           # Extra insurance sleepers close
 
-    def open_and_play_callback(self, code, topdir):
+    def open_and_play_callback(self, code, _topdir):
         """ Open location by calling lcs.test() first to check success.
             After error checking, call restart with new topdir as parameter 1.
             Called from lcs.apply() self.open_and_play_callback()
@@ -4452,7 +4456,7 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
             self.calc_top.lift()
             return
 
-    def calculator_close(self, *args):
+    def calculator_close(self, *_args):
         """ Save last geometry for next Calculator startup """
         last_geom = monitor.get_window_geom_string(
             self.calc_top, leave_visible=False)  # Destroy toplevel
@@ -7391,7 +7395,7 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
                     self.play_btn_frm, text=text,
                     width=g.BTN_WID2 + 2, command=lambda s=self: s.chron_toggle())
                 self.chron_button.grid(row=0, column=col, padx=2, sticky=tk.W)
-                text = "placeholder"
+                _text = "placeholder"
                 self.tt.add_tip(self.chron_button, text2, anchor="se")
             else:
                 print("mserve.py build_play_btn_frm() Bad button name:", name)
@@ -8326,7 +8330,9 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
               "-csh --time' last line:")
         if results:
             print(results[-1])
-            size = toolkit.computer_bytes(results[-1], decimals=True)
+            decimal_point = locale.localeconv()["decimal_point"]
+            decimals = decimal_point in results[-1]
+            size = toolkit.computer_bytes(results[-1], decimals=decimals)
             print("size:", size, " | human:", toolkit.human_bytes(int(size)))
         else:
             print("\nERROR - check_chrome_tmp_files() - No results found!")
@@ -13553,7 +13559,6 @@ class tvVolume:
             Target=Target, Size=Size, Count=Count, Seconds=Seconds,
             Comments=Comments)
 
-    ## no inspection PyUnusedLocal
     def close(self, *_args):
         """ Close Volume During TV Commercials Window """
         if self.tt and self.top:
@@ -13824,7 +13829,7 @@ class FileControl(FileControlCommonSelf):
             TODO: Huge time lag with .oga image of 10 MB inside 30 MB file.
         """
 
-        who = "mserve.py get_metadata() - "
+        _who = "mserve.py get_metadata() - "
         self.metadata = OrderedDict()
 
         ''' Is host down? '''
@@ -14852,7 +14857,7 @@ class PlaylistsCommonSelf:
         self.youDebug = 1  # Debug level. 0=None, 1=min(default), 7=max
         self.isSmartPlayYouTube = False  # is Smart YouTube Player running?
         self.isViewCountBoost = False  # 30 second play to boost view counts?
-        self.youViewCountSkipped = 1  # How many videos skipped so far?
+        self.youViewCountSkipped = 0  # How many videos skipped so far?
         # 2023-12-24-17:00 - ^^^-- First cycle is 1 video short --^^^
         self.youViewSkippedTime = 0.0  # Time a video last skipped
         self.driver = None  # Is Selenium Webdriver opened?
@@ -15164,7 +15169,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         bottom_frm.grid(row=4, columnspan=4, sticky=tk.E)
 
         ''' Apply Button '''
-        close_tt_text = "Close Playlist window."
+        _close_tt_text = "Close Playlist window."
         #if self.state != 'view':
         close_tt_text = "Discard any changes and close Playlist window."
         action = name.split(" Playlist")[0]
@@ -15336,7 +15341,11 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         return True
 
     def buildYouTubePlaylist(self):
-        """ Build list of dictionaries """
+        """ Build list of dictionaries
+            TODO: 2024-01-28 - Build Chill playlist video #90 should be hidden
+                but it appears in mserve. Then video counts are out of sync.
+                https://www.youtube.com/watch?v=562VuMrFUys
+        """
         self.listYouTube = []
         # self.dictYouTube = {}  # Oct 8/23 - wasn't referenced
         self.photosYouTube = []
@@ -15420,7 +15429,9 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
     def mergeYouTubePlaylist(self, listVideos, private_count):
         """ Playlists already built with buildYouTubePlaylist. When opening
             YouTube new videos discovered. Rebuild using previous lists.
-
+            TODO: 2024-01-28 - Build Chill playlist video #90 should be hidden
+                but it appears in mserve. Then video counts are out of sync.
+                https://www.youtube.com/watch?v=562VuMrFUys
         """
         self.listMergeYouTube = []
 
@@ -15587,8 +15598,8 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             if answer.result != 'yes':
                 return
             else:
-                ''' youTreeSmartPlayAll will calls us when done  '''
-                self.youTreeSmartPlayAll()
+                ''' youSmartPlayAll will calls us when done  '''
+                self.youSmartPlayAll()
 
     def displayPlaylistCommonTop(self, name):
         """ Shared by: displayYouTubePlaylist and displayMusicIds """
@@ -15740,7 +15751,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         self.top.protocol("WM_DELETE_WINDOW", self.youClosePlayLrc)
 
         ''' Snapshot Pulse Audio '''
-        pav.get_all_sinks
+        #pav.get_all_sinks  # 2024-01-20 - missing (), not sure of intent...
 
         ''' Refresh screen '''
         if self.top:  # May have been closed above.
@@ -15925,9 +15936,9 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             NOT TESTED YET (October 16, 2023)
         """
 
-        title = "WARNING: Experimental feature"
-        text = "Currently this features moves YouTube from right to left monitor."
-        # message.ShowInfo(self.top, title, text, icon='warning',
+        _title = "WARNING: Experimental feature"
+        _text = "Currently this features moves YouTube from right to left monitor."
+        # message.ShowInfo(self.top, _title, _text, icon='warning',
         #                 thread=self.get_thread_func)
         mon = monitor.Monitors()  # Monitors class list of dicts
         # Start windows
@@ -16046,8 +16057,8 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                 &index=17
 
             self.act_description =
-            	https://www.youtube.com/
-            	playlist?list=PLthF248A1c68TAKl5DBskfJ2fwr1sk9aM
+                https://www.youtube.com/
+                playlist?list=PLthF248A1c68TAKl5DBskfJ2fwr1sk9aM
 
         :param item: item (iid) in YouTube playlist
         :param restart: End of Playlist, restart from beginning.
@@ -16065,12 +16076,12 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         full_link += "&index=" + item
 
         self.driver.get(full_link)
-        status = self.youWaitMusicPlayer(debug=True, startup=True)
+        status = self.youWaitMusicPlayer(startup=True)
         while status == 99 or self.youCheckAdRunning():
             self.youVolumeOverride(True)  # Ad playing override
             self.driver.back()
             self.driver.forward()
-            status = self.youWaitMusicPlayer(debug=True, startup=True)
+            status = self.youWaitMusicPlayer(startup=True)
 
         if restart:
             self.youPrint("Forced refresh at beginning:", full_link)
@@ -16111,6 +16122,8 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             return
 
         self.youLastLink = ""  # When link changes highlight row in self.you_tree
+        last_player_status = None
+
         self.durationYouTube = 0.0  # Extra insurance
         self.resetYouTubeDuration()
         self.buildYouTubeDuration()
@@ -16179,7 +16192,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         """
 
         self.driver = self.youWindow = None
-        useChrome = useChromium = useFirefox = False
+        useChrome = useChromium = _useFirefox = False
         CHROME_DRIVER_VER = "chromedriver108"  # 108 replaced with actual version
         ver = os.popen("google-chrome --version").read().strip()
         ver = ver.split()
@@ -16228,7 +16241,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                     # Automated Test Software message suppression (Doesn't work)
                     # https://stackoverflow.com/a/71257995/6929343
                     chromeOptions = webdriver.ChromeOptions()
-                    chromeOptions.add_experimental_option("excludeSwitches", ['enable-automation']);
+                    chromeOptions.add_experimental_option("excludeSwitches", ['enable-automation'])
                 elif useChromium:
                     print("Using Chromium Branch 1")
                     #self.driver = webdriver.Chrome(CHROME_DRIVER_PATH)
@@ -16260,7 +16273,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                     # Automated Test Software message suppression (Doesn't work)
                     # https://stackoverflow.com/a/71257995/6929343
                     chromeOptions = webdriver.ChromeOptions()
-                    chromeOptions.add_experimental_option("excludeSwitches", ['enable-automation']);
+                    chromeOptions.add_experimental_option("excludeSwitches", ['enable-automation'])
                 elif useChromium:
                     print("Using Chromium Branch 2")
                     self.driver = webdriver.Chrome()  # It will search path
@@ -16296,8 +16309,8 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
     def youPlayAllFullScreen(self, window):
         """ Open YouTube Playlist, Move window, 'Play all', full screen
             self.act_description =
-            	https://www.youtube.com/
-            	playlist?list=PLthF248A1c68TAKl5DBskfJ2fwr1sk9aM
+                https://www.youtube.com/
+                playlist?list=PLthF248A1c68TAKl5DBskfJ2fwr1sk9aM
         """
 
         self.driver.get(self.act_description)  # Open Youtube playlist
@@ -16410,7 +16423,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             #os.popen('xdotool click 1')  # Click on play all button
 
         # Skip commercial with driver.back() then driver.forward()
-        status = self.youWaitMusicPlayer(debug=True, startup=True)
+        status = self.youWaitMusicPlayer(startup=True)
         while status == 99 or self.youCheckAdRunning():
             self.youVolumeOverride(True)  # Ad playing override
             self.driver.back()
@@ -16434,7 +16447,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         actions.perform()
         # self.driver.fullscreen_window()  # Doesn't work
         # driver.fullscreen_window()
-        #   File "/home/rick/python/mserve.py", line 15834, in youTreeSmartPlayAll
+        #   File "/home/rick/python/mserve.py", line 15834, in youSmartPlayAll
         #     self.driver.fullscreen_window()
         # AttributeError: 'WebDriver' object has no attribute 'fullscreen_window'
 
@@ -16474,12 +16487,13 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
 
         str_win = str(self.youWindow.number)  # Remove L in python 2.7.5+
         int_win = int(str_win)  # https://stackoverflow.com/questions
-        hex_win = hex(int_win)  # /5917203/python-trailing-l-problem
+        _hex_win = hex(int_win)  # /5917203/python-trailing-l-problem
         #print("\n str_win:", str_win, "int_win:", int_win, "hex_win:", hex_win)
 
         # If last usage was full screen, reverse it
         net_states = os.popen('xprop -id ' + str_win).read().strip()
         # print("net_states:", net_states)
+        path = None
         self.youFullScreen = None  # Was YouTube full screen before?
         if "_NET_WM_STATE_FULLSCREEN" in net_states:
             self.youFullScreen = True  # YouTube is full screen
@@ -16508,7 +16522,9 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
     def youGetAllGoodLinks(self, video_count):
         """ Get all the good links and private links in playlist. Scrolling
             is necessary after 100 video chunks.
-
+            TODO: 2024-01-28 - Build Chill playlist video #90 should be hidden
+                but it appears in mserve. Then video counts are out of sync.
+                https://www.youtube.com/watch?v=562VuMrFUys
         :return: good_links, private_links, listVideos
         """
 
@@ -16530,7 +16546,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                     By.ID, id_name)))
 
                 #print("item_list:", item_list)
-                dictItem = self.driver.execute_script(
+                _dictItem = self.driver.execute_script(
                     'var items = {}; \
                     for (index = 0; index < \
                     arguments[0].attributes.length; ++index) \
@@ -16575,7 +16591,10 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             TODO: Devine item number to click on.
                   Note unavailable video setting.
                   Note stale element errors and video skipped.
-        :return: good_links, private_links, listVideos
+            TODO: 2024-01-28 - Build Chill playlist video #90 should be hidden
+                but it appears in mserve. Then video counts are out of sync.
+                https://www.youtube.com/watch?v=562VuMrFUys
+            :return: good_links, private_links, listVideos
         """
 
         listVideos = []
@@ -16602,8 +16621,8 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         #   File "/usr/lib/python2.7/lib-tk/Tkinter.py", line 1540, in __call__
         #     return self.func(*args)
         #   File "/home/rick/python/mserve.py", line 15698, in <lambda>
-        #     command=lambda: self.youTreeSmartPlayAll())
-        #   File "/home/rick/python/mserve.py", line 15925, in youTreeSmartPlayAll
+        #     command=lambda: self.youSmartPlayAll())
+        #   File "/home/rick/python/mserve.py", line 15925, in youSmartPlayAll
         #     if not self.youPlayAllFullScreen(window):
         #   File "/home/rick/python/mserve.py", line 16172, in youPlayAllFullScreen
         #     self.youGetAllGoodLinks(video_count)
@@ -16742,7 +16761,7 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
         </yt-touch-feedback-shape></button></yt-button-shape></ytd-menu-renderer>
         :return:
         """
-        query = "#page-manager > ytd-browse > ytd-playlist-header-renderer \
+        _query = "#page-manager > ytd-browse > ytd-playlist-header-renderer \
             > div > \
             div.immersive-header-content.style-scope.ytd-playlist-header-renderer > \
             div.thumbnail-and-metadata-wrapper.style-scope.ytd-playlist-header-renderer \
@@ -16787,10 +16806,25 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
 
         """ Button to click:
         
-        <a class="yt-simple-endpoint style-scope ytd-menu-navigation-item-renderer" tabindex="-1" href="/playlist?list=PLthF248A1c69kNWZ9Q39Dow3S2Lxp74mF">
-    <tp-yt-paper-item class="style-scope ytd-menu-navigation-item-renderer" style-target="host" role="option" tabindex="0" aria-disabled="false"><!--css-build:shady-->
-      <yt-icon class="style-scope ytd-menu-navigation-item-renderer"><!--css-build:shady--><!--css-build:shady--><yt-icon-shape class="style-scope yt-icon"><icon-shape class="yt-spec-icon-shape"><div style="width: 100%; height: 100%; fill: currentcolor;"><svg height="24" viewBox="0 0 24 24" width="24" focusable="false" style="pointer-events: none; display: block; width: 100%; height: 100%;"><path d="M12 8.91c1.7 0 3.09 1.39 3.09 3.09S13.7 15.09 12 15.09 8.91 13.7 8.91 12 10.3 8.91 12 8.91m0-1c-2.25 0-4.09 1.84-4.09 4.09s1.84 4.09 4.09 4.09 4.09-1.84 4.09-4.09S14.25 7.91 12 7.91zm0-1.73c3.9 0 7.35 2.27 8.92 5.82-1.56 3.55-5.02 5.82-8.92 5.82-3.9 0-7.35-2.27-8.92-5.82C4.65 8.45 8.1 6.18 12 6.18m0-1C7.45 5.18 3.57 8.01 2 12c1.57 3.99 5.45 6.82 10 6.82s8.43-2.83 10-6.82c-1.57-3.99-5.45-6.82-10-6.82z"></path></svg></div></icon-shape></yt-icon-shape></yt-icon>
-      <yt-formatted-string class="style-scope ytd-menu-navigation-item-renderer">Show unavailable videos</yt-formatted-string>
+        <a class="yt-simple-endpoint style-scope ytd-menu-navigation-item-renderer" tabindex="-1" 
+            href="/playlist?list=PLthF248A1c69kNWZ9Q39Dow3S2Lxp74mF">
+    <tp-yt-paper-item class="style-scope ytd-menu-navigation-item-renderer" style-target="host" role="option" 
+    tabindex="0" aria-disabled="false"><!--css-build:shady-->
+      <yt-icon class="style-scope ytd-menu-navigation-item-renderer"
+        ><!--css-build:shady--><!--css-build:shady--><yt-icon-shape 
+        class="style-scope yt-icon"><icon-shape class="yt-spec-icon-shape">
+        <div style="width: 100%; height: 100%; fill: currentcolor;"><svg height="24" 
+        viewBox="0 0 24 24" width="24" focusable="false" 
+        style="pointer-events: none; display: block; width: 100%; height: 100%;"
+        ><path d="M12 8.91c1.7 0 3.09 1.39 3.09 3.09S13.7 15.09 12 15.09 8.91 13.7 
+        8.91 12 10.3 8.91 12 8.91m0-1c-2.25 0-4.09 1.84-4.09 4.09s1.84 4.09 4.09 
+        4.09 4.09-1.84 4.09-4.09S14.25 7.91 12 7.91zm0-1.73c3.9 0 7.35 2.27 8.92 
+        5.82-1.56 3.55-5.02 5.82-8.92 5.82-3.9 0-7.35-2.27-8.92-5.82C4.65 8.45 8.1 
+        6.18 12 6.18m0-1C7.45 5.18 3.57 8.01 2 12c1.57 3.99 5.45 6.82 10 
+        6.82s8.43-2.83 10-6.82c-1.57-3.99-5.45-6.82-10-6.82z"
+        ></path></svg></div></icon-shape></yt-icon-shape></yt-icon>
+      <yt-formatted-string class="style-scope ytd-menu-navigation-item-renderer"
+      >Show unavailable videos</yt-formatted-string>
     
 </tp-yt-paper-item>
   </a>
@@ -16799,12 +16833,38 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
         JSPATH: document.querySelector("#items > ytd-menu-navigation-item-renderer > a")
 
         OUTER OUTER:
-        <tp-yt-iron-dropdown horizontal-align="auto" vertical-align="top" aria-disabled="false" class="style-scope ytd-popup-container" prevent-autonav="true" style="outline: none; z-index: 2202; position: fixed; left: 208px; top: 439.5px;"><!--css-build:shady--><div id="contentWrapper" class="style-scope tp-yt-iron-dropdown">
-  <ytd-menu-popup-renderer slot="dropdown-content" class="style-scope ytd-popup-container" tabindex="-1" use-icons="" style="outline: none; box-sizing: border-box; max-width: 244.477px; max-height: 52px;"><!--css-build:shady--><!--css-build:shady--><tp-yt-paper-listbox id="items" class="style-scope ytd-menu-popup-renderer" role="listbox" tabindex="0"><!--css-build:shady--><ytd-menu-navigation-item-renderer class="style-scope ytd-menu-popup-renderer iron-selected" use-icons="" system-icons="" role="menuitem" tabindex="-1" aria-selected="true"><!--css-build:shady--><!--css-build:shady-->
-  <a class="yt-simple-endpoint style-scope ytd-menu-navigation-item-renderer" tabindex="-1" href="/playlist?list=PLthF248A1c69kNWZ9Q39Dow3S2Lxp74mF">
-    <tp-yt-paper-item class="style-scope ytd-menu-navigation-item-renderer" style-target="host" role="option" tabindex="0" aria-disabled="false"><!--css-build:shady-->
-      <yt-icon class="style-scope ytd-menu-navigation-item-renderer"><!--css-build:shady--><!--css-build:shady--><yt-icon-shape class="style-scope yt-icon"><icon-shape class="yt-spec-icon-shape"><div style="width: 100%; height: 100%; fill: currentcolor;"><svg height="24" viewBox="0 0 24 24" width="24" focusable="false" style="pointer-events: none; display: block; width: 100%; height: 100%;"><path d="M12 8.91c1.7 0 3.09 1.39 3.09 3.09S13.7 15.09 12 15.09 8.91 13.7 8.91 12 10.3 8.91 12 8.91m0-1c-2.25 0-4.09 1.84-4.09 4.09s1.84 4.09 4.09 4.09 4.09-1.84 4.09-4.09S14.25 7.91 12 7.91zm0-1.73c3.9 0 7.35 2.27 8.92 5.82-1.56 3.55-5.02 5.82-8.92 5.82-3.9 0-7.35-2.27-8.92-5.82C4.65 8.45 8.1 6.18 12 6.18m0-1C7.45 5.18 3.57 8.01 2 12c1.57 3.99 5.45 6.82 10 6.82s8.43-2.83 10-6.82c-1.57-3.99-5.45-6.82-10-6.82z"></path></svg></div></icon-shape></yt-icon-shape></yt-icon>
-      <yt-formatted-string class="style-scope ytd-menu-navigation-item-renderer">Show unavailable videos</yt-formatted-string>
+        <tp-yt-iron-dropdown horizontal-align="auto" vertical-align="top" aria-disabled="false" 
+            class="style-scope ytd-popup-container" prevent-autonav="true" 
+            style="outline: none; z-index: 2202; position: fixed; left: 208px; top: 439.5px;"
+            ><!--css-build:shady--><div id="contentWrapper" 
+            class="style-scope tp-yt-iron-dropdown">
+  <ytd-menu-popup-renderer slot="dropdown-content" class="style-scope ytd-popup-container" tabindex="-1" use-icons="" 
+      style="outline: none; box-sizing: border-box; max-width: 244.477px; max-height: 52px;"
+      ><!--css-build:shady--><!--css-build:shady--><tp-yt-paper-listbox id="items" 
+      class="style-scope ytd-menu-popup-renderer" role="listbox" tabindex="0"
+      ><!--css-build:shady--><ytd-menu-navigation-item-renderer 
+      class="style-scope ytd-menu-popup-renderer iron-selected" use-icons="" 
+      system-icons="" role="menuitem" tabindex="-1" aria-selected="true"
+      ><!--css-build:shady--><!--css-build:shady-->
+  <a class="yt-simple-endpoint style-scope ytd-menu-navigation-item-renderer" tabindex="-1" 
+        href="/playlist?list=PLthF248A1c69kNWZ9Q39Dow3S2Lxp74mF">
+    <tp-yt-paper-item class="style-scope ytd-menu-navigation-item-renderer" style-target="host" role="option" 
+        tabindex="0" aria-disabled="false"><!--css-build:shady-->
+      <yt-icon class="style-scope ytd-menu-navigation-item-renderer">
+        <!--css-build:shady--><!--css-build:shady--><yt-icon-shape 
+        class="style-scope yt-icon"><icon-shape class="yt-spec-icon-shape"
+        ><div style="width: 100%; height: 100%; fill: currentcolor;">
+        <svg height="24" viewBox="0 0 24 24" width="24" focusable="false" 
+        style="pointer-events: none; display: block; width: 100%; height: 100%;"
+        ><path d="M12 8.91c1.7 0 3.09 1.39 3.09 3.09S13.7 15.09 12 15.09 8.91 13.7 
+        8.91 12 10.3 8.91 12 8.91m0-1c-2.25 0-4.09 1.84-4.09 4.09s1.84 4.09 4.09 
+        4.09 4.09-1.84 4.09-4.09S14.25 7.91 12 7.91zm0-1.73c3.9 0 7.35 2.27 8.92 
+        5.82-1.56 3.55-5.02 5.82-8.92 5.82-3.9 0-7.35-2.27-8.92-5.82C4.65 8.45 8.1 
+        6.18 12 6.18m0-1C7.45 5.18 3.57 8.01 2 12c1.57 3.99 5.45 6.82 10 
+        6.82s8.43-2.83 10-6.82c-1.57-3.99-5.45-6.82-10-6.82z"
+        ></path></svg></div></icon-shape></yt-icon-shape></yt-icon>
+      <yt-formatted-string class="style-scope ytd-menu-navigation-item-renderer"
+        >Show unavailable videos</yt-formatted-string>
     
 </tp-yt-paper-item>
   </a>
@@ -16817,17 +16877,53 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
 </tp-yt-iron-dropdown>
 
 
-        <yt-icon class="style-scope ytd-menu-navigation-item-renderer"><!--css-build:shady--><!--css-build:shady--><yt-icon-shape class="style-scope yt-icon"><icon-shape class="yt-spec-icon-shape"><div style="width: 100%; height: 100%; fill: currentcolor;"><svg height="24" viewBox="0 0 24 24" width="24" focusable="false" style="pointer-events: none; display: block; width: 100%; height: 100%;"><path d="M12 8.91c1.7 0 3.09 1.39 3.09 3.09S13.7 15.09 12 15.09 8.91 13.7 8.91 12 10.3 8.91 12 8.91m0-1c-2.25 0-4.09 1.84-4.09 4.09s1.84 4.09 4.09 4.09 4.09-1.84 4.09-4.09S14.25 7.91 12 7.91zm0-1.73c3.9 0 7.35 2.27 8.92 5.82-1.56 3.55-5.02 5.82-8.92 5.82-3.9 0-7.35-2.27-8.92-5.82C4.65 8.45 8.1 6.18 12 6.18m0-1C7.45 5.18 3.57 8.01 2 12c1.57 3.99 5.45 6.82 10 6.82s8.43-2.83 10-6.82c-1.57-3.99-5.45-6.82-10-6.82z"></path></svg></div></icon-shape></yt-icon-shape></yt-icon>
+        <yt-icon class="style-scope ytd-menu-navigation-item-renderer"
+            ><!--css-build:shady--><!--css-build:shady--><yt-icon-shape 
+            class="style-scope yt-icon"><icon-shape class="yt-spec-icon-shape"
+            ><div style="width: 100%; height: 100%; fill: currentcolor;"
+            ><svg height="24" viewBox="0 0 24 24" width="24" focusable="false" 
+            style="pointer-events: none; display: block; width: 100%; height: 100%;"
+            ><path d="M12 8.91c1.7 0 3.09 1.39 3.09 3.09S13.7 15.09 12 15.09 8.91 13.7 
+            8.91 12 10.3 8.91 12 8.91m0-1c-2.25 0-4.09 1.84-4.09 4.09s1.84 4.09 4.09 
+            4.09 4.09-1.84 4.09-4.09S14.25 7.91 12 7.91zm0-1.73c3.9 0 7.35 2.27 8.92 
+            5.82-1.56 3.55-5.02 5.82-8.92 5.82-3.9 0-7.35-2.27-8.92-5.82C4.65 8.45 
+            8.1 6.18 12 6.18m0-1C7.45 5.18 3.57 8.01 2 12c1.57 3.99 5.45 6.82 10 
+            6.82s8.43-2.83 10-6.82c-1.57-3.99-5.45-6.82-10-6.82z"
+            ></path></svg></div></icon-shape></yt-icon-shape></yt-icon>
         XPATH FULL:
         /html/body/ytd-app/ytd-popup-container/tp-yt-iron-dropdown        
 
         TOP LEVEL?
 <div id="contentWrapper" class="style-scope tp-yt-iron-dropdown">
-  <ytd-menu-popup-renderer slot="dropdown-content" class="style-scope ytd-popup-container" tabindex="-1" use-icons="" style="outline: none; box-sizing: border-box; max-width: 244.477px; max-height: 52px;"><!--css-build:shady--><!--css-build:shady--><tp-yt-paper-listbox id="items" class="style-scope ytd-menu-popup-renderer" role="listbox" tabindex="0"><!--css-build:shady--><ytd-menu-navigation-item-renderer class="style-scope ytd-menu-popup-renderer iron-selected" use-icons="" system-icons="" role="menuitem" tabindex="-1" aria-selected="true"><!--css-build:shady--><!--css-build:shady-->
-  <a class="yt-simple-endpoint style-scope ytd-menu-navigation-item-renderer" tabindex="-1" href="/playlist?list=PLthF248A1c69kNWZ9Q39Dow3S2Lxp74mF">
-    <tp-yt-paper-item class="style-scope ytd-menu-navigation-item-renderer" style-target="host" role="option" tabindex="0" aria-disabled="false"><!--css-build:shady-->
-      <yt-icon class="style-scope ytd-menu-navigation-item-renderer"><!--css-build:shady--><!--css-build:shady--><yt-icon-shape class="style-scope yt-icon"><icon-shape class="yt-spec-icon-shape"><div style="width: 100%; height: 100%; fill: currentcolor;"><svg height="24" viewBox="0 0 24 24" width="24" focusable="false" style="pointer-events: none; display: block; width: 100%; height: 100%;"><path d="M12 8.91c1.7 0 3.09 1.39 3.09 3.09S13.7 15.09 12 15.09 8.91 13.7 8.91 12 10.3 8.91 12 8.91m0-1c-2.25 0-4.09 1.84-4.09 4.09s1.84 4.09 4.09 4.09 4.09-1.84 4.09-4.09S14.25 7.91 12 7.91zm0-1.73c3.9 0 7.35 2.27 8.92 5.82-1.56 3.55-5.02 5.82-8.92 5.82-3.9 0-7.35-2.27-8.92-5.82C4.65 8.45 8.1 6.18 12 6.18m0-1C7.45 5.18 3.57 8.01 2 12c1.57 3.99 5.45 6.82 10 6.82s8.43-2.83 10-6.82c-1.57-3.99-5.45-6.82-10-6.82z"></path></svg></div></icon-shape></yt-icon-shape></yt-icon>
-      <yt-formatted-string class="style-scope ytd-menu-navigation-item-renderer">Show unavailable videos</yt-formatted-string>
+  <ytd-menu-popup-renderer slot="dropdown-content" class="style-scope ytd-popup-container" tabindex="-1" use-icons="" 
+    style="outline: none; box-sizing: border-box; max-width: 244.477px; max-height: 52px;"
+    ><!--css-build:shady--><!--css-build:shady--><tp-yt-paper-listbox id="items" 
+    class="style-scope ytd-menu-popup-renderer" role="listbox" tabindex="0"
+    ><!--css-build:shady--><ytd-menu-navigation-item-renderer 
+    class="style-scope ytd-menu-popup-renderer iron-selected" use-icons="" 
+    system-icons="" role="menuitem" tabindex="-1" aria-selected="true"
+    ><!--css-build:shady--><!--css-build:shady-->
+  <a class="yt-simple-endpoint style-scope ytd-menu-navigation-item-renderer" tabindex="-1" 
+    href="/playlist?list=PLthF248A1c69kNWZ9Q39Dow3S2Lxp74mF">
+    <tp-yt-paper-item class="style-scope ytd-menu-navigation-item-renderer" 
+        style-target="host" role="option" tabindex="0" aria-disabled="false"
+        ><!--css-build:shady-->
+      <yt-icon class="style-scope ytd-menu-navigation-item-renderer"><!--css-build:shady--><!--css-build:shady-->
+          <yt-icon-shape class="style-scope yt-icon"><icon-shape 
+          class="yt-spec-icon-shape"><div 
+          style="width: 100%; height: 100%; fill: currentcolor;">
+          <svg height="24" viewBox="0 0 24 24" width="24" focusable="false" 
+          style="pointer-events: none; display: block; width: 100%; height: 100%;"
+          ><path d="M12 8.91c1.7 0 3.09 1.39 3.09 3.09S13.7 15.09 12 15.09 8.91 
+          13.7 8.91 12 10.3 8.91 12 8.91m0-1c-2.25 0-4.09 1.84-4.09 4.09s1.84 
+          4.09 4.09 4.09 4.09-1.84 4.09-4.09S14.25 7.91 12 7.91zm0-1.73c3.9 0 
+          7.35 2.27 8.92 5.82-1.56 3.55-5.02 5.82-8.92 5.82-3.9 
+          0-7.35-2.27-8.92-5.82C4.65 8.45 8.1 6.18 12 6.18m0-1C7.45 5.18 3.57 
+          8.01 2 12c1.57 3.99 5.45 6.82 10 6.82s8.43-2.83 
+          10-6.82c-1.57-3.99-5.45-6.82-10-6.82z"
+          ></path></svg></div></icon-shape></yt-icon-shape></yt-icon>
+      <yt-formatted-string class="style-scope ytd-menu-navigation-item-renderer"
+        >Show unavailable videos</yt-formatted-string>
     
 </tp-yt-paper-item>
   </a>
@@ -16842,6 +16938,9 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
 
     def youGetAllGoodTimes(self, good_links):
         """ Get Relevant Video Durations (4x's more are irrelevant)
+            TODO: 2024-01-28 - Build Chill playlist video #90 should be hidden
+                but it appears in mserve. Then video counts are out of sync.
+                https://www.youtube.com/watch?v=562VuMrFUys
         :param good_links: Count to stop at
         :return: good_times, listTimes
         """
@@ -16914,8 +17013,8 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
             return link
 
         if "/playlist?list=" in link:
-            self.youPrint('"/playlist?list=" found in "link"!', link)
-            self.youPrint('youMonitorLinks() cannot deal with this!')
+            self.youPrint('"/playlist?list=" found in "link"!', link, lv=0)
+            self.youPrint('youMonitorLinks() cannot deal with this!', lv=0)
             return None
 
         # FIRST SONG
@@ -16928,7 +17027,7 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
         try:
             video_link = link.split("&list=")[0]
         except IndexError:
-            self.youPrint("Could not find '&list=' in link!", link)
+            self.youPrint("Could not find '&list=' in link!", link, lv=0)
             return None
 
         try:
@@ -16939,11 +17038,11 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
             return None
 
         make_link = "https://www.youtube.com/watch?v=" + video_link_id
-        you_tree_iid_int = self.youTreeNdxByLink(make_link)
+        you_tree_iid_int = self.youTreeNdxByLink(make_link, link)
 
         # Don't test you_tree_iid_int for True because first index is 0
         if you_tree_iid_int is None:
-            self.youPrint("youTreeSmartPlayAll() - " +
+            self.youPrint("youSmartPlayAll() - " +
                           "you_tree_iid_int is type: <None>", nl=True)
             self.youPrint("Error on make_link    :", make_link)
             self.youPrint("Original video_link   :", video_link)
@@ -16981,7 +17080,29 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
         self.youAssumedAd = True  # Reset after player status == 1
 
         self.youLrcDestroyFrame()  # If last song had lyrics, swap frames
-        self.you_tree.see(str(you_tree_iid_int))
+        try:
+            self.you_tree.see(str(you_tree_iid_int))
+        except tk.TclError:
+            self.youPrint("self.you_tree.see(str(you_tree_iid_int)) tcl error:",
+                          you_tree_iid_int, lv=0)
+            you_tree_iid_int = self.listYouTubeCurrIndex
+            self.you_tree.see(str(you_tree_iid_int))
+            '''
+22:29:20.5 youViewCountSkipped   : 118
+Exception in Tkinter callback
+Traceback (most recent call last):
+  File "/usr/lib/python2.7/lib-tk/Tkinter.py", line 1540, in __call__
+    return self.func(*args)
+  File "/home/rick/python/mserve.py", line 15837, in <lambda>
+    command=lambda: self.youSmartPlayAll())
+  File "/home/rick/python/mserve.py", line 16150, in youSmartPlayAll
+    link = self.youMonitorLinks()
+  File "/home/rick/python/mserve.py", line 17068, in youMonitorLinks
+    self.you_tree.see(str(you_tree_iid_int))
+  File "/usr/lib/python2.7/lib-tk/ttk.py", line 1392, in see
+    self.tk.call(self._w, "see", item)
+TclError: Item 123 not found
+            '''
 
         toolkit.tv_tag_remove_all(self.you_tree, 'play_sel')
         toolkit.tv_tag_add(
@@ -17120,7 +17241,7 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
         self.resetYouTubeDuration()  # Reset one song duration
 
         # Music Player final_status printed at top of loop below.
-        final_status = self.youWaitMusicPlayer(debug=False)
+        self.youWaitMusicPlayer()
 
         while True:  # Ad was visible. Loop until status is song playing (1)
             """  TODO: At start, quickly ramp down volume over 1/10 second
@@ -17160,38 +17281,35 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
             count = 0
             # self.driver.find_element(By.CSS_SELECTOR, ".ytp-ad-duration-remaining")
 
-            if debug:
-                self.youPrint("# 0. Player Status:",
-                              self.youGetPlayerStatus(), lv=9, nl=True)
+            self.youPrint("# 0. Player Status:",
+                          self.youGetPlayerStatus(), lv=9, nl=True)
 
             while self.youCheckAdRunning():
                 # Back button goes to previous song played
                 self.youVolumeOverride(True)  # Ad playing override
                 self.driver.back()
-                if debug:
-                    self.youPrint("BACK LOOP Ad still visible:", count, end="\r", level=9)
+                self.youPrint("BACK LOOP Ad still visible:", count, end="\r", lv=9)
                 if self.youCheckAdRunning():
                     count += 1
                     if not lcs.fast_refresh():
                         self.driver.quit()
                         return False
 
-            if debug:
-                print("driver.back() visible loops:", str(count).ljust(2),
-                      " | Video Index:", self.youCurrentIndex(), lv=9, nl=True)
-                # count is always 1?
-                self.youPrint("# 1. Player Status:", self.youGetPlayerStatus(), lv=9)
-                self.youPrint("# 1. Video Index before FIRST forward:",
-                              self.youCurrentIndex(), lv=9)
+            self.youPrint("driver.back() visible loops:", str(count).ljust(2),
+                          " | Video Index:", self.youCurrentIndex(), lv=9, nl=True)
+            # count is always 1?
+            self.youPrint("# 1. Player Status:", self.youGetPlayerStatus(), lv=9)
+            self.youPrint("# 1. Video Index before FIRST forward:",
+                          self.youCurrentIndex(), lv=9)
 
             self.driver.forward()  # Send forward page event
-            player_status = self.youWaitMusicPlayer(debug=False)
+            player_status = self.youWaitMusicPlayer()
             # If status is NONE probably dialog prompt
             if not player_status:
                 # Answer dialog box for "Video paused. Continue watching?"
                 #self.youHousekeeping()  # Not working as intended...
                 # Check now inside self.youWaitMusicPlayer
-                player_status = self.youWaitMusicPlayer(debug=True)
+                player_status = self.youWaitMusicPlayer()
                 if not player_status:
                     self.youPrint("Shutting down, dialog prompt or player broken!",
                                   level=0)  # 0 = forced printing all the time
@@ -17199,49 +17317,50 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
 
             if debug:
                 self.youPrint("# 2. Player Status after 400ms:",
-                              self.youGetPlayerStatus(), level=9)
-                self.youPrint("# 2. Video Index:", self.youCurrentIndex(), level=9)
+                              self.youGetPlayerStatus(), lv=9)
+                self.youPrint("# 2. Video Index:", self.youCurrentIndex(), lv=9)
                 video_id = self.youGetMicroFormat()
-                self.youPrint("# 2. youGetMicroFormat() video_id:", video_id, level=9)
+                self.youPrint("# 2. youGetMicroFormat() video_id:", video_id, lv=9)
 
             if self.youCheckAdRunning():
                 # With this test, don't know if ad #1 or #2 is visible...
                 self.driver.forward()
                 if debug:
                     self.youPrint("THREE FORWARDS", "Video Index:",
-                                  self.youCurrentIndex(), level=9)
+                                  self.youCurrentIndex(), lv=9)
                     self.youPrint("# 3A. Player Status: BEFORE 2nd forward wait",
-                                  self.youGetPlayerStatus(), level=9)
-                    self.youPrint("# 3A. Video Index:", self.youCurrentIndex(), level=9)
+                                  self.youGetPlayerStatus(), lv=9)
+                    self.youPrint("# 3A. Video Index:", self.youCurrentIndex(), lv=9)
                     video_id = self.youGetMicroFormat()
-                    self.youPrint("# 3A. youGetMicroFormat() video_id:", video_id, level=9)
+                    self.youPrint("# 3A. youGetMicroFormat() video_id:",
+                                  video_id, lv=9)
 
                 #self.top.after(350)  # 300 too short for triple ad
-                player_status = self.youWaitMusicPlayer(debug=False)
+                player_status = self.youWaitMusicPlayer()
                 if not player_status:
                     self.youPrint("Shutting down or player broken!")
                     continue
                 if debug:
                     self.youPrint("# 3B. Player Status after 350ms:",
-                                  self.youGetPlayerStatus(), level=9)
-                    self.youPrint("# 3B. URL Index:", self.youCurrentIndex(), level=9)
+                                  self.youGetPlayerStatus(), lv=9)
+                    self.youPrint("# 3B. URL Index:", self.youCurrentIndex(), lv=9)
                     video_id = self.youGetMicroFormat()
-                    self.youPrint("# 3B. youGetMicroFormat() video_id:", video_id, level=9)
+                    self.youPrint("# 3B. youGetMicroFormat() video_id:", video_id, lv=9)
             else:
                 if debug:
                     self.youPrint("TWO FORWARDS",
-                                  "Video Index:", self.youCurrentIndex(), level=9)
-                    self.youPrint("# 3. Player Status:", self.youGetPlayerStatus(), level=9)
-                    self.youPrint("# 3. Video Index:", self.youCurrentIndex(), level=9)
+                                  "Video Index:", self.youCurrentIndex(), lv=9)
+                    self.youPrint("# 3. Player Status:", self.youGetPlayerStatus(), lv=9)
+                    self.youPrint("# 3. Video Index:", self.youCurrentIndex(), lv=9)
                     video_id = self.youGetMicroFormat()
-                    self.youPrint("# 3. youGetMicroFormat() video_id:", video_id, level=9)
+                    self.youPrint("# 3. youGetMicroFormat() video_id:", video_id, lv=9)
 
             # Could be within second ad but extra forward needed for next
             self.driver.forward()  # Extra forward needed for next song
-            final_status = self.youWaitMusicPlayer(debug=False)
+            final_status = self.youWaitMusicPlayer()
             if not final_status:
-                print(ext.t(short=True, hun=True),
-                      "Weird Error: youWaitMusicPlayer(self.driver, debug=False)")
+                self.youPprint("Weird Error: youWaitMusicPlayer(self.driver,",
+                               "debug=False)", lv=0)
                 """ CAUSED BY INTERRUPTION to confirm to continue when screen dim
 
                     21:31:25.3 STARTING Playlist - Song # 16    | KZjnJ_9GR5o
@@ -17261,12 +17380,12 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
                 return False  # Weird error
 
             if debug:
-                self.youPrint("# 4. Player Status:", self.youGetPlayerStatus(), level=9)
-                self.youPrint("# 4. Video Index:", self.youCurrentIndex(), level=9)
+                self.youPrint("# 4. Player Status:", self.youGetPlayerStatus(), lv=9)
+                self.youPrint("# 4. Video Index:", self.youCurrentIndex(), lv=9)
                 video_id = self.youGetMicroFormat()  # From mini-player script
-                self.youPrint("# 4. youGetMicroFormat() video_id:", video_id, level=9)
+                self.youPrint("# 4. youGetMicroFormat() video_id:", video_id, lv=9)
             else:
-                video_id = self.youGetMicroFormat()  # From mini-player script
+                _video_id = self.youGetMicroFormat()  # From mini-player script
 
             if final_status == 1 and not self.youCheckAdRunning():
                 self.isSongRepeating = True  # Means we have to check
@@ -17283,13 +17402,12 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
 
                 return True
 
-    def youWaitMusicPlayer(self, debug=False, startup=False):
+    def youWaitMusicPlayer(self, startup=False):
         """ self.driver.forward() was just executed. Wait for browser to process.
             Wait until YouTube music player status is:
                 1 Music Playing or,
                -1 Ad Playing
 
-            :param debug: When True, print debug stats and counts
             :param startup: When True override 10 second timeout to 1 second
             :return: None = timeout reached, 99 = startup 1 sec timeout reached,
                      player_status = -1 ad playing, = 1 music playing """
@@ -17758,6 +17876,7 @@ Redundant calls after turning down to 25% and up to 100%:
             if colon_count and not contains_text:
                 time_float = tmf.get_sec(time_str)
         except IndexError:
+            parts = None
             pass  # Could be a blank line
 
         try:
@@ -17855,420 +17974,31 @@ Redundant calls after turning down to 25% and up to 100%:
     def updateYouTubeDuration(self):
         """ Query YouTube duration and update progress bar.
             If self.isViewCountBoost active then click next video.
+
+            If errors occur, first step rebuild mserve playlists with:
+              cd ~/.local/share/mserve/YoutubePlaylists
+              rm <PLAYLIST NAME>.csv
+              rm <PLAYLIST NAME>.private
+              Start mserve, view <PLAYLIST NAME> and select "Smart Play All".
+              If playlist doesn't rebuild then also use:
+                  rm <PLAYLIST NAME>.pickle
+
         """
         '''
-"How often does YouTube update view count?
-Though YouTube doesn't publish this information,
-we know that it updates views approximately every
-24 to 48 hours. It does not update views instantly.
-Apr 13, 2021"
+            "How often does YouTube update view count?
+            Though YouTube doesn't publish this information,
+            we know that it updates views approximately every
+            24 to 48 hours. It does not update views instantly.
+            Apr 13, 2021"
 
-Yesterday 7,261 views.
-Start 06:00. In 4 hours ~60 views last night ~80 views (7,461 est.)
-2023-12-10 10:00 - video count boost start.
-2023-12-10 13:25 - 371 boost views (program is counting)
-2023-12-10 14:25 - 502 boost views
-2023-12-10 15:25 - 627 boost views (shut down)
-2023-12-10 19:35 - YT says 7,447 views, turn off speed boost.
-2023-12-10 22:30 - Suspend
+2024-01-23-05:01 - START Bombs 6:00-109, 17:29-219, 18:28-329, 19:26-439
+2024-01-23-19:19 - Chill 6,050+323 Rock 25,585+462 Bombs 160+0 Gangs 3,480+17
+2024-01-23-19:27 - START Gangs 6:00-339, 2024-01-24-19:37-681, 06:05-1,023
+2024-01-24-05:59 - self.you_tree.see(str(you_tree_iid_int)) tcl error: 355
 
-2023-12-11 05:33 - Restarted yesterday so far 57 views of 98 on Rock
-2023-12-11 07:00 - 74 views (14 boosted)
-2023-12-11 07:30 - 81 views (Suspend)
-2023-12-11-16:32 - 82 views (Resume, YT still says 7,447 views)
-2023-12-11-18:30 - 98 +  8 views (YT 7,447 views)
-2023-12-11-19:05 - 98 + 16 views (stop playing)
-2023-12-11-19:13 - Waiting for YT view count to update also at:
-                19:25, 19:57, 20:20, finally at 20:23 ---
-                YT reports 8,171 views. So 30 second video count
-                boost has 1 day lag? 7,447 + 114 s/b 7,561 count.
-                There are 8,171 - 7,561 = 610 extra videos
-2023-12-11-20:28 - Speed boost on start 8,171 YT views
-2023-12-11-20:53 - 50 speed views. Close program:
-2023-12-11-20:57 - Restart with end of playlist printing:
-                print("youViewCountSkipped   :", ...)
-2023-12-11-21:48 - youViewCountSkipped   : 142
-2023-12-11-22:10 - Suspend
-
-2023-12-12-06:01 - youViewCountSkipped   : 261 (diff = 119)
-2023-12-12-06:52 - youViewCountSkipped   : 364 (diff = 103)
-2023-12-12-07:31 - Suspend (№74 of 98)
-2023-12-12-16:33 - Resume
-2023-12-12-16:47 - youViewCountSkipped   : 465 (diff = 101)
-2023-12-12-17:39 - youViewCountSkipped   : 568 (diff = 103)
-2023-12-12-18:32 - youViewCountSkipped   : 668 (diff = 100)
-2023-12-12-19:24 - youViewCountSkipped   : 778 (diff = 110)
-2023-12-12-19:25 - CHECK FOR UPDATE from 8,171 views also at:
-                19:30, 19:45, 20:00, finally at 20:06
-2023-12-12-20:06 - 8,437 views - 8,171 previous = 266 new views
-
-2023-12-12-20:12 - Skipped: 0 - Restart for new YouTube Day
-2023-12-12-21:05 - Skipped: 103, duplicates: 5, errors: 6
-2023-12-12-21:58 - Skipped: 205, duplicates: 4, errors: 4
-2023-12-12-22:08 - Suspend at song № 19 of 98
-
-2023-12-13-05:33 - Resume at song № 19 of 98
-2023-12-13-06:15 - Skipped: 307, duplicates: 4, errors: 2
-2023-12-13-06:30 - SURVEY ERROR at skipped count ~340 crashed mserve:
-                Restart mserve at 0 skipped №33 of 98
-2023-12-13-07:11 - Bug Crash at list end. Previous skipped: ~400:
-                Restart mserve at 0 skipped №41 of 98
-2023-12-13-07:23 - Smart Play song № 96 of 98 to test code change
-                Remember to add 400 to day totals !!!
-2023-12-13-06:15 - Skipped: 26, duplicates: 0, errors: 0
-2023-12-13-17:00 - Resume (№14 of 99 says YT author added 1 song)
-2023-12-13-17:47 - Skipped: 130, duplicates: ?, errors: 3
-2023-12-13-18:37 - Skipped: 237, duplicates: 9, errors: 4
-2023-12-13-19:31 - Skipped: 344, duplicates: 6, errors: 3
-2023-12-13-19:20 - CHECK FOR UPDATE from 8,171 views at:
-                19:35, 19:50, 19:55 - YT updated at 9,293
-2023-12-13-19:31 - Skipped: 391, duplicates: ?, errors: 2
-2023-12-13-19:55 - 9,293 views - 8,437 previous = 856 new views
-                Actual 391 + 400 est. = 791 view skipped count
-
-2023-12-13-19:56 - Restart with 99 videos in mserve Rock playlist.
-2023-12-13-20:50 - Skipped: 102, duplicates: 3, errors: 5
-2023-12-13-21:43 - Skipped: 209, duplicates: 8, errors: 3
-2023-12-13-22:10 - Suspend. Resume on 14th at 05:26
-
-2023-12-14-05:56 - Skipped: 310, duplicates: 2, errors: 6
-2023-12-14-06:49 - Skipped: 409, duplicates: 0, errors: 5
-2023-12-14-07:31 - Suspend while playing №79 of 99. Resume at 16:51.
-2023-12-14-17:03 - Skipped: 508, duplicates: 0, errors: 5
-2023-12-14-17:56 - Skipped: 610, duplicates: 3, errors: 3
-2023-12-14-18:50 - Skipped: 712, duplicates: 3, errors: 4
-2023-12-14-19:43 - Skipped: 818, duplicates: 7, errors: 3
-2023-12-14-20:11 - Skipped: 870, duplicates: 2, errors: 2 (stop at №50)
-                YT updated: 10,053 - 9,293 previous = 760 new views
-                870 view skipped count (missing 90 due to lag)
-
-2023-12-14-20:15 - Restart mserve with new code
-2023-12-14-21:05 - Skipped: 112, duplicates: 12, errors: 2
-2023-12-14-22:03 - Skipped: 219, duplicates: 8, errors: 3
-2023-12-14-22:21 - Suspend at song №34. Resume at 23:30 (est. time)
-2023-12-14-23:59 - Skipped: 376, duplicates: 8, errors: 2
-2023-12-14-23:59 - Suspend (glitches in the Matrix...)
-2023-12-15-06:15 - Skipped: 479, duplicates: 4, errors: 6
-2023-12-15-07:11 - Skipped: 589, duplicates: 1, errors: 3
-2023-12-15-07:29 - Suspend while playing №32 of 99.
-2023-12-15-16:40 - Resume №33 of 99.
-2023-12-15-17:15 - Skipped: 695, duplicates: 7, errors: 6
-2023-12-15-18:09 - Skipped: 807, duplicates: 13, errors: 3
-2023-12-15-19:03 - Skipped: 916, duplicates: 10, errors: 1
-2023-12-15-20:00 - Shutdown for concise counts. Skipped= 1,024.
-2023-12-15-21:24 - Noticed 10,982 views - 10,053 = 929 new YT views (missing 95)
-
-2023-12-16-08:19 - Restart mserve @ 10,982 views. dlineinfo() errors gone now.
-2023-12-16-09:09 - Skipped: 102, duplicates: 3, errors: (one link not found)
-2023-12-16-09:10 - Skipped: 103, duplicates: 1, errors: (two links not found)
-2023-12-16-10:13 - Skipped: 209, duplicates: 7, errors: (only one link not found)
-2023-12-16-10:56 - Skipped: 310, duplicates: 2, errors: (only one link not found)
-2023-12-16-11:50 - Skipped: 412, duplicates: 3,     "       "       "
-2023-12-16-12:43 - Skipped: 516, duplicates: 5,     "       "       "
-2023-12-16-13:37 - Skipped: 614, duplicates: 0,     "       "       "
-2023-12-16-14:30 - Skipped: 718, duplicates: 5, errors: 1 - OLD dlineinfo() bug
-2023-12-16-17:36 - Skipped: 818, duplicates: 5, errors: 6 - OLD dlineinfo() bug
-Shutdown - Google not updating daily count. Must add 818 (minimum) later.
-2023-12-16-22:30 - Restart at song #3. YT playlist expanded from 99 to 100 songs
-2023-12-16-23:33 - Skipped: 98, duplicates: 0, errors: 3
-2023-12-17-00:26 - Skipped: 198, duplicates: 0, errors: 1
-2023-12-17-01:19 - Skipped: 299, duplicates: 1, errors: 2
-2023-12-17-01:50 - Skipped: 356, SUSPEND at #59. Skipped = 1,174
-2023-12-17-03:?? - Overnight 11,890 views - 10,982 = 908 new YT views (missing 266)
-
-2023-12-17-09:00 - Restart mserve @ 11,890 views - Update song #92 lyrics for errors
-2023-12-17-09:55 - Skipped: 110, duplicates: 10, error: 1 #92, line 5.0+1c
-                Song #46 (Loosing My Religion) metadata tags had time index
-                Song #92 (Chelsea Smile Lyrics) first lyrics line had [00:00.0]
-2023-12-17-10:51 - Skipped: 215, duplicates: 5, errors: 0
-2023-12-17-11:45 - Skipped: 321, duplicates: 6, errors: 0
-2023-12-17-12:39 - Skipped: 423, duplicates: 2, errors: 0
-2023-12-17-13:33 - Skipped: 528, duplicates: 5, errors: 0
-2023-12-17-14:27 - Skipped: 633, duplicates: 5, errors: 0
-2023-12-17-15:20 - Skipped: 733, duplicates: 0, errors: 0
-2023-12-17-16:14 - Skipped: 837, duplicates: 4, errors: 1 - song #92 again
-2023-12-17-16:25 - accidental CTRL+C at song #21/100
-2023-12-17-16:30 - Restart.  Must add 858 skipped to Dec 17th total.
-2023-12-17-17:20 - Skipped: 111+858, duplicates: 11, errors: 0
-2023-12-17-18:14 - Skipped: 216+858, duplicates: 11, errors: 0
-2023-12-17-18:48 - Speed Boost 'Play Next' button overridden by SURVEY WINDOW:
-    Other element would receive the click: <ytd-single-option-survey-option-renderer
-                class="style-scope ytd-single-option-survey-renderer"
-                vertical="">...</ytd-single-option-survey-option-renderer>
-2023-12-17-19:09 - Skipped: 320+858, duplicates: 4, errors: 0
-2023-12-17-19:30 - Skipped: 362+858 = 1,220. SHUTDOWN & Wait for YT to update.
-2023-12-17-22:30 - 12,938 YT views - 11,890 previous = 1,048 (missing 172)
-
-2023-12-18.05:40 - Start new day
-2023-12-18.06:15 - #70 not found - https://www.youtube.com/watch?v=21D_TD-yQ8Q
-                SLIPKNOT x DISTURBED x KORN x SYSTEM OF A DOWN
-                Also not found at skip count #: 102, 121, 131, 140, 150 & 159
-2023-12-18.07:04 - Restart mserve after skipping: 160
-                Random videos playing at skip #: 15, 24, 33, 42, 52
-2023-12-18.07:31 - Shutdown while playing song # 57, Add 217 to day total
-2023-12-18.17:00 - Go to next video if YouTube deviates from Playlist.
-2023-12-18-17:51 - Skipped: 122, duplicates: 22, errors: 1 - song #3, line 4
-2023-12-18-18:03 - Fix error and restart. Must add 160+57+100 (317) to total
-2023-12-18-18:56 - Skipped: 125, duplicates: 25, errors: 0
-2023-12-18-19:50 - Skipped: 238, duplicates: 13, errors: 0
-2023-12-18-19:58 - YT updated video count 14,133 - 12,938 = 1,195 new views
-                1,195 - 517 = 678 extra views, catching up for missing days...
-2023-12-18-20:43 - Skipped: 337, duplicates: -1, errors: 1
-2023-12-18-21:37 - Skipped: 449, duplicates: 12, errors: 0
-2023-12-18-22:18 - Suspend on song # 76
-
-2023-12-19-05:27 - Resume
-2023-12-19-05:40 - Skipped: 563, duplicates: 14, errors: 0
-2023-12-19-06:34 - Skipped: 673, duplicates: 10, errors: 0
-2023-12-19-07:28 - Skipped: 783, duplicates: 10, errors: 1 Song # 63, line 3
-2023-12-19-07:28 - Suspend on song # 1. Resume at 17:35
-2023-12-19-18:28 - Skipped: 892, duplicates: 9, errors: 1 Song # 63, line 4
-2023-12-19-18:29 - Skipped: 893, After song # 99 YouTube went off playlist:
-                https://www.youtube.com/watch?v=dSlYFtXENPo
-                However this is song #18 - "Teenage Dirtbag"
-2023-12-19-19:23 - Skipped: 1,003, duplicates: 10, errors: 3 Songs # 56, 57, 65
-2023-12-19-19:23 - Skipped: 1,112, duplicates: 9, errors: 3 Songs # 65, 70, 92
-
-2023-12-19-21:00 - Restart with code to fix duplicates. Add 75 to new count.
-                YT still stuck at 14,133 views from yesterday.
-2023-12-19-21:50 - YT update 14,905 - 14,133 = 722 new views.
-2023-12-19-21:55 - Skipped: 99
-2023-12-19-22:32 - Suspend at cycle 2, song # 72
-2023-12-20-05:00 - Resume
-2023-12-20-05:16 - Skipped: 198, error: Song # 92, line # 3
-2023-12-20-06:09 - Skipped: 297. Shutdown at 200 for the YT day count so far today.
-2023-12-20-06:09 - Restart mserve with new skipped count +1 for last playlist video.
-2023-12-20-07:04 - Skipped: 99, error: Song # 3 line 4
-2023-12-20-07:30 - Suspend, resume at 16:45
-2023-12-20-17:15 - Skipped: 199 (Must add 200 for YT count + ~200-300 day before?)
-2023-12-20-18:08 - Skipped: 299 (Add ~400-500 for YT day count)
-2023-12-20-19:02 - Skipped: 399
-2023-12-20-19:56 - Skipped: 499
-2023-12-20-20:48 - Skipped: 599, error: Song # 42, line 3
-2023-12-20-20:50 - YT update 15,673 - 14,905 = 768 new views (missing ~232)
-
-2023-12-20-21:00 - Restart with code to fix first video skipped count.
-2023-12-20-21:52 - Skipped: 100, error: Song # 3, line 4
-2023-12-21-05:49 - Skipped: 200 (suspend & resume inbetween)
-2023-12-21-06:43 - Skipped: 300
-2023-12-21-16:52 - Skipped: 400 (suspend & resume inbetween)
-2023-12-21-17:06 - Skipped: 429, Caused by YT straying off playlist
-2023-12-21-17:44 - Skipped: 500
-2023-12-21-18:38 - Skipped: 600
-2023-12-21-19:31 - Skipped: 700, error: Song #11, line 3
-2023-12-21-19:55 - Sometime previous. YT view 16,598 - 15,673 = 925 (extra 225)
-2023-12-21-20:05 - Error - Song # 63, line 5
-2023-12-21-20:06 - Skipped: 764, Caused by YT straying off playlist?
-2023-12-21-20:25 - Skipped: 800
-2023-12-21-20:31 - Error - Song # 12, line 5 (a.k.a.: S#12/L#5.)
-2023-12-21-21:19 - Skipped: 900
-21:21-S#4/L#6. 21:37-S#33/L#3. 21:49-S#56/L#4. 21:54-S#65/L#3. 22:08-S#92/L#9.
-2023-12-21-22:13 - Skipped: 1000
-2023-12-22-05:56 - Skipped: 1100 (suspend & resume inbetween)
-06:02-S#12/L#6. 06:03-S#14/L#5. 06:26-S#56/L#4. 06:31-S#65/L#4. 06:45-S#92/L#9.
-2023-12-22-06:50 - Skipped: 1200
-06:56-S#12/L#6. 07:07-S#33/L#4. 07:10-S#38/L#5.
-2023-12-22-16:28 - Skipped: 1300 (suspend & resume inbetween)
-2023-12-22-17:35 - Skipped: 1400, Error: 17:24-S#82/L#3.
-2023-12-22-18:29 - Skipped: 1500, 17:48-S#25/L#7. 18:12-S#69/L#6. 18:19-S#82/L#4.
-18:37-S#14/L#5. 18:53-S#44/L#3. 18:55-S#48/L#3. 19:05-S#67/L#2. 19:05-S#67/L#3.
-2023-12-22-19:23 - Skipped: 1600
-19:40-S#3/L#5. 19:57-S#64/L#5. 19:59-S#67/L#6. 19:59-S#67/L#7. 20:01-S#70/L#8.
-2023-12-22-20:17 - Skipped: 1700
-20:20-S#4/L#14. 20:32-S#26/L#4. 20:48-S#57/L#7. 20:48-S#57/L#8. 20:54-S#67/L#3.
-20:54-S#67/L#4. 21:08-S#92/L#11. 21:08-S#92/L#12.
-2023-12-22-21:12 - Skipped: 1800
-21:15-S#6/L#3. 21:16-S#7/L#6. 21:16-S#7/L#7. 21:25-S#24/L#11. 21:29:34.6 +7 more
-2023-12-22-22:07 - Skipped: 1900, End until next day resets from 16,381
-
-2023-12-23-06:57 - mserve restart. YT stuck at 16,381 views for two days
-2023-12-23-07:50 - Skipped: 99, Errors: 06:57-S#3/L#4
-2023-12-23-08:43 - Skipped: 199 (add ~1200 to next YT day's view count update)
-2023-12-23-09:37 - Skipped: 299
-2023-12-23-10:31 - Skipped: 399
-2023-12-23-11:24 - Skipped: 499
-2023-12-23-12:18 - Skipped: 599 (add ~1200 to next YT day's view count update)
-2023-12-23-13:11 - Skipped: 699, Errors: 12:48-S#57/L#3.
-2023-12-23-14:04 - Skipped: 799, Errors: 13:17-S#11/L#5. 13:41-S#57/L#4.
-2023-12-23-14:54 - Skipped: 892, 14:10-S#12/L#3. 14:35-S#57/L#5. 14:37-S#63/L#5.
-2023-12-23-14:58 - Skipped: 899, 14:43-S#73/L#4. 14:53-S#92/L#8.
-2023-12-23-15:52 - Skipped: 999, 15:04-S#12/L#4. 15:32-S#65/L#5.
-2023-12-23-16:47 - Skipped: 1099, Errors: 16:22-S#56/L#5.
-2023-12-23-16:49 - S#4/L#6. 17:05-S#33/L#5. 17:37-S#92/L#9. 17:37-S#92/L#10.
-2023-12-23-17:42 - Skipped: 1199, Errors are increasing as system lags more
-2023-12-23-17:44 - S#4 /L#8. 17:50-S#14/L#4. 17:52-S#18/L#4. 17:52-S#18/L#5.
-2023-12-23-18:37 - Skipped: 1299, Errors: 17:55-S#24/L#6. 18:03-S#38/L#5.
-2023-12-23-18:58 - S#38/L#6. 19:07-S#53/L#2.
-2023-12-23-19:09 - YT update 17,247 - 16,381 = 866 views (missing 1600 views)
-                ibus-daemon at 20% cpu, 1 minute for playtop to close, libtop
-                still up after two minutes so use kill -9. Reboot needed...
-
-2023-12-23-21:06 - Reboot Ubuntu and Restart mserve
-2023-12-24-08:30 - Skipped: 300 plus yesterdays missing 1600 = 1900.
-2023-12-24-09:25 - Skipped: 99 (99 is true because video #30 requires sign-on)
-2023-12-24-10:19 - Skipped: 199
-2023-12-24-10:30 - Accidental CTRL+C (Add 2120 to today's YT count)
-2023-12-24-11:24 - Skipped: 99, Error: 10:34-S#8/L#3.
-2023-12-24-11:35 - Skipped: 119 (Accidentally played song #100)
-2023-12-24-12:28 - Skipped: 219
-2023-12-24-13:11 - Skipped: 300 (close when skipping to song # 81 and restart)
-2023-12-24-14:08 - Skipped: 99, Errors: 13:16-S#3/L#4.0 13:48-S#63/L#3. 
-2023-12-24-15:01 - Skipped: 199, Error: 15:00-S#99/L#5. (Add 2420 to YT count)
-2023-12-24-15:54 - Skipped: 299, Error: 15:40-S#73/L#2. 
-2023-12-24-16:48 - Skipped: 399, Error: 15:56-S#3/L#3.
-2023-12-24-17:42 - Skipped: 499 (add 2420 to YT today's view count)
-2023-12-24-18:36 - Skipped: 599
-2023-12-24-19:29 - Skipped: 699, Error: 19:24-S#92/L#7.
-19:35-S#12/L#3. 19:46-S#33/L#3. 19:59-S#57/L#5. 20:00-S#57/L#5. (not reprint)
-2023-12-24-20:43 - YT views 18,796 - 17,247 = 1,549 new vies. (missing 1,550)
-
-2023-12-25-08:00 - Skipped: 100 (Fresh Start with +1 on first cycle)
-2023-12-25-08:53 - Skipped: 200 (Using Chrome version 108 from 2022-12-02)
-2023-12-25-09:47 - Skipped: 300 (Will upgrade to Chrome 120 from 2023-12-11)
-2023-12-25-10:40 - Skipped: 400 (pippim.com website updated today)
-2023-12-25-11:33 - Skipped: 500 (Only prompt if Chrome temporary files > 1 MB)
-
-2023-12-25-11:39 - S#11/L#3. Restart mserve @ 11:45 w/ 540 views today
-2023-12-25-13:14 - Skipped: 100 (Need to add 540 from earlier today)
-2023-12-25-14:08 - Skipped: 200
-2023-12-25-15:01 - Skipped: 300
-2023-12-25-15:54 - Skipped: 400
-2023-12-25-16:48 - Skipped: 500
-2023-12-25-17:41 - Skipped: 600, Errors: 17:37-S#92/L#7. 17:38-S#94/L#3. 
-2023-12-25-18:00 - Add 634 + 540 (1174) to today's count 
-2023-12-25-19:28 - Restart using Chromium version 120 snap YT = 20,061 views
-                minus previous 18,796 = 1,295 views (extra 91 views)
-
-NOTE: Chromium 120 doesn't leave temporary files behind like Chrome 108. 
-
-2023-12-25-20:22 - Skipped: 101 (YT playlist is now 101 videos)
-2023-12-25-21:16 - Skipped: 202 (Chromium 120 uses less CPU than Chrome 108)
-2023-12-25-22:11 - Skipped: 303 (Suspend @ 22:27, song # 30 of 101)
-2023-12-26-06:04 - Skipped: 404 (Resume @ 5:27)
-2023-12-26-06:59 - Skipped: 505 (Suspend @ 7:27)
-2023-12-26-17:05 - Skipped: 606, Error: 07:05-S#11/L#4.
-2023-12-26-18:00 - Skipped: 707, 17:35-S#56/L#3. 17:39-S#63/L#5. 17:40-S#65/L#3.
-2023-12-26-18:54 - Skipped: 808, S#12/L#5. S#41/L#4. S#56/L#4. S#99/L#8.
-2023-12-26-19:02 - S#12/L#5. 19:02-S#12/L#6. 19:31-S#65/L#5. 19:32-S#67/L#2.
-2023-12-26-19:32 - S#67/L#3. Taking 7 seconds to paint self.youLrcFrame.
-2023-12-26-19:51 - Skipped: 909, Errors: 19:43-S#88/L#3. 19:50-S#100/L#4.
-                YT Count 21,489 - previous 20,061 = 1,428 (extra 519 views)
-
-2023-12-26-20:05 - Restart with new self.youLrcFrame.destroy()
-2023-12-26-20:59 - Skipped: 101
-2023-12-26-21:54 - Skipped: 202 (Suspend @ 22:20, song # 48 of 101)
-2023-12-27-06:01 - Skipped: 303 (Resume @ 5:33)
-2023-12-27-06:55 - Skipped: 404 (Suspend @ 07:32, song # 67 of 101)
-2023-12-27-17:11 - Skipped: 505 (Resume @ 16:54)
-2023-12-27-18:06 - Skipped: 606, Errors: 17:12-S#3/L#3. 17:12-S#3/L#4.
-2023-12-27-19:01 - Skipped: 707, Errors: 18:41-S#66/L#5.
-2023-12-27-19:56 - Skipped: 808 check updates 20:20, 20:45
-2023-12-27-20:51 - Skipped: 909 check updates 20:51, 21:07, song #28 (937 total)
-                YT views 22,424 - 21,489 = 935 (26 extra views)
-
-2023-12-27-21:10 - Restart speed boost with 0 views
-2023-12-27-22:04 - Skipped: 101, Error: 21:58-S#90/L#4. 
-2023-12-28-05:41 - Skipped: 202 (Suspend and resume inbetween)  
-2023-12-28-17:03 - Skipped: 306 (Suspend and resume w/o hover over ads)  
-2023-12-28-17:58 - Skipped: 407, Error: 17:25-S#42/L#3.
-2023-12-28-18:52 - Skipped: 508
-2023-12-28-19:46 - Skipped: 609, check updates 20:07, 20:43
-2023-12-28-20:41 - Skipped: 710, check updates 21:02, 21:21
-2023-12-28-21:35 - Skipped: 811
-2023-12-28-22:00 - YT view count 22,056 - 22,424 = -368 lost views? 
-
-2023-12-29-05:33 - Fresh start new day at 0
-2023-12-29-06:28 - Skipped: 101
-2023-12-29-07:22 - Skipped: 202
-2023-12-29-17:30 - Skipped: 303
-2023-12-29-18:24 - Skipped: 404, Error: 17:52-S#42/L#3.
-2023-12-29-19:19 - Skipped: 505
-2023-12-29-20:12 - Skipped: 606
-2023-12-29-23:41 - YT 21,496 - 22,056 = -560 views lost. Kill program for day.
-
-SWITCH to Playlist Chill with 891 views
-2023-12-30-09:16 - Start View Count Boost on song #4 of 122 of Chill Playlist
-2023-12-30-10:20 - Skipped: 117
-2023-12-30-11:25 - Skipped: 235, Error: 10:23-S#7/L#3.
-2023-12-30-12:29 - Skipped: 353
-2023-12-30-13:34 - Skipped: 471
-2023-12-30-14:38 - Skipped: 589 (Suspend for a while)
-2023-12-30-16:48 - Skipped: 707 (Resume after awhile)
-2023-12-30-17:52 - Skipped: 825
-2023-12-30-18:56 - Skipped: 943
-2023-12-30-20:00 - Skipped: 1060 - shutdown at 1070
-
-2023-12-31-05:00 - Chill Playlist 891 views (unchanged) 
-                Rock Playlist 21,492 - 21,496 = -4 views lost
-2023-12-31-21:42 - Chill 2,030 - 891 = 1,139 new views (s/b 1070 extra 69 new)
-                Rock 21,542 - 21,492 = 50 new views.
-
-2024-01-01-08:14 - START Rock Playlist with speed boost. YT Views: 21,542
-2024-01-01-09:06 - Skipped: 102, 10:03-204, 10:57-306, 11:52-408, 12:46-510
-2024-01-01-13:40 - Skipped: 612, 14:35-714, 15:29-816, 16:23-918, 17:18-1,020
-2024-01-01-16:45 - Runaround Sue  | Video No.: 42  | text_start: 3.0+1c
-2024-01-01-17:18 - Skipped   : 1020
-2024-01-01-17:40 - Runaround Sue  | Video No.: 42  | text_start: 3.0+1c
-2024-01-01-18:12 - Skipped: 1,122, 19:07-1,224, 20:02-1,326
-2024-01-01-20:04 - Stop for YT update. Total 1,330 view boost on Rock Playlist
-2024-01-01-21:00 - Chill 2,030 - 2,030 = 0 new views
-                Rock 21,563 - 21,542 = 19 new views (missing 1,311)
-
-2024-01-01-21:06 - START Chill Playlist with speed boost. YT Views: 2,030
-2024-01-01-21:39 - Skipped: 58, 22:12-118 +40? = 158?
-2024-01-02-05:34 - Reboot from 0
-2024-01-02-07:12 - Restart Add 110 for this morning + 158 = ~258.
-2024-01-02-18:36 - Skipped: 118, 19:40-236 + 36 = 272 + 258 = 580 day total
-2024-01-02-20:00 - YT Chill 2,212 - 2,030 = 182 new views (~400 short)
-                YT Rock 22,853 - 21,563 = 1,290 new views (21 short)
-
-2024-01-02-20:05 - START Rock Playlist with speed boost. YT Views: 22,853
-2024-01-02-20:58 - Guns N' Roses - Don't Cry (Lyrics) ?  | Video No.: 99
-2024-01-02-20:58 - text_start: 7.0+1c  | line_text: Talk to me softly
-2024-01-02-21:00 - Skipped: 102, 21:54-204 (suspend at #41 of 102)
-2024-01-03-06:03 - Skipped: 306, 06:57-408 (suspend at #56 of 102)
-2024-01-03-17:55 - Scorpions - Still Loving  | line 6: To win back
-2024-01-03-17:59 - Skipped: 510, 18:53-612, 19:20-660 
-2024-01-03-19:20 - YT Chill 1,514 - 2,212 = -698 new views (missing ~1,100)
-                YT Rock 23,093 - 22,853 = 240 new views (missing 461)
-
-2024-01-03-19:22 - START Chill Playlist with speed boost. YT Views: 1,514
-2024-01-03-20:26 - Skipped: 118, 21:30-236, 22:34-354 (Suspend on song #1)
-2024-01-04-05:08 - Pastlives (Lyrics) Don't wake me I'm not dreaming
-2024-01-04-05:08 - No.: 1  | line 4: PAST LIVE COULDN'T EVER HOLD ME DOWN
-2024-01-04-05:09 - Skipped: 356, 06:12-474 #6:31 suspend song #36
-2024-01-04-05:09 - Skipped: 592, 18:26-710, 19:29-828, 20:33-946, 21:07-1012
-2024-01-04-21:11 - YT Chill 1,514 unchanged (missing ~2,112)
-                YT Rock 23,507 - 23,093 = 414 new views (now missing 47)
-
-2024-01-04-21:13 - START Rock Playlist with speed boost. YT Views: 23,507
-2024-01-04-22:39 - Skipped: 100 (suspend around song# 8)
-2024-01-05-06:02 - Skipped: 204 (suspend at song# 53 )
-2024-01-05-17:48 - Skipped: 308, 18:44-412, 19:40-516
-2024-01-05-19:40 - YT Chill 1,514 unchanged (missing ~2,112)
-                YT Rock 23,507 (unchanged missing ~516+47)
-
-2024-01-06-06:56 - YT Chill 2,342 - 1,514 = 828 new (missing ~1,284)
-                YT Rock 22,368 - 23,507 = -1139 new (now missing ~1,702)
-
-2024-01-06-07:15 - START Chill Playlist with speed boost. YT Views: 2,342
-2024-01-06-07:15 - "Shutting down, dialog prompt or player broken!"
-2024-01-06-07:24 - Hey  | Video No.: 16  | line # 8.0+1c  | line_text: hey
-2024-01-06-08:20 - Skipped: 118, 09:23-236, 10:27-354 
-2024-01-06-10:41 - Måneskin - Beggin' (Lyric Video) | Video: 27  | Line: 7
-                i'm on my knees when i'm beggin, cause I don't wanna lose you
-2024-01-06-11:30 - Skipped: 472, 12:34-590, 13:37-708, 14:41-826, 15:44-944
-2024-01-06-16:48 - Skipped: 1,062 + 83
-2024-01-06-20:20 - YT Chill 2,342 - 2,342 = 0 new (now missing ~2,429)
-                YT Rock 22,787 - 22,368 = 419 new (now missing ~1,283)
-
-2024-01-07-09:00 - START Rock Playlist with speed boost. YT Views: 22,787
-2024-01-07-10:00 - Skipped: 104
-
-===============================================================================
-
-===============================================================================
-
+2024-01-25-05:00 - Chill 6,050+0 Rock 25,585+0 Bombs 601+441 Gangs 3,762+282
+2024-01-25-19:35 - Gangster Skipped: 1364 (The day the music died)
+ 
 ===============================================================================
 
         '''
@@ -18311,6 +18041,26 @@ SWITCH to Playlist Chill with 891 views
 
         self.youViewSkippedTime = now
         self.youViewCountSkipped += 1
+        ''' Duplicates: #216/#215, #219/#218, #251/#250, #256/#255, #259/#258, 
+            #263/#262, #274/#273, #288/#287, #340/#339. The duplicate repeats
+            play in YT when clicking Next or <Shift>+N. '''
+        curr_dict = self.listYouTube[self.listYouTubeCurrIndex]
+        curr_link = curr_dict['link']
+        self.youPrint("self.listYouTubeCurrIndex:", self.listYouTubeCurrIndex,
+                      "curr_link:", curr_link, lv=9)
+        for i, search_dict in enumerate(self.listYouTube):
+            search_link = search_dict['link']
+            if search_link == curr_link:
+                self.youPrint("i:", i, "search_link:", search_link, lv=9)
+                if i == self.listYouTubeCurrIndex:
+                    continue  # Don't compare to ourself
+                if i < self.listYouTubeCurrIndex:
+                    # Found original, so this is duplicate to skip.
+                    self.youPrint("Skipping duplicate:", search_dict['name'], lv=1)
+                    self.youSmartPlaySong(str(self.listYouTubeCurrIndex + 2))
+                    # + 1 to convert to 1's index, + 1 for next song
+                    # Not tested if duplicate is last song on playlist...
+                    return
 
         actions = ActionChains(self.driver)
         actions.key_down(Keys.SHIFT)
@@ -18392,7 +18142,7 @@ SWITCH to Playlist Chill with 891 views
         return second
 
     def youTogglePlayer(self):
-        """ Button has been clicked.
+        """ Pause/Play Button has been clicked.
         """
         if self.youPlayerNoneText == self.youPlayerCurrText:
             # self.youPlayerButton = None  # Tkinter element mounted with .grid
@@ -18424,25 +18174,6 @@ SWITCH to Playlist Chill with 891 views
                       >=1 = playlist video 1's index
         """
 
-        """ Oct 4/23 - Method broken by self.driver.refresh().
-                       Index will increment even though video ID is true
-                       and stays the same.
-        link = self.youCurrentLink() 
-        try:
-            currIndex = int(link.split("&index=")[1])
-            return currIndex
-        except IndexError:
-            if link:
-                try:
-                    playlist = link.split("&list=")[1]
-                    return playlist
-                except IndexError:
-                    print("ERROR #2 on link = youCurrentIndex()")
-                    return None
-
-        print("ERROR #1 on link = youCurrentIndex()")
-        return None
-        """
         if not self.top:
             return None  # Closing down
         self.durationYouTube = 0.0
@@ -18454,7 +18185,7 @@ SWITCH to Playlist Chill with 891 views
             print("Unknown results and instability may occur.")
             return 0
 
-        index0s = self.youTreeNdxByLink(currVideo)
+        index0s = self.youTreeNdxByLink(currVideo, link)
         if index0s is None:
             print("youCurrentIndex() Playing video not in saved list")
             print("Unknown results and instability may occur.")
@@ -18466,6 +18197,45 @@ SWITCH to Playlist Chill with 891 views
         self.durationYouTube = float(tmf.get_sec(duration_str))
         index1s = int(index0s) + 1
         return index1s
+
+    def youUrlIndex(self, url=None):
+        """ Get link URL from Browser address bar & return index
+
+            Before play all:
+                https://www.youtube.com/playlist?list=
+                   PLthF248A1c68TAKl5DBskfJ2fwr1sk9aM
+            During play all:
+                https://www.youtube.com/watch?v=bePCRKGUwAY&list=
+                   PLthF248A1c68TAKl5DBskfJ2fwr1sk9aM&index=15
+
+            self.driver.refresh() will increment index beyond reality.
+            Lookup video ID to get the real index.
+
+            :returns: None = closing down. 0 = Not found, invalid link.
+                      >=1 = playlist video 1's index
+        """
+
+        if url:
+            link = url  # Used passed link
+        else:
+            link = self.youCurrentLink()  # Get address bar URL link
+        try:
+            currIndex = int(link.split("&index=")[1])
+            ''' Duplicates: #216/#215, #219/#218, #251/#250, #256/#255, #259/#258, 
+                #263/#262, #274/#273, #288/#287, #340/#339. The duplicate repeats
+                play in YT when clicking Next or <Shift>+N. '''
+            return currIndex
+        except IndexError:
+            if link:
+                try:
+                    playlist = link.split("&list=")[1]
+                    return playlist
+                except IndexError:
+                    self.youPrint("ERROR #2 on link = youUrlIndex()")  # End list
+                    return None
+
+        self.youPrint("ERROR #1 on link = youUrlIndex()")  # Never prints?
+        return None
 
     def youCurrentVideoId(self):
         """ Get link URL from Browser address bar & return Video ID
@@ -18562,7 +18332,7 @@ AttributeError: 'NoneType' object has no attribute 'execute_script'
             player_status = self.driver.execute_script(
                 "return document.getElementById('movie_player').getPlayerState()")
             return player_status
-        except WebDriverException as err:
+        except WebDriverException as _err:
             # WebDriverException: Message: javascript error: Cannot read
             #       properties of null (reading 'getPlayerState')
             #   (Session info: chrome=108.0.5359.124)
@@ -18680,10 +18450,12 @@ AttributeError: 'NoneType' object has no attribute 'execute_script'
             print(ext.t(short=True, hun=True), "self.youGetPlayerStatus():", stat)
             return None
 
+    # noinspection RegExpRedundantEscape
     @staticmethod
     def extract_dict(s):
         """ Extract all valid dicts from a string.
             https://stackoverflow.com/a/63850091/6929343
+            Called by youGetMicroFormat()
         Args:
             s (str): A string possibly containing dicts.
 
@@ -18816,8 +18588,8 @@ AttributeError: 'NoneType' object has no attribute 'execute_script'
         #   File "/usr/lib/python2.7/lib-tk/Tkinter.py", line 1540, in __call__
         #     return self.func(*args)
         #   File "/home/rick/python/mserve.py", line 15699, in <lambda>
-        #     command=lambda: self.youTreeSmartPlayAll())
-        #   File "/home/rick/python/mserve.py", line 16316, in youTreeSmartPlayAll
+        #     command=lambda: self.youSmartPlayAll())
+        #   File "/home/rick/python/mserve.py", line 16316, in youSmartPlayAll
         #     self.youHousekeeping()
         #   File "/home/rick/python/mserve.py", line 17879, in youHousekeeping
         #     if not self.youDriverClick("id", "confirm-button"):
@@ -18912,14 +18684,21 @@ AttributeError: 'NoneType' object has no attribute 'execute_script'
                 print()
             print(ext.t(short=True, hun=True), *args)
 
-    def youTreeNdxByLink(self, link_search):
+    def youTreeNdxByLink(self, link_search, link):
         """ Highlight row black & gold as second entry (see 2 below + 1 before)
             If same link used twice in playlist the first will be highlighted.
 
             https://www.youtube.com/playlist?list=PLthF248A1c68TAKl5DBskfJ2fwr1sk9aM
             https://www.youtube.com/watch?v=HAQQUDbuudY
 
+
         """
+        index1 = self.youUrlIndex(url=link)
+        try:
+            index1 = int(index1)
+            return index1 - 1
+        except (ValueError, TypeError):
+            pass  # No '&index=' at end of address bar url link
         for i, self.dictYouTube in enumerate(self.listYouTube):
             if link_search == self.dictYouTube['link']:
                 return i
@@ -19021,10 +18800,10 @@ AttributeError: 'NoneType' object has no attribute 'execute_script'
         try:
             result = self.listYouTube[ndx].get('lrc', None)
             del self.listYouTube[ndx]['lrc']
-            text = "LRC successfully deleted"
+            _text = "LRC successfully deleted"
         except KeyError:
             self.youPrint("KeyError no LRC in dictionary")
-            text = "LRC not found!"
+            _text = "LRC not found!"
             return
 
         if result is not None:
@@ -20140,9 +19919,9 @@ FADE_OUT_SPAN = 400     # 1/5 second to fade out
                     #print("_close_cb(): Probably closed wrong widget")
                     #tt_dict = self.tt.get_dict(self.widget)  # Not found
                     #if tt_dict is None:
-                        #prt_time = datetime.datetime.now().strftime("%M:%S.%f")[:-2]
-                        #print(prt_time, "_close_cb() - tt_dict not found for:",
-                        #      str(self.widget)[-4:])
+                    #   prt_time = datetime.datetime.now().strftime("%M:%S.%f")[:-2]
+                    #   print(prt_time, "_close_cb() - tt_dict not found for:",
+                    #         str(self.widget)[-4:])
                     # Next step is to print widget for Hide Chronology after
                     # built
                     pass

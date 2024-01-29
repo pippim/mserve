@@ -62,6 +62,7 @@ import datetime
 from collections import OrderedDict, namedtuple
 import re                   # w, h, old_x, old_y = re.split(r'\D+', geom)
 import traceback            # To display call stack (functions that got us here)
+import locale               # Use decimals or commas for float remainder?
 
 # mserve modules
 import global_variables as g
@@ -1179,7 +1180,6 @@ def computer_bytes(size, decimals=False):
 
         Credit: https://stackoverflow.com/a/5917250/6929343
     """
-    import locale
     match = re.match(r'^\D*\.?\D+$', size, re.I)
     # Credit: https://stackoverflow.com/a/430102/6929343
     match = re.match(r"([a-z]+)([0-9]+)", size, re.I)

@@ -17,6 +17,7 @@ from __future__ import with_statement  # Error handling for file opens
 #       July 10 2023 - Initial version.
 #       Sep. 08 2023 - Add new module calc.py to mserve.py dependencies
 #       Sep. 11 2023 - Generate line counts for Website Dashboard
+#       Jan. 17 2024 - "locale" required by mserve.py and toolkit.py
 #
 # ==============================================================================
 # from __future__ import unicode_literals  # Not needed.
@@ -189,6 +190,7 @@ def make_mserve_cfg():
     cfg.append(make_dict(m, None, "datetime"))
     cfg.append(make_dict(m, None, "re"))
     cfg.append(make_dict(m, None, "traceback"))
+    cfg.append(make_dict(m, None, "locale"))
     # noinspection SpellCheckingInspection
     cfg.append(make_dict(m, None, "webbrowser"))
     cfg.append(make_dict(m, None, "requests"))
@@ -285,6 +287,7 @@ def make_toolkit_cfg():
     cfg.append(make_dict(m, "OrderedDict", "collections"))
     cfg.append(make_dict(m, None, "re"))
     cfg.append(make_dict(m, None, "traceback"))
+    cfg.append(make_dict(m, None, "locale"))
     cfg.append(make_dict(m, "g", "global_variables", "pippim.com"))
     cfg.append(make_dict(m, "ext", "external", "pippim.com"))
     cfg.append(make_dict(m, "img", "image", "pippim.com"))
