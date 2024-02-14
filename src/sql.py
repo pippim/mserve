@@ -128,6 +128,7 @@ except IndexError:  # list index out of range
 import os
 import re
 import json
+import math
 import time
 import datetime
 from collections import OrderedDict
@@ -188,12 +189,16 @@ azlyrics link, azlyrics download time
 con = cursor = hist_cursor = loc_cursor = None
 new_con = new_cursor = new_hist_cursor = new_loc_cursor = None
 NEW_LOCATION = False
-START_DIR = PRUNED_DIR = lcs = LODICT = None
+SORTED_LIST = START_DIR = lcs = LODICT = None
+PRUNED_DIR = ""  # When needed, the /artist/album/ prepended to build filename
+PRUNED_COUNT = len(PRUNED_DIR)  # Length of prepended path
 
 
 def populate_tables(SortedList, start_dir, pruned_dir, lodict):
-    """ Create SQL tables out of OS sorted music top directory """
-    global NEW_LOCATION, START_DIR, PRUNED_DIR, LODICT
+    """ Create SQL tables out of OS sorted music top directory
+    """
+    global NEW_LOCATION, SORTED_LIST, START_DIR, PRUNED_DIR, LODICT
+    SORTED_LIST = SortedList
     START_DIR = start_dir
     PRUNED_DIR = pruned_dir  # Toplevel directory, EG /mnt/music/
     LODICT = lodict  # Location dictionary Aug 3/23 - soon will be <type None>
@@ -217,24 +222,30 @@ def populate_tables(SortedList, start_dir, pruned_dir, lodict):
     #open_db()  # July 24, 2023 Note new Locations() class has already opened
     #open_new_db()  # July 13, 2023
 
+    ''' 2024-02-09 Artist & Album not used. 
     LastArtist = ""         # For control breaks
     LastAlbum = ""
+    '''
 
-    for i, os_name in enumerate(SortedList):
+    for i, os_name in enumerate(SORTED_LIST):
 
+        ''' 2024-02-09 Artist & Album not used. 
         # split '/mnt/music/Artist/Album/Song.m4a' into list
         base_path = os_name[len(PRUNED_DIR):]
         groups = base_path.split(os.sep)
         Artist = groups[0]
         Album = groups[1]
+        '''
         key = os_name[len(PRUNED_DIR):]
 
+        ''' 2024-02-09 Artist & Album not used. 
         if Artist != LastArtist:
             LastArtist = Artist
             LastAlbum = ""          # Force sub-total break for Album
 
         if Album != LastAlbum:
             LastAlbum = Album
+        '''
 
         ''' Build full song path from song_list[] '''
         full_path = os_name
@@ -265,7 +276,12 @@ def populate_tables(SortedList, start_dir, pruned_dir, lodict):
             print("Could not stat:", full_path)
             continue
 
-        ''' Add the song only if it doesn't exist already. '''
+
+        ''' Add SQL music metadata if it doesn't exist already. 
+            Previously have validated:
+                Full path of topdir/artist/album/song exists
+                song is not in SQL music table yet
+        '''
         sql = "INSERT OR IGNORE INTO Music (OsFileName, \
                OsAccessTime, OsModifyTime, OsChangeTime, OsFileSize) \
                VALUES (?, ?, ?, ?, ?)" 
@@ -290,6 +306,141 @@ def populate_tables(SortedList, start_dir, pruned_dir, lodict):
 
     # June 3, 2023 before: sql.populate_tables(): 0.1658391953
     # June 3, 2023 AFTER : sql.populate_tables(): 0.0638458729
+    ''' TODO: record history totals '''
+
+
+def fix_os_last_access():
+    """ Last access date was corrupted by file scanning application
+
+https://www.geeksforgeeks.org/python-os-utime-method/
+
+import os
+
+# Path
+path = '/home / me / Documents / file.txt'
+
+# Print current access and modification time
+print("Current access time (in seconds):", os.stat(path).st_atime)
+print("Current modification time (in seconds):", os.stat(path).st_mtime)
+
+# Access time in nanoseconds
+atime_ns = 20000000012345
+
+# Modification time in nanoseconds
+mtime_ns = 10000000012345
+
+tup = (atime_ns, mtime_ns)
+os.utime(path, ns=tup)
+
+print("\nAccess and modification time changed\n")
+
+# Print current access and modification time
+print("Current access time (in seconds):", os.stat(path).st_atime)
+print("Current modification time (in seconds):", os.stat(path).st_mtime)
+
+
+    """
+    global NEW_LOCATION, SORTED_LIST, START_DIR, PRUNED_DIR  # global not needed
+
+    iRead = iNoAlbum = iNoSep = iNoSql = iNoStat = 0
+    iDiff = iSame = iUpdate = iNoUpdate = 0
+    iPrintTen = 10  # Set 10 already printed, change to 0 for debug
+    # noinspection PyTypeChecker
+    for i, os_name in enumerate(SORTED_LIST):
+        iRead += 1
+        ''' Songs missing artist or album subdirectory not in SQL Music Table '''
+        sql_key = os_name[len(PRUNED_DIR):]
+        if os.sep + NO_ARTIST_STR in sql_key or os.sep + NO_ALBUM_STR in sql_key:
+            iNoAlbum += 1
+            if iPrintTen < 10:
+                # Don't increment print counter as this is more like a warning
+                print("iNoAlbum:", iNoAlbum, os_name)
+            continue
+
+        ''' Skip songs without two os.sep '''
+        if sql_key.count(os.sep) != 2:
+            iNoSep += 1
+            continue
+
+        ''' Get SQL Music Table Row as 'd' '''
+        d = ofb.Select(sql_key)
+        if not d:
+            iNoSql += 1
+            continue  # Not in SQL Music Table
+
+        ''' Try to get OS information (metadata) on file '''
+        try:
+            stat = os.stat(os_name)  # Get file attributes
+        except OSError:
+            print("Could not stat os_name:", os_name)
+            iNoStat += 1
+            continue
+
+        ''' Is last access time the same? '''
+        if stat.st_atime == d['OsAccessTime']:
+            iSame += 1
+            if iPrintTen < 10:
+                iPrintTen += 1
+                print("SAME stat.st_atime:", stat.st_atime,
+                      "SQL:", d['OsAccessTime'], sql_key)
+            continue
+
+        ''' Last access time is different '''
+        iDiff += 1
+        if iPrintTen < 10:
+            iPrintTen += 1
+            print("DIFF stat.st_atime:", stat.st_atime,
+                  "SQL:", d['OsAccessTime'], sql_key)
+
+        ''' Only update last access time > SQL initially recorded values '''
+        if stat.st_atime < d['OsAccessTime']:
+            if iPrintTen < 10:
+                # Don't increment print counter as this is more like a warning
+                print("ACCESS stat.st_atime :", stat.st_atime,
+                      "< d['OsAccessTime']:", d['OsAccessTime'], sql_key)
+            iNoUpdate += 1
+            continue
+
+        ''' Only update SQL initially recorded values >= modification time '''
+        if stat.st_mtime > d['OsAccessTime']:
+            if stat.st_atime == stat.st_mtime:
+                # Already set on previous run
+                iSame += 1
+                iDiff -= 1
+                continue
+            # Set new stat.st_atime to stat.st_mtime instead of OsAccessTime.
+            print("MODIFY stat.st_mtime :", stat.st_atime,
+                  "> d['OsAccessTime']:", d['OsAccessTime'], sql_key)
+            newAccessTime = stat.st_mtime
+        else:
+            newAccessTime = d['OsAccessTime']  # Use SQL Music Table Row's time
+            # Fix stat.st_atime: 1694283346.0, d['LastPlayTime']: 1694283346.01
+            fLastPlayTime = float(math.trunc(d['LastPlayTime']))
+            if fLastPlayTime > newAccessTime:
+                if stat.st_atime == fLastPlayTime:
+                    # Already set on previous run
+                    iSame += 1
+                    iDiff -= 1
+                    continue
+                # Set new stat.st_atime to LastPlayTime.
+                print("MODIFY stat.st_atime:", stat.st_atime,
+                      "< d['LastPlayTime']:", fLastPlayTime, sql_key)
+                newAccessTime = fLastPlayTime  # Use truncated LastPlayTime
+            else:
+                # Set new stat.st_atime to OsAccessTime.
+                print("MODIFY stat.st_atime:", stat.st_atime,
+                      "> d['OsAccessTime']:", d['OsAccessTime'], sql_key)
+
+        tup = (newAccessTime, stat.st_mtime)
+        os.utime(os_name, tup)
+
+        iUpdate += 1
+
+    print()
+    print("iRead:", iRead, " | iNoAlbum:", iNoAlbum, " | iNoSep:", iNoSep,
+          " | iNoStat:", iNoStat, " | iNoSql:", iNoSql, " | iDiff:", iDiff)
+    print("iSame:", iSame, " | iUpdate :", iUpdate,  " | iNoUpd:", iNoUpdate)
+    print()  # Give me a little space!
 
 
 def open_db(LCS=None):
@@ -3820,5 +3971,131 @@ class FixData:
             self.past_count += 1
             return False
 
+    def populate_lib_tree(self, delayed_textbox):
+        """ Fix os.stat Last Access Time using stored SQL last Access Time """
+
+        who = "mserve.py populate_lib_tree() - "
+        LastArtist = ""
+        LastAlbum = ""
+        CurrAlbumId = ""  # When there are no albums?
+        CurrArtistId = ""  # When there are no albums?
+        level_count = [0, 0, 0]  # Count of Artists, Albums, Songs
+
+        start_dir_sep = START_DIR.count(os.sep) - 1  # Number of / separators
+        global PRUNED_COUNT
+        # print(who + 'PRUNED_COUNT:', PRUNED_COUNT)
+        start_dir_sep = start_dir_sep - PRUNED_COUNT
+
+        for i, os_name in enumerate(self.fake_paths):
+
+            ''' Sorted list removed subdirectory levels: self.fake_paths = 
+                    [w.replace(os.sep + g.NO_ALBUM_STR + os.sep, os.sep) \
+                        for w in work_list] '''
+            groups = os_name.split(os.sep)
+            Artist = groups[start_dir_sep + 1]
+            Album = groups[start_dir_sep + 2]
+            Song = groups[start_dir_sep + 3]
+
+            if Artist != LastArtist:
+                level_count[0] += 1  # Increment artist count
+                opened = False  # New installation would be more concise view for user
+                CurrArtistId = self.lib_tree.insert(
+                    "", "end", text=Artist, tags=("Artist", "unchecked"), open=opened,
+                    values=("", "", "", 0.0, 0, 0, 0, 0, 0, 0))
+                #   Index:  0         2      4     6     8
+                #   Name:   LastPlay  SelStr Size  Secs  sCount (s=Selected)
+                #   Index:      1        3      5     7     9
+                #   Name:       SizeStr  Time   Cnt   sSize sSeconds
+
+                # Treeview bug inserts integer 0 as string 0, must overwrite
+                self.tree_col_range_replace(CurrArtistId, 5, [0, 0, 0, 0, 0, 0])
+                self.lib_tree.tag_bind(CurrArtistId, '<Motion>', self.lib_highlight_row)
+                LastArtist = Artist
+                LastAlbum = ""  # Force subtotal break for Album
+
+            if Album != LastAlbum:
+                level_count[1] += 1  # Increment album count
+                opened = False  # New installation would be more concise view for user
+                CurrAlbumId = self.lib_tree.insert(
+                    CurrArtistId, "end", text=Album, tags=("Album", "unchecked"),
+                    open=opened, values=("", "", "", 0.0, 0, 0, 0, 0, 0, 0))
+                # 0=PlayTime, 1=Size MB, 2=Selected Str, 3=Time, 4=StatSize,
+                # 5=Count, 6=Seconds, 7=SelSize, 8=SelCount, 9=SelSeconds
+                # May 24, 2023 - open state wasn't specified before today
+                # Treeview bug inserts integer 0 as string 0, must overwrite
+                self.tree_col_range_replace(CurrAlbumId, 5, [0, 0, 0, 0, 0, 0])
+
+                # Treeview bug inserts integer 0 as string 0, must overwrite
+                self.tree_col_range_replace(CurrAlbumId, 5, [0, 0, 0, 0, 0, 0])
+
+                self.lib_tree.tag_bind(CurrAlbumId, '<Motion>', self.lib_highlight_row)
+                LastAlbum = Album
+
+            ''' Build full song path from song_list[] '''
+            level_count[2] += 1  # Increment song count
+            full_path = os_name
+            full_path = full_path.replace(os.sep + g.NO_ARTIST_STR, '')
+            full_path = full_path.replace(os.sep + g.NO_ALBUM_STR, '')
+            self.real_paths.append(full_path)
+
+            if delayed_textbox.update(full_path):
+                # delayed_textbox returns true only when visible otherwise
+                # we are in quiet mode because not enough time has passed.
+                self.lib_tree.see(CurrArtistId)
+                self.lib_tree.update()
+
+            ''' FTP override - cannot stat every file. Take size from list.
+                Use sql last play time if it exists.
+                If song never played then use lowest of sql creation time, 
+                or sql last access time or sql last modified time.
+            '''
+            # os.stat gives us all of file's attributes
+
+            ''' When using FTP, get size from size_dict, else os.stat() '''
+            play_time = 0.0
+            d = sql.ofb.Select(full_path[len(PRUNED_DIR):])
+            if d:
+                play_time = d['LastPlayTime']
+            if lcs.open_ftp:
+                size = self.size_dict.get(full_path, 0)
+                if not play_time and d:
+                    play_time = d['OsAccessTime']
+            else:
+                try:
+                    stat = os.stat(full_path)  # Get file attributes
+                    size = stat.st_size
+                    if not play_time:
+                        play_time = stat.st_atime
+                except OSError:
+                    print(who + "Could not stat:", full_path)
+                    continue
+
+            if size < g.MUSIC_MIN_SIZE:
+                str_size = '{:n}'.format(g.MUSIC_MIN_SIZE)
+                print(who + "Skipping file less than:", str_size,
+                      "bytes. Filename below:")
+                print(" " + full_path)
+                continue  # Causes error because in sorted_list
+
+            self.tree_col_range_add(CurrAlbumId, 5, [size, 1])
+            self.tree_col_range_add(CurrArtistId, 5, [size, 1])
+            self.tree_title_range_add(5, [size, 1])  # update title bar
+            converted = float(size) / float(g.CFG_DIVISOR_AMT)
+            fsize = '{:n}'.format(round(converted, g.CFG_DECIMAL_PLACES))
+
+            # Format date as "Abbreviation - 99 Xxx Ago"
+            ftime = tmf.ago(float(play_time), seconds=True)
+
+            ''' Add the song '''
+            self.lib_tree.insert(
+                CurrAlbumId, "end", iid=str(i), text=Song, tags=("Song", "unchecked"),
+                values=(ftime, fsize, '', float(play_time), size, 1, 0, 0, 0, 0))
+            # Dec 28 2020 - Selected Size is now Song Sequence Number
+            # 0=PlayTime, 1=Size MB, 2=Selected Str, 3=Time, 4=StatSize,
+            # 5=Count, 6=Seconds, 7=SelSize, 8=SelCount, 9=SelSeconds
+            self.tree_col_range_replace(str(i), 6, [1, 0, 0, 0, 0])
+            self.lib_tree.tag_bind(str(i), '<Motion>', self.lib_highlight_row)
+
+        self.display_lib_title()  # Was called thousands of times above.
 
 # End of sql.py

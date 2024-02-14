@@ -263,7 +263,7 @@ def make_vum_cfg():
 
 
 def make_toolkit_cfg():
-    """ Configuration for: 'import vu_pulse_audio as toolkit' """
+    """ Configuration for: 'import toolkit' """
     '''
         Optional gnome_screenshot() for MoveTreeviewColumn function imports:
             import gi
@@ -350,6 +350,7 @@ def make_sql_cfg():
     cfg.append(make_dict(m, None, "os"))
     cfg.append(make_dict(m, None, "re"))
     cfg.append(make_dict(m, None, "json"))
+    cfg.append(make_dict(m, None, "math"))
     cfg.append(make_dict(m, None, "time"))
     cfg.append(make_dict(m, None, "datetime"))
     cfg.append(make_dict(m, "namedtuple", "collections"))

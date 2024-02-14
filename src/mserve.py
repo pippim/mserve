@@ -106,6 +106,14 @@ BUGS:
 
 TODO:
 
+    Snapware was scanning all files on boot. This reset last access date.
+        Create new function "Restore OS Last Access Date". This will use
+        shared SQL database and apply Last Access Date discovered during
+        music files initial scan. New function in "Tools" menu. Snapware
+        was removed after December 20, 2023 which is the last access date
+        fake change of record. 
+
+
     "Playing Music" window start up splash tooltip centered with:
         "Playing Music from: "  Favorites, Playlist: "xxx", Artist: "xxx",
                                 Album: "xxx", Genre "xxx", Year "9999".
@@ -1744,6 +1752,10 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
 
         self.tools_menu.add_command(label="Pulse Audio", font=g.FONT,
                                     command=self.show_pulse_audio)
+        self.tools_menu.add_separator()  # If countdown running, don't show options
+
+        self.tools_menu.add_command(label="Repair Last Access", font=g.FONT,
+                                    command=sql.fix_os_last_access)
 
         mb.add_cascade(label="Tools", menu=self.tools_menu, font=g.FONT)
         ext.t_end('no_print')  # 0.0006351471
@@ -2487,7 +2499,7 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
             '''
             # os.stat gives us all of file's attributes
 
-            ''' TODO: Get size from size_dict '''
+            ''' When using FTP, get size from size_dict, else os.stat() '''
             play_time = 0.0
             d = sql.ofb.Select(full_path[len(PRUNED_DIR):])
             if d:
@@ -17998,6 +18010,8 @@ Redundant calls after turning down to 25% and up to 100%:
 
 2024-01-25-05:00 - Chill 6,050+0 Rock 25,585+0 Bombs 601+441 Gangs 3,762+282
 2024-01-25-19:35 - Gangster Skipped: 1364 (The day the music died)
+2024-01-30-18:39 - Chill 5,849-201 Rock 25,594+9 Bombs 672+71 Gangs 3,641-121
+            Currently only subscriber to channel but just now told another.
  
 ===============================================================================
 
