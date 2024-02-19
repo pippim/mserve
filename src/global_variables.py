@@ -50,7 +50,8 @@ PROGRAM_DIR = None      # Directory where mserve.py is stored.
 TEMP_DIR = None         # Directory for temporary files /run/user/1000 preferred
 MUSIC_FILE_TYPES = [".aiff", ".caf", ".flac", ".mp3", ".mp4", ".m4a",
                     ".oga", ".ogg", ".PCM", ".wav", ".wma"]
-MUSIC_MIN_SIZE = 100000  # Music Files must be at least 100 KB
+MUSIC_MIN_SIZE = 100000  # Music Files must be > 100 KB. 99999 for debug to print.
+DEBUG_LEVEL = 0         # Set to 1 for warning / trace messages to print
 
 MSERVE_VERSION = u"3.5.0"  # Make .lrc file (synchronized lyrics standard)
 WIN_MIN_WIDTH = 142     # Same values used by gnome-terminal to prevent window 

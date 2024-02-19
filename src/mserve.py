@@ -90,6 +90,7 @@ warnings.simplefilter('default')  # in future Python versions.
 #       Jan. 17 2024 - Add 'locale.localeconv()["decimal_point"]' support.
 #       Jan. 20 2024 - Duplicate video in YT Playlist repeats with Play Next.
 #       Jan. 28 2024 - YT Playlist notes for error correction. Kill datafiles.
+#       Feb. 18 2024 - Set SQL last play time same as OS stat file last access.
 
 # noinspection SpellCheckingInspection
 """
@@ -665,9 +666,9 @@ YOUTUBE_RESOLUTION = "mqdefault.jpg"  # 63 videos = 176.4 KB
 # Sep. 07, 2023 - Drop SLEEP from 33 to 16 for faster VU meters. Separate
 #   sleep cycle for artwork speed can be created. At twice speed artwork
 #   rendering goes from 3% CPU to 6% CPU load.
-SLEEP_PAUSED = 16       # play_top open but music paused
-SLEEP_PLAYING = 16      # play_top is playing music
-SLEEP_NO_PLAY = 16      # play_top closed, refresh_lib_top() running
+SLEEP_PAUSED = 16       # ms refresh - play_top open but music paused
+SLEEP_PLAYING = 16      # ms refresh - play_top is playing music
+SLEEP_NO_PLAY = 16      # ms refresh - refresh_lib_top() running
 
 
 def make_sorted_list(start_dir, toplevel=None, idle=None, check_only=False):
@@ -2520,9 +2521,10 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
 
             if size < g.MUSIC_MIN_SIZE:
                 str_size = '{:n}'.format(g.MUSIC_MIN_SIZE)
-                print(who + "Skipping file less than:", str_size,
-                      "bytes. Filename below:")
-                print(" " + full_path)
+                if g.DEBUG_LEVEL:  # set to 99999 for debug
+                    print(who + "Skipping file less than:", str_size,
+                          "bytes. Filename below:")
+                    print(" " + full_path)
                 continue  # Causes error because in sorted_list
 
             self.tree_col_range_add(CurrAlbumId, 5, [size, 1])
@@ -2611,7 +2613,6 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
         self.tree_col_range_add(artist, 8, adj_list, tagsel='artist_sel')
         self.tree_title_range_add(8, adj_list)  # Pass start index
         self.display_lib_title()  # Format sizes and selected in title bar
-
 
     def tree_col_range_replace(self, iid, numb, init_list, tagsel=None):
         """ Initialize treeview columns to list of values
@@ -2903,7 +2904,6 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
     #       MusicLocationTree Processing - Select items, Popup Menus
     #
     # ==============================================================================
-
     def button_1_click(self, event):
         """ Call CheckboxTreeview to manage "checked" and "unchecked" tags.
             Before calling issue warning if it will change tri-state.
@@ -4091,13 +4091,11 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
     #       Music Location Tree Processing section - Top level functions
     #
     # ==============================================================================
-
     def exit_without_save(self):
         """ save=True is default. False prevents saving data. """
         self.close(save=False)
 
-    # noinspection PyUnusedLocal
-    def close(self, save=True, *args):
+    def close(self, save=True, *_args):
         """ save=True is default. When <Escape> or X closes window save=tk.Event
             which is boolean True. Only 'Exit and CANCEL Changes' passes False.
         """
@@ -4112,8 +4110,7 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
         self.lib_top = None
         exit()  # Doesn't happen because .close_sleepers() keeps running?
 
-    # noinspection PyUnusedLocal
-    def restart(self, *args):
+    def restart(self, *_args):
         """ July 13 2023 - A couple weeks ago this option was removed from
             dropdown menu because after 100 times it causes lag in TCL/Tk """
         self.close()
@@ -4235,8 +4232,7 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
         self.parm = code  # Sep 5/23 - topdir appears twice, L001 and L005
         self.restart_new_parameters(self)
 
-    # noinspection PyUnusedLocal
-    def restart_new_parameters(self, *args):
+    def restart_new_parameters(self, *_args):
         """ Called by open_and_play() function """
         self.close_sleepers()  # Shut down running functions
         root.destroy()
@@ -4346,7 +4342,6 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
     #       Music Location Tree Processing - Refresh Library
     #
     # ==============================================================================
-
     def rebuild_lib_tree(self):
         """ If directories/songs have changed rebuild cd tree and position
             to first changed song.
@@ -5356,6 +5351,10 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
         if os_file_size < g.MUSIC_MIN_SIZE:
             # Not a valid music file
             str_size = '{:n}'.format(g.MUSIC_MIN_SIZE)
+            if g.DEBUG_LEVEL:
+                print("missing_artwork_callback() size < " + str_size + ":",
+                      os_filename)
+
             ''' Show in Delayed Text Box but Control+C not working for copy. '''
             self.missing_artwork_dtb.update(
                 "3) File size < " + str_size + " bytes: " + os_filename)
@@ -5402,8 +5401,7 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
                                             os_filename)  # Refresh screen with song file name
             return True  # keep this one in treeview
 
-    # noinspection PyUnusedLocal
-    def mus_close(self, *args):
+    def mus_close(self, *_args):
         """ Close SQL Music Table View
             May be called with 'X' to close window while find callbacks running.
         """
@@ -5601,8 +5599,7 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
 
         return music_id == 0 and Type == 'encode'
 
-    # noinspection PyUnusedLocal
-    def his_close(self, *args):
+    def his_close(self, *_args):
         """ Close SQL History Table View """
         self.pretty_close()  # Inadvertently closes if opened by mus_top
         last_geometry = monitor.get_window_geom_string(
@@ -5719,8 +5716,7 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
             self.lcs_view, find_str=None, tt=self.tt)
         self.lcs_search.find()
 
-    # noinspection PyUnusedLocal
-    def lcs_close(self, *args):
+    def lcs_close(self, *_args):
         """ Close SQL Location Table View """
         self.pretty_close()  # Inadvertently closes if opened by mus_top
         last_geometry = monitor.get_window_geom_string(
@@ -6646,7 +6642,6 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
     #       Music Location Tree Processing - Play All Songs forever
     #
     # ==============================================================================
-
     def play_selected_list(self):
         """ Play songs in self.saved_selections[]. Define buttons:
                 Close, Pause, Prev, Next, Commercial and Intermission """
@@ -7995,7 +7990,6 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
     #       Play one song - Called on start up, then repeatedly for each new song.
     #
     # ==============================================================================
-
     def play_one_song(self, resume=False, chron_state=None, from_refresh=False):
         """ Play song from start. Called on startup, on playlist change and
             by next/prev/restart buttons.
@@ -8337,6 +8331,11 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
             return  # Already done or don't want to clear Chrome temp files
 
         tmp = "/tmp/.com.google.Chrome.*"
+        if not glob.glob(tmp):
+            if g.DEBUG_LEVEL:
+                print("check_chrome_tmp_files() Directory doesn't exist:", tmp)
+            return
+
         results = os.popen("du "+tmp+" -csh --time").read().splitlines()
         print("\ncheck_chrome_tmp_files() 'du", tmp,
               "-csh --time' last line:")
@@ -8377,6 +8376,7 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
         if answer.result != 'yes':
             return  # Don't delete files
 
+        # Could use ext.remove_group() function too.
         results = os.popen("rm -rfv "+tmp).read()
         print("\ncheck_chrome_tmp_files() 'rm -rfv ", tmp, "' results:")
         print(results)
@@ -8403,8 +8403,8 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
 
     def close_lib_tree_song(self, path, a_time):
         """ Final update of file's last played time in lib_top treeview.
+            When creating play_ctl(): close_callback=self.close_lib_tree_song
             Called by self.play_ctl.close() -> close_callback()
-            Use: close_callback=self.close_lib_tree_song
         """
         if path is None or a_time is None:
             return  # Fast clicking 'Next' song
@@ -8852,7 +8852,6 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
     #       Music Location Tree Processing - VU Meter
     #
     # ==============================================================================
-
     def play_vu_meter_blank(self):
         """ Display blank VU Meters (Left and Right), when music paused.
             Previous dynamic display rectangles have already been removed. """
@@ -9041,7 +9040,6 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
     #       Music Location Tree Processing - Lyrics Score
     #
     # ==============================================================================
-
     def play_init_lyrics(self):
         """ A new song has started playing. Initialize lyrics textbox """
         if self.lyrics_edit_is_active:
@@ -9546,7 +9544,6 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
     #       Music Location Tree Processing - Basic time index
     #
     # ==============================================================================
-
     def play_train_lyrics(self):
         """ Train Lyrics was right-clicked.
         NOTE: Right click again to Save/Cancel.
@@ -10045,7 +10042,6 @@ mark set markName index"
     #       Music Location Tree class - Lyrics Right click menu - Edit, Scrape options
     #
     # ==============================================================================
-
     def play_lyrics_fake_right_click(self):
         """ Callback from RoundedRectangle click on hamburger menu
         """
@@ -10335,7 +10331,6 @@ mark set markName index"
     #       Music Location Tree Processing - Edit lyrics
     #
     # ==============================================================================
-
     def play_edit_lyrics(self):
         """ Edit Lyrics was right-clicked. Right click again to Save/Cancel.
             Typical usage:
@@ -10563,7 +10558,6 @@ mark set markName index"
     #       Music Location Tree class - Smaller sized functions
     #
     # ==============================================================================
-
     def set_artwork_colors(self):
         """ Get artwork for currently playing song.
             Apply artwork colors to panels, buttons and text. """
@@ -10808,8 +10802,7 @@ mark set markName index"
             # If tagged as currently playing, remove it.
             self.populate_chron_tree()  # Rebuild with new song
 
-    # noinspection PyUnusedLocal
-    def play_close(self, *args):
+    def play_close(self, *_args):
         """ Close music player (Playlist) """
         # TODO: last_selections aren't being saved. When clicking play again
         #       shuffle order and last song index are lost.
@@ -10999,7 +10992,6 @@ mark set markName index"
     #       Play song from Music Location Tree - middle 10 seconds or full song
     #
     # ==============================================================================
-
     def lib_tree_play(self, Id, sample='middle'):
         """ Sample middle 10 seconds or full song. Turn down other applications
             when starting and restore other application volume when ending. """
@@ -11148,8 +11140,7 @@ mark set markName index"
         else:
             return False
 
-    # noinspection PyUnusedLocal
-    def lib_tree_play_close(self, normal=False, *args):  # *args required when lambda used
+    def lib_tree_play_close(self, normal=False, *_args):  # *args required when lambda used
         """ Close self.ltp_top - Sample random song
             Called when song ends (normal=True) or with close button/Window 'X'
         """
@@ -11200,7 +11191,6 @@ mark set markName index"
     #       Playlist chronology
     #
     # ==============================================================================
-
     def build_chronology(self, _sbar_width=14):
         """ Chronology treeview List Box, Columns and Headings """
 
@@ -11341,8 +11331,7 @@ mark set markName index"
 
         self.chron_last_row = item
 
-    # noinspection PyUnusedLocal
-    def chron_leave_row(self, *args):
+    def chron_leave_row(self, *_args):
         """ Un-highlight row just left. *args because chron_close_popup() no parameters """
         if self.chron_last_row is None:
             return  # Nothing to remove. highlight_row() called just in case....
@@ -14132,7 +14121,6 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilatio
         self.OsFileSize = self.stat_start.st_size
         self.OsAccessTime = self.stat_start.st_atime
 
-
     def check_metadata(self):
         """ Ensure Audio stream exists. """
 
@@ -14656,7 +14644,7 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilatio
                                    "\nLikely caused by fast clicking Next/Prev")
         else:
             ''' Song counts as being played > 80% '''
-            if not sql.increment_last_play(self.path):
+            if not sql.increment_last_play(self.path, self.final_atime):
                 self.info.fact("Error incrementing last play: \t" + self.Title,
                                icon='error')
 
@@ -14695,7 +14683,7 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilatio
         old_atime = old_stat.st_atime
 
         if new_stat:
-            ''' The forced time passed. Likely self.stat_start instance '''
+            ''' The forced time passed. Likely self.stat_start variable '''
             forced_atime = new_stat.st_atime
             date_str = datetime.datetime.fromtimestamp(forced_atime)\
                 .strftime('%Y-%m-%d %H:%M:%S')

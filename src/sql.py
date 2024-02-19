@@ -142,8 +142,8 @@ if g.USER is None:
     print('sql.py was forced to run g.init()')
     g.init()
 import toolkit
-import timefmt as tmf               # Our custom time formatting functions
-import external as ext
+import timefmt as tmf               # Custom time formatting functions
+import external as ext              # Custom date formatting used here
 
 try:
     # Works when mserve.py is called by 'm'
@@ -344,7 +344,7 @@ print("Current modification time (in seconds):", os.stat(path).st_mtime)
 
     iRead = iNoAlbum = iNoSep = iNoSql = iNoStat = 0
     iDiff = iSame = iUpdate = iNoUpdate = 0
-    iPrintTen = 10  # Set 10 already printed, change to 0 for debug
+    iPrintTen = 10  # 10 force already printed, 0 for debug and first 10 printed
     # noinspection PyTypeChecker
     for i, os_name in enumerate(SORTED_LIST):
         iRead += 1
@@ -380,26 +380,50 @@ print("Current modification time (in seconds):", os.stat(path).st_mtime)
         if stat.st_atime == d['OsAccessTime']:
             iSame += 1
             if iPrintTen < 10:
-                iPrintTen += 1
-                print("SAME stat.st_atime:", stat.st_atime,
-                      "SQL:", d['OsAccessTime'], sql_key)
+                #iPrintTen += 1
+                #print("SAME stat.st_atime:", ext.t(stat.st_atime),
+                #      "SQL:", ext.t(d['OsAccessTime']), sql_key)
+                pass
             continue
 
         ''' Last access time is different '''
         iDiff += 1
         if iPrintTen < 10:
-            iPrintTen += 1
-            print("DIFF stat.st_atime:", stat.st_atime,
-                  "SQL:", d['OsAccessTime'], sql_key)
+            #iPrintTen += 1
+            #print("DIFF stat.st_atime:", ext.t(stat.st_atime),
+            #      "!= 'OsAccessTime':", ext.t(d['OsAccessTime']),
+            #      "\n   ", sql_key)
+            pass
 
         ''' Only update last access time > SQL initially recorded values '''
         if stat.st_atime < d['OsAccessTime']:
             if iPrintTen < 10:
                 # Don't increment print counter as this is more like a warning
-                print("ACCESS stat.st_atime :", stat.st_atime,
-                      "< d['OsAccessTime']:", d['OsAccessTime'], sql_key)
-            iNoUpdate += 1
-            continue
+                print("ACCESS stat.st_atime :", ext.t(stat.st_atime),
+                      "< 'OsAccessTime':", ext.t(d['OsAccessTime']),
+                      "\n   ", sql_key)
+
+            ''' 10% of records are an exception to the rule... 
+            E.G.
+ACCESS stat.st_atime : Feb 06 2021 05:00:00 PM < d['OsAccessTime']: Feb 07 2021 04:24:24 PM 
+     Bad Company/10 From 6/01 Can't Get Enough.m4a
+ACCESS stat.st_atime : May 24 2021 06:00:00 PM < d['OsAccessTime']: May 25 2021 04:50:55 PM 
+     Nazareth/The Anthology [Disc #1 of 2]/1-04 Woke Up This Morning.oga
+ACCESS stat.st_atime : Feb 06 2021 05:00:00 PM < d['OsAccessTime']: Feb 07 2021 03:58:37 PM 
+     White Zombie/Best Of 90s Rock Volume 2 - 20th Century/12 More Human Than Human.m4a
+
+            ... It's likely SQL last access time had a bug but it is easier to change
+                File's time using existing code below.            
+            '''
+            fElapsed = d['OsAccessTime'] - stat.st_atime
+            fCompare = 60.0 * 60.0 * 48  # Allow 48 hours / two days grace period
+            if fElapsed > fCompare:
+                iNoUpdate += 1
+                continue
+            else:
+                print("2 DAYS stat.st_atime :", ext.t(stat.st_atime),
+                      "< 'OsAccessTime':", ext.t(d['OsAccessTime']),
+                      "\n   ", sql_key)
 
         ''' Only update SQL initially recorded values >= modification time '''
         if stat.st_mtime > d['OsAccessTime']:
@@ -409,13 +433,17 @@ print("Current modification time (in seconds):", os.stat(path).st_mtime)
                 iDiff -= 1
                 continue
             # Set new stat.st_atime to stat.st_mtime instead of OsAccessTime.
-            print("MODIFY stat.st_mtime :", stat.st_atime,
-                  "> d['OsAccessTime']:", d['OsAccessTime'], sql_key)
+            print("MODIFY stat.st_mtime :", ext.t(stat.st_mtime),
+                  "> 'OsAccessTime':", ext.t(d['OsAccessTime']),
+                  "\n   ", sql_key)
             newAccessTime = stat.st_mtime
         else:
             newAccessTime = d['OsAccessTime']  # Use SQL Music Table Row's time
             # Fix stat.st_atime: 1694283346.0, d['LastPlayTime']: 1694283346.01
-            fLastPlayTime = float(math.trunc(d['LastPlayTime']))
+            try:
+                fLastPlayTime = float(math.trunc(d['LastPlayTime']))
+            except AttributeError:
+                fLastPlayTime = 0.0
             if fLastPlayTime > newAccessTime:
                 if stat.st_atime == fLastPlayTime:
                     # Already set on previous run
@@ -423,13 +451,17 @@ print("Current modification time (in seconds):", os.stat(path).st_mtime)
                     iDiff -= 1
                     continue
                 # Set new stat.st_atime to LastPlayTime.
-                print("MODIFY stat.st_atime:", stat.st_atime,
-                      "< d['LastPlayTime']:", fLastPlayTime, sql_key)
+                print("L_PLAY 'OsAccessTime':", ext.t(d['OsAccessTime']),
+                      "<= 'LastPlayTime':", ext.t(fLastPlayTime),
+                      "\n   ", sql_key, "\n   ", "stat.st_mtime:",
+                      ext.t(stat.st_mtime), " | stat.st_atime:",
+                      ext.t(stat.st_atime))
                 newAccessTime = fLastPlayTime  # Use truncated LastPlayTime
             else:
                 # Set new stat.st_atime to OsAccessTime.
-                print("MODIFY stat.st_atime:", stat.st_atime,
-                      "> d['OsAccessTime']:", d['OsAccessTime'], sql_key)
+                print("MODIFY stat.st_mtime:", ext.t(stat.st_mtime),
+                      "<= 'OsAccessTime':", ext.t(d['OsAccessTime']),
+                      "\n   ", sql_key)
 
         tup = (newAccessTime, stat.st_mtime)
         os.utime(os_name, tup)
@@ -1101,7 +1133,7 @@ def get_lyrics(key):
         return d["LyricsScore"], None
 
 
-def increment_last_play(full_path):
+def increment_last_play(full_path, a_time=None):
     """ Increment Play Count and update current time to Last Play Time
         using full filename path """
     # pycharm doesn't like PRUNED_DIR type 'None', expected 'Sized'
@@ -1115,7 +1147,9 @@ def increment_last_play(full_path):
         count = d['PlayCount'] + 1
     else:
         count = 1
-    update_last_play(key, count, time.time())
+    if a_time is None:
+        a_time = time.time()
+    update_last_play(key, count, a_time)
     return True
 
 
@@ -1430,13 +1464,12 @@ def music_id_for_song(key):
     else:
         return d['Id']  # The actual Music ID found
 
+
 #==============================================================================
 #
 #       sql.py - History table processing
 #
 #==============================================================================
-
-
 def hist_get_row(key):
     """ Get History Table row using Id """
     # Get the MusicID matching song file's basename
@@ -1507,7 +1540,6 @@ def hist_add_shuffle(Action, SourceMaster, SourceDetail):
     if Type == Action == SourceMaster == SourceDetail:
         return  # Above test for pycharm checking  
   
-
 
 def hist_default_dict(key, time_type='access'):
     """ Construct a default dictionary used to add a new history record """
@@ -2004,8 +2036,6 @@ def hist_init_lyrics_and_time():
 
 
 # ===============================  LOCATION  ==================================
-
-
 def loc_add(Code, Name, ModifyTime, ImagePath, MountPoint, TopDir, HostName,
             HostWakeupCmd, HostTestCmd, HostTestRepeat, HostMountCmd,
             HostTouchCmd, HostTouchMinutes, Comments):
@@ -2139,8 +2169,6 @@ class Authorization:
 
 
 # =================================  WEBSCRAPE  ===============================
-
-
 class Webscrape:
     """
                     not used - Future Class for webscrape.py
@@ -2272,8 +2300,6 @@ def load_ctl():
 #       Headings and indented field key / values
 #
 # ==============================================================================
-
-
 class PrettyMusic:
     """ SQL Music Table viewer Popup menu for 'View Current Row'. 
         Also called from Music Location Tree popup menu for music file.
@@ -3323,9 +3349,8 @@ def location_treeview():
 
     return location_treeview_list
 
+
 # ==============================  FIX SQL ROWS  ============================
-
-
 class FixData:
     """ Class driver for various database repairs
         Change 999999 to Music ID to start granular printing.

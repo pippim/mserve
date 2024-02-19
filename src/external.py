@@ -31,13 +31,13 @@ except ImportError:  # No module named subprocess32
     SUBPROCESS_VER = 'native'
 
 import errno
+import json  # For reading/writing files in json format, no image support
+import glob  # For globbing files in /tmp/mserve_ffprobe*
 import time
 import datetime
-import glob  # For globbing files in /tmp/mserve_ffprobe*
-import json  # For reading/writing files in json format, no image support
 import pickle  # For reading/writing files in pickle format, supports images
 
-# Common routines used by many programs put here
+# Common Tkinter routines
 import toolkit
 
 # Program timings for OS calls and functions or loops

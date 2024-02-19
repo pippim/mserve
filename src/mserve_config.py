@@ -18,6 +18,7 @@ from __future__ import with_statement  # Error handling for file opens
 #       Sep. 08 2023 - Add new module calc.py to mserve.py dependencies
 #       Sep. 11 2023 - Generate line counts for Website Dashboard
 #       Jan. 17 2024 - "locale" required by mserve.py and toolkit.py
+#       Feb. 17 2024 - "math" required by sql.py. Fix version 2.7.12 testing
 #
 # ==============================================================================
 # from __future__ import unicode_literals  # Not needed.
@@ -39,9 +40,10 @@ current_version = "Python 2.7.12 or a more recent version is required.\n" + \
 # Test notes below will force failure even if you are already on version 2.7.12
 if sys.version_info[0] < 2:  # test change 2 to 4
     raise Exception("001: " + current_version)
-if sys.version_info[0] >= 2 and sys.version_info[1] < 7:  # test change 7 to 8
+if sys.version_info[0] == 2 and sys.version_info[1] < 7:  # test change 7 to 8
     raise Exception("002: " + current_version)
-if sys.version_info[0] >= 2 and sys.version_info[1] >= 7 and sys.version_info[2] < 12:
+if sys.version_info[0] == 2 and sys.version_info[1] == 7 and \
+        sys.version_info[2] < 12:
     raise Exception("003: " + current_version)
 
 import os
@@ -105,6 +107,235 @@ print("\nret:", ret)  # from ttkwidgets import CheckboxTreeview
 
 
 DEFAULT_CFG = []
+
+
+def main(caller=None):
+    """
+    Load saved configuration if it exists. Otherwise create new configuration.
+    Loop through every configuration dictionary and tests if it exists.
+
+    Set flags on what packages/modules exist. The flags are used to check which
+    features will work. E.G. if 'xdo-tool' is not available 'kid3' window cannot
+    be moved.
+
+    Save configuration so tests can be skipped next time. Whenever an error
+    occurs, mserve can be called with 'fix' option and saved configuration is
+    deleted and the process repeats.
+
+    """
+    # print("mserve_config.py startup called from:", caller)
+    make_default_cfg()  # Create default configuration
+
+    if True is False:
+        print("caller:", caller)
+        print("len(sys.argv):", len(sys.argv))
+
+    parm1 = parm2 = None
+    if (len(sys.argv)) >= 2:
+        parm1 = sys.argv[1]
+        # print("parm1:", parm1)
+
+    if (len(sys.argv)) >= 3:
+        parm2 = sys.argv[2]
+        # print("parm2:", parm2)
+
+    ''' 
+    cfg_dict = \
+        {"module": module,
+         "imp_as": imp_as,
+         "imp_from": imp_from,
+         "developer": developer,
+         "version": version,
+         "ubuntu": ubuntu,
+         "required": required}
+    '''
+    pippim_modules = []
+    for cfg_dict in DEFAULT_CFG:  # "ubuntu"
+        # print("Default Configuration Dictionary for:", cfg_dict['module'])
+        for key in cfg_dict:
+            if key is not "module":
+                if key is "developer" and cfg_dict[key] and cfg_dict[key] == "pippim.com":
+                    if not cfg_dict['imp_from'] + ".py" in pippim_modules:
+                        pippim_modules.append(cfg_dict['imp_from'] + ".py")
+
+    """ mserve Python Modules Line Counts for Website 
+
+        Called from ~/website/sede/refresh.sh (programs/mserve.md NOT refreshed):
+
+            python mserve_config.py line_count ~/website/programs/mserve_incl.md
+
+        Inside ~/website/programs/mserve.md (NOT refreshed by refresh.sh):
+            ## Programs at a Glance
+            {:.no_toc}
+            {% include_relative mserve_incl.md %}
+
+        NOTE: If you change ~/website/programs/mserve.md, you must manually commit
+              as ~/website/sede/refresh.sh NEVER refreshes markdown in pippim.com.
+              If you change ~/website2/programs/mserve.md, GitHub will probably
+              update when refresh.sh runs, but this hasn't been tested.
+
+    """
+    pippim_modules.sort()  # Alphanumeric sort
+    total = 0
+    #                   12345678901234567890
+    # Longest module:   global_variables.py
+    MOD = 145  # Module Name maximum width
+    LINE = 7  # Maximum line count size 999,999, align right
+    DATE = 19  # Date fixed size, align center
+    DESC = 39  # Program description
+    pippim_report = "## Python Modules used in {{ site.title }} **mserve** "
+    if parm1 and parm1 == "line_count":
+        import global_variables as g
+        g.init()
+        pippim_report += "Version " + g.MSERVE_VERSION + "\n{:.no_toc}\n\n"
+        pippim_report += "| Python Module" + " " * (MOD - 12) + "|   Lines |      Modified       |"
+        pippim_report += " Description                             |\n"
+        pippim_report += "|-" + "-" * MOD + "-|--------:|:-------------------:|"
+        pippim_report += "-----------------------------------------|\n"
+    for module in pippim_modules:
+        # print("module:", module)
+        if module == "m.py":
+            module = "m"  # remove `.py` extension automatically applied earlier
+        if parm1 and parm1 == "line_count":
+            name = "[`" + module + "`]"  # ' ⧉' needs unicode, skip it Sep 20/23
+            name += "(https://github.com/pippim/mserve/blob/main/src/" + module
+            name += ' "View mserve Python source code"){:target="_blank"}'
+            line = os.popen("wc -l " + module).read().strip()
+            if len(line) < 2:  # Shortest is "83 m"
+                line = "Missing"
+
+            desc = os.popen("grep ^'Description: mserve' " + module).read().strip()
+            if len(desc) < 20:
+                desc = "Description not found!"
+            desc = desc.replace("Description: mserve - Music Server - ", "")
+
+            date = os.popen('date -r ' + module + ' "+%Y-%m-%d %H:%M:%S"'). \
+                read().strip()
+            if len(date) < 10:
+                date = "No Date!"
+            if line != "Missing":
+                val = int(line.split()[0])  # Drop program name at end
+                total += val
+                line = '{:,}'.format(val)  # int to string
+            pippim_report += "| " + name.ljust(MOD)
+            pippim_report += " | " + line.rjust(LINE)
+            pippim_report += " | " + date.ljust(DATE)
+            pippim_report += " | " + desc.ljust(DESC) + " |\n"
+
+    if parm1 and parm1 == "line_count":
+        pippim_report += "| " + "ALL Modules".ljust(MOD)
+        pippim_report += " | " + '{:,}'.format(total).rjust(LINE)
+        pippim_report += " | " + " ".ljust(DATE)  # Fake empty date & description
+        pippim_report += " | " + " ".ljust(DESC) + " |\n"
+
+        if parm2:
+            ''' Parameter 2 has output filename:
+                ~/website2/programs/mserve_incl.md '''
+            import external as ext
+            # ext calls timefmt which calls g.init() so want to rewrite
+            ext.write_from_string(parm2, pippim_report)
+        else:
+            # No output file so print instead
+            print("\nmserve_config.py - No output filename passed in parm #2\n")
+            print(pippim_report)
+
+    """
+        REVIEW:
+
+            Note that the exact times you set here may not be returned by a 
+            subsequent stat() call, depending on the resolution with which 
+            your operating system records access and modification times; see stat().
+
+            import os
+            os.utime(path_to_file, (access_time, modification_time))
+            https://www.tutorialspoint.com/python/os_utime.htm
+            How is atime and mtime formatted? 
+            The exact meaning and resolution of the st_atime, st_mtime, and 
+            st_ctime attributes depend on the operating system and the file 
+            system. For example, on Windows systems using the FAT or FAT32 
+            file systems, st_mtime has 2-second resolution, and st_atime has 
+            only 1-day resolution. See your operating system documentation 
+            for details. '''
+        time_fmt = os.stat_float_times()
+        print("time_fmt:", time_fmt)
+    """
+
+    time_fmt = os.stat_float_times()
+    if not time_fmt:
+        print("os.utime cannot be used to reset access time")
+
+    # print(pippim_modules)
+    # noinspection SpellCheckingInspection
+    ''' os.walk() path and merge results with default configuration dictionary to 
+        make machine configuration dictionary
+
+        sys.path = ['/home/rick/python',  # Also walk subdirs /pulsectl, etc.
+        '/usr/lib/python2.7', 
+        '/usr/lib/python2.7/plat-x86_64-linux-gnu',
+        '/usr/lib/python2.7/lib-tk', 
+        '/usr/lib/python2.7/lib-old', 
+        '/usr/lib/python2.7/lib-dynload', 
+        '/home/rick/.local/lib/python2.7/site-packages', 
+        '/usr/local/lib/python2.7/dist-packages', 
+        '/usr/lib/python2.7/dist-packages', 
+        '/usr/lib/python2.7/dist-packages/PILcompat', 
+        '/usr/lib/python2.7/dist-packages/gtk-2.0']        
+
+    '''
+
+    ''' from: https://www.tutorialspoint.com/
+    How-to-find-which-Python-modules-are-being-imported-from-a-package '''
+    # modules = inspect.getmembers(os)
+    # results = filter(lambda m: inspect.ismodule(m[1]), modules)
+
+    # print('\nThe list of imported Python modules reported by inspect are :')
+    # for o in results:
+    #    print(o)
+    # print()
+
+    # print('\nThe list of imported Python modules reported by sys.modules :')
+    # print(sys.modules.keys())
+    # print()
+
+    # modules = dir()
+    # print('The list of imported Python modules reported by dir() :', modules)
+
+    ''' The following generates error:
+location.py was forced to run g.init()
+Traceback (most recent call last):
+  File "./m", line 25, in <module>
+    import image as img     # Pippim functions for image management
+  File "/home/rick/python/image.py", line 76, in <module>
+    import monitor              # Screen, Monitor and Window functions
+  File "/home/rick/python/monitor.py", line 41, in <module>
+    import sql                  # SQLite3 functions
+  File "/home/rick/python/sql.py", line 48, in <module>
+    from location import FNAME_LIBRARY  # SQL database name (SQLite3 format)
+  File "/home/rick/python/location.py", line 101, in <module>
+    FNAME_LOCATIONS        = MSERVE_DIR + "locations"
+TypeError: unsupported operand type(s) for +: 'NoneType' and 'str'
+
+    '''
+    ''' from: https://stackoverflow.com/a/4858123/6929343 '''
+    try:
+        import types  # Part of Python standard library
+        # print('The list of imported Python modules reported by types.ModuleType :')
+        for name, val in globals().items():
+            if isinstance(val, types.ModuleType):
+                # yield val.__name__
+                # print('import %s as %s' % (val.__name__, name))
+                pass
+    except ImportError:  # No module named types
+        # print("types cannot be imported")
+        pass
+
+    ''' from: https://stackoverflow.com/a/40381601/6929343 '''
+    # print("\n From: https://stackoverflow.com/a/40381601/6929343 :")
+    # after = [str(m) for m in sys.modules]
+    # print([m for m in after if m not in before])
+
+    # print("\n sys.path:", sys.path)
+    return True  # All tests succeeded :)
 
 
 def make_default_cfg():
@@ -186,6 +417,7 @@ def make_mserve_cfg():
     cfg.append(make_dict(m, None, "os"))
     cfg.append(make_dict(m, None, "shutil"))
     cfg.append(make_dict(m, None, "json"))  # sudo apt install simplejson [auto]
+    cfg.append(make_dict(m, None, "glob"))
     cfg.append(make_dict(m, None, "time"))
     cfg.append(make_dict(m, None, "datetime"))
     cfg.append(make_dict(m, None, "re"))
@@ -311,9 +543,15 @@ def make_ext_cfg():
     #cfg.append(make_dict(m, None, "signal"))  # only in python 3.5, 3.6, 3.7
     #TypeError: <module 'signal' (built-in)> is a built-in module - version 2.7
     cfg.append(make_dict(m, None, "signal", required=False))
+    cfg.append(make_dict(m, None, "subprocess32", required=False))
+    cfg.append(make_dict(m, None, "subprocess"))
     cfg.append(make_dict(m, None, "os"))
     cfg.append(make_dict(m, None, "errno"))
+    cfg.append(make_dict(m, None, "json"))
+    cfg.append(make_dict(m, None, "glob"))
     cfg.append(make_dict(m, None, "datetime"))
+    cfg.append(make_dict(m, None, "pickle"))
+
     cfg.append(make_dict(m, None, "toolkit", "pippim.com"))
     return cfg
 
@@ -1056,237 +1294,6 @@ def verify_chain():
         print("sql.py cannot be called from command line. Aborting...")
         exit()
 
-
-def main(caller=None):
-    """
-    Load saved configuration if it exists. Otherwise create new configuration.
-    Loop through every configuration dictionary and tests if it exists.
-
-    Set flags on what packages/modules exist. The flags are used to check which
-    features will work. E.G. if 'xdo-tool' is not available 'kid3' window cannot
-    be moved.
-
-    Save configuration so tests can be skipped next time. Whenever an error
-    occurs, mserve can be called with 'fix' option and saved configuration is
-    deleted and the process repeats.
-
-    """
-    #print("mserve_config.py startup called from:", caller)
-    make_default_cfg()  # Create default configuration
-
-    if True is False:
-        print("caller:", caller)
-        print("len(sys.argv):", len(sys.argv))
-
-    parm1 = parm2 = None
-    if (len(sys.argv)) >= 2:
-        parm1 = sys.argv[1]
-        #print("parm1:", parm1)
-
-    if (len(sys.argv)) >= 3:
-        parm2 = sys.argv[2]
-        #print("parm2:", parm2)
-
-    ''' 
-    cfg_dict = \
-        {"module": module,
-         "imp_as": imp_as,
-         "imp_from": imp_from,
-         "developer": developer,
-         "version": version,
-         "ubuntu": ubuntu,
-         "required": required}
-    '''
-    pippim_modules = []
-    for cfg_dict in DEFAULT_CFG:  # "ubuntu"
-        #print("Default Configuration Dictionary for:", cfg_dict['module'])
-        for key in cfg_dict:
-            if key is not "module":
-                if key is "developer" and cfg_dict[key] and cfg_dict[key] == "pippim.com":
-                    if not cfg_dict['imp_from'] + ".py" in pippim_modules:
-                        pippim_modules.append(cfg_dict['imp_from'] + ".py")
-
-    """ mserve Python Modules Line Counts for Website 
-
-        Called from ~/website/sede/refresh.sh (programs/mserve.md NOT refreshed):
-        
-            python mserve_config.py line_count ~/website/programs/mserve_incl.md
-
-        Inside ~/website/programs/mserve.md (NOT refreshed by refresh.sh):
-            ## Programs at a Glance
-            {:.no_toc}
-            {% include_relative mserve_incl.md %}
-
-        NOTE: If you change ~/website/programs/mserve.md, you must manually commit
-              as ~/website/sede/refresh.sh NEVER refreshes markdown in pippim.com.
-              If you change ~/website2/programs/mserve.md, GitHub will probably
-              update when refresh.sh runs, but this hasn't been tested.
-
-    """
-    pippim_modules.sort()  # Alphanumeric sort
-    total = 0
-    #                   12345678901234567890
-    # Longest module:   global_variables.py
-    MOD = 145  # Module Name maximum width
-    LINE = 7  # Maximum line count size 999,999, align right
-    DATE = 19  # Date fixed size, align center
-    DESC = 39  # Program description
-    pippim_report = "## Python Modules used in {{ site.title }} **mserve** "
-    if parm1 and parm1 == "line_count":
-        import global_variables as g
-        g.init()
-        pippim_report += "Version " + g.MSERVE_VERSION + "\n{:.no_toc}\n\n"
-        pippim_report += "| Python Module" + " " * (MOD - 12) + "|   Lines |      Modified       |"
-        pippim_report += " Description                             |\n"
-        pippim_report += "|-" + "-" * MOD + "-|--------:|:-------------------:|"
-        pippim_report += "-----------------------------------------|\n"
-    for module in pippim_modules:
-        #print("module:", module)
-        if module == "m.py":
-            module = "m"  # remove `.py` extension automatically applied earlier
-        if parm1 and parm1 == "line_count":
-            name = "[`" + module + "`]"  # ' ⧉' needs unicode, skip it Sep 20/23
-            name += "(https://github.com/pippim/mserve/blob/main/src/" + module
-            name += ' "View mserve Python source code"){:target="_blank"}'
-            line = os.popen("wc -l " + module).read().strip()
-            if len(line) < 2:  # Shortest is "83 m"
-                line = "Missing"
-
-            desc = os.popen("grep ^'Description: mserve' " + module).read().strip()
-            if len(desc) < 20:
-                desc = "Description not found!"
-            desc = desc.replace("Description: mserve - Music Server - ", "")
-
-            date = os.popen('date -r ' + module + ' "+%Y-%m-%d %H:%M:%S"').\
-                read().strip()
-            if len(date) < 10:
-                date = "No Date!"
-            if line != "Missing":
-                val = int(line.split()[0])  # Drop program name at end
-                total += val
-                line = '{:,}'.format(val)  # int to string
-            pippim_report += "| " + name.ljust(MOD)
-            pippim_report += " | " + line.rjust(LINE)
-            pippim_report += " | " + date.ljust(DATE)
-            pippim_report += " | " + desc.ljust(DESC) + " |\n"
-
-    if parm1 and parm1 == "line_count":
-        pippim_report += "| " + "ALL Modules".ljust(MOD)
-        pippim_report += " | " + '{:,}'.format(total).rjust(LINE)
-        pippim_report += " | " + " ".ljust(DATE)  # Fake empty date & description
-        pippim_report += " | " + " ".ljust(DESC) + " |\n"
-
-        if parm2:
-            ''' Parameter 2 has output filename:
-                ~/website2/programs/mserve_incl.md '''
-            import external as ext
-            # ext calls timefmt which calls g.init() so want to rewrite
-            ext.write_from_string(parm2, pippim_report)
-        else:
-            # No output file so print instead
-            print("\nmserve_config.py - No output filename passed in parm #2\n")
-            print(pippim_report)
-
-
-    """
-        REVIEW:
-        
-            Note that the exact times you set here may not be returned by a 
-            subsequent stat() call, depending on the resolution with which 
-            your operating system records access and modification times; see stat().
-            
-            import os
-            os.utime(path_to_file, (access_time, modification_time))
-            https://www.tutorialspoint.com/python/os_utime.htm
-            How is atime and mtime formatted? 
-            The exact meaning and resolution of the st_atime, st_mtime, and 
-            st_ctime attributes depend on the operating system and the file 
-            system. For example, on Windows systems using the FAT or FAT32 
-            file systems, st_mtime has 2-second resolution, and st_atime has 
-            only 1-day resolution. See your operating system documentation 
-            for details. '''
-        time_fmt = os.stat_float_times()
-        print("time_fmt:", time_fmt)
-    """
-
-    time_fmt = os.stat_float_times()
-    if not time_fmt:
-        print("os.utime cannot be used to reset access time")
-
-
-    #print(pippim_modules)
-    # noinspection SpellCheckingInspection
-    ''' os.walk() path and merge results with default configuration dictionary to 
-        make machine configuration dictionary
-
-        sys.path = ['/home/rick/python',  # Also walk subdirs /pulsectl, etc.
-        '/usr/lib/python2.7', 
-        '/usr/lib/python2.7/plat-x86_64-linux-gnu',
-        '/usr/lib/python2.7/lib-tk', 
-        '/usr/lib/python2.7/lib-old', 
-        '/usr/lib/python2.7/lib-dynload', 
-        '/home/rick/.local/lib/python2.7/site-packages', 
-        '/usr/local/lib/python2.7/dist-packages', 
-        '/usr/lib/python2.7/dist-packages', 
-        '/usr/lib/python2.7/dist-packages/PILcompat', 
-        '/usr/lib/python2.7/dist-packages/gtk-2.0']        
-    
-    '''
-
-
-    ''' from: https://www.tutorialspoint.com/
-    How-to-find-which-Python-modules-are-being-imported-from-a-package '''
-    #modules = inspect.getmembers(os)
-    #results = filter(lambda m: inspect.ismodule(m[1]), modules)
-
-    #print('\nThe list of imported Python modules reported by inspect are :')
-    #for o in results:
-    #    print(o)
-    #print()
-
-    #print('\nThe list of imported Python modules reported by sys.modules :')
-    #print(sys.modules.keys())
-    #print()
-
-    #modules = dir()
-    #print('The list of imported Python modules reported by dir() :', modules)
-
-    ''' The following generates error:
-location.py was forced to run g.init()
-Traceback (most recent call last):
-  File "./m", line 25, in <module>
-    import image as img     # Pippim functions for image management
-  File "/home/rick/python/image.py", line 76, in <module>
-    import monitor              # Screen, Monitor and Window functions
-  File "/home/rick/python/monitor.py", line 41, in <module>
-    import sql                  # SQLite3 functions
-  File "/home/rick/python/sql.py", line 48, in <module>
-    from location import FNAME_LIBRARY  # SQL database name (SQLite3 format)
-  File "/home/rick/python/location.py", line 101, in <module>
-    FNAME_LOCATIONS        = MSERVE_DIR + "locations"
-TypeError: unsupported operand type(s) for +: 'NoneType' and 'str'
-    
-    '''
-    ''' from: https://stackoverflow.com/a/4858123/6929343 '''
-    try:
-        import types  # Part of Python standard library
-        #print('The list of imported Python modules reported by types.ModuleType :')
-        for name, val in globals().items():
-            if isinstance(val, types.ModuleType):
-                #yield val.__name__
-                #print('import %s as %s' % (val.__name__, name))
-                pass
-    except ImportError:  # No module named types
-        #print("types cannot be imported")
-        pass
-
-    ''' from: https://stackoverflow.com/a/40381601/6929343 '''
-    #print("\n From: https://stackoverflow.com/a/40381601/6929343 :")
-    #after = [str(m) for m in sys.modules]
-    #print([m for m in after if m not in before])
-
-    #print("\n sys.path:", sys.path)
-    return True  # All tests succeeded :)
 
 
 if __name__ == "__main__":
