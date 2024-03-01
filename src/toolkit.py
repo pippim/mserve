@@ -34,6 +34,14 @@ from __future__ import with_statement       # Error handling for file opens
 #import gtk                     # Doesn't work. Use xclip instead
 #gtk.set_interactive(False)
 
+'''
+
+References:
+    https://anzeljg.github.io/rin2/book2/2405/docs/tkinter/ttk-Treeview.html
+
+'''
+
+
 try:
     import tkinter as tk
     import tkinter.ttk as ttk
@@ -1247,7 +1255,12 @@ class SearchText:
     def __init__(self, view, column=None, find_str=None, find_op='in',
                  callback=None, tt=None, thread=None):
         # root window is the parent window
-        self.view = view
+        self.view = view  # Treeview frame with scrollbars
+        ''' Create treeview frame with scrollbars 
+        self.mus_view = toolkit.DictTreeview(
+            music_dict, self.mus_top, master_frame, columns=columns,
+            sbar_width=sbar_width)
+        '''
         self.toplevel = view.toplevel
         self.tree = view.tree
         self.dict = view.tree_dict
@@ -1263,6 +1276,7 @@ class SearchText:
         self.frame = None  # frame for input
         # adding of single line text box
         self.edit = None  # input field for search string
+        self.search_text = tk.StringVar()
 
         if self.find_str is not None:
             return  # search string passed, no need for frame
@@ -1274,7 +1288,7 @@ class SearchText:
         tk.Label(self.frame, text='Text to find:').pack(side=tk.LEFT)
 
         # adding of single line text box
-        self.edit = tk.Entry(self.frame)
+        self.edit = tk.Entry(self.frame, textvariable=self.search_text)
 
         # positioning of text box
         self.edit.pack(side=tk.LEFT, fill=tk.BOTH, expand=1)
@@ -1282,10 +1296,14 @@ class SearchText:
         # setting focus
         self.edit.focus_set()
 
+        # trace on tk Entry variable changing
+        self.search_text.trace('w', self.search_changed)
+
         # adding of search button  TODO: Expand with tooltips self.tt not visible
         butt = tk.Button(self.frame, text='🔍  Find')
         butt.pack(side=tk.LEFT)
         butt.config(command=self.find)
+        self.edit.bind("<Return>", self.find)
         if self.tt is not None:
             self.tt.add_tip(butt, "Type in text then click this button.", anchor="ne")
 
@@ -1295,7 +1313,12 @@ class SearchText:
         if self.tt is not None:
             self.tt.add_tip(but2, "Close search bar.", anchor="nw")
 
-    def find(self):
+    def search_changed(self, *_args):
+        """ Callback as string variable changes in TK entry """
+        s = self.search_text.get()
+        #print("Character typed:", s)
+
+    def find(self, *_args):
         """ Search treeview for string in all string columns """
         if self.find_str is not None:
             print('toolkit.py.SearchText.find_column() should have been called.')
@@ -1305,8 +1328,15 @@ class SearchText:
         self.reattach()         # Put back items excluded on last search
         # ext.t_end('no print')   # For 1200 messages 0.00529 seconds
 
-        # returns to widget currently in focus - NOT SURE WHY NEEDED???
-        s = self.edit.get()
+        # returns to widget currently in focus
+        #s = self.edit.get()
+        s = self.search_text.get()
+        stripped = s.strip()
+        if len(stripped) == 0:
+            return  # Nothing to search for
+
+        search_or = False  # Later make a choice box
+        search_and = True
 
         if s:
             for iid in self.tree.get_children():
@@ -1316,8 +1346,22 @@ class SearchText:
                 except TclError:  # Window wsa closed
                     return
 
-                if any(s.lower() in t.lower() for t in values if isinstance(t, basestring)):
-                    # Searching all columns of basestring type
+                # Breakdown string into set of words
+                words = s.split()
+                found_one = False  # Assume worst case
+                found_all = True  # Assume best case
+                for w in words:
+                    if any(w.lower() in t.lower()
+                           for t in values if isinstance(t, basestring)):
+                        # Searching all columns of basestring type
+                        found_one = True
+                    else:
+                        found_all = False
+
+                if search_or and found_one:
+                    continue
+
+                if search_and and found_one and found_all:
                     continue
 
                 self.tree.detach(iid)

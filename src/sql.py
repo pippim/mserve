@@ -310,33 +310,34 @@ def populate_tables(SortedList, start_dir, pruned_dir, lodict):
 
 
 def fix_os_last_access():
-    """ Last access date was corrupted by file scanning application
+    """ Last access date corrupted by Nautilus scanning files starting in
+        the Fall/Winter 2023.
 
-https://www.geeksforgeeks.org/python-os-utime-method/
+    https://www.geeksforgeeks.org/python-os-utime-method/
 
-import os
+    import os
 
-# Path
-path = '/home / me / Documents / file.txt'
+    # Path
+    path = '/home / me / Documents / file.txt'
 
-# Print current access and modification time
-print("Current access time (in seconds):", os.stat(path).st_atime)
-print("Current modification time (in seconds):", os.stat(path).st_mtime)
+    # Print current access and modification time
+    print("Current access time (in seconds):", os.stat(path).st_atime)
+    print("Current modification time (in seconds):", os.stat(path).st_mtime)
 
-# Access time in nanoseconds
-atime_ns = 20000000012345
+    # Access time in nanoseconds
+    atime_ns = 20000000012345
 
-# Modification time in nanoseconds
-mtime_ns = 10000000012345
+    # Modification time in nanoseconds
+    mtime_ns = 10000000012345
 
-tup = (atime_ns, mtime_ns)
-os.utime(path, ns=tup)
+    tup = (atime_ns, mtime_ns)
+    os.utime(path, ns=tup)
 
-print("\nAccess and modification time changed\n")
+    print("\nAccess and modification time changed\n")
 
-# Print current access and modification time
-print("Current access time (in seconds):", os.stat(path).st_atime)
-print("Current modification time (in seconds):", os.stat(path).st_mtime)
+    # Print current access and modification time
+    print("Current access time (in seconds):", os.stat(path).st_atime)
+    print("Current modification time (in seconds):", os.stat(path).st_mtime)
 
 
     """
@@ -344,7 +345,11 @@ print("Current modification time (in seconds):", os.stat(path).st_mtime)
 
     iRead = iNoAlbum = iNoSep = iNoSql = iNoStat = 0
     iDiff = iSame = iUpdate = iNoUpdate = 0
-    iPrintTen = 10  # 10 force already printed, 0 for debug and first 10 printed
+    if g.DEBUG_LEVEL:
+        iPrintTen = 0  # 0 for debug and first 10 printed
+    else:
+        iPrintTen = 10  # 10 force already printed and no debug
+
     # noinspection PyTypeChecker
     for i, os_name in enumerate(SORTED_LIST):
         iRead += 1
@@ -377,12 +382,28 @@ print("Current modification time (in seconds):", os.stat(path).st_mtime)
             continue
 
         ''' Is last access time the same? '''
-        if stat.st_atime == d['OsAccessTime']:
+        fElapsed = math.fabs(d['OsAccessTime'] - stat.st_atime)
+        # Fix stat.st_atime: 1694283346.0, d['LastPlayTime']: 1694283346.01
+        try:
+            fLastPlayTime = float(math.trunc(d['LastPlayTime']))
+        except AttributeError:
+            fLastPlayTime = 0.0
+        fElapsed2 = math.fabs(fLastPlayTime - stat.st_atime)
+        fCompare = 2.  # 2 second grace period
+        if fElapsed < fCompare or fElapsed2 < fCompare:
+            is_same = True
+        else:
+            is_same = False
+
+        if is_same:
             iSame += 1
             if iPrintTen < 10:
                 #iPrintTen += 1
-                #print("SAME stat.st_atime:", ext.t(stat.st_atime),
-                #      "SQL:", ext.t(d['OsAccessTime']), sql_key)
+                print("2 SECS 'OsAccessTime':", ext.t(d['OsAccessTime']),
+                      " | 'LastPlayTime':", ext.t(fLastPlayTime),
+                      "\n   ", sql_key, "\n   ", "stat.st_mtime:",
+                      ext.t(stat.st_mtime), " | stat.st_atime:",
+                      ext.t(stat.st_atime))
                 pass
             continue
 
@@ -439,11 +460,6 @@ ACCESS stat.st_atime : Feb 06 2021 05:00:00 PM < d['OsAccessTime']: Feb 07 2021 
             newAccessTime = stat.st_mtime
         else:
             newAccessTime = d['OsAccessTime']  # Use SQL Music Table Row's time
-            # Fix stat.st_atime: 1694283346.0, d['LastPlayTime']: 1694283346.01
-            try:
-                fLastPlayTime = float(math.trunc(d['LastPlayTime']))
-            except AttributeError:
-                fLastPlayTime = 0.0
             if fLastPlayTime > newAccessTime:
                 if stat.st_atime == fLastPlayTime:
                     # Already set on previous run

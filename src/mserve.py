@@ -13,10 +13,6 @@ from __future__ import with_statement  # Error handling for file opens
 import warnings  # 'warnings' advises which commands aren't supported
 warnings.simplefilter('default')  # in future Python versions.
 
-# /usr/lib/python3/dist-packages/apport/report.py:13: PendingDeprecationWarning:
-# the imp module is deprecated in favour of importlib; see the module's
-# documentation for alternative uses
-
 # ==============================================================================
 #
 #       mserve.py (Music Server) - Manage Music in multiple locations
@@ -95,9 +91,6 @@ warnings.simplefilter('default')  # in future Python versions.
 # noinspection SpellCheckingInspection
 """
 
-References:
-    https://anzeljg.github.io/rin2/book2/2405/docs/tkinter/ttk-Treeview.html
-
 
 -----------------------------------------------------------------------------
 
@@ -106,14 +99,6 @@ BUGS:
     Sep. 11 2023 - All Bugs have been fixed.
 
 TODO:
-
-    Snapware was scanning all files on boot. This reset last access date.
-        Create new function "Restore OS Last Access Date". This will use
-        shared SQL database and apply Last Access Date discovered during
-        music files initial scan. New function in "Tools" menu. Snapware
-        was removed after December 20, 2023 which is the last access date
-        fake change of record. 
-
 
     "Playing Music" window start up splash tooltip centered with:
         "Playing Music from: "  Favorites, Playlist: "xxx", Artist: "xxx",
@@ -280,6 +265,7 @@ RENAME WINDOWS:
                             -> 'Checked Music' window
                             -> 'Playlist Music' window
                             -> 'Playlist Songs' window
+                            -> 'Queue' window
 
     'Music Location Tree'   -> doesn't have a name, just location name
 
@@ -317,8 +303,9 @@ REQUIRES:
     sudo apt install python-subprocess32     # To compare locations
     sudo apt install python-simplejson       # automatically installed Ubuntu
     sudo apt install python-tk               # Tkinter (default in Windows & Mac)
+    sudo apt install python-xlib             # Future for pyautogui.py?
     sudo apt install wmctrl                  # To move Kid3 or Fishing window
-    sudo apt install x11-apps                # xwd window dump (screen shot)
+    sudo apt install x11-apps                # xwd window dump
     sudo apt install xclip                   # Insert clipboard
     sudo apt install xdotool                 # To move Kid3 or Fishing window
 
@@ -657,8 +644,9 @@ SLIDE_SHOW_DIR = g.USER_DATA_DIR + os.sep + "SlideShow"
 
 WEB_PLAY = True  # Does directory ~/.local/share/mserve/YouTubePlaylists/ exist?
 WEB_PLAY_DIR = g.USER_DATA_DIR + os.sep + "YouTubePlaylists"  # + playlist.name + ".csv"
-# YouTube Resolution: default = 120x90(2.8K), hqdefault = 480x360(35.6K)
-# mqdefault = 320x180
+# YouTube Resolution: default = 120x90(2.8K), hq default = 480x360(35.6K)
+# mq default = 320x180
+# noinspection SpellCheckingInspection
 YOUTUBE_RESOLUTION = "mqdefault.jpg"  # 63 videos = 176.4 KB
 
 # June 20, 2023 - Losing average of 4ms per sleep loop when play_top paused
@@ -891,9 +879,9 @@ class MusicLocTreeCommonSelf:
         self.killer = ext.GracefulKiller()  # Class to shut down
         self.calculator = None              # Big Number calculator object
         self.calc_top = None                # Top level for calculator
-        self.debug_file = None              # ~/tmp/mserve_print_file_xxxxxxxx
+        self.debug_file = None              # ~/tmp/mserve_print_file_xxx
         self.debug_title = None             # 
-        self.debug_text = None              # ~/tmp/mserve_print_file_xxxxxxxx
+        self.debug_text = None              # ~/tmp/mserve_print_file_xxx
         self.close_sleepers_in_progress = False  # Prevent multiple calls
 
         self.play_top = None                # Music player selected songs
@@ -1566,6 +1554,8 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
         self.lib_top.bind("<FocusIn>", self.handle_lib_top_focus)
         ext.t_end('no_print')  # May 24, 2023 - MusicLocationTree() : 1.0563580990
         # June 13, 2023 -    MusicLocationTree() init__(toplevel...): 1.3379859924
+
+        self.lib_top.bind('<Key>', self.key_press)
 
         ''' Check Chrome /tmp/ files - can be 5GB after few days '''
         self.check_chrome_tmp_files()
@@ -2547,6 +2537,43 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
             self.lib_tree.tag_bind(str(i), '<Motion>', self.lib_highlight_row)
 
         self.display_lib_title()  # Was called thousands of times above.
+
+    def key_press(self, event):
+        """ Return / Enter = \r
+            Backspace = \x08
+            Tab = \t
+            Delete = \x7f
+
+            Better Method: https://stackoverflow.com/a/16117000/6929343
+
+                def callback(event):
+                    if event.char in string.printable:
+                        # What if user highlighted text and pressed space bar?
+                        event.widget.insert(END, event.char())
+                        # Trigger search lookup (cancels previous lookup)
+                        sea.new(widget.text)
+                        return "break"
+
+            Using keysym:
+
+Call search.py when a single character occurs
+'a' is pressed.  ['a']
+Call search.py when these control keys occur
+'BackSpace' is pressed.  ['B', 'a', 'c', 'k', 'S', 'p', 'a', 'c', 'e']
+'Delete' is pressed.  ['D', 'e', 'l', 'e', 't', 'e']
+'space' is pressed.  ['s', 'p', 'a', 'c', 'e']
+
+
+        """
+        key = event.keysym
+        list_key = list(key)
+        try:
+            hex_key = hex(key)
+        except TypeError:
+            hex_key = key
+        #int_key = int(hex_key)
+        ''' Abandon this project. Use trace_add instead. '''
+        print("'" + key + "' is pressed. ", list_key)
 
     @staticmethod
     def lib_highlight_row(event):
@@ -3938,7 +3965,7 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
     def checked_copy_one_file(self, Id):
         """ Copy Music Location Tree checked files to another location
 
-            mkdir -p /foo/bar && cp myfile "$_"
+            mkdir -p /foo/bar && cp my_file "$_"
 
         """
         if not self.lib_top_is_active:
@@ -4127,8 +4154,8 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
     
                 $ ll /mnt/phone
                 total 8
-                drwxrwxrwx 2 rick rick 4096 Oct  6  2019 ./
-                drwxr-xr-x 9 root root 4096 Jun 11 08:26 ../
+                drw...xrw 2 rick rick 4096 Oct  6  2019 ./
+                drw...r-x 9 root root 4096 Jun 11 08:26 ../
 
         """
         if self.close_sleepers_in_progress:
@@ -4930,6 +4957,7 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
                        collapsed=True, ms_font="TkFixedFont")
         self.debug_recreate_file(clear_lists=True)  # Clear title & text lists
 
+    # noinspection SpellCheckingInspection
     def show_pulse_audio(self):
         """ Debugging - show machine info, monitors, windows, tooltips
             locations, sql, metadata, global variables """
@@ -4986,12 +5014,12 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
         ...
         
         """
+
     # ==============================================================================
     #
     #       Music Location Tree Processing - Top menu: SQL Music & SLQ History
     #
     # ==============================================================================
-
     def show_sql_music(self, sbar_width=14):
         """ Open SQL Music Location treeview. """
         ''' SQL Music Table View already active? '''
@@ -5128,8 +5156,7 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
         """ Search all Music Table treeview columns for text string """
         if self.mus_search:  # Already running? Close last search.
             self.mus_search.close()
-        self.mus_search = toolkit.SearchText(self.mus_view, find_str=None,
-                                             tt=self.tt)
+        self.mus_search = toolkit.SearchText(self.mus_view, tt=self.tt)
         self.mus_search.find()  # Search the text string in all columns
 
     def missing_metadata(self):
@@ -11311,7 +11338,7 @@ mark set markName index"
 
         ''' Remove "normal" or "chron_sel" tag and replace with "highlight" '''
         tags = self.chron_tree.item(item)['tags']
-        if "chron_sel" in tags:  # BRICS + AISUEE = BAR ICE ISSUE
+        if "chron_sel" in tags:
             # Aug 23/23 - removing chron_sel gives pure highlight color
             toolkit.tv_tag_replace(self.chron_tree, item, "chron_sel", "highlight", strict=True)
             self.chron_last_tag_removed = "chron_sel"
@@ -14826,7 +14853,7 @@ class Refresh:
 #
 # ==============================================================================
 class PlaylistsCommonSelf:
-    """ Class Variables used by Playlistss() class """
+    """ Class Variables used by Playlists() class """
     def __init__(self):
         """ Called on mserve.py startup and for Playlists maintenance """
 
@@ -15374,7 +15401,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                 video_name = link_name.split("/watch?v=")[1]  # 7lYOmkBRs3s
                 image_name = "https://i.ytimg.com/vi/" + video_name
                 image_name += "/" + YOUTUBE_RESOLUTION
-                # YOUTUBE_RESOLUTION = "mqdefault.jpg"  # 63 videos = 176.4 KB
+                # YOUTUBE_RESOLUTION = "mq default.jpg"  # 63 videos = 176.4 KB
             except ValueError:
                 print("buildYouTubePlaylist() Value Error.")
                 continue
@@ -15564,7 +15591,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             self.displayPlaylistCommonDuration(im, duration)
             """ # Text Draw duration over image
             width, height = im.size
-            draw_font = ImageFont.truetype("DejaVuSans.ttf", 24)
+            draw_font = ImageFont.true type("DejaVuSans.ttf", 24)
             draw = ImageDraw.Draw(im)
             x0 = width - 75  # text start x
             y0 = height - 30  # text start y
@@ -15637,7 +15664,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         self.youTreeFrame.columnconfigure(0, weight=1)
         self.frame.columnconfigure(0, weight=1)
         #         self.you_btn_frm = tk.Frame(self.frame)
-        #         self.you_btn_frm.grid(row=4, columnspan=4, sticky=tk.NSEW)
+        #         self.you_btn_frm.grid(row=4, column span=4, sticky=tk.NSEW)
 
         ''' Treeview style is large images in cell 0 '''
         style = ttk.Style()
@@ -15655,7 +15682,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                                 width=SCROLL_WIDTH, command=self.you_tree.yview)
         v_scroll.grid(row=0, column=1, sticky=tk.NS)
         self.you_tree.configure(yscrollcommand=v_scroll.set)
-        # v_scroll.config(troughcolor='black', bg='gold')
+        # v_scroll.config(trough color='black', bg='gold')
         # https://stackoverflow.com/a/17457843/6929343
 
         # Left-click, requires two presses to fire
@@ -15683,9 +15710,9 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
 
         # #0, #01, #02 denotes the 0, 1st, 2nd columns
 
-        # Setup column hqdefault
-        # YouTube Resolution: default=120x90(2.8K), hqdefault=480x360(35.6K)
-        # mqdefault = 320x180
+        # Setup column hq default
+        # YouTube Resolution: default=120x90(2.8K), hq default=480x360(35.6K)
+        # mq default = 320x180
         self.you_tree.column('#0', width=450, stretch=False)
         self.you_tree.column('name', anchor='center', width=570, stretch=True)
 
@@ -15931,6 +15958,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         ndx = int(item)
         webbrowser.open_new(self.listYouTube[ndx]['link'])
 
+    # noinspection SpellCheckingInspection
     def you_tree_play_all(self, item):
         """ Play all songs in treeview (Entire YouTube Playlist). 
             NOT TESTED YET (October 16, 2023)
@@ -15963,7 +15991,6 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         str_win = str(window.number)  # should remove L in python 2.7.5+
         int_win = int(str_win)  # https://stackoverflow.com/questions
         hex_win = hex(int_win)  # /5917203/python-trailing-l-problem
-
 
         # If last usage was full screen, reverse it
         net_states = os.popen('xprop -id ' + str_win).read().strip()
@@ -16021,7 +16048,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         """
         Build: https://www.youtube.com/watch
             ?v=0n3cUPTKnl0
-            &list=PLthF248A1c68TAKl5DBskfJ2fwr1sk9aM
+            &list=PLthF248A1c68TAKl5DB skfJ2fwr1sk9aM
             &index=17
 
         :param item: item (iid) in YouTube playlist
@@ -16047,6 +16074,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                 'document.getElementsByTagName("video")[0].currentTime += ' +
                 str(mid_start) + ';')
 
+    # noinspection SpellCheckingInspection
     def youPlaylistIndexStartPlay(self, item, restart=False):
         """ Shared by youSmartPlaySong and youSmartPlaySample methods
 
@@ -16306,11 +16334,12 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
 
         return self.driver, self.youWindow
 
+    # noinspection SpellCheckingInspection
     def youPlayAllFullScreen(self, window):
         """ Open YouTube Playlist, Move window, 'Play all', full screen
             self.act_description =
                 https://www.youtube.com/
-                playlist?list=PLthF248A1c68TAKl5DBskfJ2fwr1sk9aM
+                playlist?list=PLthF248A1c68TAKl5DB skfJ2fwr1sk9aM
         """
 
         self.driver.get(self.act_description)  # Open Youtube playlist
@@ -16453,6 +16482,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
 
         return True
 
+    # noinspection SpellCheckingInspection
     def youCheckVideoFullScreen(self):
         """ Check if YouTube Browser Window is currently full screen
             Use new self.youWindow variable. Called during startup and
@@ -16519,6 +16549,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
 
         return self.youForceVideoFull
 
+    # noinspection SpellCheckingInspection
     def youGetAllGoodLinks(self, video_count):
         """ Get all the good links and private links in playlist. Scrolling
             is necessary after 100 video chunks.
@@ -16586,6 +16617,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         self.gotAllGoodLinks = True
         return good_links, private_links, listVideos
 
+    # noinspection SpellCheckingInspection
     def youGetBatchGoodLinks(self):
         """
             TODO: Devine item number to click on.
@@ -16694,6 +16726,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
 
         return good_links, private_links, listVideos
 
+    # noinspection SpellCheckingInspection
     def youShowUnavailableVideos(self, show=True):
         """
 
@@ -16997,6 +17030,7 @@ document.querySelector("#page-manager > ytd-browse > ytd-playlist-header-rendere
 
         return good_times, listTimes
 
+    # noinspection SpellCheckingInspection
     def youMonitorLinks(self):
         """ YouTube address bar URL link changes with each new video.
             Test if changed from last check and update treeview.
@@ -17129,6 +17163,7 @@ TclError: Item 123 not found
         self.displayPlaylistCommonTitle()
         return link
 
+    # noinspection SpellCheckingInspection
     def youMonitorPlayerStatus(self, player_status, debug=False):
         """ Update progress display in button bar and skip commercials
 
@@ -17552,7 +17587,7 @@ Redundant calls after turning down to 25% and up to 100%:
 
         """
         if self.youLrcFrame:
-            # 2023-12-28 - This branch never executed. Too laggy after 500 x.
+            # 2023-12-28 - This branch never executed. Lag after 500 x.
             self.youTreeFrame.grid_remove()  # Remove row 0 Treeview Frame
             self.youLrcFrame.grid()  # Reactivate row 1 LRC Frame
             self.youSetCloseButton()  # Set close button text
@@ -18159,6 +18194,7 @@ Redundant calls after turning down to 25% and up to 100%:
         actions.send_keys(' ')  # Send space
         actions.perform()
 
+    # noinspection SpellCheckingInspection
     def youCurrentIndex(self):
         """ Get link URL from Browser address bar & return index
 
@@ -18200,6 +18236,7 @@ Redundant calls after turning down to 25% and up to 100%:
         index1s = int(index0s) + 1
         return index1s
 
+    # noinspection SpellCheckingInspection
     def youUrlIndex(self, url=None):
         """ Get link URL from Browser address bar & return index
 
@@ -18239,6 +18276,7 @@ Redundant calls after turning down to 25% and up to 100%:
         self.youPrint("ERROR #1 on link = youUrlIndex()")  # Never prints?
         return None
 
+    # noinspection SpellCheckingInspection
     def youCurrentVideoId(self):
         """ Get link URL from Browser address bar & return Video ID
 
@@ -18273,6 +18311,7 @@ Redundant calls after turning down to 25% and up to 100%:
         print("ERROR #1 on link = getCurrentVideo()")
         return None
 
+    # noinspection SpellCheckingInspection
     def youCurrentLink(self):
         """ Get link URL from Browser address bar
 
@@ -18358,6 +18397,7 @@ AttributeError: 'NoneType' object has no attribute 'execute_script'
             print("Was video paused at very start then resumed?")
             return None
 
+    # noinspection SpellCheckingInspection
     def youGetMicroFormat(self):
         """ Rock Song # 10 is playing but Address URL shows # 11 expected.
 
@@ -18535,7 +18575,7 @@ AttributeError: 'NoneType' object has no attribute 'execute_script'
         #print("youHousekeeping() - Found element:", element,
         #      " | element2:", element2)
         # youHousekeeping() - Found element: None  | element2:
-        #   <selenium.webdriver.remote.webelement.WebElement
+        #   <selenium.webdriver.remote.web element.WebElement
         #   (session="6ac4176d1ef05a453703aea114ac5541",
         #   element="0.16380191644441688-11")>
         if element2.is_displayed():
@@ -18578,11 +18618,11 @@ AttributeError: 'NoneType' object has no attribute 'execute_script'
         #    print("youHousekeeping(): Error clicking 'Yes' button")
 
         # youHousekeeping() - Found element: None
-        #   element2: <selenium.webdriver.remote.webelement.WebElement
+        #   element2: <selenium.webdriver.remote.web element.WebElement
         #   (session="394498a9a5db08d5b6dbd83e27591f34", 
         #   element="0.951519416280243-15")>
         # youHousekeeping() - Found element: None 
-        #   element2: <selenium.webdriver.remote.webelement.WebElement 
+        #   element2: <selenium.webdriver.remote.web element.WebElement 
         #   (session="394498a9a5db08d5b6dbd83e27591f34", 
         #   element="0.951519416280243-15")>
         # Exception in Tkinter callback
