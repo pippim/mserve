@@ -5156,7 +5156,8 @@ Call search.py when these control keys occur
         """ Search all Music Table treeview columns for text string """
         if self.mus_search:  # Already running? Close last search.
             self.mus_search.close()
-        self.mus_search = toolkit.SearchText(self.mus_view, tt=self.tt)
+        self.mus_search = toolkit.SearchText(self.mus_view, tt=self.tt,
+                                             keypress=True)
         self.mus_search.find()  # Search the text string in all columns
 
     def missing_metadata(self):

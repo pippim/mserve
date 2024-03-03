@@ -578,8 +578,6 @@ def tv_tag_remove_all(tv, old):
 #       CustomScrolledText class - scrollable text with tag highlighting
 #
 # ==============================================================================
-
-
 class CustomScrolledText(scrolledtext.ScrolledText):
     """ A text widget with a new method, highlight_pattern()
 
@@ -659,8 +657,6 @@ class CustomScrolledText(scrolledtext.ScrolledText):
 #       DictTreeview class - Define Data Dictionary Driven treeview
 #
 # ==============================================================================
-
-
 class DictTreeview:
     """ Use list of column data dictionaries to create treeview
 
@@ -855,7 +851,6 @@ class DictTreeview:
 
         ''' highlight row as mouse traverses across treeview '''
         self.tree.tag_bind(iid, '<Motion>', self.highlight_row)
-
 
     def update_column(self, iid, search, value):
         """ Update column with new value """
@@ -1253,10 +1248,10 @@ class SearchText:
     https://www.geeksforgeeks.org/search-string-in-text-using-python-tkinter/
     """
     def __init__(self, view, column=None, find_str=None, find_op='in',
-                 callback=None, tt=None, thread=None):
+                 callback=None, tt=None, thread=None, keypress=False):
         # root window is the parent window
         self.view = view  # Treeview frame with scrollbars
-        ''' Create treeview frame with scrollbars 
+        ''' How view was created: 
         self.mus_view = toolkit.DictTreeview(
             music_dict, self.mus_top, master_frame, columns=columns,
             sbar_width=sbar_width)
@@ -1265,18 +1260,45 @@ class SearchText:
         self.tree = view.tree
         self.dict = view.tree_dict
         self.attached = view.attached
-        self.column = column
-        self.find_str = find_str
-        self.find_op = find_op
+        """ View variables:
+
+            self.toplevel = toplevel
+            self.master_frame = master_frame  # Master frame for treeview frame
+            self.tree_dict = tree_dict  # Data dictionary
+            self.attached = OrderedDict()  # Rows attached, detached, skipped
+            self.tree = None  # Treeview was surviving close in loc.Locations()
+            columns_list = list(columns)
+            columns = tuple(columns_list)
+            self.columns = columns  # Column names in treeview
+            self.column_widths = []  # The width of each treeview column
+            self.tree = CheckboxTreeview(self.frame, columns=columns)
+            self.tree['displaycolumns'] = self.columns
+            for d in self.tree_dict:  (ABRIDGED LOOPING)
+                self.tree.column(d['column'], width=d['display_width'],
+                                 minwidth=d['display_min_width'],
+                                 anchor=d['anchor'], stretch=d['stretch'])
+                self.tree.heading(d['column'], text=d['heading'])
+        """
+
+        self.column = column  # Specific column to search, else all of treeview
+        self.find_str = find_str  # Passed search string when searching one column
+        self.find_op = find_op  # comparison operator '==', '<', '>', etc.
         self.callback = callback  # E.G. missing_artwork_callback
         self.tt = tt  # ToolTIps
         self.get_thread_func = thread  # mserve.py self.get_refresh_thread
+        self.use_keypress = keypress  # Launch search with each key press?
         # print('column:', column, 'find_str:', find_str)
 
         self.frame = None  # frame for input
-        # adding of single line text box
-        self.edit = None  # input field for search string
+        # Search text entry box
+        self.entry = None  # input field for search string
+
+        ''' keypress search variables '''
+        self.keypress_waiting = None  # A keypress is waiting
         self.search_text = tk.StringVar()
+        self.new_str = None  # New search string
+        self.old_str = None  # Last search string
+        self.sip = False  # Search in progress?
 
         if self.find_str is not None:
             return  # search string passed, no need for frame
@@ -1288,22 +1310,24 @@ class SearchText:
         tk.Label(self.frame, text='Text to find:').pack(side=tk.LEFT)
 
         # adding of single line text box
-        self.edit = tk.Entry(self.frame, textvariable=self.search_text)
+        self.entry = tk.Entry(self.frame, textvariable=self.search_text)
 
         # positioning of text box
-        self.edit.pack(side=tk.LEFT, fill=tk.BOTH, expand=1)
+        self.entry.pack(side=tk.LEFT, fill=tk.BOTH, expand=1)
 
         # setting focus
-        self.edit.focus_set()
+        self.entry.focus_set()
 
-        # trace on tk Entry variable changing
-        self.search_text.trace('w', self.search_changed)
+        # trace on Tk String variable changing
+        if self.use_keypress:
+            print("self.search_text.trace('w', self.search_changed)")
+            self.search_text.trace('w', self.search_changed)
 
         # adding of search button  TODO: Expand with tooltips self.tt not visible
         butt = tk.Button(self.frame, text='🔍  Find')
         butt.pack(side=tk.LEFT)
         butt.config(command=self.find)
-        self.edit.bind("<Return>", self.find)
+        self.entry.bind("<Return>", self.find)
         if self.tt is not None:
             self.tt.add_tip(butt, "Type in text then click this button.", anchor="ne")
 
@@ -1315,59 +1339,102 @@ class SearchText:
 
     def search_changed(self, *_args):
         """ Callback as string variable changes in TK entry """
-        s = self.search_text.get()
-        #print("Character typed:", s)
+        if self.keypress_waiting:
+            print("if self.keypress_waiting:")
+            return  # Already have another keypress waiting to be processed
+        self.keypress_waiting = True  # Tell previous find() call to end now
+        print("self.keypress_waiting = True")
+
+        # Wait for find() to shutdown
+        while self.sip is True:
+            self.toplevel.after(100)  # Maybe refresh thread instead?
+            if self.sip:
+                print("Waiting another 100 ms")
+        self.find()
 
     def find(self, *_args):
-        """ Search treeview for string in all string columns """
+        """ Search treeview for string in all string columns
+
+            if self.keypress_waiting is True, check if self.new_str starts with
+            self.old_str. If so, no need to reattach. Simply keep detaching.
+            If self.new_str doesn't start with self.old_str (delete or backspace),
+            then reattach all rows.
+
+            if self.keypress waiting is False then reattach from last search.
+
+        """
         if self.find_str is not None:
             print('toolkit.py.SearchText.find_column() should have been called.')
             self.find_column()
             return
-        # ext.t_init('reattach')
-        self.reattach()         # Put back items excluded on last search
-        # ext.t_end('no print')   # For 1200 messages 0.00529 seconds
-
         # returns to widget currently in focus
-        #s = self.edit.get()
+        #s = self.entry.get()
         s = self.search_text.get()
         stripped = s.strip()
+        self.new_str = stripped
+
+        ext.t_init('reattach')
+        if not self.keypress_waiting:  # None or false
+            self.reattach()         # Put back items excluded on last search
+        elif self.new_str.startswith(self.old_str):
+            print("self.new_str.startswith(self.old_str):")
+            pass  # What was detached before would remain detached
+        else:
+            # backspace erased character or text inserted/deleted before end
+            self.reattach()  # Put back items excluded on last search
+        ext.t_end('print')   # For 1200 messages 0.00529 seconds
+        self.old_str = self.new_str
+        self.keypress_waiting = False
+
         if len(stripped) == 0:
             return  # Nothing to search for
 
         search_or = False  # Later make a choice box
         search_and = True
+        self.sip = True  # Search in progress
 
-        if s:
-            for iid in self.tree.get_children():
-                # searches for desired string
-                try:
-                    values = self.tree.item(iid)['values']
-                except TclError:  # Window wsa closed
-                    return
+        # Breakdown string into set of words
+        words = s.split()
+        ext.t_init('Loop over every treeview row')
+        # Loop over every treeview row
+        for iid in self.tree.get_children():
+            # self.toplevel.update_idletasks()  # Causes crazy lag
+            # Was keyboard character entered/erased?
+            if self.keypress_waiting:
+                self.sip = False
+                print("if self.keypress_waiting: early exit")
+                ext.t_end('print')
+                return  # Will be called again from search_changed()
 
-                # Breakdown string into set of words
-                words = s.split()
-                found_one = False  # Assume worst case
-                found_all = True  # Assume best case
-                for w in words:
-                    if any(w.lower() in t.lower()
-                           for t in values if isinstance(t, basestring)):
-                        # Searching all columns of basestring type
-                        found_one = True
-                    else:
-                        found_all = False
+            # searches for desired string
+            try:
+                values = self.tree.item(iid)['values']
+            except TclError:  # Window wsa closed
+                self.sip = False
+                return
 
-                if search_or and found_one:
-                    continue
+            found_one = False  # Assume worst case
+            found_all = True  # Assume best case
+            for w in words:
+                if any(w.lower() in t.lower()
+                       for t in values if isinstance(t, basestring)):
+                    # Searching all columns of basestring type
+                    found_one = True
+                else:
+                    found_all = False
 
-                if search_and and found_one and found_all:
-                    continue
+            if search_or and found_one:
+                continue
 
-                self.tree.detach(iid)
-                self.attached[iid] = False
+            if search_and and found_one and found_all:
+                continue
 
-        self.edit.focus_set()
+            self.tree.detach(iid)
+            self.attached[iid] = False
+
+        ext.t_end('print')
+        self.sip = False  # Search ended
+        self.entry.focus_set()
 
     def find_callback(self):
         """ Search treeview and use callback function to test """
@@ -1436,7 +1503,7 @@ class SearchText:
               "\nself.callback:", self.callback,
               "\nself.tt:", self.tt,
               "\nself.frame:", self.frame,
-              "\nself.edit:", self.edit)
+              "\nself.entry:", self.entry)
 
     def find_column(self):
         """ Search treeview for single column of any type (not just strings)
