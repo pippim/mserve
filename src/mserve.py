@@ -3345,8 +3345,8 @@ Call search.py when these control keys occur
                 # If we did text search, highlight word(s) in yellow
                 if self.mus_search is not None:
                     # history doesn't have support. Music & history might both be open
-                    if self.mus_search.edit is not None:
-                        pretty.search = self.mus_search.edit.get()
+                    if self.mus_search.entry is not None:
+                        pretty.search = self.mus_search.entry.get()
                 sql.tkinter_display(pretty)
 
             When Music Location Tree calls from view_metadata it passes
@@ -5869,6 +5869,9 @@ Call search.py when these control keys occur
 
         # At this point only other region is 'cell'
         self.view_iid = self.view.tree.identify_row(y)
+        if self.view_iid == "":
+            return  # Clicked on an empty treeview row
+
         # Highlight the row in treeview
         toolkit.tv_tag_add(self.view.tree, self.view_iid, "menu_sel")
         # May 14, 2023 - New tv_tag_add() has error message if new tag already exists
@@ -5881,6 +5884,11 @@ Call search.py when these control keys occur
         #self.view.tree.see(self.view_iid)  # Ensure message is visible
 
         values = self.view.tree.item(self.view_iid, "values")
+        if len(values) < 1:
+            # This error caught above in self.view_iid == "" test
+            print("mserve.py - common_button_3() len(values)",
+                  len(values), "self.view_iid:", "'" + self.view_iid + "'")
+            return  # Clicked on an empty treeview row
         sql_row_id = self.view.column_value(values, "row_id")
         if sql_row_id is None:
             # Should never happen because sql_row_id is key field
@@ -5969,8 +5977,8 @@ Call search.py when these control keys occur
         # If we did text search, highlight word(s) in yellow
         if self.mus_search is not None:
             # history doesn't have support. Music & history might both be open
-            if self.mus_search.edit is not None:
-                pretty.search = self.mus_search.edit.get()
+            if self.mus_search.entry is not None:
+                pretty.search = self.mus_search.entry.get()
         sql.tkinter_display(pretty)
 
     def view_library(self, pretty):
@@ -6042,8 +6050,8 @@ Call search.py when these control keys occur
                 # If we did text search, highlight word(s) in yellow
                 if self.mus_search is not None:
                     # history doesn't have support. Music & history might both be open
-                    if self.mus_search.edit is not None:
-                        pretty.search = self.mus_search.edit.get()
+                    if self.mus_search.entry is not None:
+                        pretty.search = self.mus_search.entry.get()
                 sql.tkinter_display(pretty)
 
             When Music Location Tree calls from view_metadata it passes

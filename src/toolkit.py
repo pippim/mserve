@@ -1320,7 +1320,7 @@ class SearchText:
 
         # trace on Tk String variable changing
         if self.use_keypress:
-            print("self.search_text.trace('w', self.search_changed)")
+            #print("self.search_text.trace('w', self.search_changed)")
             self.search_text.trace('w', self.search_changed)
 
         # adding of search button  TODO: Expand with tooltips self.tt not visible
@@ -1340,16 +1340,17 @@ class SearchText:
     def search_changed(self, *_args):
         """ Callback as string variable changes in TK entry """
         if self.keypress_waiting:
-            print("if self.keypress_waiting:")
+            #print("if self.keypress_waiting:")
+            # Never executed because can't type faster than search 0.0055580139
             return  # Already have another keypress waiting to be processed
         self.keypress_waiting = True  # Tell previous find() call to end now
-        print("self.keypress_waiting = True")
+        #print("self.keypress_waiting = True")
 
         # Wait for find() to shutdown
         while self.sip is True:
             self.toplevel.after(100)  # Maybe refresh thread instead?
             if self.sip:
-                print("Waiting another 100 ms")
+                print("toolkit.py - SearchText.search_changed() Waiting another 100 ms")
         self.find()
 
     def find(self, *_args):
@@ -1367,22 +1368,21 @@ class SearchText:
             print('toolkit.py.SearchText.find_column() should have been called.')
             self.find_column()
             return
-        # returns to widget currently in focus
-        #s = self.entry.get()
+
         s = self.search_text.get()
         stripped = s.strip()
         self.new_str = stripped
 
-        ext.t_init('reattach')
+        #ext.t_init('reattach')
         if not self.keypress_waiting:  # None or false
             self.reattach()         # Put back items excluded on last search
         elif self.new_str.startswith(self.old_str):
-            print("self.new_str.startswith(self.old_str):")
+            # print("self.new_str.startswith(self.old_str):")
             pass  # What was detached before would remain detached
         else:
             # backspace erased character or text inserted/deleted before end
             self.reattach()  # Put back items excluded on last search
-        ext.t_end('print')   # For 1200 messages 0.00529 seconds
+        #ext.t_end('print')   # For 1200 messages 0.00529 seconds
         self.old_str = self.new_str
         self.keypress_waiting = False
 
@@ -1395,15 +1395,15 @@ class SearchText:
 
         # Breakdown string into set of words
         words = s.split()
-        ext.t_init('Loop over every treeview row')
+        #ext.t_init('Loop over every treeview row')
         # Loop over every treeview row
         for iid in self.tree.get_children():
             # self.toplevel.update_idletasks()  # Causes crazy lag
             # Was keyboard character entered/erased?
             if self.keypress_waiting:
                 self.sip = False
-                print("if self.keypress_waiting: early exit")
-                ext.t_end('print')
+                #print("if self.keypress_waiting: early exit")
+                #ext.t_end('print')  # Never executed loop is: 0.02236
                 return  # Will be called again from search_changed()
 
             # searches for desired string
@@ -1432,7 +1432,8 @@ class SearchText:
             self.tree.detach(iid)
             self.attached[iid] = False
 
-        ext.t_end('print')
+        #ext.t_end('print')  #  Loop over every treeview row: 0.0026471615
+
         self.sip = False  # Search ended
         self.entry.focus_set()
 
@@ -1517,7 +1518,11 @@ class SearchText:
         for iid in self.tree.get_children():
             # searches for desired string
             values = self.tree.item(iid)['values']
-            one_value = self.view.column_value(values, self.column)
+            if len(values) > 3:
+                one_value = self.view.column_value(values, self.column)
+            else:
+                print("toolkit.py - SearchText.find_column() len(values)",
+                      len(values), "iid:", iid)
             #if iid == "1":
             #    print('iid:', iid, 'values:', values)
             #    print('one_value:', one_value)
@@ -1582,9 +1587,9 @@ class SearchText:
             self.frame.grid_remove()  # Next pack is faster this way?
 
 
-''' MoveTreeviewColumn class
+""" MoveTreeviewColumn class
 
-Publish to: https://stackoverflow.com/a/51425272/6929343
+Published to: https://stackoverflow.com/a/51425272/6929343
 
 May 5, 2023 - 'BUTTON_HEIGHT = 63' global constant is no longer used.
 
@@ -1598,7 +1603,7 @@ except ImportError:  # Python 2
 from PIL import Image, ImageTk
 from collections import namedtuple
 from os import popen
-'''
+"""
 
 
 class MoveTreeviewColumn:
@@ -2026,7 +2031,7 @@ def gnome_screenshot(geom):
 
 D_PRINT = False         # Print debug events
 
-VISIBLE_DELAY = 750     # ms pause until balloon tip appears (1/2 sec)
+VISIBLE_DELAY = 750     # ms pause before balloon tip appears (3/4 sec)
 VISIBLE_SPAN = 5000     # ms balloon tip remains on screen (5 sec/line)
 EXTRA_WORD_SPAN = 500   # 1/2 second per word if > VISIBLE_SPAN
 FADE_IN_SPAN = 500      # 1/4 second to fade in
