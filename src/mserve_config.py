@@ -50,6 +50,9 @@ import os
 import inspect
 import importlib
 
+import global_variables as g
+g.init("mserve_config.py")
+
 ''' Code duplicated in global_variables.py '''
 import platform as plat  # Gets OS Name, Version, Release
 OS_PLATFORM = plat.platform()  # 'Linux-4.14.216-0414216-generic-x86_64-with-Ubuntu-16.04-xenial'
@@ -58,7 +61,7 @@ OS_VERSION = plat.release()  # '4.14.216-0414216-generic'
 OS_RELEASE = plat.version()  # '#202101171339 SMP Sun Jan 17 13:56:04 UTC 2021'
 
 
-''' Load global variables first before Pippim modules
+''' Load global variables first before Pippim modules 
 try:
     g = importlib.import_module("global_variables")
 except ImportError:
@@ -76,7 +79,6 @@ print("\ninspect.getmembers(g):\n", inspect.getmembers(g, inspect.isfunction))  
 print("\nUsing global_variables.py as 'g' from path:\n",
       inspect.getfile(g), "\n")
 '''
-
 
 #before = [str(m) for m in sys.modules]
 #import os               # USER_ID = str(os.get uid())
@@ -126,14 +128,30 @@ def main(caller=None):
     # print("mserve_config.py startup called from:", caller)
     make_default_cfg()  # Create default configuration
 
-    if True is False:
-        print("caller:", caller)
+    # HACK to fix:
+    # if caller and caller == "mserve_config.py":
+    # Traceback (most recent call last):
+    #   File "./m", line 27, in <module>
+    #     if not cfg.main(caller):
+    #   File "/home/rick/python/mserve_config.py", line 131, in main
+    #     if g.DEBUG_LEVEL > 0:
+    # UnboundLocalError: local variable 'g' referenced before assignment
+    if 'g.DEBUG_LEVEL' in globals():
+        print("if 'g.DEBUG_LEVEL' in globals():")
+        DEBUG_LEVEL = g.DEBUG_LEVEL
+        pass
+    else:
+        print("g.DEBUG_LEVEL = 1")
+        DEBUG_LEVEL = 1
+    if DEBUG_LEVEL > 0:
+        print("mserve_config.py - main() caller:", caller)
         print("len(sys.argv):", len(sys.argv))
 
     parm1 = parm2 = None
     if (len(sys.argv)) >= 2:
         parm1 = sys.argv[1]
-        # print("parm1:", parm1)
+        if DEBUG_LEVEL > 0:
+            print("parm1:", parm1)
 
     if (len(sys.argv)) >= 3:
         parm2 = sys.argv[2]
@@ -1293,7 +1311,6 @@ def verify_chain():
         ''' Called from the command line '''
         print("sql.py cannot be called from command line. Aborting...")
         exit()
-
 
 
 if __name__ == "__main__":

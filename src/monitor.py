@@ -609,8 +609,8 @@ def get_window_geom_raw(window, leave_visible=True):
     y = y - y_diff                      # Calculate real y
     w = window.winfo_width()            # Tkinter Window's width
     h = window.winfo_height()           # Tkinter Window's height
-    # Move window to the reported fake geometry adjust to reality
-    # TODO: Make this optional to reduce "blink" when closing program
+    # Moving window to fake geometry adjusts position to real position
+    # Pass 'leave-visible=False' to prevent "blink" if closing program
     if leave_visible:
         window.geometry('+{}+{}'.format(x, y))
         window.attributes('-alpha', 1.0)    # Make window visible again
@@ -724,26 +724,18 @@ def get_window_geom(name):
     Comments:       "Used in conjunction with 'screen' History Record Id #"
 
     Type:           'window'
-    Action:         'library'
+    Action:         'library' / 'playlist' / 'music_sql' / 'hist_sql', etc.
     SourceMaster:   'width x height + x_offset + y_offset'  # Only saved when different than last time
     SourceDetail:   'saved on exit, loaded on starting
     Comments:       "Used in conjunction with 'screen' History Record Id #"
 
-    Type:           'window'
-    Action:         'playlist'
-    SourceMaster:   'width x height + x_offset + y_offset'
-    SourceDetail:   'saved on exit, loaded on starting
-    Comments:       "Used in conjunction with 'screen' History Record Id #"
 
-    NOTE:       xrandr is the easy approach but requires os.open() calls
-                that are rather messy. Instead try gtk commands which *should*
-                support Wayland and offer more symmetry with Windows, Mac
-                ChromeOS and Android. See: https://stackoverflow.com/a/21213145/6929343
     """
 
     xy = (130, 130)  # Default coordinates for first encounter windows.
     # When changing (130, 130), revise location.py Locations.display_test_window()
     # Could also use active monitor but that requires compiz?
+    # Alternatively could use mouse location?
 
     if name == 'library':  # mserve.py & bserve.py
         _w = int(1920 * .75)
@@ -758,19 +750,20 @@ def get_window_geom(name):
         default_geom = '+%d+%d' % (xy[0], xy[1])
     elif name == 'encoding':  # encoding.py
         default_geom = '+%d+%d' % (xy[0], xy[1])
-    elif name == 'results':  # scrape.py (OBSOLETE) - Can be deleted
+    elif name == 'results':  # scrape.py (OBSOLETE) - s/b deleted in SQL history
         default_geom = '+%d+%d' % (xy[0], xy[1])
     elif name == 'sql_music':  # mserve.py
         default_geom = '+%d+%d' % (xy[0], xy[1])
+        # 2024-03-10 Use Library +30 +30
     elif name == 'sql_history':  # mserve.py
         default_geom = '+%d+%d' % (xy[0], xy[1])
+        # 2024-03-10 Use Library +60 +60
     elif name == 'sql_location':  # mserve.py
         default_geom = '+%d+%d' % (xy[0], xy[1])
-    elif name == 'pls_top':  # mserve.py - Playlists - Can be deleted
-        default_geom = '+%d+%d' % (xy[0], xy[1])
+        # 2024-03-10 Use Library +90 +90
     elif name == 'playlists':  # mserve.py - Playlists maintenance toplevel window
         default_geom = '+%d+%d' % (xy[0], xy[1])
-    elif name == 'lcs_top':  # location.py - Locations - Can be deleted
+    elif name == 'lcs_top':  # location.py - Locations - SQL deleted with pls_top
         default_geom = '+%d+%d' % (xy[0], xy[1])
     elif name == 'locations':  # location.py - Locations
         default_geom = '+%d+%d' % (xy[0], xy[1])

@@ -31,7 +31,8 @@ warnings.simplefilter('default')  # in future Python versions.
 #       Aug. 10 2023 - Add Music columns: AlbumArtist, Compilation, Comment,
 #                      GaplessPlayback
 #       Aug. 19 2023 - Add known SQL metadata to FileControl() variables.
-#       Aug. 20 2023 - Print SQL Table sizes and Row Counts by Type 
+#       Aug. 20 2023 - Print SQL Table sizes and Row Counts by Type
+#       Mar. 09 2024 - print_windows() - Print Window offsets, sizes and name
 
 #   TODO:
 
@@ -289,6 +290,7 @@ def populate_tables(SortedList, start_dir, pruned_dir, lodict):
                              stat.st_ctime, stat.st_size))
 
     con.commit()
+    print_windows()  # Just a little test to remove later
 
     # Temporary during development to record history for lyrics web scrape and
     # time index synchronizing to lyrics.
@@ -1742,6 +1744,29 @@ def hist_init_lost_and_found():
 
 
 HISTORY_ID = None
+# WINDOW_NAMES is used to get screen coordinates and sizes of windows
+# NOTE: TV volume during commercials always opens in same position and size
+# history,
+#                         encoding, sql_music, sql_history, sql_location,
+#                         playlists(maintenance),
+#                         locations(maintenance), calculator, results(DELETE)
+WINDOW_NAMES = {
+    "library": "Music Library Window (Main mserve Window)",
+    "playlist": "Music Playing Window",
+    "history": "Lyrics Scraping History Window (Future Use)",
+    "encoding": "CD Encoding (Ripping) Window",
+    "sql_music": "View SQL Music Table Window",
+    "sql_history": "View SQL History Table Window",
+    "sql_location": "View SQL Locations Table Window",
+    "playlists": "Playlists Maintenance Window",
+    "locations": "Locations Maintenance Window",
+    "calculator": "Big Number Calculator Window",
+    "pls_top": "DELETE this SQL record",
+    "lcs_top": "DELETE this SQL record",
+    "location": "DELETE this SQL record",
+    "results": "DELETE this SQL record",
+    "unknown": "Bad Window Name in SQL History Table"
+}
 
 
 def hist_check(MusicId, check_type, check_action):
@@ -1796,15 +1821,43 @@ def hist_check(MusicId, check_type, check_action):
     return False                # Not Found
 
 
+def print_windows():
+    """ History table Window positions and sizes using WINDOW_NAMES dictionary """
+    print("\nsql.py - print_windows() - SQL History Table's 'Action'='window'\n")
+    hist_cursor.execute("SELECT * FROM History INDEXED BY TypeActionIndex " +
+                        "WHERE Type = ?", ('window', ))
+    try:
+        rows = hist_cursor.fetchall()
+        for sql_row in rows:
+            row = dict(sql_row)
+            Action = row['Action']
+            if WINDOW_NAMES.get(Action, None):
+                print("'Action':", Action, "\t Window Name:", WINDOW_NAMES[Action])
+                print("\t'SourceMaster':\t", row['SourceMaster'])
+                print("\t'SourceDetail':\t", row['SourceDetail'])
+                print("\t'Target':\t", row['Target'],
+                      " | Show monitor's wid x hgt +x +y?")
+                print("\t'Comments':\t", row['Comments'])
+            else:
+                print(Action, "BAD window name !")
+    except TypeError:  # TypeError: 'NoneType' object is not iterable:
+        print("sql.py - print_windows(): No window names found !")
+        print("Possible names are:")
+        print(WINDOW_NAMES)
+        rows = None
+
+    return rows
+
+
 def get_config(Type, Action):
+    # noinspection SpellCheckingInspection
     """ Get configuration history using 'Type' + 'Action' key
 
         VARIABLE        DESCRIPTION
         --------------  -----------------------------------------------------
         Type - Action   'window' - library, playlist(Music Playing), history,
                         encoding, sql_music, sql_history, sql_location,
-                        pls_top(needs to be deleted), lcs_top(needs deleting),
-                        playlists(maintenance), location(needs deleting),
+                        playlists(maintenance),
                         locations(maintenance), calculator, results(DELETE)
                         See: monitory.py - get_window_geom(name)
         Type - Action   'resume' - L999 or P999999. SourceMaster = Playing/Paused
@@ -1814,12 +1867,84 @@ def get_config(Type, Action):
                         'copy_new' - L999 or P999999. FUTURE use
         Type - Action   'location' - 'last': The last location played.
                         SourceMaster = loc. Code, SourceDetail = loc. Name,
-                        Target = TopDir: FUTURE add playlist to restart it
+                        Target = TopDir
         Type - Action   'encoding' - 'format': Target = oga, mp4, flac or wav
                         'encoding' - 'quality': Size = 30 to 100
                         'encoding' - 'naming': SM = '99 ' or '99 - '
         Target          For Type='window' = geometry (x, y, width, height)
+
+        Type:           'cfg_library' / 'cfg_playlist' / 'cfg_sql_music', etc.
+        Action:         ['frame_name', 'frame_name'... 'frame_name']
+        SourceMaster:   'sql_tree' / 'treeview' / 'scrollbox' / 'font' / 'button'
+        SourceDetail:   'fg="Black"' / 'bg="Smoke White"', etc.
+        Target:         [{}, {}, ... {}]  fields / columns / colors / fonts / buttons
+        Comments:       "Version: 1.0 | Updated: yyyy-mm-dd hh:hh"
+
+        E.G. Chronology Treeview in Music Playing Window (Playlist):
+
+        ''' Create Chronology Treeview (chron_tree) and style Gold on Black '''
+        style = ttk.Style(self.chron_frm)
+        style.configure("chron.Treeview", background='Black',
+                        fieldbackground='Black',  # For empty rows
+                        foreground='Gold')
+        self.chron_tree = ttk.Treeview(self.chron_frm, show=('tree',),
+                                       selectmode="none")
+        self.chron_tree.configure(style="chron.Treeview")
+
+        Type            Action      Master      Detail      Target
+        ==============  ==========  ==========  ==========  ===================
+        cfg_playlist    chron_frm   treeview    normal      { "background":
+            'Black', "fieldbackground": 'Black', "foreground": 'Gold' }
+        cfg_playlist    chron_frm   treeview    select      { "background":
+            'ForestGreen', "foreground": 'White' }
+        cfg_playlist    chron_frm   treeview    highlight   { "background":
+            'LightBlue', "foreground": 'Black' }
+        cfg_playlist    chron_frm   treeview    column_0    { "minwidth": 900 }
+        cfg_playlist    chron_frm   treeview    v_scroll    { "width": 14,
+            "troughcolor": 'black', "bg": 'gold' }
+
+        tnd = sql.get_cfg_dict("cfg_playlist", "chron_frm", "treeview", "normal")
+        tsd = sql.get_cfg_dict("cfg_playlist", "chron_frm", "treeview", "select")
+        thd = sql.get_cfg_dict("cfg_playlist", "chron_frm", "treeview", "highlight")
+        ''' Single column, when long, unfortunately can't scroll horizontally '''
+        self.chron_tree.column("#0", minwidth=900, stretch=tk.YES)
+        self.chron_tree.grid(row=0, column=0, sticky=tk.NSEW)
+
+        ''' Chronology Treeview Vertical Scrollbar '''
+        v_scroll = tk.Scrollbar(self.chron_frm, orient=tk.VERTICAL,
+                                width=SCROLL_WIDTH,
+                                command=self.chron_tree.yview)
+        v_scroll.grid(row=0, column=1, sticky=tk.NS)
+        self.chron_tree.configure(yscrollcommand=v_scroll.set)
+        v_scroll.config(troughcolor='black', bg='gold')
+
+        ''' Chronology treeview Colors .tag_configure() '''
+        self.chron_tree.tag_configure('chron_sel', background='ForestGreen',
+                                      foreground='White')
+
+        ''' Configure tag for row highlight '''
+        self.chron_tree.tag_configure('highlight', background='LightBlue',
+                                      foreground="Black")
+
+        ''' Aug 23/23 - Configure tag for highlight of chron_sel line '''
+        self.chron_tree.tag_configure('highlight_sel', background='Gold',
+                                      foreground="Black")
+
+        ANOTHER EXAMPLE:
+
+        ''' Treeview has large images in column 0 resulting in only 4 rows '''
+        style = ttk.Style()
+        style.configure("YouTube.Treeview.Heading", font=(None, MED_FONT),
+                        rowheight=int(g.LARGE_FONT * 2.2))  # FONT14 alias
+        row_height = 200
+        style.configure("YouTube.Treeview", font=g.FONT14, rowheight=row_height)
+
+        # Create Treeview
+        self.you_tree = ttk.Treeview(self.youTreeFrame, column=('name',),
+                                     selectmode='none', height=4,
+                                     style="YouTube.Treeview")
     """
+
     hist_cursor.execute("SELECT * FROM History INDEXED BY TypeActionIndex " +
                         "WHERE Type = ? AND Action = ? LIMIT 1", (Type, Action))
     try:
@@ -2742,8 +2867,12 @@ def tkinter_display(pretty):
         curr_key += 1  # Current key index
 
     if pretty.search is not None:
+        # Breakdown string into set of words
+        words = pretty.search.split()
         # NOTE: yellow, cyan and magenta are defined to highlight background
-        pretty.scrollbox.highlight_pattern(pretty.search, "yellow")
+        #pretty.scrollbox.highlight_pattern(pretty.search, "yellow")
+        for w in words:
+            pretty.scrollbox.highlight_pattern(w, "yellow")
 
     # Don't allow changes to displayed selections (test copy clipboard)
     pretty.scrollbox.configure(state="disabled")

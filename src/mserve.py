@@ -118,7 +118,7 @@ TODO:
 
     Top Directory picker needs to recall dir_name() checker to get location. 
 
-    Display invalid music files (<100K) with ShowInfo() instead of print().
+    Display invalid music files (<100K) with info.cast() instead of print().
         At same time advise to delete walk_list and paths_and_sizes to have
         rebuilt.
 
@@ -1436,7 +1436,8 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
         style.configure("Treeview.Heading", font=(None, MED_FONT),
                         rowheight=int(MED_FONT * 2.2))
         row_height = int(MON_FONTSIZE * 2.2)
-        style.configure("Treeview", font=g.FONT, rowheight=row_height)
+        style.configure("Treeview", font=g.FONT, rowheight=row_height,
+                        background="White Smoke", fieldbackground="White Smoke")
 
         ''' Create images for checked, unchecked and tristate '''
         self.checkboxes = img.make_checkboxes(
@@ -5017,7 +5018,7 @@ Call search.py when these control keys occur
 
     # ==============================================================================
     #
-    #       Music Location Tree Processing - Top menu: SQL Music & SLQ History
+    #       Music Location Tree View Menu: SQL Music / History / Location
     #
     # ==============================================================================
     def show_sql_music(self, sbar_width=14):
@@ -5028,6 +5029,7 @@ Call search.py when these control keys occur
             return
 
         music_dict = sql.music_treeview()
+        # 2024-03-10 - Get columns from cfg_sql_music
         columns = ["os_filename", "track_number", "row_id", "os_atime",
                    "os_file_size", "artist", "album", "title", "lyrics", "genre"]
         toolkit.select_dict_columns(columns, music_dict)
@@ -5035,63 +5037,16 @@ Call search.py when these control keys occur
 
         ''' SQL Music Table View is now active '''
         self.mus_top_is_active = True
-        self.mus_top = tk.Toplevel()
-        self.mus_top.title("SQL Music Table - mserve")
-
-        ''' Set program icon in taskbar '''
-        img.taskbar_icon(self.mus_top, 64, 'white', 'lightskyblue', 'black')
-
-        ''' Mount window at previously used location '''
-        self.mus_top.minsize(width=g.WIN_MIN_WIDTH, height=g.WIN_MIN_HEIGHT)
-        # What if there is no saved geometry?
-        geom = monitor.get_window_geom('sql_music')
-        self.mus_top.geometry(geom)
-        self.mus_top.configure(background="Gray")
-        self.mus_top.columnconfigure(0, weight=1)
-        self.mus_top.rowconfigure(0, weight=1)
-
-        ''' Create master frame for treeview and buttons '''
-        master_frame = tk.Frame(self.mus_top, bg="LightGrey", relief=tk.RIDGE)
-        master_frame.grid(sticky=tk.NSEW)
-        master_frame.columnconfigure(0, weight=1)
-        master_frame.rowconfigure(0, weight=1)
-
-        ''' Create treeview frame with scrollbars '''
-        self.mus_view = toolkit.DictTreeview(
-            music_dict, self.mus_top, master_frame, columns=columns,
-            sbar_width=sbar_width)
-
-        ''' Treeview select item - custom select processing '''
-        toolkit.MoveTreeviewColumn(self.mus_top, self.mus_view.tree,
-                                   row_release=self.mus_button_3_click)
-        self.mus_view.tree.bind("<Button-3>", self.mus_button_3_click)
-
-        ''' Populate Treeview item list with all songs. '''
-        dtb = message.DelayedTextBox(title="Building SQL Music Table View",
-                                     toplevel=self.mus_top, width=1000)
-        self.populate_mus_tree(dtb)
-        dtb.close()
-
-        ''' Treeview Buttons '''
-        frame3 = tk.Frame(master_frame, bg="LightGrey", bd=2, relief=tk.GROOVE,
-                          borderwidth=g.FRM_BRD_WID)
-        frame3.grid_rowconfigure(0, weight=1)
-        frame3.grid_columnconfigure(0, weight=0)
-        frame3.grid(row=1, column=0, sticky=tk.NW)
-
-        ''' ✘ Close Button '''
-        self.mus_top.bind("<Escape>", self.mus_close)
-        self.mus_top.protocol("WM_DELETE_WINDOW", self.mus_close)
-        self.mus_view_btn1 = tk.Button(frame3, text="✘ Close",
-                                       width=g.BTN_WID - 2, command=self.mus_close)
-        self.mus_view_btn1.grid(row=0, column=0, padx=2)
-        self.tt.add_tip(
-            self.mus_view_btn1, "Close SQL Music Table view.",
-            anchor="nw")
+        # Function shared by sql_music, sql_history & sql_location:
+        self.mus_top, self.mus_view, btn_frm = \
+            self.show_sql_common_init('sql_music', 'SQL Music Table', music_dict, 
+                                      columns, populate=self.populate_mus_tree,
+                                      right_click=self.mus_button_3_click,
+                                      close=self.mus_close)
 
         ''' “🗑” U+1F5D1 (trash can) - Missing Metadata '''
         self.mus_view_btn2 = tk.Button(
-            frame3, text="🗑 Missing Metadata", width=g.BTN_WID,
+            btn_frm, text="🗑 Missing Metadata", width=g.BTN_WID,
             command=self.missing_metadata)
         self.mus_view_btn2.grid(row=0, column=1, padx=2)
         self.tt.add_tip(
@@ -5100,7 +5055,7 @@ Call search.py when these control keys occur
 
         ''' 🗑 Missing Lyrics '''
         self.mus_view_btn3 = tk.Button(
-            frame3, text="🗑 Missing Lyrics", width=g.BTN_WID - 1,
+            btn_frm, text="🗑 Missing Lyrics", width=g.BTN_WID - 1,
             command=self.missing_lyrics)
         self.mus_view_btn3.grid(row=0, column=2, padx=2)
         self.tt.add_tip(self.mus_view_btn3,
@@ -5108,7 +5063,7 @@ Call search.py when these control keys occur
 
         ''' 🗑 Lyrics UnSynced '''
         self.mus_view_btn4 = tk.Button(
-            frame3, text="🗑 Lyrics UnSynced", width=g.BTN_WID - 1,
+            btn_frm, text="🗑 Lyrics UnSynced", width=g.BTN_WID - 1,
             command=self.unsynchronized)
         self.mus_view_btn4.grid(row=0, column=3, padx=2)
         self.tt.add_tip(self.mus_view_btn4,
@@ -5116,7 +5071,7 @@ Call search.py when these control keys occur
 
         ''' 🔍 Text Search '''
         self.mus_view_btn5 = tk.Button(
-            frame3, text="🔍  Text Search", width=g.BTN_WID - 2,
+            btn_frm, text="🔍  Text Search", width=g.BTN_WID - 2,
             command=self.mus_text_search)
         self.mus_view_btn5.grid(row=0, column=4, padx=2)
         self.tt.add_tip(self.mus_view_btn5,
@@ -5124,14 +5079,14 @@ Call search.py when these control keys occur
 
         '''  🖸 (1f5b8) - Update Metadata '''
         self.mus_view_btn6 = tk.Button(
-            frame3, text="🖸  Update Metadata", width=g.BTN_WID,
+            btn_frm, text="🖸  Update Metadata", width=g.BTN_WID,
             command=self.missing_artwork)
         self.mus_view_btn6.grid(row=0, column=5, padx=2)
         self.tt.add_tip(self.mus_view_btn6,
                         "Apply metadata & show missing artwork.", anchor="ne")
 
         '''  “∑” (U+2211) - Summarize sizes and count rows '''
-        self.mus_view_btn7 = tk.Button(frame3, text="∑  Summary",
+        self.mus_view_btn7 = tk.Button(btn_frm, text="∑  Summary",
                                        width=g.BTN_WID - 2, command=lambda:
                                        self.tree_summary(self.mus_view))
         self.mus_view_btn7.grid(row=0, column=6, padx=2)
@@ -5141,16 +5096,94 @@ Call search.py when these control keys occur
         ''' Colors for tags '''
         self.ignore_item = None  # purpose?
         self.mus_view.tree.tag_configure('menu_sel', background='Yellow')
+        # 'no_audio' tag used by missing artwork callback
         self.mus_view.tree.tag_configure('no_audio', background='Red',
                                          foreground='White')
 
-    def populate_mus_tree(self, delayed_textbox):
+    def show_sql_common_init(self, sql_type, name, tree_dict, columns,
+                             populate=None, right_click=None, close=None):
+        """ Common initialization View SQL Music / History / Location Tables """
+
+        #   Call function shared by sql_music, sql_history & sql_location:
+
+        #      self.mus_top, self.mus_view, btn_frm =
+        #          show_sql_common_init('sql_music', 'SQL Music Table', tree_dict,
+        #                               columns, populate=self.populate_mus_tree,
+        #                               right_click=self.button_3_click,
+        #                               close=self.mus_close)
+
+        toplevel = tk.Toplevel()
+        toplevel.title(name + " - mserve")
+
+        sql_key = 'cfg_' + sql_type
+        if tree_dict is None:
+            pass  # Future setup of selected columns saved in SQL
+
+        ''' Set program icon in taskbar '''
+        img.taskbar_icon(toplevel, 64, 'white', 'lightskyblue', 'black')
+
+        ''' Mount window at previously used location '''
+        toplevel.minsize(width=g.WIN_MIN_WIDTH, height=g.WIN_MIN_HEIGHT)
+        # What if there is no saved geometry?
+        # music=lib+30+30, history=lib+60+60, location=lib+90+90
+        geom = monitor.get_window_geom('sql_music')
+        toplevel.geometry(geom)
+        toplevel.configure(background="Gray")
+        toplevel.columnconfigure(0, weight=1)
+        toplevel.rowconfigure(0, weight=1)
+
+        ''' Create master frame for treeview and buttons '''
+        master_frame = tk.Frame(toplevel, bg="LightGrey", relief=tk.RIDGE)
+        master_frame.grid(sticky=tk.NSEW)
+        master_frame.columnconfigure(0, weight=1)
+        master_frame.rowconfigure(0, weight=1)
+
+        ''' Create treeview frame with scrollbars '''
+        # Replace with sql configuration get
+        sbar_width = 14
+        dd_view = toolkit.DictTreeview(
+            tree_dict, toplevel, master_frame, columns=columns,
+            sbar_width=sbar_width)
+
+        ''' Treeview Left Click - Drag Column Headings or Popup menu on row '''
+        toolkit.MoveTreeviewColumn(toplevel, dd_view.tree,
+                                   row_release=right_click)
+        ''' Treeview Right Click - Display dictionary info or Popup menu on row '''
+        dd_view.tree.bind("<Button-3>", right_click)
+
+        ''' Populate Treeview item list with all songs. '''
+        dtb = message.DelayedTextBox(title="Building " + name + " View",
+                                     toplevel=toplevel, width=1000)
+        populate(dtb, dd_view=dd_view)
+        dtb.close()
+
+        ''' Treeview Buttons Frame '''
+        btn_frm = tk.Frame(master_frame, bg="LightGrey", bd=2, relief=tk.GROOVE,
+                           borderwidth=g.FRM_BRD_WID)
+        btn_frm.grid_rowconfigure(0, weight=1)
+        btn_frm.grid_columnconfigure(0, weight=0)
+        btn_frm.grid(row=1, column=0, sticky=tk.NW)
+
+        ''' ✘ Close Button '''
+        toplevel.bind("<Escape>", close)
+        toplevel.protocol("WM_DELETE_WINDOW", close)
+        dd_view_btn1 = tk.Button(btn_frm, text="✘ Close",
+                                 width=g.BTN_WID - 2, command=close)
+        dd_view_btn1.grid(row=0, column=0, padx=2)
+        self.tt.add_tip(
+            dd_view_btn1, "Close " + name + " view.",
+            anchor="nw")
+        return toplevel, dd_view, btn_frm
+
+    def populate_mus_tree(self, delayed_textbox, dd_view=None):
         """ Stuff SQL Music Table rows into treeview """
         sql.cursor.execute("SELECT * FROM Music INDEXED BY OsFileNameIndex\
                            ORDER BY OsFileName")
         rows = sql.cursor.fetchall()
+        if not dd_view:
+            dd_view = self.mus_view
         if rows:
-            self.insert_view_lines(self.mus_view, rows, delayed_textbox)
+            self.insert_view_lines(dd_view, rows, delayed_textbox)
 
     def mus_text_search(self):
         """ Search all Music Table treeview columns for text string """
@@ -11595,8 +11628,7 @@ mark set markName index"
         self.chron_filter = option
 
     def chron_reverse_filter(self):
-        """ Remove Playlist filter and restore old song index
-        """
+        """ Remove Playlist filter and restore old song index """
         for iid in self.chron_detached:
             # Order is messed up but reattach so they can be deleted
             self.chron_tree.reattach(iid, "", 0)
@@ -13207,8 +13239,9 @@ class FineTune:
         if self.time_ctl and self.time_ctl.state != 'end':
             self.time_ctl.close()  # Resets last access time to original
 
-        self.top.destroy()  # Close the window
-        self.top = None  # Extra insurance
+        if self.top:  # 2024-03-07 no longer exists when < 80% synced.
+            self.top.destroy()  # Close the window
+            self.top = None  # Extra insurance
         if os.path.isfile(TMP_CURR_SYNC):
             os.remove(TMP_CURR_SYNC)  # Clean up /tmp directory
 
@@ -14972,7 +15005,7 @@ class Playlists(PlaylistsCommonSelf):
                                    thread=self.get_refresh_thread,
                                    get_pending=self.get_pending_cnt_total,
                                    display_lib_title=self.display_lib_title)
-              - Geometry in Type-'window', action-'pls_top'.
+              - Geometry in Type-'window', action-'playlists'.
               - build_lib_menu will look at self.playlists.status
 
         Functions:
@@ -14984,7 +15017,7 @@ class Playlists(PlaylistsCommonSelf):
             save_as(self):
             close(self):
 
-        if self.playlists.pls_top:
+        if self.playlists.top:
             - Playlists top level exists so lift() to top of stack
 
     History Record Formats

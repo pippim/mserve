@@ -602,7 +602,7 @@ class CustomScrolledText(scrolledtext.ScrolledText):
 
     def highlight_pattern(self, pattern, tag, start="1.0", end="end",
                           regexp=False):
-        """Apply the given tag to all text that matches the given pattern
+        """ Apply the given tag to all text that matches the given pattern
 
         If 'regexp' is set to True, pattern will be treated as a regular
         expression according to Tcl regular expression syntax.
@@ -617,7 +617,7 @@ class CustomScrolledText(scrolledtext.ScrolledText):
         count = tk.IntVar()
         while True:
             index = self.search(pattern, "matchEnd", "searchLimit",
-                                count=count, regexp=regexp)
+                                count=count, regexp=regexp, nocase=1)
             if index == "":
                 break
             # degenerate pattern which matches zero-length strings
@@ -629,7 +629,7 @@ class CustomScrolledText(scrolledtext.ScrolledText):
 
     def unhighlight_pattern(self, pattern, tag, start="1.0", end="end",
                             regexp=False):
-        """Remove the given tag to all text that matches the given pattern
+        """ Remove the given tag to all text that matches the given pattern
         """
 
         start = self.index(start)
@@ -641,7 +641,7 @@ class CustomScrolledText(scrolledtext.ScrolledText):
         count = tk.IntVar()
         while True:
             index = self.search(pattern, "matchEnd", "searchLimit",
-                                count=count, regexp=regexp)
+                                count=count, regexp=regexp, nocase=1)
             if index == "":
                 break
             # degenerate pattern which matches zero-length strings
@@ -734,14 +734,26 @@ class DictTreeview:
         #    print(self.tree.column(col))
         #    print(self.tree.heading(col))
 
-        style = ttk.Style()
+        style = ttk.Style(self.frame)
         # print('style.theme_names():', style.theme_names())
         # OUTPUT: style.theme_names(): ('clam', 'alt', 'default', 'classic')
-        style.configure("Treeview.Heading", font=(None, g.MED_FONT),
+        style.configure("sql.Treeview.Heading", font=(None, g.MED_FONT),
                         rowheight=int(g.MED_FONT * 2.2))
+        self.tree.configure(style="sql.Treeview.Heading")
         row_height = int(g.MON_FONTSIZE * 2.2)
-        style.configure("Treeview", font=(None, g.MON_FONTSIZE),
-                        rowheight=row_height)
+        style.configure("sql.Treeview", font=(None, g.MON_FONTSIZE),
+                        rowheight=row_height, background="Lemon Chiffon",
+                        fieldbackground="White Smoke")
+        self.tree.configure(style="sql.Treeview")
+        # background="Lemon Chiffon"    VERY NICE
+        # background="Navajo White"     VERY NICE
+        # background="Olive Drab"       TOO DARK for black text
+        # background="Pale Turquoise"   OK but highlight bar not as strong
+        # background="Light Goldenrod"  Similar to Lemon Chiffon (Very Nice)
+        # background="Rosy Brown"       NOT BAD but a little dark at night
+        # background="Alice Blue"       BEST at day
+        # background="Light Salmon"     BEST at night
+        # background="White Smoke"      BEST all around
 
         ''' Create images for checked, unchecked and tristate '''
         self.checkboxes = img.make_checkboxes(
@@ -1564,15 +1576,13 @@ class SearchText:
                 return
 
     def reattach(self):
-        """ Reattach items detached
-            NOTE: Sort order drastically changes. Consider repopulate
-                  instead.
-        """
+        """ Reattach items detached """
         i_r = -1  # https://stackoverflow.com/a/47055786/6929343
         for msgId in self.attached.keys():
             # If not attached then reattach it
+            i_r += 1  # Get back attached in same position!
             if self.attached[msgId] is False:
-                i_r += 1
+                #i_r += 1  # Causing attached to go near bottom!
                 self.tree.reattach(msgId, '', i_r)
                 self.attached[msgId] = True
 
@@ -1583,6 +1593,7 @@ class SearchText:
         if not self.toplevel:
             return  # Closed window
         self.reattach()
+        self.search_text.set("")  # Prevent future text highlighting of old search
         if self.find_str is None:
             self.frame.grid_remove()  # Next pack is faster this way?
 

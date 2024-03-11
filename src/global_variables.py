@@ -101,13 +101,16 @@ def init(caller=None):
         5   pw_dir      User home directory
         6   pw_shell    User command interpreter
     """
-    if caller and caller is not "mserve_config.py":
+    if caller and caller != "mserve_config.py":
+        print('if caller and caller != "mserve_config.py":')
         if not cfg.main(caller):
             print("mserve not fully installed. Aborting...")
             exit()
         else:
             print("mserve_config.py is calling global_variables.py !")
             pass
+    if caller and caller == "mserve_config.py":
+        print('if caller and caller == "mserve_config.py":')
 
     global USER, USER_ID, HOME, USER_DATA_DIR, USER_CONFIG_DIR, MSERVE_DIR
     global PROGRAM_DIR, TEMP_DIR
