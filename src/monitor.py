@@ -875,9 +875,13 @@ def save_window_geom(name, geom):
     ''' We have the existing history record, simply replace the geometry field 
         Time is from creation, Timestamp is from update
     '''
-    sql_cmd = "UPDATE History SET Timestamp=?, SourceMaster=? WHERE Id = ?"
-
-    sql.hist_cursor.execute(sql_cmd, (time.time(), geom, sql.HISTORY_ID))
+    # 2024-03-24 sql.py in bserve doesn't have Timestamp column
+    if "bserve" in sql.FNAME_LIBRARY:
+        sql_cmd = "UPDATE History SET SourceMaster=? WHERE Id = ?"
+        sql.hist_cursor.execute(sql_cmd, (geom, sql.HISTORY_ID))
+    else:
+        sql_cmd = "UPDATE History SET Timestamp=?, SourceMaster=? WHERE Id = ?"
+        sql.hist_cursor.execute(sql_cmd, (time.time(), geom, sql.HISTORY_ID))
     sql.con.commit()
 
 # End of monitor.py

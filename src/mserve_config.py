@@ -137,21 +137,23 @@ def main(caller=None):
     #     if g.DEBUG_LEVEL > 0:
     # UnboundLocalError: local variable 'g' referenced before assignment
     if 'g.DEBUG_LEVEL' in globals():
-        print("if 'g.DEBUG_LEVEL' in globals():")
+        #print("if 'g.DEBUG_LEVEL' in globals():")
         DEBUG_LEVEL = g.DEBUG_LEVEL
         pass
     else:
-        print("g.DEBUG_LEVEL = 1")
+        #print("g.DEBUG_LEVEL = 1")
         DEBUG_LEVEL = 1
     if DEBUG_LEVEL > 0:
-        print("mserve_config.py - main() caller:", caller)
-        print("len(sys.argv):", len(sys.argv))
+        #print("mserve_config.py - main() caller:", caller)
+        #print("len(sys.argv):", len(sys.argv))
+        pass
 
     parm1 = parm2 = None
     if (len(sys.argv)) >= 2:
         parm1 = sys.argv[1]
         if DEBUG_LEVEL > 0:
-            print("parm1:", parm1)
+            #print("parm1:", parm1)
+            pass
 
     if (len(sys.argv)) >= 3:
         parm2 = sys.argv[2]
@@ -541,6 +543,7 @@ def make_toolkit_cfg():
     cfg.append(make_dict(m, "g", "global_variables", "pippim.com"))
     cfg.append(make_dict(m, "ext", "external", "pippim.com"))
     cfg.append(make_dict(m, "img", "image", "pippim.com"))
+    cfg.append(make_dict(m, None, "sql", "pippim.com"))
     return cfg
 
 

@@ -19,6 +19,7 @@ from __future__ import with_statement  # Error handling for file opens
 #       July 15 2023 - AskString cursor invisible. Use background="white".
 #       Aug. 09 2023 - Add g.MSG_WIDTH_ADJ and self.title2 title width support.
 #       Aug. 17 2023 - threading.RLock() prevent to messages waiting at once.
+#       Mar. 17 2024 - Fix <Return> to <KP_Enter> for OK/Yes dialog buttons.
 #
 #==============================================================================
 
@@ -342,28 +343,6 @@ class ShowInfo(simpledialog.Dialog, AskCommonSelf):
                                align=align, thread=thread, icon=icon)
         simpledialog.Dialog.__init__(self, parent, title=title)
 
-        # Experimental code August 2023 that didn't work
-        #if root:
-        #    ''' When using root window message s/b centered  '''
-        #    mon = monitor.Monitors()
-        #    mon.tk_center(self)
-        # Error Aug 8/23:
-        #     mserve.main(toplevel=splash, cwd=cwd, parameters=sys.argv)
-        #   File "/home/rick/python/mserve.py", line 15288, in main
-        #     icon='error', thread=dummy_thread, root=True)
-        #   File "/home/rick/python/message.py", line 415, in __init__
-        #     mon.tk_center(self)
-        #   File "/home/rick/python/monitor.py", line 429, in tk_center
-        #     x = mon.width // 2 - window.winfo_width() // 2 + mon.x
-        #   File "/usr/lib/python2.7/lib-tk/Tkinter.py", line 1009, in winfo_width
-        #     self.tk.call('winfo', 'width', self._w))
-        # _tkinter.TclError: bad window path name ".140042227536312.140042227536384"
-
-        ''' Even when root=True is passed, no message pops up '''
-        #if thread is None and root is None:
-        #    toolkit.print_trace()
-        #    print("message.py, ShowInfo() thread is none, 'OK' won't work")
-
     def body(self, parent):
         """ Wrapper to body_func in mainline """
         return body_func(self)
@@ -380,7 +359,9 @@ class ShowInfo(simpledialog.Dialog, AskCommonSelf):
                       default=tk.ACTIVE)
         w.pack(side=tk.LEFT, padx=5, pady=5)
 
-        self.bind("<Return>", self.ok)
+        #self.bind("<Return>", self.ok)  # 2024-03-17 Not working
+        # Below from: https://stackoverflow.com/a/33664214/6929343
+        self.bind("<KP_Enter>", self.ok)  # info.cast can still intercept Enter
         self.bind("<Escape>", self.ok)  # ShowInfo has no "Cancel" button
 
         box.pack()
@@ -666,7 +647,9 @@ TclError: grab failed: another application has grab
         w = tk.Button(box, text="No", width=10, command=self.cancel)
         w.pack(side=tk.LEFT, padx=5, pady=5)
 
-        self.bind("<Return>", self.ok)  # June 18, 2023 not working for self.ok()
+        #self.bind("<Return>", self.ok)  # June 18, 2023 not working for self.ok()
+        # Below from: https://stackoverflow.com/a/33664214/6929343
+        self.bind("<KP_Enter>", self.ok)  # 2024-03-17 Replace broken <Return>
         self.bind("<Escape>", self.cancel)  # June 18, 2023 working properly
 
         box.pack()
@@ -767,7 +750,9 @@ class AskString(simpledialog.Dialog, AskCommonSelf):
         w = tk.Button(box, text="Cancel", width=10, command=self.cancel)
         w.pack(side=tk.LEFT, padx=5, pady=5)
 
-        self.bind("<Return>", self.ok)
+        #self.bind("<Return>", self.ok)  # June 18, 2023 not working for self.ok()
+        # Below from: https://stackoverflow.com/a/33664214/6929343
+        self.bind("<KP_Enter>", self.ok)  # 2024-03-17 Replace broken <Return>
         self.bind("<Escape>", self.cancel)
 
         box.pack()
@@ -905,44 +890,44 @@ class CommonIW:
     def __init__(self):
         self.dict = {}  # add_tip() dictionary
 
-        self.widget = None  # "999.999.999" = top.frame.button  1
-        self.current_state = None  # enter, press, release or leave    2
-        self.current_mouse_xy = 0  # Mouse position within widget      3
-        self.window_mouse_xy = 0  # Position when tip window created  4
-        self.enter_time = 0.0  # time button was entered           5
-        self.leave_time = 0.0  # time button was left              6
-        self.motion_time = 0.0  # time button was released          7
-        self.press_time = 0.0  # time button was pressed           8
-        self.release_time = 0.0  # time button was released          9
-        self.visible_delay = 0  # milliseconds before visible       10
-        self.visible_span = 0  # milliseconds to keep visible      11
-        self.extra_word_span = 0  # milliseconds for extra lines      12
-        self.fade_in_span = 0  # milliseconds for fading in        13
-        self.fade_out_span = 0  # milliseconds for fading out       14
+        self.widget = None  # "999.999.999" = top.frame.button          #  1
+        self.current_state = None  # enter, press, release or leave     #  2
+        self.current_mouse_xy = 0  # Mouse position within widget       #  3
+        self.window_mouse_xy = 0  # Position when tip window created    #  4
+        self.enter_time = 0.0  # time button was entered                #  5
+        self.leave_time = 0.0  # time button was left                   #  6
+        self.motion_time = 0.0  # time button was released              #  7
+        self.press_time = 0.0  # time button was pressed                #  8
+        self.release_time = 0.0  # time button was released             #  9
+        self.visible_delay = 0  # milliseconds before visible           # 10
+        self.visible_span = 0  # milliseconds to keep visible           # 11
+        self.extra_word_span = 0  # milliseconds for extra lines        # 12
+        self.fade_in_span = 0  # milliseconds for fading in             # 13
+        self.fade_out_span = 0  # milliseconds for fading out           # 14
 
         # Too much window_ ??
         #  'tip_window' used to be 'window_object'
         #  'text' used to be 'window_text'
         #  'window_fading_in' could be 'fading_in'
         #  'window_fading_out' could be 'fading_out'
-        self.tip_window = None  # The tooltip window we created     15
-        self.text = None  # Text can be changed by caller     16
+        self.tip_window = None  # The tooltip window we created         # 15
+        self.text = None  # Text can be changed by caller               # 16
         Geometry = namedtuple('Geometry', 'x, y, width, height')
         # noinspection PyArgumentList
-        self.window_geom = Geometry(0, 0, 0, 0)  # 17
-        self.window_visible = False  # False when alpha = 0.0          # 18
+        self.window_geom = Geometry(0, 0, 0, 0)                         # 17
+        self.window_visible = False  # False when alpha = 0.0           # 18
         # Window is never alpha 0 anymore...
-        self.current_alpha = 0.0  # current window alpha            # 19
-        self.window_fading_in = False  # 20
-        self.window_fading_out = False  # 21
+        self.current_alpha = 0.0  # current window alpha                # 19
+        self.window_fading_in = False                                   # 20
+        self.window_fading_out = False                                  # 21
 
-        self.tool_type = None  # "button", "label", etc.         # 22
-        self.name = None  # Widget name for debugging       # 23
-        self.fg = None  # Foreground color (buttons)      # 24
-        self.bg = None  # Background color (buttons)      # 25
-        self.normal_text_color = None  # self.widget.itemcget(...)       # 26
-        self.normal_button_color = None  # .itemcget("button_color"...)   # 27
-        self.anchor = None  # tooltip anchor point on widget  # 28
+        self.tool_type = None  # "button", "label", etc.                # 22
+        self.name = None  # Widget name for debugging                   # 23
+        self.fg = None  # Foreground color (buttons)                    # 24
+        self.bg = None  # Background color (buttons)                    # 25
+        self.normal_text_color = None  # self.widget.itemcget(...)      # 26
+        self.normal_button_color = None  # .itemcget("button_color"...) # 27
+        self.anchor = None  # tooltip anchor point on widget            # 28
 
 
 class InputWindow(CommonIW):
@@ -1008,34 +993,34 @@ class InputWindow(CommonIW):
 
     def dict_to_fields(self):
         """ Cryptic dictionary fields to easy names """
-        self.widget = self.dict['widget']  # 01
-        self.current_state = self.dict['current_state']  # 02
-        self.current_mouse_xy = self.dict[' current_mouse_xy']  # 03
-        self.window_mouse_xy = self.dict[' window_mouse_xy']  # 04
-        self.enter_time = self.dict['enter_time']  # 05
-        self.leave_time = self.dict['leave_time']  # 06
-        self.motion_time = self.dict['motion_time']  # 07
-        self.press_time = self.dict['press_time']  # 08
-        self.release_time = self.dict['release_time']  # 09
-        self.visible_delay = self.dict['visible_delay']  # 10
-        self.visible_span = self.dict['visible_span']  # 11
-        self.extra_word_span = self.dict['extra_word_span']  # 12
-        self.fade_in_span = self.dict['fade_in_span']  # 13
-        self.fade_out_span = self.dict['fade_out_span']  # 14
-        self.tip_window = self.dict['tip_window']  # 15
-        self.text = self.dict['text']  # 16
-        self.window_geom = self.dict['window_geom']  # 17
-        self.window_visible = self.dict['window_visible']  # 18
-        self.current_alpha = self.dict['current_alpha']  # 19
-        self.window_fading_in = self.dict['window_fading_in']  # 20
-        self.window_fading_out = self.dict['window_fading_out']  # 21
-        self.tool_type = self.dict['tool_type']  # 22
-        self.name = self.dict['name']  # 23
-        self.fg = self.dict['fg']  # 24
-        self.bg = self.dict['bg']  # 25
-        self.normal_text_color = self.dict['normal_text_color']  # 26
-        self.normal_button_color = self.dict['normal_button_color']  # 27
-        self.anchor = self.dict['anchor']  # 28
+        self.widget = self.dict['widget']                               # 01
+        self.current_state = self.dict['current_state']                 # 02
+        self.current_mouse_xy = self.dict[' current_mouse_xy']          # 03
+        self.window_mouse_xy = self.dict[' window_mouse_xy']            # 04
+        self.enter_time = self.dict['enter_time']                       # 05
+        self.leave_time = self.dict['leave_time']                       # 06
+        self.motion_time = self.dict['motion_time']                     # 07
+        self.press_time = self.dict['press_time']                       # 08
+        self.release_time = self.dict['release_time']                   # 09
+        self.visible_delay = self.dict['visible_delay']                 # 10
+        self.visible_span = self.dict['visible_span']                   # 11
+        self.extra_word_span = self.dict['extra_word_span']             # 12
+        self.fade_in_span = self.dict['fade_in_span']                   # 13
+        self.fade_out_span = self.dict['fade_out_span']                 # 14
+        self.tip_window = self.dict['tip_window']                       # 15
+        self.text = self.dict['text']                                   # 16
+        self.window_geom = self.dict['window_geom']                     # 17
+        self.window_visible = self.dict['window_visible']               # 18
+        self.current_alpha = self.dict['current_alpha']                 # 19
+        self.window_fading_in = self.dict['window_fading_in']           # 20
+        self.window_fading_out = self.dict['window_fading_out']         # 21
+        self.tool_type = self.dict['tool_type']                         # 22
+        self.name = self.dict['name']                                   # 23
+        self.fg = self.dict['fg']                                       # 24
+        self.bg = self.dict['bg']                                       # 25
+        self.normal_text_color = self.dict['normal_text_color']         # 26
+        self.normal_button_color = self.dict['normal_button_color']     # 27
+        self.anchor = self.dict['anchor']                               # 28
 
     def fields_to_dict(self):
         """ Easy names to cryptic dictionary fields """

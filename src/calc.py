@@ -135,12 +135,14 @@ class Calculator:
         """ Pressed button's value is inserted into the end of the text area """
         self.e.insert(tk.END, argi)
 
-    def __init__(self, master, disp_font, geom=None):
+    def __init__(self, master, disp_font, geom=None, btn_fg='Black', btn_bg='LightGray'):
         """ Global variables """
         self.value = None
         self.txt = None
         self.expression = None
         self.new_text = None
+        self.btn_fg = btn_fg
+        self.btn_bg = btn_bg
 
         """ Constructor method """
         master.title('Big Number Calculator')
@@ -152,63 +154,92 @@ class Calculator:
         self.e.focus_set()  # Sets focus on the input text area
 
         # Generating Buttons
-        tk.Button(master, text="=", width=8, command=lambda: self.equals()).\
+        tk.Button(master, text="=", width=8, fg=self.btn_fg, bg=self.btn_bg,
+                  command=lambda: self.equals()).\
             grid(row=4, column=4, columnspan=2)
-        tk.Button(master, text='AC', width=3, command=lambda: self.clear_all()).\
+        tk.Button(master, text='AC', width=3, fg=self.btn_fg, bg=self.btn_bg,
+                  command=lambda: self.clear_all()).\
             grid(row=1, column=4)
-        tk.Button(master, text='C', width=3, command=lambda: self.clear1()).\
+        tk.Button(master, text='C', width=3, fg=self.btn_fg, bg=self.btn_bg,
+                  command=lambda: self.clear1()).\
             grid(row=1, column=5)
-        tk.Button(master, text="+", width=3, command=lambda: self.action('+')).\
+        tk.Button(master, text="+", width=3, fg=self.btn_fg, bg=self.btn_bg,
+                  command=lambda: self.action('+')).\
             grid(row=4, column=3)
-        tk.Button(master, text="x", width=3, command=lambda: self.action('x')).\
+        tk.Button(master, text="x", width=3, fg=self.btn_fg, bg=self.btn_bg,
+                  command=lambda: self.action('x')).\
             grid(row=2, column=3)
-        tk.Button(master, text="-", width=3, command=lambda: self.action('-')).\
+        tk.Button(master, text="-", width=3, fg=self.btn_fg, bg=self.btn_bg,
+                  command=lambda: self.action('-')).\
             grid(row=3, column=3)
-        tk.Button(master, text="÷", width=3, command=lambda: self.action('÷')).\
+        tk.Button(master, text="÷", width=3, fg=self.btn_fg, bg=self.btn_bg,
+                  command=lambda: self.action('÷')).\
             grid(row=1, column=3)
-        tk.Button(master, text="%", width=3, command=lambda: self.action('%')).\
+        tk.Button(master, text="%", width=3, fg=self.btn_fg, bg=self.btn_bg,
+                  command=lambda: self.action('%')).\
             grid(row=4, column=2)
-        tk.Button(master, text="7", width=3, command=lambda: self.action('7')).\
+        tk.Button(master, text="7", width=3, fg=self.btn_fg, bg=self.btn_bg,
+                  command=lambda: self.action('7')).\
             grid(row=1, column=0)
-        tk.Button(master, text="8", width=3, command=lambda: self.action(8)).\
+        tk.Button(master, text="8", width=3, fg=self.btn_fg, bg=self.btn_bg,
+                  command=lambda: self.action(8)).\
             grid(row=1, column=1)
-        tk.Button(master, text="9", width=3, command=lambda: self.action(9)).\
+        tk.Button(master, text="9", width=3, fg=self.btn_fg, bg=self.btn_bg,
+                  command=lambda: self.action(9)).\
             grid(row=1, column=2)
-        tk.Button(master, text="4", width=3, command=lambda: self.action(4)).\
+        tk.Button(master, text="4", width=3, fg=self.btn_fg, bg=self.btn_bg,
+                  command=lambda: self.action(4)).\
             grid(row=2, column=0)
-        tk.Button(master, text="5", width=3, command=lambda: self.action(5)).\
+        tk.Button(master, text="5", width=3, fg=self.btn_fg, bg=self.btn_bg,
+                  command=lambda: self.action(5)).\
             grid(row=2, column=1)
-        tk.Button(master, text="6", width=3, command=lambda: self.action(6)).\
+        tk.Button(master, text="6", width=3, fg=self.btn_fg, bg=self.btn_bg,
+                  command=lambda: self.action(6)).\
             grid(row=2, column=2)
-        tk.Button(master, text="1", width=3, command=lambda: self.action(1)).\
+        tk.Button(master, text="1", width=3, fg=self.btn_fg, bg=self.btn_bg,
+                  command=lambda: self.action(1)).\
             grid(row=3, column=0)
-        tk.Button(master, text="2", width=3, command=lambda: self.action(2)).\
+        tk.Button(master, text="2", width=3, fg=self.btn_fg, bg=self.btn_bg,
+                  command=lambda: self.action(2)).\
             grid(row=3, column=1)
-        tk.Button(master, text="3", width=3, command=lambda: self.action(3)).\
+        tk.Button(master, text="3", width=3, fg=self.btn_fg, bg=self.btn_bg,
+                  command=lambda: self.action(3)).\
             grid(row=3, column=2)
-        tk.Button(master, text="0", width=3, command=lambda: self.action(0)).\
+        tk.Button(master, text="0", width=3, fg=self.btn_fg, bg=self.btn_bg,
+                  command=lambda: self.action(0)).\
             grid(row=4, column=0)
-        tk.Button(master, text=".", width=3, command=lambda: self.action('.')).\
+        tk.Button(master, text=".", width=3, fg=self.btn_fg, bg=self.btn_bg,
+                  command=lambda: self.action('.')).\
             grid(row=4, column=1)
-        tk.Button(master, text="(", width=3, command=lambda: self.action('(')).\
+        tk.Button(master, text="(", width=3, fg=self.btn_fg, bg=self.btn_bg,
+                  command=lambda: self.action('(')).\
             grid(row=2, column=4)
-        tk.Button(master, text=")", width=3, command=lambda: self.action(')')).\
+        tk.Button(master, text=")", width=3, fg=self.btn_fg, bg=self.btn_bg,
+                  command=lambda: self.action(')')).\
             grid(row=2, column=5)
-        tk.Button(master, text="√", width=3, command=lambda: self.square_root()).\
+        tk.Button(master, text="√", width=3, fg=self.btn_fg, bg=self.btn_bg,
+                  command=lambda: self.square_root()).\
             grid(row=3, column=4)
-        tk.Button(master, text="x²", width=3, command=lambda: self.square()).\
+        tk.Button(master, text="x²", width=3, fg=self.btn_fg, bg=self.btn_bg,
+                  command=lambda: self.square()).\
             grid(row=3, column=5)
-        tk.Button(master, text="K", width=3, command=lambda: self.action('K')).\
+        tk.Button(master, text="K", width=3, fg=self.btn_fg, bg=self.btn_bg,
+                  command=lambda: self.action('K')).\
             grid(row=5, column=0)
-        tk.Button(master, text="M", width=3, command=lambda: self.action('M')).\
+        tk.Button(master, text="M", width=3, fg=self.btn_fg, bg=self.btn_bg,
+                  command=lambda: self.action('M')).\
             grid(row=5, column=1)
-        tk.Button(master, text="G", width=3, command=lambda: self.action('G')).\
+        tk.Button(master, text="G", width=3, fg=self.btn_fg, bg=self.btn_bg,
+                  command=lambda: self.action('G')).\
             grid(row=5, column=2)
-        tk.Button(master, text="T", width=3, command=lambda: self.action('T')).\
+        tk.Button(master, text="T", width=3, fg=self.btn_fg, bg=self.btn_bg,
+                  command=lambda: self.action('T')).\
             grid(row=5, column=3)
-        tk.Button(master, text="P", width=3, command=lambda: self.action('P')).\
+        tk.Button(master, text="P", width=3, fg=self.btn_fg, bg=self.btn_bg,
+                  command=lambda: self.action('P')).\
             grid(row=5, column=4)
-        tk.Button(master, text="E", width=3, command=lambda: self.action('E')).\
+        tk.Button(master, text="E", width=3, fg=self.btn_fg, bg=self.btn_bg,
+                  command=lambda: self.action('E')).\
             grid(row=5, column=5)
 
 

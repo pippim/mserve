@@ -33,6 +33,7 @@ warnings.simplefilter('default')  # in future Python versions.
 #       Aug. 19 2023 - Add known SQL metadata to FileControl() variables.
 #       Aug. 20 2023 - Print SQL Table sizes and Row Counts by Type
 #       Mar. 09 2024 - print_windows() - Print Window offsets, sizes and name
+#       Mar. 24 2024 - Save treeview configuration. Revamp dict_treeview.
 
 #   TODO:
 
@@ -290,7 +291,8 @@ def populate_tables(SortedList, start_dir, pruned_dir, lodict):
                              stat.st_ctime, stat.st_size))
 
     con.commit()
-    print_windows()  # Just a little test to remove later
+    #print(cfg.defaults)
+    #cfg.print_windows()  # Just a little test to remove later
 
     # Temporary during development to record history for lyrics web scrape and
     # time index synchronizing to lyrics.
@@ -1744,29 +1746,6 @@ def hist_init_lost_and_found():
 
 
 HISTORY_ID = None
-# WINDOW_NAMES is used to get screen coordinates and sizes of windows
-# NOTE: TV volume during commercials always opens in same position and size
-# history,
-#                         encoding, sql_music, sql_history, sql_location,
-#                         playlists(maintenance),
-#                         locations(maintenance), calculator, results(DELETE)
-WINDOW_NAMES = {
-    "library": "Music Library Window (Main mserve Window)",
-    "playlist": "Music Playing Window",
-    "history": "Lyrics Scraping History Window (Future Use)",
-    "encoding": "CD Encoding (Ripping) Window",
-    "sql_music": "View SQL Music Table Window",
-    "sql_history": "View SQL History Table Window",
-    "sql_location": "View SQL Locations Table Window",
-    "playlists": "Playlists Maintenance Window",
-    "locations": "Locations Maintenance Window",
-    "calculator": "Big Number Calculator Window",
-    "pls_top": "DELETE this SQL record",
-    "lcs_top": "DELETE this SQL record",
-    "location": "DELETE this SQL record",
-    "results": "DELETE this SQL record",
-    "unknown": "Bad Window Name in SQL History Table"
-}
 
 
 def hist_check(MusicId, check_type, check_action):
@@ -1821,37 +1800,426 @@ def hist_check(MusicId, check_type, check_action):
     return False                # Not Found
 
 
-def print_windows():
-    """ History table Window positions and sizes using WINDOW_NAMES dictionary """
-    print("\nsql.py - print_windows() - SQL History Table's 'Action'='window'\n")
-    hist_cursor.execute("SELECT * FROM History INDEXED BY TypeActionIndex " +
-                        "WHERE Type = ?", ('window', ))
-    try:
-        rows = hist_cursor.fetchall()
+# ===========================  USER CONFIGURATION  ============================
+class Config:
+    """ User Configuration - Treeview, Scrollbox, Font, Color, Width, etc. """
+
+    # Treeview background colors
+    # background="LemonChiffon"    VERY NICE
+    # background="NavajoWhite"     VERY NICE
+    # background="OliveDrab"       TOO DARK for black text
+    # background="PaleTurquoise"   OK but highlight bar not as strong
+    # background="LightGoldenrod"  Similar to Lemon Chiffon (Very Nice)
+    # background="RosyBrown"       NOT BAD but a little dark at night
+    # background="AliceBlue"       BEST at day
+    # background="LightSalmon"     BEST at night
+    # background="WhiteSmoke"      BEST all around
+
+    def __init__(self):
+        """
+        SQL History records for configuration.
+
+        Type:           'cfg_lib_top' / 'cfg_play_top' / 'cfg_sql_music', etc.
+        Action:         'toplevel' / 'treeview' / 'sql_treeview', etc.
+        SourceMaster:   'style' / 'columns' /
+        SourceDetail:   'color' / 'height & colors'
+        Target:         [{}, {}, ... {}]  fields / columns / colors / fonts / buttons
+        Comments:       "Version: 1.0 | Updated: yyyy-mm-dd hh:hh"
+
+        """
+
+        # Defaults Dictionary is used when no SQL override record exists.
+        #   Key is tuple of "Action", "Type", "SourceMaster", "Source Detail"
+        #   Value is another dictionary with key/value pairs
+        self.defaults = {
+
+            # mserve Music Library taskbar icon  # KEY is a tuple of 4 strings
+            # Music Library AKA Library Tree AKA lib_top AKA lib_tree
+            ('cfg_lib_top', 'toplevel', 'taskbar_icon', 'height & colors'):
+                {"height": 64, "outline": 'White', "fill": 'LightSkyBlue',
+                 "text": 'Black', "font_family": 'DejaVuSans.ttf',
+                 "char": 'm'},  # VALUE dictionary or list
+            ('cfg_lib_top', 'treeview', 'style', 'color'):
+                {"name": 'mserve.Treeview', "foreground": "Black",
+                 "background": "WhiteSmoke", "fieldbackground": "WhiteSmoke",
+                 "edge_color": None, "edge_px": 0},
+
+            # Playlist taskbar icon  # KEY is a tuple of 4 strings
+            ('cfg_play_top', 'toplevel', 'taskbar_icon', 'height & colors'): 
+                {"height": 64, "outline": 'Black', "fill": 'ForestGreen',
+                 "text": 'White', "font_family": 'DejaVuSans.ttf',
+                 "char": 'P'},  # VALUE dictionary or list
+            # chron.Treeview frame is always the same height with no edge
+            ('cfg_play_top', 'treeview', 'style', 'color'):
+                {"name": 'chron.Treeview', "foreground": "Gold",
+                 "background": "Black", "fieldbackground": "Black",
+                 "font_size": g.MON_FONTSIZE,
+                 "edge_color": "White", "edge_px": 0},
+            # self.chron_tree.tag_configure('chron_sel', background=t['background'],
+            #                               foreground=t['foreground'])
+            ('cfg_play_top', 'treeview', 'style', 'chron_sel'):
+                {"foreground": "White", "background": "ForestGreen"},
+            ('cfg_play_top', 'treeview', 'style', 'highlight'):
+                {"foreground": "Black", "background": "LightSkyBlue"},
+            ('cfg_play_top', 'treeview', 'style', 'highlight_sel'):
+                {"foreground": "Black", "background": "Gold"},
+
+            # Locations Maintenance taskbar icon and treeview colors
+            ('cfg_locations', 'toplevel', 'taskbar_icon', 'config'):
+                {"height": 64, "outline": 'White', "fill": 'AliceBlue',
+                 "text": 'Black', "font_family": 'DejaVuSans.ttf',
+                 "char": 'lo'},  # VALUE dictionary or list
+            ('cfg_locations', 'treeview', 'style', 'color'):
+                {"name": 'location.Treeview', "foreground": "Black",
+                 "background": "AliceBlue", "fieldbackground": "AliceBlue",
+                 "edge_color": "White", "edge_px": 5},
+            ('cfg_locations', 'frame', 'style', 'color'):
+                {"background": "WhiteSmoke"},
+            # Location image border (use edge_px=0 to turn off border)
+            # NOTE: Using tk.Label highlight and not tk.Label border
+            ('cfg_locations', 'loc_image', 'style', 'color'):
+                {"edge_color": "White", "edge_px": 3},
+
+            # Playlists Maintenance taskbar icon and treeview colors
+            ('cfg_playlists', 'toplevel', 'taskbar_icon', 'height & colors'):
+                {"height": 64, "outline": 'White', "fill": 'LemonChiffon',
+                 "text": 'Black', "font_family": 'DejaVuSans.ttf',
+                 "char": 'pl'},  # VALUE dictionary or list
+            ('cfg_playlists', 'treeview', 'style', 'color'):
+                {"name": 'playlists.Treeview', "foreground": "Black",
+                 "background": "LemonChiffon", "fieldbackground": "LemonChiffon",
+                 "edge_color": "NavajoWhite", "edge_px": 5},
+
+            # View SQL Music Table taskbar icon
+            ('cfg_sql_music', 'toplevel', 'taskbar_icon', 'height & colors'):
+                {"height": 64, "outline": 'White', "fill": 'LemonChiffon',
+                 "text": 'Black', "font_family": 'DejaVuSans.ttf', "char": 'M'},
+            # View SQL Music Table treeview displaycolumns (in order of appearance)
+            ('cfg_sql_music', 'sql_treeview', 'column', 'order'):
+                ["os_filename", "track_number", "row_id", "os_atime",
+                 "os_file_size", "artist", "album", "title", "lyrics", "genre"],
+            # NOTE: When column order, width or headings changed they are
+            # saved in a new history row:
+            # ('cfg_sql_music', 'sql_treeview', 'column', 'custom'):
+            #     [["os_filename", 242, "OS Filename"], ["row_id", 80, "Row ID"]...
+
+            # Long term goal to remove 'column'; 'order'/'widths' & replace with:
+            # 'cfg_sql_music', 'sql_treeview', 'custom_view', view_name (variable)
+            # The view_name will be a full copy of music_treeview with new values
+
+            ('cfg_sql_music', 'sql_treeview', 'style', 'color'):
+                {"name": 'sql_music.Treeview', "foreground": "Black",
+                 "background": "LemonChiffon", "fieldbackground": "LemonChiffon",
+                 # Consider adding heading font, row font, sbar_width, sbar_colors
+                 # See cfg_play_top treeview for highlight color, select color
+                 "edge_color": "NavajoWhite", "edge_px": 5},
+            ('cfg_sql_music', 'sql_treeview', 'style', 'scroll'):
+                {"name": 'sql_music.Treeview', "width": 14},
+
+            # View SQL History Table taskbar icon
+            ('cfg_sql_history', 'toplevel', 'taskbar_icon', 'height & colors'):
+                {"height": 64, "outline": 'White', "fill": 'NavajoWhite',
+                 "text": 'Black', "font_family": 'DejaVuSans.ttf',
+                 "char": 'H'},
+            # View SQL History Table treeview displaycolumns
+            ('cfg_sql_history', 'sql_treeview', 'column', 'order'):
+                ["time", "row_id", "music_id", "type", "action", "master",
+                 "detail", "target", "size", "count", "seconds", "comments"],
+            ('cfg_sql_history', 'sql_treeview', 'style', 'color'):
+                {"name": 'sql_history.Treeview', "foreground": "Black",
+                 "background": "NavajoWhite", "fieldbackground": "NavajoWhite",
+                 "edge_color": "LightSalmon", "edge_px": 5},
+            ('cfg_sql_history', 'sql_treeview', 'style', 'scroll'):
+                {"name": 'sql_history.Treeview', "width": 14},
+
+            # View SQL Location Table taskbar icon
+            ('cfg_sql_location', 'toplevel', 'taskbar_icon', 'height & colors'):
+                {"height": 64, "outline": 'White', "fill": 'LightSalmon',
+                 "text": 'Black', "font_family": 'DejaVuSans.ttf',
+                 "char": 'L'},
+            # View SQL Location Table treeview displaycolumns
+            ('cfg_sql_location', 'sql_treeview', 'column', 'order'):
+                ["code", "name", "topdir", "image_path", "host_name", "comments"],
+            ('cfg_sql_location', 'sql_treeview', 'style', 'color'):
+                {"name": 'sql_location.Treeview', "foreground": "Black",
+                 "background": "LightSalmon", "fieldbackground": "LightSalmon",
+                 "edge_color": "DarkOrange", "edge_px": 5},
+            ('cfg_sql_location', 'sql_treeview', 'style', 'scroll'):
+                {"name": 'sql_location.Treeview', "width": 14},
+
+            # Big Number Calculator
+            ('cfg_calculator', 'toplevel', 'taskbar_icon', 'height & colors'):
+                {"height": 64, "outline": 'Black', "fill": 'LemonChiffon',
+                 "text": 'Black', "font_family": 'DejaVuSans.ttf',
+                 "char": 'C'},  # VALUE dictionary or list
+
+            ('cfg_end', 'sql_treeview', 'end', 'end'):
+                {"nothing": 1, "here": 2}  # To make inserting before end easier
+        }
+        # All column variables in history row, except primary ID auto assigned.
+        # Variables are used to insert new history table row
+        self.Time = time.time()
+        self.MusicId = 0
+        self.User = g.USER
+        self.Type = None
+        self.Action = None
+        self.SourceMaster = None
+        self.SourceDetail = None
+        self.Target = None
+        self.Size = 0
+        self.Count = 0
+        self.Seconds = 0.0
+        self.Comments = None
+        self.Timestamp = self.Time
+
+        # window_names is used to get screen coordinates and sizes of windows
+        # NOTE: TV volume during commercials always opens in same position and size
+        # Type = "window", Action = window_name
+        self.window_names = {
+            "library": "Music Library Window (Main mserve Window)",
+            "playlist": "Music Playing Window",
+            "history": "Lyrics Scraping History Window (Future Use)",
+            "encoding": "CD Encoding (Ripping) Window",
+            "sql_music": "View SQL Music Table Window",
+            "sql_history": "View SQL History Table Window",
+            "sql_location": "View SQL Locations Table Window",
+            "playlists": "Playlists Maintenance Window",
+            "locations": "Locations Maintenance Window",
+            "calculator": "Big Number Calculator Window",
+            "pls_top": "DELETE this SQL record",
+            "lcs_top": "DELETE this SQL record",
+            "location": "DELETE this SQL record",
+            "results": "DELETE this SQL record",
+            "unknown": "Bad Window Name in SQL History Table"
+        }
+
+    @staticmethod
+    def make_key(sql_key):
+        """ Return tuple of four parts from converted passed key list """
+        tup_key = None  # Just to make pyCharm smile :)
+        if isinstance(sql_key, list):
+            tup_key = tuple(sql_key)
+        elif isinstance(sql_key, tuple):
+            tup_key = sql_key
+        else:
+            print("sql.py - Config.make_key(): sql_key not tuple or list:\n\t")
+            print(sql_key)
+            toolkit.print_trace()
+            exit()
+        return tup_key
+
+    def get_sql(self, sql_key, Id=False):
+        """ Get SQL row matching key of four strings """
+        tup_key = self.make_key(sql_key)
+        self.Type, self.Action, self.SourceMaster, self.SourceDetail = tup_key
+        hist_cursor.execute("SELECT * FROM History INDEXED BY TypeActionIndex " +
+                            "WHERE Type = ? AND Action = ?",
+                            (self.Type, self.Action))
+        try:
+            rows = hist_cursor.fetchall()
+            for sql_row in rows:
+                row = dict(sql_row)
+                if self.SourceMaster == row['SourceMaster'] and \
+                        self.SourceDetail == row['SourceDetail']:
+                    if not Id:  # Default is to return 'Target' column
+                        return json.loads(row['Target'])
+                    else:
+                        return row['Id']
+        except sqlite3.ProgrammingError:
+            # No configuration override so return default
+            pass
+        return []  # Return empty list of rows
+
+    def get_cfg(self, sql_key):
+        """ Get SQL Configuration from database or from defaults.
+
+        :param sql_key: can be a list or tuple of four values """
+        target = self.get_sql(sql_key)
+        if target:  # If not empty list, then found in database
+            #print("target:", target)
+            # json.loads() fails but strangely isn't required?
+            #return json.loads(target)
+            return target
+
+        # SQL row doesn't exist in database so return defaults
+        tup_key = self.make_key(sql_key)  # Convert list to tuple
+        target = self.defaults.get(tup_key, None)
+        if target:
+            return target
+        
+        print("sql.py - Config.get_cfg(): sql_key NOT FOUND in defaults:\n\t")
+        print(sql_key)
+        toolkit.print_trace()
+        exit()
+
+    def check_cfg(self, sql_key):
+        """ Check if REAL configuration exists. The get_cfg() method will
+            return a real configuration or defaults.
+        """
+        target = self.get_sql(sql_key)
+        if target:  # If not empty list, then found in database
+            return target
+        return None
+
+    def insert_update_cfg(self, sql_key, custom_name, target):
+        """ Insert or update SQL History Record configuration type row with
+            list of column dictionaries placed into 'Target'. """
+
+        self.Target = json.dumps(target)  # list or dict or both
+        self.Time = time.time()  # Timestamp
+
+        Id = self.get_sql(sql_key, Id=True)
+        if Id:  # If existing Id update that row
+            self.Comments = "Update " + custom_name
+            sql = "UPDATE History SET Target=?, Comments=?, Timestamp=?" + \
+                  " WHERE Id = ?"
+            hist_cursor.execute(sql, (self.Target, self.Comments, self.Time, Id))
+            con.commit()
+            return 2  # Update
+
+        self.Comments = "Create " + custom_name
+        sql = "INSERT INTO History (Time, MusicId, User, Type, Action, \
+               SourceMaster, SourceDetail, Target, Size, Count, Seconds, \
+               Comments, Timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        hist_cursor.execute(
+            sql,
+            (self.Time, 0, self.User, self.Type, self.Action, self.SourceMaster,
+             self.SourceDetail, self.Target, self.Size, self.Count, self.Seconds,
+             self.Comments, self.Time))
+        con.commit()
+        return 1  # Insert
+
+    def print_windows(self, line_dump=False):
+        """ History table Window positions and sizes using window_names dictionary
+            :returns line_dump: Printable lines with tabs
+        """
+        lines = []
+        rows = None  # Just to make pyCharm smile :)
+        if not line_dump:
+            print("\nsql.py - print_windows() - SQL History Table's 'Action'='window'\n")
+        hist_cursor.execute("SELECT * FROM History INDEXED BY TypeActionIndex " +
+                            "WHERE Type = ?", ('window', ))
+        try:
+            rows = hist_cursor.fetchall()
+        except TypeError:  # TypeError: 'NoneType' object is not iterable:
+            if line_dump:
+                lines.append("sql.py - print_windows(): No window names found !")
+                lines.append("Possible names are:")
+                lines.append(self.window_names)
+            else:
+                print("sql.py - print_windows(): No window names found !")
+                print("Possible names are:")
+                print(self.window_names)
+                rows = None
+            if line_dump:
+                ret = lines  # Return print formatted string list
+            else:
+                ret = rows  # Return SQL dictionaries
+
+            return ret
+
         for sql_row in rows:
             row = dict(sql_row)
             Action = row['Action']
-            if WINDOW_NAMES.get(Action, None):
-                print("'Action':", Action, "\t Window Name:", WINDOW_NAMES[Action])
-                print("\t'SourceMaster':\t", row['SourceMaster'])
-                print("\t'SourceDetail':\t", row['SourceDetail'])
-                print("\t'Target':\t", row['Target'],
-                      " | Show monitor's wid x hgt +x +y?")
-                print("\t'Comments':\t", row['Comments'])
+            if self.window_names.get(Action, None):
+                if line_dump:
+                    lines.append("'Action':" + Action + "\tWindow Name:" +
+                                 self.window_names[Action])
+                    lines.append("\t'SourceMaster':\t" + row['SourceMaster'])
+                    lines.append("\t'SourceDetail':\t" + row['SourceDetail'])
+                    lines.append("\t'Comments':\t" + row['Comments'])
+                else:
+                    print("'Action':", Action, "\t Window Name:",
+                          self.window_names[Action])
+                    print("\t'SourceMaster':\t", row['SourceMaster'])
+                    print("\t'SourceDetail':\t", row['SourceDetail'])
+                    print("\t'Comments':\t", row['Comments'])
             else:
-                print(Action, "BAD window name !")
-    except TypeError:  # TypeError: 'NoneType' object is not iterable:
-        print("sql.py - print_windows(): No window names found !")
-        print("Possible names are:")
-        print(WINDOW_NAMES)
-        rows = None
+                if line_dump:
+                    lines.append(Action + " is a BAD window name !")
+                else:
+                    print(Action, "BAD window name !")
 
-    return rows
+        if line_dump:
+            ret = lines  # Return print formatted string list
+        else:
+            ret = rows  # Return SQL dictionaries
+
+        return ret
+
+    def show_fonts(self, _toplevel):
+        """ Quick and dirty - Enhance and place on Tools menu.
+
+            1) Consolidate multiple versions of same name.
+            2) Prefix with font name in default for ding bats or barcodes.
+            3) Scroll wheel only works on scrollbar and not on canvas.
+            4) Save geometry under window name "fonts".
+            5) Make callable with starting font and return selection.
+            6) Add buttons to Close, Search, Select & Help.
+            7) Create taskbar icon with 'F' in SQL configuration.
+            8) Create canvas colors with SQL Type = "cfg_fonts"
+
+        """
+        try:
+            import tkinter as tk
+            import tkinter.ttk as ttk
+            import tkinter.font as font
+            import tkinter.filedialog as filedialog
+            import tkinter.messagebox as messagebox
+            import tkinter.scrolledtext as scrolledtext
+        except ImportError:  # Python 2
+            import Tkinter as tk
+            import ttk
+            import tkFont as font
+            import tkFileDialog as filedialog
+            import tkMessageBox as messagebox
+            import ScrolledText as scrolledtext
+
+        if True is True:
+            return  # Easy way out
+
+        """ https://stackoverflow.com/a/53717785/6929343
+
+        :return:
+        """
+        sql_key = ('cfg_fonts', 'toplevel', 'taskbar_icon', 'height & colors')
+        sql_key = self.make_key(sql_key)
+        print("TODO define sql.py Config.show_fonts() sql_key:\n", sql_key)
+        toplevel = tk.Toplevel()
+        toplevel.title('Font Families - mserve')
+        fonts = list(font.families())
+        fonts.sort()
+
+        def onFrameConfigure(obj):
+            """Reset the scroll region to encompass the inner frame"""
+            obj.configure(scrollregion=obj.bbox("all"))
+
+        can_top = tk.Canvas(toplevel, borderwidth=0, background="#ffffff")
+        frame = tk.Frame(can_top, background="#ffffff")
+        vsb = tk.Scrollbar(toplevel, orient="vertical", command=can_top.yview)
+        can_top.configure(yscrollcommand=vsb.set)
+
+        vsb.pack(side="right", fill="y")
+        can_top.pack(side="left", fill="both", expand=True)
+        can_top.create_window((4, 4), window=frame, anchor="nw")
+
+        frame.bind("<Configure>", 
+                   lambda event, lam_top=can_top: onFrameConfigure(lam_top))
+
+        """ Put in the fonts """
+        list_number = 1
+        for item in fonts:
+            _label = "list_label" + str(list_number)
+            _label = tk.Label(frame, text=item, font=(item, 16)).pack()
+            list_number += 1
 
 
+# ==========================  SYSTEM CONFIGURATION  ===========================
 def get_config(Type, Action):
     # noinspection SpellCheckingInspection
-    """ Get configuration history using 'Type' + 'Action' key
+    """ Get system configuration recorded in SQL history table in the
+        'Type' + 'Action' columns. Not to be confused with user configurations
+        kept in sql.Config() class above.
 
         VARIABLE        DESCRIPTION
         --------------  -----------------------------------------------------
@@ -1873,76 +2241,6 @@ def get_config(Type, Action):
                         'encoding' - 'naming': SM = '99 ' or '99 - '
         Target          For Type='window' = geometry (x, y, width, height)
 
-        Type:           'cfg_library' / 'cfg_playlist' / 'cfg_sql_music', etc.
-        Action:         ['frame_name', 'frame_name'... 'frame_name']
-        SourceMaster:   'sql_tree' / 'treeview' / 'scrollbox' / 'font' / 'button'
-        SourceDetail:   'fg="Black"' / 'bg="Smoke White"', etc.
-        Target:         [{}, {}, ... {}]  fields / columns / colors / fonts / buttons
-        Comments:       "Version: 1.0 | Updated: yyyy-mm-dd hh:hh"
-
-        E.G. Chronology Treeview in Music Playing Window (Playlist):
-
-        ''' Create Chronology Treeview (chron_tree) and style Gold on Black '''
-        style = ttk.Style(self.chron_frm)
-        style.configure("chron.Treeview", background='Black',
-                        fieldbackground='Black',  # For empty rows
-                        foreground='Gold')
-        self.chron_tree = ttk.Treeview(self.chron_frm, show=('tree',),
-                                       selectmode="none")
-        self.chron_tree.configure(style="chron.Treeview")
-
-        Type            Action      Master      Detail      Target
-        ==============  ==========  ==========  ==========  ===================
-        cfg_playlist    chron_frm   treeview    normal      { "background":
-            'Black', "fieldbackground": 'Black', "foreground": 'Gold' }
-        cfg_playlist    chron_frm   treeview    select      { "background":
-            'ForestGreen', "foreground": 'White' }
-        cfg_playlist    chron_frm   treeview    highlight   { "background":
-            'LightBlue', "foreground": 'Black' }
-        cfg_playlist    chron_frm   treeview    column_0    { "minwidth": 900 }
-        cfg_playlist    chron_frm   treeview    v_scroll    { "width": 14,
-            "troughcolor": 'black', "bg": 'gold' }
-
-        tnd = sql.get_cfg_dict("cfg_playlist", "chron_frm", "treeview", "normal")
-        tsd = sql.get_cfg_dict("cfg_playlist", "chron_frm", "treeview", "select")
-        thd = sql.get_cfg_dict("cfg_playlist", "chron_frm", "treeview", "highlight")
-        ''' Single column, when long, unfortunately can't scroll horizontally '''
-        self.chron_tree.column("#0", minwidth=900, stretch=tk.YES)
-        self.chron_tree.grid(row=0, column=0, sticky=tk.NSEW)
-
-        ''' Chronology Treeview Vertical Scrollbar '''
-        v_scroll = tk.Scrollbar(self.chron_frm, orient=tk.VERTICAL,
-                                width=SCROLL_WIDTH,
-                                command=self.chron_tree.yview)
-        v_scroll.grid(row=0, column=1, sticky=tk.NS)
-        self.chron_tree.configure(yscrollcommand=v_scroll.set)
-        v_scroll.config(troughcolor='black', bg='gold')
-
-        ''' Chronology treeview Colors .tag_configure() '''
-        self.chron_tree.tag_configure('chron_sel', background='ForestGreen',
-                                      foreground='White')
-
-        ''' Configure tag for row highlight '''
-        self.chron_tree.tag_configure('highlight', background='LightBlue',
-                                      foreground="Black")
-
-        ''' Aug 23/23 - Configure tag for highlight of chron_sel line '''
-        self.chron_tree.tag_configure('highlight_sel', background='Gold',
-                                      foreground="Black")
-
-        ANOTHER EXAMPLE:
-
-        ''' Treeview has large images in column 0 resulting in only 4 rows '''
-        style = ttk.Style()
-        style.configure("YouTube.Treeview.Heading", font=(None, MED_FONT),
-                        rowheight=int(g.LARGE_FONT * 2.2))  # FONT14 alias
-        row_height = 200
-        style.configure("YouTube.Treeview", font=g.FONT14, rowheight=row_height)
-
-        # Create Treeview
-        self.you_tree = ttk.Treeview(self.youTreeFrame, column=('name',),
-                                     selectmode='none', height=4,
-                                     style="YouTube.Treeview")
     """
 
     hist_cursor.execute("SELECT * FROM History INDEXED BY TypeActionIndex " +
@@ -1957,7 +2255,9 @@ def get_config(Type, Action):
 
 def save_config(Type, Action="", SourceMaster="", SourceDetail="", Target="", 
                 Size=0, Count=0, Seconds=0.0, Comments=""):
-    """ Save configuration history using 'Type' + 'Action' key
+    """ Save system configuration recorded in SQL history table in the
+        'Type' + 'Action' columns. Not to be confused with user configurations
+        kept in sql.Config() class above.
     """
     # Check if record exists
     d = get_config(Type, Action)
@@ -2176,7 +2476,7 @@ def hist_init_lyrics_and_time():
     con.commit()
 
 
-# ===============================  LOCATION  ==================================
+# ============================  LOCATION TABLE  ===============================
 def loc_add(Code, Name, ModifyTime, ImagePath, MountPoint, TopDir, HostName,
             HostWakeupCmd, HostTestCmd, HostTestRepeat, HostMountCmd,
             HostTouchCmd, HostTouchMinutes, Comments):
@@ -2220,7 +2520,7 @@ def loc_read(Code):
     return d
 
 
-# ===============================  AUTHENTICATION =============================
+# ==============================  AUTHENTICATION  =============================
 class Authorization:
     """ NOT USED YET - Initially designed for MusicBrainz authorization """
     def __init__(self, toplevel, organization, http, message, tt=None, thread=None):
@@ -2619,12 +2919,6 @@ class PrettyMusic:
             self.calc(self.dict)  # Call external function passing our dict
 
 
-def pretty_no_blank_dict(key):
-    """ If key's value not None, return formatted value """
-    print("pretty_no_blank_dict(key)", key)
-    pass
-
-
 class PrettyHistory:
     """ Format History Row using data dictionary """
     def __init__(self, sql_row_id, calc=None):
@@ -2879,226 +3173,197 @@ def tkinter_display(pretty):
 
 
 def music_treeview():
-    """ Define Data Dictionary treeview columns for Music table """
+    """ Define Data Dictionary treeview columns for Music table
+        2024-03-24 used to be ("instance", int) but json.dumps would crash.
+    """
 
     music_treeview_list = [
 
       OrderedDict([
         ("column", "row_id"), ("heading", "Row ID"), ("sql_table", "Music"),
         ("var_name", "Id"), ("select_order", 0), ("unselect_order", 1),
-        ("key", False), ("anchor", "e"), ("instance", int), ("format", "{:,}"),
-        ("display_width", 80), ("display_min_width", 60),
-        ("display_long", None), ("stretch", 0)]),  # 0=NO, 1=YES
+        ("key", True), ("anchor", "e"), ("instance", "int"), ("format", "{:,}"),
+        ("width", 80), ("minwidth", 50), ("stretch", 0)]),  # 0=NO, 1=YES
 
       OrderedDict([
         ("column", "os_filename"), ("heading", "OS Filename"), ("sql_table", "Music"),
         ("var_name", "OsFileName"), ("select_order", 0), ("unselect_order", 2),
-        ("key", True), ("anchor", "w"), ("instance", str), ("format", None),
-        ("display_width", 300), ("display_min_width", 200),
-        ("display_long", None), ("stretch", 0)]),  # 0=NO, 1=YES
+        ("key", True), ("anchor", "w"), ("instance", "str"), ("format", None),
+        ("width", 200), ("minwidth", 50), ("stretch", 1)]),  # 0=NO, 1=YES
 
       OrderedDict([
         ("column", "os_atime"), ("heading", "Access Time"), ("sql_table", "Music"),
         ("var_name", "OsAccessTime"), ("select_order", 0), ("unselect_order", 3),
-        ("key", False), ("anchor", "w"), ("instance", float), ("format", "date"),
-        ("display_width", 300), ("display_min_width", 200),
-        ("display_long", None), ("stretch", 0)]),  # 0=NO, 1=YES
+        ("key", False), ("anchor", "w"), ("instance", "float"), ("format", "date"),
+        ("width", 180), ("minwidth", 50), ("stretch", 0)]),  # 0=NO, 1=YES
 
       OrderedDict([
         ("column", "os_mtime"), ("heading", "Modify Time"), ("sql_table", "Music"),
         ("var_name", "OsModifyTime"), ("select_order", 0), ("unselect_order", 4),
-        ("key", False), ("anchor", "w"), ("instance", float), ("format", "{0:,.0f}"),
-        ("display_width", 180), ("display_min_width", 120),
-        ("display_long", None), ("stretch", 0)]),
+        ("key", False), ("anchor", "w"), ("instance", "float"), ("format", "date"),
+        ("width", 180), ("minwidth", 50), ("stretch", 0)]),
 
       OrderedDict([
         ("column", "os_ctime"), ("heading", "Change Time"), ("sql_table", "Music"),
         ("var_name", "OsChangeTime"), ("select_order", 0), ("unselect_order", 5),
-        ("key", False), ("anchor", "e"), ("instance", float),
-        ("format", "{0:,.0f}"), ("display_width", 180),
-        ("display_min_width", 120), ("display_long", None), ("stretch", 0)]),
+        ("key", False), ("anchor", "e"), ("instance", "float"), ("format", "date"),
+        ("width", 180), ("minwidth", 50), ("stretch", 0)]),
 
       OrderedDict([
         ("column", "os_file_size"), ("heading", "File Size"), ("sql_table", "Music"),
         ("var_name", "OsFileSize"), ("select_order", 0), ("unselect_order", 6),
-        ("key", False), ("anchor", "e"), ("instance", int), ("format", "{:,}"),
-        ("display_width", 150), ("display_min_width", 120),
-        ("display_long", None), ("stretch", 1)]),
+        ("key", False), ("anchor", "e"), ("instance", "int"), ("format", "{:,}"),
+        ("width", 150), ("minwidth", 50), ("stretch", 0)]),
 
       OrderedDict([
         ("column", "artist"), ("heading", "Artist"), ("sql_table", "Music"),
         ("var_name", "Artist"), ("select_order", 0), ("unselect_order", 7),
-        ("key", False), ("anchor", "w"), ("instance", str), ("format", None),
-        ("display_width", 200), ("display_min_width", 140),
-        ("display_long", None), ("stretch", 1)]),  # 0=NO, 1=YES
+        ("key", False), ("anchor", "w"), ("instance", "str"), ("format", None),
+        ("width", 200), ("minwidth", 50), ("stretch", 1)]),  # 0=NO, 1=YES
 
       OrderedDict([
         ("column", "album"), ("heading", "Album"), ("sql_table", "Music"),
         ("var_name", "Album"), ("select_order", 0), ("unselect_order", 8),
-        ("key", False), ("anchor", "w"), ("instance", str), ("format", None),
-        ("display_width", 200), ("display_min_width", 140),
-        ("display_long", None), ("stretch", 1)]),
+        ("key", False), ("anchor", "w"), ("instance", "str"), ("format", None),
+        ("width", 200), ("minwidth", 50), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "title"), ("heading", "Title"), ("sql_table", "Music"),
         ("var_name", "Title"), ("select_order", 0), ("unselect_order", 9),
-        ("key", False), ("anchor", "w"), ("instance", str), ("format", None),
-        ("display_width", 200), ("display_min_width", 140),
-        ("display_long", None), ("stretch", 1)]),
+        ("key", False), ("anchor", "w"), ("instance", "str"), ("format", None),
+        ("width", 200), ("minwidth", 50), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "first_date"), ("heading", "Year"), ("sql_table", "Music"),
         ("var_name", "FirstDate"), ("select_order", 0), ("unselect_order", 10),
-        ("key", False), ("anchor", "w"), ("instance", str), ("format", None),
-        ("display_width", 180), ("display_min_width", 120),
-        ("display_long", None), ("stretch", 0)]),
+        ("key", False), ("anchor", "w"), ("instance", "str"), ("format", None),
+        ("width", 80), ("minwidth", 50), ("stretch", 0)]),
 
       OrderedDict([
         ("column", "album_date"), ("heading", "Album Date"), ("sql_table", "Music"),
         ("var_name", "AlbumDate"), ("select_order", 0), ("unselect_order", 11),
-        ("key", False), ("anchor", "w"), ("instance", str), ("format", None),
-        ("display_width", 180), ("display_min_width", 120),
-        ("display_long", None), ("stretch", 0)]),
+        ("key", False), ("anchor", "w"), ("instance", "str"), ("format", None),
+        ("width", 120), ("minwidth", 50), ("stretch", 0)]),
 
       OrderedDict([
         ("column", "genre"), ("heading", "Genre"), ("sql_table", "Music"),
         ("var_name", "Genre"), ("select_order", 0), ("unselect_order", 12),
-        ("key", False), ("anchor", "center"), ("instance", str), ("format", None),
-        ("display_width", 160), ("display_min_width", 140),
-        ("display_long", None), ("stretch", 1)]),
+        ("key", False), ("anchor", "center"), ("instance", "str"), ("format", None),
+        ("width", 160), ("minwidth", 50), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "seconds"), ("heading", "Seconds"), ("sql_table", "Music"),
         ("var_name", "Seconds"), ("select_order", 0), ("unselect_order", 13),
-        ("key", False), ("anchor", "w"), ("instance", str), ("format", None),
-        ("display_width", 160), ("display_min_width", 140),
-        ("display_long", None), ("stretch", 1)]),
+        ("key", False), ("anchor", "w"), ("instance", "str"), ("format", None),
+        ("width", 80), ("minwidth", 50), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "duration"), ("heading", "Duration"), ("sql_table", "Music"),
         ("var_name", "Duration"), ("select_order", 0), ("unselect_order", 14),
-        ("key", False), ("anchor", "w"), ("instance", str), ("format", None),
-        ("display_width", 160), ("display_min_width", 140),
-        ("display_long", None), ("stretch", 1)]),
+        ("key", False), ("anchor", "w"), ("instance", "str"), ("format", None),
+        ("width", 80), ("minwidth", 50), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "play_count"), ("heading", "Play Count"), ("sql_table", "Music"),
         ("var_name", "PlayCount"), ("select_order", 0), ("unselect_order", 15),
-        ("key", False), ("anchor", "w"), ("instance", str), ("format", None),
-        ("display_width", 160), ("display_min_width", 110),
-        ("display_long", None), ("stretch", 1)]),
+        ("key", False), ("anchor", "w"), ("instance", "int"), ("format", "{:,}"),
+        ("width", 80), ("minwidth", 50), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "track_number"), ("heading", "Track"), ("sql_table", "Music"),
         ("var_name", "TrackNumber"), ("select_order", 0), ("unselect_order", 16),
-        ("key", False), ("anchor", "e"), ("instance", str), ("format", None),
-        ("display_width", 140), ("display_min_width", 100),
-        ("display_long", None), ("stretch", 1)]),
+        ("key", False), ("anchor", "e"), ("instance", "str"), ("format", None),
+        ("width", 80), ("minwidth", 50), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "rating"), ("heading", "Rating"), ("sql_table", "Music"),
         ("var_name", "Rating"), ("select_order", 0), ("unselect_order", 17),
-        ("key", False), ("anchor", "w"), ("instance", int), ("format", "{:,}"),
-        ("display_width", 120), ("display_min_width", 80),
-        ("display_long", None), ("stretch", 1)]),
+        ("key", False), ("anchor", "w"), ("instance", "int"), ("format", "{:,}"),
+        ("width", 80), ("minwidth", 50), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "lyrics"), ("heading", "Lyrics"), ("sql_table", "Music"),
         ("var_name", "LyricsScore"), ("select_order", 0), ("unselect_order", 18),
-        ("key", False), ("anchor", "w"), ("instance", str), ("format", None),
-        ("display_width", 200), ("display_min_width", 140),
-        ("display_long", None), ("stretch", 1)]),
+        ("key", False), ("anchor", "w"), ("instance", "str"), ("format", None),
+        ("width", 200), ("minwidth", 50), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "time_index"), ("heading", "Time Index"), ("sql_table", "Music"),
         ("var_name", "LyricsTimeIndex"), ("select_order", 0), ("unselect_order", 19),
-        ("key", False), ("anchor", "w"), ("instance", list), ("format", None),
-        ("display_width", 160), ("display_min_width", 140),
-        ("display_long", None), ("stretch", 1)]),
+        ("key", False), ("anchor", "w"), ("instance", "list"), ("format", None),
+        ("width", 100), ("minwidth", 50), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "creation_time"), ("heading", "Creation Time"), ("sql_table", "Music"),
         ("var_name", "CreationTime"), ("select_order", 0), ("unselect_order", 20),
-        ("key", False), ("anchor", "w"), ("instance", float), ("format", "{0:,.0f}"),
-        ("display_width", 180), ("display_min_width", 120),
-        ("display_long", None), ("stretch", 0)]),
+        ("key", False), ("anchor", "w"), ("instance", "float"), ("format", "date"),
+        ("width", 180), ("minwidth", 50), ("stretch", 0)]),
 
       OrderedDict([
         ("column", "last_play_time"), ("heading", "Last Play Time"), ("sql_table", "Music"),
         ("var_name", "LastPlayTime"), ("select_order", 0), ("unselect_order", 21),
-        ("key", False), ("anchor", "w"), ("instance", float), ("format", "{0:,.0f}"),
-        ("display_width", 180), ("display_min_width", 120),
-        ("display_long", None), ("stretch", 0)]),
+        ("key", False), ("anchor", "w"), ("instance", "float"), ("format", "date"),
+        ("width", 180), ("minwidth", 50), ("stretch", 0)]),
 
       OrderedDict([
         ("column", "disc_number"), ("heading", "Disc #"), ("sql_table", "Music"),
         ("var_name", "DiscNumber"), ("select_order", 0), ("unselect_order", 22),
-        ("key", False), ("anchor", "center"), ("instance", str), ("format", None),
-        ("display_width", 160), ("display_min_width", 140),
-        ("display_long", None), ("stretch", 1)]),
+        ("key", False), ("anchor", "center"), ("instance", "str"), ("format", None),
+        ("width", 160), ("minwidth", 50), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "composer"), ("heading", "Composer"), ("sql_table", "Music"),
         ("var_name", "Composer"), ("select_order", 0), ("unselect_order", 23),
-        ("key", False), ("anchor", "center"), ("instance", str), ("format", None),
-        ("display_width", 160), ("display_min_width", 140),
-        ("display_long", None), ("stretch", 1)]),
+        ("key", False), ("anchor", "center"), ("instance", "str"), ("format", None),
+        ("width", 160), ("minwidth", 50), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "comment"), ("heading", "Comment"), ("sql_table", "Music"),
         ("var_name", "Comment"), ("select_order", 0), ("unselect_order", 24),
-        ("key", False), ("anchor", "center"), ("instance", str), ("format", None),
-        ("display_width", 160), ("display_min_width", 140),
-        ("display_long", None), ("stretch", 1)]),
+        ("key", False), ("anchor", "center"), ("instance", "str"), ("format", None),
+        ("width", 160), ("minwidth", 50), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "hyperlink"), ("heading", "Hyperlink"), ("sql_table", "Music"),
         ("var_name", "Hyperlink"), ("select_order", 0), ("unselect_order", 25),
-        ("key", False), ("anchor", "center"), ("instance", str), ("format", None),
-        ("display_width", 160), ("display_min_width", 140),
-        ("display_long", None), ("stretch", 1)]),
+        ("key", False), ("anchor", "center"), ("instance", "str"), ("format", None),
+        ("width", 160), ("minwidth", 50), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "album_artist"), ("heading", "Album Artist"), ("sql_table", "Music"),
         ("var_name", "AlbumArtist"), ("select_order", 0), ("unselect_order", 26),
-        ("key", False), ("anchor", "center"), ("instance", str), ("format", None),
-        ("display_width", 160), ("display_min_width", 140),
-        ("display_long", None), ("stretch", 1)]),
+        ("key", False), ("anchor", "center"), ("instance", "str"), ("format", None),
+        ("width", 160), ("minwidth", 50), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "compilation"), ("heading", "Compilation"), ("sql_table", "Music"),
         ("var_name", "Compilation"), ("select_order", 0), ("unselect_order", 27),
-        ("key", False), ("anchor", "center"), ("instance", str), ("format", None),
-        ("display_width", 60), ("display_min_width", 40),
-        ("display_long", None), ("stretch", 0)]),
+        ("key", False), ("anchor", "center"), ("instance", "str"), ("format", None),
+        ("width", 80), ("minwidth", 50), ("stretch", 0)]),
 
       OrderedDict([
         ("column", "gapless"), ("heading", "Gapless Playback"), ("sql_table", "Music"),
         ("var_name", "GaplessPlayback"), ("select_order", 0), ("unselect_order", 28),
-        ("key", False), ("anchor", "center"), ("instance", str), ("format", None),
-        ("display_width", 60), ("display_min_width", 40),
-        ("display_long", None), ("stretch", 0)]),
+        ("key", False), ("anchor", "center"), ("instance", "str"), ("format", None),
+        ("width", 80), ("minwidth", 50), ("stretch", 0)]),
 
       OrderedDict([
         ("column", "ff_major"), ("heading", "Major Brand"), ("sql_table", "Music"),
         ("var_name", "ffMajor"), ("select_order", 0), ("unselect_order", 29),
-        ("key", False), ("anchor", "center"), ("instance", str), ("format", None),
-        ("display_width", 60), ("display_min_width", 40),
-        ("display_long", None), ("stretch", 0)]),
+        ("key", False), ("anchor", "center"), ("instance", "str"), ("format", None),
+        ("width", 80), ("minwidth", 50), ("stretch", 0)]),
 
       OrderedDict([
         ("column", "ff_minor"), ("heading", "Minor Version"), ("sql_table", "Music"),
         ("var_name", "ffMinor"), ("select_order", 0), ("unselect_order", 30),
-        ("key", False), ("anchor", "center"), ("instance", str), ("format", None),
-        ("display_width", 60), ("display_min_width", 40),
-        ("display_long", None), ("stretch", 0)]),
+        ("key", False), ("anchor", "center"), ("instance", "str"), ("format", None),
+        ("width", 80), ("minwidth", 50), ("stretch", 0)]),
 
       OrderedDict([
         ("column", "compatible"), ("heading", "Compatible Brands"), ("sql_table", "Music"),
         ("var_name", "ffMinor"), ("select_order", 0), ("unselect_order", 31),
-        ("key", False), ("anchor", "center"), ("instance", str), ("format", None),
-        ("display_width", 160), ("display_min_width", 140),
-        ("display_long", None), ("stretch", 1)]),
+        ("key", False), ("anchor", "center"), ("instance", "str"), ("format", None),
+        ("width", 160), ("minwidth", 50), ("stretch", 1)]),
 
     ]
 
@@ -3129,107 +3394,92 @@ def history_treeview():
       OrderedDict([
         ("column", "time"), ("heading", "Time"), ("sql_table", "History"),
         ("var_name", "Time"), ("select_order", 0), ("unselect_order", 1),
-        ("key", False), ("anchor", "w"), ("instance", float),
-        ("format", "date"), ("display_width", 300),
-        ("display_min_width", 200), ("display_long", None), ("stretch", 0)]),
+        ("key", False), ("anchor", "w"), ("instance", "float"), ("format", "date"),
+        ("width", 300), ("minwidth", 200), ("stretch", 0)]),
 
       OrderedDict([
         ("column", "music_id"), ("heading", "Music ID"), ("sql_table", "History"),
         ("var_name", "MusicId"), ("select_order", 0), ("unselect_order", 2),
-        ("key", False), ("anchor", "e"), ("instance", int), ("format", "{:,}"),
-        ("display_width", 100), ("display_min_width", 80),
-        ("display_long", None), ("stretch", 0)]),  # 0=NO, 1=YES
+        ("key", False), ("anchor", "e"), ("instance", "int"), ("format", "{:,}"),
+        ("width", 100), ("minwidth", 80), ("stretch", 0)]),  # 0=NO, 1=YES
 
       OrderedDict([
         ("column", "user"), ("heading", "User"), ("sql_table", "History"),
         ("var_name", "User"), ("select_order", 0), ("unselect_order", 3),
-        ("key", False), ("anchor", "w"), ("instance", str), ("format", None),
-        ("display_width", 150), ("display_min_width", 120),
-        ("display_long", None), ("stretch", 1)]),  # 0=NO, 1=YES
+        ("key", False), ("anchor", "w"), ("instance", "str"), ("format", None),
+        ("width", 150), ("minwidth", 120), ("stretch", 1)]),  # 0=NO, 1=YES
 
       OrderedDict([
         ("column", "type"), ("heading", "Type"), ("sql_table", "History"),
         ("var_name", "Type"), ("select_order", 0), ("unselect_order", 4),
-        ("key", False), ("anchor", "w"), ("instance", str), ("format", None),
-        ("display_width", 80), ("display_min_width", 60),
-        ("display_long", None), ("stretch", 1)]),
+        ("key", False), ("anchor", "w"), ("instance", "str"), ("format", None),
+        ("width", 80), ("minwidth", 60), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "action"), ("heading", "Action"), ("sql_table", "History"),
         ("var_name", "Action"), ("select_order", 0), ("unselect_order", 5),
-        ("key", False), ("anchor", "w"), ("instance", str),
-        ("format", None), ("display_width", 80),
-        ("display_min_width", 60), ("display_long", None), ("stretch", 1)]),
+        ("key", False), ("anchor", "w"), ("instance", "str"), ("format", None),
+        ("width", 80), ("minwidth", 60), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "master"), ("heading", "Master"), ("sql_table", "History"),
         ("var_name", "SourceMaster"), ("select_order", 0), ("unselect_order", 6),
-        ("key", False), ("anchor", "w"), ("instance", str), ("format", None),
-        ("display_width", 150), ("display_min_width", 100),
-        ("display_long", None), ("stretch", 1)]),
+        ("key", False), ("anchor", "w"), ("instance", "str"), ("format", None),
+        ("width", 150), ("minwidth", 100), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "detail"), ("heading", "Detail"), ("sql_table", "History"),
         ("var_name", "SourceDetail"), ("select_order", 0), ("unselect_order", 7),
-        ("key", False), ("anchor", "w"), ("instance", str), ("format", None),
-        ("display_width", 150), ("display_min_width", 100),
-        ("display_long", None), ("stretch", 1)]),  # 0=NO, 1=YES
+        ("key", False), ("anchor", "w"), ("instance", "str"), ("format", None),
+        ("width", 150), ("minwidth", 100), ("stretch", 1)]),  # 0=NO, 1=YES
 
       OrderedDict([
         ("column", "target"), ("heading", "Target"), ("sql_table", "History"),
         ("var_name", "Target"), ("select_order", 0), ("unselect_order", 8),
-        ("key", False), ("anchor", "w"), ("instance", str), ("format", None),
-        ("display_width", 300), ("display_min_width", 200),
-        ("display_long", None), ("stretch", 1)]),
+        ("key", False), ("anchor", "w"), ("instance", "str"), ("format", None),
+        ("width", 300), ("minwidth", 200), ("stretch", 1)]),
 
       OrderedDict([  # Hard coded as Offset 8 in Playlists().populate_his_tree()
         ("column", "size"), ("heading", "Size"), ("sql_table", "History"),
         ("var_name", "Size"), ("select_order", 0), ("unselect_order", 9),
-        ("key", False), ("anchor", "e"), ("instance", int), ("format", "{:,}"),
-        ("display_width", 100), ("display_min_width", 80),
-        ("display_long", None), ("stretch", 1)]),
+        ("key", False), ("anchor", "e"), ("instance", "int"), ("format", "{:,}"),
+        ("width", 100), ("minwidth", 80), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "count"), ("heading", "Count"), ("sql_table", "History"),
         ("var_name", "Count"), ("select_order", 0), ("unselect_order", 10),
-        ("key", False), ("anchor", "e"), ("instance", int), ("format", "{:,}"),
-        ("display_width", 80), ("display_min_width", 60),
-        ("display_long", None), ("stretch", 1)]),
+        ("key", False), ("anchor", "e"), ("instance", "int"), ("format", "{:,}"),
+        ("width", 80), ("minwidth", 60), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "comments"), ("heading", "Comments"), ("sql_table", "History"),
         ("var_name", "Comments"), ("select_order", 0), ("unselect_order", 11),
-        ("key", False), ("anchor", "w"), ("instance", str), ("format", None),
-        ("display_width", 160), ("display_min_width", 140),
-        ("display_long", None), ("stretch", 1)]),
+        ("key", False), ("anchor", "w"), ("instance", "str"), ("format", None),
+        ("width", 160), ("minwidth", 140), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "seconds"), ("heading", "Seconds"), ("sql_table", "History"),
         ("var_name", "Seconds"), ("select_order", 0), ("unselect_order", 12),
-        ("key", False), ("anchor", "e"), ("instance", float), ("format", "{0:,.4f}"),
-        ("display_width", 140), ("display_min_width", 80),
-        ("display_long", None), ("stretch", 1)]),
+        ("key", False), ("anchor", "e"), ("instance", "float"), ("format", "{0:,.4f}"),
+        ("width", 140), ("minwidth", 80), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "row_id"), ("heading", "Row ID"), ("sql_table", "History"),
         ("var_name", "Id"), ("select_order", 0), ("unselect_order", 13),
-        ("key", True), ("anchor", "e"), ("instance", int), ("format", "{:,}"),
-        ("display_width", 80), ("display_min_width", 60),
-        ("display_long", None), ("stretch", 1)]),
+        ("key", True), ("anchor", "e"), ("instance", "int"), ("format", "{:,}"),
+        ("width", 80), ("minwidth", 60), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "timestamp"), ("heading", "Timestamp"), ("sql_table", "History"),
         ("var_name", "Timestamp"), ("select_order", 0), ("unselect_order", 14),
-        ("key", False), ("anchor", "w"), ("instance", float),
-        ("format", "date"), ("display_width", 300),
-        ("display_min_width", 200), ("display_long", None), ("stretch", 0)]),
+        ("key", False), ("anchor", "w"), ("instance", "float"), ("format", "date"),
+        ("width", 300), ("minwidth", 200), ("stretch", 0)]),
 
       OrderedDict([
         ("column", "reason"), ("heading", "Reason"), ("sql_table", "calc"),
         ("var_name", "reason"), ("select_order", 0), ("unselect_order", 15),
-        ("key", False), ("anchor", "w"), ("instance", str), ("format", None),
-        ("display_width", 160), ("display_min_width", 140),
-        ("display_long", None), ("stretch", 1)])
+        ("key", False), ("anchor", "w"), ("instance", "str"), ("format", None),
+        ("width", 160), ("minwidth", 140), ("stretch", 1)])
     ]
 
     return history_treeview_list
@@ -3263,100 +3513,86 @@ def save_config(Type, Action="", SourceMaster="", SourceDetail="", Target="",
       OrderedDict([
         ("column", "time"), ("heading", "Time"), ("sql_table", "History"),
         ("var_name", "Time"), ("select_order", 0), ("unselect_order", 1),
-        ("key", False), ("anchor", "w"), ("instance", float),
-        ("format", "date"), ("display_width", 300),
-        ("display_min_width", 200), ("display_long", None), ("stretch", 0)]),
+        ("key", False), ("anchor", "w"), ("instance", "float"), ("format", "date"),
+        ("width", 300), ("minwidth", 200), ("stretch", 0)]),
 
       OrderedDict([
         ("column", "music_id"), ("heading", "Always 0"), ("sql_table", "History"),
         ("var_name", "MusicId"), ("select_order", 0), ("unselect_order", 2),
-        ("key", False), ("anchor", "e"), ("instance", int), ("format", "{:,}"),
-        ("display_width", 100), ("display_min_width", 80),
-        ("display_long", None), ("stretch", 0)]),  # 0=NO, 1=YES
+        ("key", False), ("anchor", "e"), ("instance", "int"), ("format", "{:,}"),
+        ("width", 100), ("minwidth", 80), ("stretch", 0)]),  # 0=NO, 1=YES
 
       OrderedDict([
         ("column", "user"), ("heading", "User"), ("sql_table", "History"),
         ("var_name", "User"), ("select_order", 0), ("unselect_order", 3),
-        ("key", False), ("anchor", "w"), ("instance", str), ("format", None),
-        ("display_width", 150), ("display_min_width", 120),
-        ("display_long", None), ("stretch", 1)]),  # 0=NO, 1=YES
+        ("key", False), ("anchor", "w"), ("instance", "str"), ("format", None),
+        ("width", 150), ("minwidth", 120), ("stretch", 1)]),  # 0=NO, 1=YES
 
       OrderedDict([
         ("column", "type"), ("heading", "'Playlist'"), ("sql_table", "History"),
         ("var_name", "Type"), ("select_order", 0), ("unselect_order", 4),
-        ("key", False), ("anchor", "w"), ("instance", str), ("format", None),
-        ("display_width", 80), ("display_min_width", 60),
-        ("display_long", None), ("stretch", 1)]),
+        ("key", False), ("anchor", "w"), ("instance", "str"), ("format", None),
+        ("width", 80), ("minwidth", 60), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "action"), ("heading", "P999999"), ("sql_table", "History"),
         ("var_name", "Action"), ("select_order", 0), ("unselect_order", 5),
-        ("key", False), ("anchor", "w"), ("instance", str),
-        ("format", None), ("display_width", 80),
-        ("display_min_width", 60), ("display_long", None), ("stretch", 1)]),
+        ("key", False), ("anchor", "w"), ("instance", "str"), ("format", None),
+        ("width", 80), ("minwidth", 60), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "master"), ("heading", "Loc. Code"), ("sql_table", "History"),
         ("var_name", "SourceMaster"), ("select_order", 0), ("unselect_order", 6),
-        ("key", False), ("anchor", "w"), ("instance", str), ("format", None),
-        ("display_width", 150), ("display_min_width", 100),
-        ("display_long", None), ("stretch", 1)]),
+        ("key", False), ("anchor", "w"), ("instance", "str"), ("format", None),
+        ("width", 150), ("minwidth", 100), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "detail"), ("heading", "Playlist Name"), ("sql_table", "History"),
         ("var_name", "SourceDetail"), ("select_order", 0), ("unselect_order", 7),
-        ("key", False), ("anchor", "w"), ("instance", str), ("format", None),
-        ("display_width", 150), ("display_min_width", 100),
-        ("display_long", None), ("stretch", 1)]),  # 0=NO, 1=YES
+        ("key", False), ("anchor", "w"), ("instance", "str"), ("format", None),
+        ("width", 150), ("minwidth", 100), ("stretch", 1)]),  # 0=NO, 1=YES
 
       OrderedDict([
         ("column", "target"), ("heading", "Music ID list"), ("sql_table", "History"),
         ("var_name", "Target"), ("select_order", 0), ("unselect_order", 8),
-        ("key", False), ("anchor", "w"), ("instance", str), ("format", None),
-        ("display_width", 300), ("display_min_width", 200),
-        ("display_long", None), ("stretch", 1)]),
+        ("key", False), ("anchor", "w"), ("instance", "str"), ("format", None),
+        ("width", 300), ("minwidth", 200), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "size"), ("heading", "Size of Files"), ("sql_table", "History"),
         ("var_name", "Size"), ("select_order", 0), ("unselect_order", 9),
-        ("key", False), ("anchor", "e"), ("instance", int), ("format", "{:,}"),
-        ("display_width", 100), ("display_min_width", 80),
-        ("display_long", None), ("stretch", 1)]),
+        ("key", False), ("anchor", "e"), ("instance", "int"), ("format", "{:,}"),
+        ("width", 100), ("minwidth", 80), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "count"), ("heading", "Song Count"), ("sql_table", "History"),
         ("var_name", "Count"), ("select_order", 0), ("unselect_order", 10),
-        ("key", False), ("anchor", "e"), ("instance", int), ("format", "{:,}"),
-        ("display_width", 80), ("display_min_width", 60),
-        ("display_long", None), ("stretch", 1)]),
+        ("key", False), ("anchor", "e"), ("instance", "int"), ("format", "{:,}"),
+        ("width", 80), ("minwidth", 60), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "comments"), ("heading", "Playlist Description"), ("sql_table", "History"),
         ("var_name", "Comments"), ("select_order", 0), ("unselect_order", 11),
-        ("key", False), ("anchor", "w"), ("instance", str), ("format", None),
-        ("display_width", 500), ("display_min_width", 300),
-        ("display_long", None), ("stretch", 1)]),
+        ("key", False), ("anchor", "w"), ("instance", "str"), ("format", None),
+        ("width", 500), ("minwidth", 300), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "seconds"), ("heading", "Duration"), ("sql_table", "History"),
         ("var_name", "Seconds"), ("select_order", 0), ("unselect_order", 12),
-        ("key", False), ("anchor", "e"), ("instance", float), ("format", "{0:,.4f}"),
-        ("display_width", 140), ("display_min_width", 80),
-        ("display_long", None), ("stretch", 1)]),
+        ("key", False), ("anchor", "e"), ("instance", "float"), ("format", "{0:,.4f}"),
+        ("width", 140), ("minwidth", 80), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "row_id"), ("heading", "Row ID"), ("sql_table", "History"),
         ("var_name", "Id"), ("select_order", 0), ("unselect_order", 13),
-        ("key", True), ("anchor", "e"), ("instance", int), ("format", "{:,}"),
-        ("display_width", 80), ("display_min_width", 60),
-        ("display_long", None), ("stretch", 1)]),
+        ("key", True), ("anchor", "e"), ("instance", "int"), ("format", "{:,}"),
+        ("width", 80), ("minwidth", 60), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "timestamp"), ("heading", "Timestamp"), ("sql_table", "History"),
         ("var_name", "Timestamp"), ("select_order", 0), ("unselect_order", 14),
-        ("key", False), ("anchor", "w"), ("instance", float),
-        ("format", "date"), ("display_width", 300),
-        ("display_min_width", 200), ("display_long", None), ("stretch", 0)]),
+        ("key", False), ("anchor", "w"), ("instance", "float"), ("format", "date"),
+        ("width", 300), ("minwidth", 200), ("stretch", 0)]),
 
     ]
 
@@ -3385,110 +3621,95 @@ def location_treeview():
 
     location_treeview_list = [
 
-      OrderedDict([  # iid = Item identifier (Don't like name) use 'code'?
+      OrderedDict([  # 'iid' in old version replaced by 'code'
         ("column", "code"), ("heading", "Code"), ("sql_table", "Location"),
         ("var_name", "Code"), ("select_order", 0), ("unselect_order", 1),
-        ("key", False), ("anchor", "w"), ("instance", str),
-        ("format", None), ("display_width", 80),
-        ("display_min_width", 100), ("display_long", None), ("stretch", 0)]),
+        ("key", True), ("anchor", "w"), ("instance", "str"), ("format", None),
+        ("width", 80), ("minwidth", 100), ("stretch", 0)]),
 
       OrderedDict([
         ("column", "name"), ("heading", "Name"), ("sql_table", "Location"),
         ("var_name", "Name"), ("select_order", 0), ("unselect_order", 2),
-        ("key", False), ("anchor", "w"), ("instance", str), ("format", None),
-        ("display_width", 300), ("display_min_width", 200),
-        ("display_long", None), ("stretch", 1)]),  # 0=NO, 1=YES
+        ("key", False), ("anchor", "w"), ("instance", "str"), ("format", None),
+        ("width", 300), ("minwidth", 200), ("stretch", 1)]),  # 0=NO, 1=YES
 
       OrderedDict([
         ("column", "modify_time"), ("heading", "Modified Time"),
         ("sql_table", "Location"), ("var_name", "ModifyTime"), ("select_order", 0),
-        ("unselect_order", 3), ("key", False), ("anchor", "w"), ("instance", float),
-        ("format", "date"), ("display_width", 240), ("display_min_width", 180),
-        ("display_long", None), ("stretch", 1)]),
+        ("unselect_order", 3), ("key", False), ("anchor", "w"), ("instance", "float"),
+        ("format", "date"), ("width", 240), ("minwidth", 180), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "image_path"), ("heading", "Location Image Path"),
         ("sql_table", "Location"), ("var_name", "ImagePath"), ("select_order", 0),
-        ("unselect_order", 4), ("key", False), ("anchor", "w"), ("instance", str),
-        ("format", None), ("display_width", 80), ("display_min_width", 60),
-        ("display_long", None), ("stretch", 1)]),
+        ("unselect_order", 4), ("key", False), ("anchor", "w"), ("instance", "str"),
+        ("format", None), ("width", 80), ("minwidth", 60), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "mount_point"), ("heading", "Mount Point"),
         ("sql_table", "Location"), ("var_name", "MountPoint"), ("select_order", 0),
-        ("unselect_order", 5), ("key", False), ("anchor", "w"), ("instance", str),
-        ("format", None), ("display_width", 80), ("display_min_width", 60),
-        ("display_long", None), ("stretch", 1)]),
+        ("unselect_order", 5), ("key", False), ("anchor", "w"), ("instance", "str"),
+        ("format", None), ("width", 80), ("minwidth", 60), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "topdir"), ("heading", "Music Top Directory"),
         ("sql_table", "Location"), ("var_name", "TopDir"), ("select_order", 0),
-        ("unselect_order", 6), ("key", False), ("anchor", "w"), ("instance", str),
-        ("format", None), ("display_width", 300), ("display_min_width", 200),
-        ("display_long", None), ("stretch", 1)]),
+        ("unselect_order", 6), ("key", False), ("anchor", "w"), ("instance", "str"),
+        ("format", None), ("width", 300), ("minwidth", 200), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "host_name"), ("heading", "Host Name"),
         ("sql_table", "Location"), ("var_name", "HostName"), ("select_order", 0),
-        ("unselect_order", 7), ("key", False), ("anchor", "w"), ("instance", str),
-        ("format", None), ("display_width", 200), ("display_min_width", 120),
-        ("display_long", None), ("stretch", 1)]),
+        ("unselect_order", 7), ("key", False), ("anchor", "w"), ("instance", "str"),
+        ("format", None), ("width", 200), ("minwidth", 120), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "wake_cmd"), ("heading", "Host Wakeup Command"),
         ("sql_table", "Location"), ("var_name", "HostWakeupCmd"), ("select_order", 0),
-        ("unselect_order", 8), ("key", False), ("anchor", "w"), ("instance", str),
-        ("format", None), ("display_width", 200), ("display_min_width", 100),
-        ("display_long", None), ("stretch", 1)]),  # 0=NO, 1=YES
+        ("unselect_order", 8), ("key", False), ("anchor", "w"), ("instance", "str"),
+        ("format", None), ("width", 200), ("minwidth", 100), ("stretch", 1)]),  # 0=NO, 1=YES
 
       OrderedDict([
         ("column", "test_cmd"), ("heading", "Host Test Command"),
         ("sql_table", "Location"), ("var_name", "HostTestCmd"), ("select_order", 0),
-        ("unselect_order", 9), ("key", False), ("anchor", "w"), ("instance", str),
-        ("format", None), ("display_width", 300), ("display_min_width", 200),
-        ("display_long", None), ("stretch", 1)]),
+        ("unselect_order", 9), ("key", False), ("anchor", "w"), ("instance", "str"),
+        ("format", None), ("width", 300), ("minwidth", 200), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "test_repeat"), ("heading", "Host Test Repeat"),
         ("sql_table", "Location"), ("var_name", "HostTestRepeat"), ("select_order", 0),
-        ("unselect_order", 10), ("key", False), ("anchor", "w"), ("instance", int),
-        ("format", "{:,}"),  ("display_width", 100), ("display_min_width", 80),
-        ("display_long", None), ("stretch", 1)]),
+        ("unselect_order", 10), ("key", False), ("anchor", "w"), ("instance", "int"),
+        ("format", "{:,}"),  ("width", 100), ("minwidth", 80), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "mount_cmd"), ("heading", "Mount Command"),
         ("sql_table", "Location"), ("var_name", "HostMountCmd"), ("select_order", 0),
-        ("unselect_order", 11), ("key", False), ("anchor", "w"), ("instance", str),
-        ("format", None), ("display_width", 300), ("display_min_width", 200),
-        ("display_long", None), ("stretch", 1)]),
+        ("unselect_order", 11), ("key", False), ("anchor", "w"), ("instance", "str"),
+        ("format", None), ("width", 300), ("minwidth", 200), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "touch_cmd"), ("heading", "Host Touch Command"),
         ("sql_table", "Location"), ("var_name", "HostTouchCmd"), ("select_order", 0),
-        ("unselect_order", 12), ("key", False), ("anchor", "w"), ("instance", str),
-        ("format", None), ("display_width", 160), ("display_min_width", 140),
-        ("display_long", None), ("stretch", 1)]),
+        ("unselect_order", 12), ("key", False), ("anchor", "w"), ("instance", "str"),
+        ("format", None), ("width", 160), ("minwidth", 140), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "touch_cmd_minutes"), ("heading", "Host Touch Minutes"),
         ("sql_table", "Location"), ("var_name", "HostTouchMinutes"), ("select_order", 0),
-        ("unselect_order", 13), ("key", False), ("anchor", "w"), ("instance", int),
-        ("format", "{:,}"), ("display_width", 140), ("display_min_width", 80),
-        ("display_long", None), ("stretch", 1)]),
+        ("unselect_order", 13), ("key", False), ("anchor", "w"), ("instance", "int"),
+        ("format", "{:,}"), ("width", 140), ("minwidth", 80), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "comments"), ("heading", "Comments"), ("sql_table", "Location"),
         ("var_name", "Comments"), ("select_order", 0), ("unselect_order", 14),
-        ("key", True), ("anchor", "w"), ("instance", str), ("format", None),
-        ("display_width", 300), ("display_min_width", 200),
-        ("display_long", None), ("stretch", 1)]),
+        ("key", True), ("anchor", "w"), ("instance", "str"), ("format", None),
+        ("width", 300), ("minwidth", 200), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "row_id"), ("heading", "Row ID"), ("sql_table", "Location"),
         ("var_name", "Id"), ("select_order", 0), ("unselect_order", 15),
-        ("key", True), ("anchor", "e"), ("instance", int), ("format", "{:,}"),
-        ("display_width", 80), ("display_min_width", 60),
-        ("display_long", None), ("stretch", 1)]),
+        ("key", True), ("anchor", "e"), ("instance", "int"), ("format", "{:,}"),
+        ("width", 80), ("minwidth", 60), ("stretch", 1)]),
 
     ]
 

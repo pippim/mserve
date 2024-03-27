@@ -63,6 +63,7 @@ LARGE_FONT = 14         # Font size not used
 MON_FONTSIZE = 12       # Font size for monitor name
 WIN_FONTSIZE = 11       # Font size for Window name
 MED_FONT = 10           # Medium Font size
+MON_FONT = 12           # Alias to MON_FONTSIZE (Historical names need revamping) 
 
 FONT = (None, MON_FONTSIZE)  # Current font setting for mserve
 FONT14 = (None, LARGE_FONT)  # Make UTF-8 speakers a little arger
@@ -110,7 +111,8 @@ def init(caller=None):
             print("mserve_config.py is calling global_variables.py !")
             pass
     if caller and caller == "mserve_config.py":
-        print('if caller and caller == "mserve_config.py":')
+        #print('if caller and caller == "mserve_config.py":')
+        pass
 
     global USER, USER_ID, HOME, USER_DATA_DIR, USER_CONFIG_DIR, MSERVE_DIR
     global PROGRAM_DIR, TEMP_DIR

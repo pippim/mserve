@@ -22,9 +22,9 @@ from __future__ import with_statement  # Error handling for file opens
 # ==============================================================================
 
 
-import mserve_config as cfg
+import mserve_config as m_cfg  # Differentiate from sql.Config as cfg
 caller = "m"
-if not cfg.main(caller):
+if not m_cfg.main(caller):
     print("mserve not fully installed. Aborting...")
     exit()
 #else:

@@ -19,6 +19,7 @@ from __future__ import with_statement  # Error handling for file opens
 #       July 29 2023 - Create Compare() class
 #       Sep. 04 2023 - Create FNAME_SIZE_DICT under version 3.5.0
 #       Sep. 10 2023 - Retrieve FTP file for diff when curlftpfs chokes on '#'
+#       Mar. 13 2024 - SQL Config for treeview colors
 #
 #==============================================================================
 #import stat
@@ -75,6 +76,12 @@ if g.USER is None:
     g.init()
 
 import sql  # SQL Locations Table for Locations()
+#from sql import Config as cfg
+#   File "/home/rick/python/location.py", line 1609, in make_display_frame
+#     ti = cfg.get_cfg(sql_key)
+# TypeError: unbound method get_dict() must be called with Config instance
+#            as first argument (got list instance instead)
+
 import toolkit  # Data dictionary driven treeview for Locations()
 import message  # Dialog Box messages - ShowInfo(), AskQuestion()
 import monitor  # Get Locations() class window geometry
@@ -104,7 +111,6 @@ FNAME_MOD_TIME         = MSERVE_DIR + "modification_time"  # Android phone times
 FNAME_SIZE_DICT        = MSERVE_DIR + "size_dict"  # JSON dictionary
 FNAME_WALK_LIST        = MSERVE_DIR + "walk_list"  # JSON list of tuples
 
-
 # Files in /tmp/
 # There can be two open at once so unlike other global variables this is never
 # replaced. It is simply used as base for creating new variable.
@@ -114,7 +120,7 @@ FNAME_TEST_NMAP        = g.TEMP_DIR + "mserve_test_nmap"  # Test if host up
 ''' Temporary files also defined in mserve.py '''
 TMP_STDOUT = g.TEMP_DIR + "mserve_stdout"  # _g7gh75 appended Defined mserve.py
 TMP_STDERR = g.TEMP_DIR + "mserve_stderr"  # _u4rt5m appended Defined mserve.py
-TMP_FTP_RETRIEVE = g.TEMP_DIR + "mserve_ftp_retr"  # _a87sd6 appended Defined mserve.py
+TMP_FTP_RETRIEVE = g.TEMP_DIR + "mserve_ftp_ret"  # _a87sd6 appended Defined mserve.py
 
 ''' Temporary files for encoding.py '''
 IPC_PICKLE_FNAME = g.TEMP_DIR + "mserve_encoding_pickle"
@@ -395,6 +401,7 @@ def check_if_host_by_dirname(dirname, toplevel=None):
     host = ""                       # Added July 7, 2021 for pycharm error
     # TODO: Option to add command line parameter for top directory to our
     #       location master file?
+    topdir = None  # 2024-03-15 potential to be undeclared - pyCharm warning
     for i, DICT in enumerate(LIST):
         topdir = DICT['topdir'].rstrip(os.sep)
         if topdir == stripped_last:
@@ -628,6 +635,7 @@ def get_dir(parent, title, start):
     return root.directory       # July 7, 2021 - used to be in brackets, didn't test
 
 
+# noinspection SpellCheckingInspection
 def ftp_login():
     """ Test FTP stuff -- Sep. 3/23 No longer used Sep 5/23
         Need Error checking on every FTP transaction:
@@ -643,15 +651,21 @@ exception ftplib.error_temp
 
 exception ftplib.error_perm
 
-    Exception raised when an error code signifying a permanent error (response codes in the range 500–599) is received.
+    Exception raised when an error code signifying a permanent error (response
+    codes in the range 500–599) is received.
 
 exception ftplib.error_proto
 
-    Exception raised when a reply is received from the server that does not fit the response specifications of the File Transfer Protocol, i.e. begin with a digit in the range 1–5.
+    Exception raised when a reply is received from the server that does not
+    fit the response specifications of the File Transfer Protocol,
+    i.e. begin with a digit in the range 1–5.
 
 ftplib.all_errors
 
-    The set of all exceptions (as a tuple) that methods of FTP instances may raise as a result of problems with the FTP connection (as opposed to programming errors made by the caller). This set includes the four exceptions listed above as well as OSError and EOFError.
+    The set of all exceptions (as a tuple) that methods of FTP instances
+    may raise as a result of problems with the FTP connection (as opposed
+    to programming errors made by the caller). This set includes the four
+    exceptions listed above as well as OSError and EOFError.
 
     """
 
@@ -817,15 +831,15 @@ ftplib.all_errors
     print(" " * 40, ext.t(time.time()))
 
 
-    def walk(path, all):
+    def walk(path, all_list):
         """ walk the path """
         files = []
         ftp.dir(path, files.append)  # callback = files.append(line)
         # Filename could be any position on line so can't use line[52:] below
         # dr-x------   3 user group            0 Aug 27 16:32 Compilations
         for f in files:
-            line = ' '.join(f.split())  # compress multiple whitespace to one space
-            parts = line.split()  # split on one space
+            comp = ' '.join(f.split())  # compress multiple whitespace to one space
+            parts = comp.split()  # split on one space
             size = parts[4]
             # Date format is either: MMM DD hh:mm or MMM DD  YYYY or MMM DD YYYY
             date3 = parts[7] + " "  # doesn't matter if the size is same as YEAR
@@ -835,10 +849,10 @@ ftplib.all_errors
                 # Print all directories to see permissions
                 print(f)
                 new_path = path + name + os.sep
-                walk(new_path, all)  # back down the rabbit hole
+                walk(new_path, all_list)  # back down the rabbit hole
             else:
                 # /path/to/filename.ext <SIZE>
-                all.append(path + name + " <" + size.strip() + ">")
+                all_list.append(path + name + " <" + size.strip() + ">")
 
     all_files = []
     if True is True:
@@ -1211,6 +1225,10 @@ class LocationsCommonSelf:
         self.TMP_STDERR = TMP_STDERR + "_" + self.temp_suffix
         self.TMP_FTP_RETRIEVE = TMP_FTP_RETRIEVE + "_" + self.temp_suffix
 
+        ''' self.cfg = sql.Config() class '''
+        self.cfg = sql.Config()
+        self.bg = None
+
 
 class Locations(LocationsCommonSelf):
     """ Usage:
@@ -1384,18 +1402,19 @@ class Locations(LocationsCommonSelf):
         self.main_top.title(name + " - mserve")
 
         ''' Common Top configuration, icon and main_top master frame '''
+        self.bg = self.get_cfg(['frame', 'style', 'color'])['background']
         self.main_frame = self.make_display_frame(self.main_top)
-        self.btn_frame = tk.Frame(self.main_frame)
+        self.btn_frame = tk.Frame(self.main_frame, bg=self.bg)
         self.btn_frame.grid(row=14, columnspan=3, sticky=tk.E)
 
         ''' Instructions when no locations have been created yet. '''
         if not self.text:  # If text wasn't passed as a parameter use default
-            self.text = "\nNo Locations have been created yet.\n\n" + \
+            self.text = "\nLocations have not been created yet.\n\n" + \
                         "After Locations have been created, they will\n" + \
                         "appear in this spot.\n\n" + \
                         "You can create a location by selecting\n" + \
                         "the 'New Location' option from the 'File' \n" + \
-                        "dropdown menu bar.\n"
+                        "dropdown menu.\n"
 
         if len(self.all_codes) == 0:  # No locations have been created yet
             self.no_locations_label = tk.Label(self.main_frame, text=self.text, 
@@ -1486,6 +1505,16 @@ class Locations(LocationsCommonSelf):
         # Columns: 0 = Apply, 1 = Test, 2 = Help, 3 = Close
         if self.tt:
             self.tt.add_tip(self.main_help_button, help_text, anchor="ne")
+
+    def get_cfg(self, base_key):
+        """ get_cfg(self, base_key):
+
+        :param base_key: 3 string list. root "locations" prepended to list
+        :return Dictionary:
+        """
+        sql_key = ["cfg_locations"]
+        sql_key += base_key
+        return self.cfg.get_cfg(sql_key)
 
     def display_test_window(self):
         """ Mount test host window when not using Playlist Maintenance Window
@@ -1592,20 +1621,29 @@ class Locations(LocationsCommonSelf):
             self.tt.add_tip(self.test_help_button, help_text, anchor="ne")
 
 
-    @staticmethod
-    def make_display_frame(top):
+    def make_display_frame(self, top):
         """ Make display window frame for main_top and test_top """
 
         ''' Common top configuration '''
-        top.configure(background="Gray")
+        top.configure(background=self.bg)
         top.columnconfigure(0, weight=1)
         top.rowconfigure(0, weight=1)
 
         ''' Set program icon in taskbar '''
-        img.taskbar_icon(top, 64, 'white', 'lightskyblue', 'black')
+        #cfg = sql.Config()
+        #sql_key = ['locations', 'toplevel', 'taskbar_icon', 'height & colors']
+        #ti = self.cfg.get_cfg(sql_key)
+        #sql_key = ['locations', 'toplevel', 'taskbar_icon', 'height & colors']
+        ti = self.get_cfg(['toplevel', 'taskbar_icon', 'config'])
+        img.taskbar_icon(top, ti['height'], ti['outline'],
+                         ti['fill'], ti['text'], char=ti['char'])
+        # img.taskbar_icon(top, 64, 'white', 'lightskyblue', 'black')
 
         ''' Create master frame '''
-        frame = tk.Frame(top, borderwidth=g.BTN_BRD_WID, relief=tk.RIDGE)
+        # 2024-03-14 - bg=self.bg trials
+        #frame = tk.Frame(top, border width=g.BTN_BRD_WID, relief=tk.RIDGE,
+        #                 bg=self.bg)
+        frame = tk.Frame(top, bg=self.bg)
         frame.grid(sticky=tk.NSEW)
         frame.columnconfigure(0, weight=0)
         frame.columnconfigure(1, weight=0)
@@ -1644,7 +1682,17 @@ class Locations(LocationsCommonSelf):
 
         ''' Artwork image spanning 4 rows '''
         self.make_default_image()  # Dummy Image for picture of location
-        self.art_label = tk.Label(frame, borderwidth=0, image=self.disp_image)
+        #cfg = sql.Config()
+        #sql_key = ['locations', 'loc_image', 'style', 'color']
+        #i = cfg.get_cfg(sql_key)
+        i = self.get_cfg(['loc_image', 'style', 'color'])
+        #highlightcolor = colors['edge_color'],
+        #highlightbackground = colors['edge_color'],
+
+        self.art_label = tk.Label(frame, image=self.disp_image,
+                                  highlightcolor=i['edge_color'],
+                                  highlightbackground=i['edge_color'],
+                                  highlightthickness=i['edge_px'])
         self.art_label.grid(row=1, rowspan=4, column=0, sticky=tk.W,
                             padx=5, pady=5)
 
@@ -1658,7 +1706,7 @@ class Locations(LocationsCommonSelf):
         else:  # When mode==None, the window is for testing host.
             ''' When testing host, there are no Treeview rows above '''
             text = "🡅 🡅  Slide scrollbar above to see Test Host results  🡅 🡅"
-        self.fld_intro = tk.Label(frame, text=text, font=g.FONT)
+        self.fld_intro = tk.Label(frame, text=text, font=g.FONT, bg=self.bg)
         self.fld_intro.grid(row=1, column=1, columnspan=3, pady=5, stick=tk.EW)
 
         ''' one_loc_var() wrapper for creating all screen input variables '''
@@ -1719,7 +1767,7 @@ class Locations(LocationsCommonSelf):
         col = 1 if self.curr_row < 5 else 0  # Column number for text
         span = 1 if self.curr_row < 5 else 2  # Column span for text
 
-        tk.Label(self.curr_frame, text=text, font=g.FONT).\
+        tk.Label(self.curr_frame, text=text, bg=self.bg, font=g.FONT).\
             grid(row=self.curr_row, column=col, columnspan=span, sticky=tk.W)
         fld = tk.Entry(self.curr_frame, textvariable=scr_name,
                        state='readonly', font=g.FONT)
@@ -1773,9 +1821,12 @@ class Locations(LocationsCommonSelf):
         self.tree_frame.grid(row=0, column=0, sticky=tk.NSEW, columnspan=4)
         self.tree_frame.columnconfigure(0, weight=1)
         self.tree_frame.rowconfigure(0, weight=1)
+
+        # Not to be confused with cfg.get_cfg([]) which takes list of 4 strings
+        colors = self.get_cfg(['treeview', 'style', 'color'])
         self.loc_view = toolkit.DictTreeview(
             location_dict, self.main_top, self.tree_frame, columns=columns,
-            highlight_callback=self.highlight_callback)
+            highlight_callback=self.highlight_callback, colors=colors)
 
         ''' Override generic column heading names for Location usage '''
         self.loc_view.tree.heading('name', text='Location Name')
@@ -1916,7 +1967,7 @@ class Locations(LocationsCommonSelf):
             self.scr_host.set(self.act_host)
         if self.fld_wakecmd:  # Is wakeonlan installed?
             if "ftp_login()" in self.act_wakecmd:
-                files = ftp_login()  # Just to see what it looks like
+                _files = ftp_login()  # Just to see what it looks like
                 # Returns
             self.scr_wakecmd.set(self.act_wakecmd)
             # Only main screen will turn on the Test Host button.
@@ -2018,7 +2069,8 @@ class Locations(LocationsCommonSelf):
         self.apply_button.grid(row=14, column=0, padx=10, pady=5, sticky=tk.E)
         # Columns: 0 = Apply, 1 = Test, 2 = Help, 3 = Close
         self.main_top.bind("<Return>", self.apply)
-        self.main_close_button['text'] = "✘ Cancel"  # Change from "✘ Cancel"
+        #self.main_close_button['text'] = "✘ Cancel"  # Change from "✘ Cancel"
+        # 2024-03-14 - Must change button command and not just button text
         ''' toolkit.Tooltips() guaranteed to be active for Apply button '''
         # Aug 29/23 - used to be: "Synchronize Location and update records."
         self.tt.add_tip(self.apply_button, text +
@@ -2243,11 +2295,18 @@ class Locations(LocationsCommonSelf):
             #LIST.append(self.make_ver1_dict_from_sql_dict(d))  # Temporary
 
     def get_dict_by_dirname(self, dirname):
-        """ Look up location using top directory path
+        """ Look up location using top directory path and read into act_ fields.
+
+            Called by mserve.py when it was started using parameter 1 to
+            specify top directory. In this case look up to see if it's a
+            location already defined.
 
             Not bullet-proof because two location codes can use same top directory.
             One location could be SSH and other location can be FTP both to same
-            server. """
+            server.
+
+            2024-03-15 - Prompt when more than one topdir found.
+        """
 
         ''' Read backwards assuming last location added is correct one '''
         for i, topdir in reversed(list(enumerate(self.all_topdir))):
@@ -2421,7 +2480,7 @@ class Locations(LocationsCommonSelf):
                 #     for line in traceback.format_stack():
                 # location.py Locations() test_host_up() blank host name. cmp_keep_awake
                 # Remote Host Disconnected!
-                # Dell Inspiron 17R SE 7720 File Server is off-line. Shutting down... 
+                # Dell Ins p iron 17R SE 7720 File Server is off-line. Shutting down...
         """
         LocationsCommonSelf.__init__(self)  # Define self. variables
         self.state = 'synchronize'
@@ -2485,7 +2544,7 @@ class Locations(LocationsCommonSelf):
                 d['topdir'], d['host'], d['wakecmd'], d['testcmd'], d['testrep'],
                 d['mountcmd'], d['activecmd'], d['activemin'], u"Comments")
 
-    def get_dict_by_dirname(self, dirname):
+    def get_dict_by_dirname_return_dict(self, dirname):
         """ Look up location dictionary using top directory path
             Called by mserve.py when it was started using parameter 1 to
             specify top directory. In this case look up to see if it's a
@@ -3281,6 +3340,7 @@ filename.
                 :return: Nothing
                 """
                 if self.act_ftp:
+                    # noinspection SpellCheckingInspection
                     print("Test host awake with ftplib.FPT() instance")
                     welcome = self.act_ftp.getwelcome()
                     if welcome.startswith("220 "):
@@ -3537,7 +3597,7 @@ filename.
         elif parts[0] != "ftp":
             passed = False
         try:
-            port = int(parts[1])
+            _port = int(parts[1])
         except ValueError:
             passed = False
 
@@ -3583,7 +3643,7 @@ filename.
         if os.path.isfile(size_name) and os.path.isfile(walk_name):
             return True  # Save time and reuse last session. Tree will rebuild slow
 
-        def walk(topdir, path, all, walks):
+        def walk(topdir, path, all_dict, walks):
             """ walk the path """
             files = []
             dirs = []
@@ -3611,7 +3671,7 @@ filename.
                     self.fast_refresh()  # Update animations
                     new_path = path + name + os.sep
                     dirs.append(name.encode('utf-8'))
-                    walk(topdir, new_path, all, walks)  # back down the rabbit hole
+                    walk(topdir, new_path, all_dict, walks)  # back down the rabbit hole
                 else:
                     # /path/to/filename.ext <SIZE>
                     u_name = toolkit.uni_str(name)
@@ -3619,9 +3679,9 @@ filename.
                     int_size = int(size.strip())
                     u_size = u'{:n}'.format(int_size)
                     entry = u_path + u_name + u" < " + u_size + u" > "
-                    #all.append(entry.encode('utf-8'))  # no more list, now dict
+                    #all_dict.append(entry.encode('utf-8'))  # no more list, now dict
                     full_path = u_path + u_name
-                    all[u_topdir + full_path.encode('utf-8')] = int_size
+                    all_dict[u_topdir + full_path.encode('utf-8')] = int_size
                     if show:
                         self.test_show(entry.encode('utf-8'))
             #walk_tuple = tuple((u_path.encode('utf-8'), dirs, base_names))
@@ -3923,7 +3983,7 @@ filename.
                 ext.read_from_json(fname)
             print("self.act_ftp:", self.act_ftp, type(self.act_ftp))
             #if self.trg_paths_and_sizes:
-            #    print("\nfname:", fname, "size:",
+            #    print("\n fname:", fname, "size:",
             #          len(self.trg_paths_and_sizes))
 
         ''' Create Compare Locations top window - self.cmp_top '''
