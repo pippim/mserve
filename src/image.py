@@ -19,6 +19,7 @@ from __future__ import with_statement  # Error handling for file opens
 #       June 19 2023 - Add white space around triangle (chevrons)
 #       July 02 2023 - make_image() - Support multi-line text
 #       July 12 2023 - Interface to/from mserve_config.py
+#       Mar. 30 2024 - TCombobox drop down arrow image styling
 #
 #==============================================================================
 
@@ -349,6 +350,7 @@ def make_checkboxes(hgt, out_c, fill_c, chk_c):
 def make_triangles(triangle_list, hgt, out_c, fill_c):
 
     """ Make triangles (chevrons) for open, close and empty tree parent
+        2024-03-30 Repurpose close icon for combobox dropdown icon
     """
     width = int(hgt * 1.8)  # Padding right of triangle reduces clicking errors
     im_open, im_close, im_empty = triangle_raw_images(hgt, out_c, fill_c)
@@ -369,6 +371,8 @@ def make_triangles(triangle_list, hgt, out_c, fill_c):
                              ('user1', '!user2', triangle_list[0]),
                              ('user2', triangle_list[2]),
                              sticky='w', width=width)
+        # noinspection SpellCheckingInspection
+        style.element_create('TCombobox.downarrow', 'image', triangle_list[0])
     except tk.TclError:
         print('Treeitem.myindicator tk.TclError in image.py make_triangles()')
         return
@@ -388,8 +392,84 @@ def make_triangles(triangle_list, hgt, out_c, fill_c):
                       ]
            })])
 
+    # replace TCombobox.down arrow by custom one
+    # noinspection SpellCheckingInspection
+    ''' This method makes text area disappear
+    style.layout(
+        'TCombobox', [(
+            'Combobox.field', {
+                'sticky': tk.NSEW,
+                'children': [(
+                    'TCombobox.downarrow', {
+                        'side': 'bottom',  # was 'right'
+                        'sticky': tk.E  # was NS
+                    }
+                )]
+            }
+        )]
+    )
+    '''
+    ''' ORIGINAL:
+        This method makes text area huge
+    '''
+
+    # noinspection SpellCheckingInspection
+    style.layout(
+        'TCombobox', [(
+            'Combobox.field', {
+                'sticky': tk.NSEW,
+                'children': [(
+                    'TCombobox.downarrow', {
+                        'side': 'right',  # was 'right'
+                        'sticky': tk.E  # was NS
+                    }
+                ), (
+                    'Combobox.padding', {
+                        'expand': '1',
+                        'sticky': tk.NSEW,
+                        'children': [(
+                            'Combobox.textarea', {
+                                'sticky': tk.NSEW
+                            }
+                        )]
+                    }
+                )]
+            }
+        )]
+    )
+
+    # noinspection SpellCheckingInspection
+    ''' ORIGINAL:
+
+    # noinspection SpellCheckingInspection
+    style.layout(
+        'TCombobox', [(
+            'Combobox.field', {
+                'sticky': tk.NSEW,
+                'children': [(
+                    'TCombobox.downarrow', {
+                        'side': 'right',
+                        'sticky': tk.NS
+                    }
+                ), (
+                    'Combobox.padding', {
+                        'expand': '1',
+                        'sticky': tk.NSEW,
+                        'children': [(
+                            'Combobox.textarea', {
+                                'sticky': tk.NSEW
+                            }
+                        )]
+                    }
+                )]
+            }
+        )]
+    )
+    '''
+
     #style.configure('Treeview', indent=63)  # Aug 17/23 working for months
     style.configure('Treeview', indent=50)  # Aug 17/23 too much indent fix
+    style.configure('TCombobox', indent=5)
 
 
 def triangle_raw_images(hgt, out_c, fill_c):

@@ -579,6 +579,205 @@ def tv_tag_remove_all(tv, old):
 
 # ==============================================================================
 #
+#       ChildWindows class - Keep children on top of parent and move as group.
+#
+# ==============================================================================
+class ChildWindows:
+    """ Called from mserve.py for delayed textbox (dtb) or DictTreeview class
+        below.
+
+        Set focus in for self.toplevel to lift the child window(s)
+        When self.toplevel is dragged, so are the child window.
+
+        window.winfo_xxx see: https://wiki.tcl-lang.org/page/winfo%28%29
+
+    """
+    def __init__(self, toplevel):
+
+        self.toplevel = toplevel  # Parent window
+        self.window = {}  # Child Window {key, widget, x, y, w, h
+        self.window_list = []  # list of window dictionaries
+
+        self.who = "toolkit.py ChildWindows()."  # For debug messages
+
+        ''' Controls to drag child window of toplevel '''
+        # list of [width, height, x, y] returned by self.geometry(window)
+        self.curr_geom = [0, 0, 0, 0]  # Geometry when drag_window called
+        self.last_geom = [0, 0, 0, 0]  # Geometry when drag_window last called
+        self.move_geom = [0, 0, 0, 0]  # Difference between curr and last
+        self.toplevel.bind("<Configure>", self.drag_window)
+        self.toplevel.bind("<FocusIn>", self.raise_children)
+
+    def raise_children(self, *_args):
+        """ Focus in on parent. Focus in and lift the children up in the
+            order they were registered.
+        """
+        if not len(self.window_list):
+            return
+        _who = self.who + "raise_children():"
+        for win_dict in self.window_list:
+            if self.check_candidacy(win_dict):
+                win_dict['widget'].lift()
+                win_dict['widget'].focus_force()
+
+    def move_children(self, x_off, y_off):
+        """ Focus in on parent. Focus in and lift the children up in the
+            order they were registered.
+        """
+        if not len(self.window_list):
+            return
+        _who = self.who + "move_children():"
+        if True is False:
+            print("\n" + _who, " | x_off:", x_off, " | y_off:", y_off)
+        for win_dict in self.window_list:
+            if self.check_candidacy(win_dict):
+                _w, _h, x, y = self.geometry(win_dict['widget'])
+                new_x = x + x_off
+                new_y = y + y_off
+                geom = "+" + str(new_x) + "+" + str(new_y)
+                win_dict['widget'].geometry(geom)
+
+    def check_candidacy(self, win_dict):
+        """ Test if 50% of a window lays inside parent toplevel
+
+            :param win_dict: dictionary
+        """
+        _who = self.who + "check_candidacy():"
+        w, h, x, y = self.geometry(win_dict['widget'])
+        if True is False:  # Too much noise with spam prints
+            print("\n" + _who, " | key:", win_dict['key'],
+                  " | widget:", win_dict['widget'],
+                  "\n\t\t | x:", x, " | y:", y, " | w:", w, " | h:", h)
+        return True
+
+    def drag_window(self, _event):
+        """ Defined in __init__ with:
+                self.key.bind("<Configure>", drag_window)
+        """
+        _who = self.who + "drag_window"
+        self.curr_geom = self.geometry(self.toplevel)  # window's [wid, hgt, x, y]
+        if not self.last_geom[3]:  # Is last window height impossibly zero?
+            self.last_geom = copy.deepcopy(self.curr_geom)  # last time not init
+
+        # Leave now if geometry unchanged from last time
+        if self.curr_geom == self.last_geom:
+            return  # drag_window called with window.update() & no changes
+
+        # How much has window moved or resized?
+        self.move_geom = [c - l for c, l in zip(self.curr_geom, self.last_geom)]
+
+        # Move and raise children if 50% inside parent window
+        self.move_children(self.move_geom[2], self.move_geom[3])
+        self.raise_children()  # NOTE: move before 50% test of raising children
+
+        # Save for comparison next time
+        self.last_geom = copy.deepcopy(self.curr_geom)
+
+        # Uncomment print commands for debugging
+        _w, _h, _x, _y = self.curr_geom  # shorthand for printing current
+        _wm, _hm, _xm, _ym = self.move_geom  # shorthand for moved amounts
+        #print(_who, "| x:", _x, " | y:", _y, " | w:", _w, " | h:", _h)
+        #print("\t| x moved:", _xm, "\t| y moved:", _ym,
+        #      "\t| width change:", _wm, "\t| height change:", _hm)
+
+        # NOTE _event.x, _event.x_root refer to mouse position not window position
+
+    def register_child(self, key, widget):
+        """ Called from mserve.py for delayed textbox (dtb) or
+            here for displaying mini-windows E.G. column details.
+
+            Set focus in for self.key to lift the child window
+            When self.key is dragged, so is the child window.
+            Whilst child window is "None" do nothing.
+
+            window.winfo_xxx see: https://wiki.tcl-lang.org/page/winfo%28%29
+
+            :param key: 'dtb', 'column details', 'rename heading', etc.
+            :param widget: msg_top, or create_window toplevel, etc.
+        """
+        _who = self.who + "register_child"
+        w, h, x, y = self.geometry(widget)
+        #print("\n" + _who, " | key:", key, " | widget:", widget,
+        #      "\n\t\t | x:", x, " | y:", y, " | w:", w, " | h:", h)
+        # Unordered dict so geometry order irrelevant
+        win = {'key': key, 'widget': widget, 'x': x, 'y': y, 'w': w, 'h': h}
+        self.window_list.append(win)  # order children born
+        #print("self.window_list:", self.window_list)
+
+    def unregister_child(self, widget):
+        """ Called from mserve.py for delayed textbox (dtb) or
+            here for displaying mini-windows E.G. column details.
+
+            :param widget: dtb.msg_top, or self.key
+        """
+        if not len(self.window_list):
+            return
+        _who = self.who + "unregister_child"
+        #print("\n" + _who, "Searching for:", widget)
+        #print(_who, "BEFORE self.window_list:", self.window_list)
+
+        i = found = False
+        for i, win in enumerate(self.window_list):
+            if win['widget'] == widget:
+                found = True
+                break  # deleting index inside loop doesn't work
+
+        if found:
+            _deleted = self.window_list.pop(i)
+            # Parent responsible for destroying child window.
+        else:
+            print("\n" + _who, " - Widget not found:", widget)
+
+        #print(_who, "AFTER self.window_list:", self.window_list)
+
+    def destroy_all(self, tt=None):
+        """ When caller doesn't know the window widgets at close time """
+        if not len(self.window_list):
+            return
+
+        _who = self.who + "destroy_all():"
+        #print(_who, "self.window_list:", self.window_list)
+        for win_dict in self.window_list:
+            window = win_dict['widget']
+            if tt:
+                if tt.check(window):
+                    tt.close(window)
+            window.destroy()
+
+        self.window_list = []
+
+    def key_for_widget(self, widget):
+        """ When caller doesn't know the 'key' get it with window widget 
+
+            ONLY USED FOR A FEW MINUTES THEN OBSOLETE. Leave for now.
+
+            :param widget: Window's TK widget identifier
+        """
+        if not len(self.window_list):
+            return
+        _who = self.who + "key_for_widget():"
+        for win_dict in self.window_list:
+            if win_dict['widget'] == widget:
+                return win_dict['key']
+
+        print("No key for widget:", widget)
+
+    @staticmethod
+    def geometry(widget):
+        """ Return list of widget's [width, height, x, y]
+            Called for both parent window and child windows
+
+        stackoverflow: https://stackoverflow.com/a/77503326/6929343 """
+        widget.update_idletasks()  # 2024-03-29 tested & confirm needed
+        geometry_info = widget.geometry()
+        # re search in "<WIDTH> x <HEIGHT> + <X> + <Y>" string (no spaces or <>)
+        position_info = re.split('[x+]', geometry_info)
+        # https://stackoverflow.com/a/50716478/6929343
+        return map(int, position_info)
+
+
+# ==============================================================================
+#
 #       CustomScrolledText class - scrollable text with tag highlighting
 #
 # ==============================================================================
@@ -669,13 +868,17 @@ class DictTreeview:
         2024-03-12 - Upgrade to use SQL configuration. Manage TK widget colors
         using history 'Type' of: cfg_play_top, cfg_sql_music, etc.
 
+        2024-03-28 - ChildWindows() class to keep children on top and move when
+        parent window dragged.
+        
         Interim version:
             When 'columns=()' the displaycolumns will be autogenerated based on
             'tree_dict' parameter
     """
     def __init__(self, tree_dict, toplevel, master_frame, show='headings', 
                  columns=(), sbar_width=12, highlight_callback=None, colors=None,
-                 sql_type="", name="", use_h_scroll=False):
+                 sql_type="", name="", use_h_scroll=False, force_close=None,
+                 tt=None):
 
         self.tree_dict = tree_dict          # Data dictionary
         self.toplevel = toplevel
@@ -686,14 +889,35 @@ class DictTreeview:
         self.sql_type = sql_type            # E.G. "sql_music"
         self.cfg_name = "cfg_" + sql_type
         self.name = name                    # E.G. "SQL Music Table"
-        self.cfg = sql.Config()             # SQL configuration methods
+        self.force_close = force_close
+        self.tt = tt                        # Tool tips
 
-        self.tree = None                    # tk.Treeview
+        self.cfg = sql.Config()             # SQL user configurations
+
+        self.tree = None                    # tk.Treeview created here in master
+
+        # ChildWindows() moves children with toplevel and keeps children on top.
+        self.win_grp = ChildWindows(self.toplevel)
+        self.hdr_top = None                 # To display column details
+        self.hdr_top_is_active = None       # hdr also used to display sql row
+        self.scrollbox = None               # CustomScrolltext w/patterns
+        self.hic_top = None                 # Heading insert column
+
+        # xxx_is_active in .close() and __init__
+        self.rsd_top_is_active = None       # Row SQL details
+        self.hcd_top_is_active = None       # Header Column details
+        self.hic_top_is_active = None       # Header insert column
+        self.hdc_top_is_active = None       # Header delete column
+        self.hco_top_is_active = None       # Header change column order
+        self.hrc_top_is_active = None       # Header rename column
+
+        # 2024-03-27 last_row will be phased out. use tree.has_tag() instead.
         self.last_row = None                # Used for removing highlight bar
+        # 2024-03-27 col_count will be phased out
         self.col_count = 20                 # Set<20 for debug printing
 
-        # TEST font families
-        self.cfg.show_fonts(self.toplevel)
+        # TEST font families - Have to move out of sql.py to here Fonts() class
+        #self.cfg.show_fonts(self.toplevel)
 
         ''' Use SQL configuration for column order, width and heading '''
         #sql_key = [self.cfg_name, 'sql_treeview', 'column', 'custom']
@@ -864,7 +1088,9 @@ class DictTreeview:
                 print('column count reached:', self.col_count)
 
             # TODO: New format "MB" for Megabytes
-            if data_dict['format'] == "MB":
+            if unmasked_value is None:
+                values.append("")
+            elif data_dict['format'] == "MB":
                 values.append(human_mb(unmasked_value))
             elif data_dict['format'] == "days":
                 values.append(tmf.days(unmasked_value))
@@ -907,7 +1133,7 @@ class DictTreeview:
         ''' highlight row as mouse traverses across treeview '''
         self.tree.tag_bind(iid, '<Motion>', self.highlight_row)
 
-    def close(self):
+    def close(self, *_args):
         """ Parent is closing toplevel containing the treeview.
 
             Compare self.tree_dict (list of column dictionaries) to
@@ -923,6 +1149,21 @@ class DictTreeview:
 
         :return: 1 new custom view created, 2 existing custom view updated
         """
+
+        # Close Pretty column details or Pretty SQL Row details
+        if self.hdr_top:  # Need to get a better name!
+            self.pretty_close()  # This unregisters child as well
+
+        self.win_grp.destroy_all()  # Unregister & destroy all child windows
+
+        # xxx_is_active in .close() and __init__
+        self.rsd_top_is_active = None       # Row SQL details
+        self.hcd_top_is_active = None       # Header Column details
+        self.hic_top_is_active = None       # Header insert column
+        self.hdc_top_is_active = None       # Header delete column
+        self.hco_top_is_active = None       # Header change column order
+        self.hrc_top_is_active = None       # Header rename column
+
         # Deep copy starting list of column dictionaries
         dict_list = copy.deepcopy(self.tree_dict)
 
@@ -934,8 +1175,11 @@ class DictTreeview:
         for column in displaycolumns:
             #attributes = self.tree.column(column)  # Original not current
             d = get_dict_column(column, dict_list)  # Pippim column attributes
-            d['width'] = self.tree.column(column)['width']
-            d['heading'] = self.tree.heading(column)['text']
+            try:
+                d['width'] = self.tree.column(column)['width']
+                d['heading'] = self.tree.heading(column)['text']
+            except tk.TclError:
+                pass  # newly inserted column
             save_dict_column(column, dict_list, d)
 
         # Has list of dictionaries changed?
@@ -955,6 +1199,114 @@ class DictTreeview:
         ret = self.cfg.insert_update_cfg(sql_key, self.name, dict_list)
         return ret
 
+    def pretty_display(self, title, width, height, x=None, y=None):
+        """ Create new window top-left of parent window with g.PANEL_HGT padding or
+            at passed x,y coordinates.
+
+            Before calling:
+                Create pretty data dictionary using tree column data dictionary
+                Or entire treeview data dictionary (E.G. sql.music_treeview)
+            After calling / usage:
+                create_window(title, width, height, top=None)
+                pretty.scrollbox = self.scrollbox
+                # If text search, highlight word(s) in yellow
+                if self.mus_search is not None:
+                    # history doesn't have support. Music & history might both be open
+                    if self.mus_search.entry is not None:
+                        pretty.search = self.mus_search.entry.get()
+                sql.tkinter_display(pretty)
+
+            When Music Location Tree calls from show_raw_metadata it passes
+            top=self.lib_top. In this case not called from SQL Music Table
+            viewer.
+
+            TODO: Instead of parent guessing width, height it would be nice
+                  to pass a maximum and reduce size when text box has extra
+                  white space.
+        """
+        if self.hdr_top_is_active:
+            self.hdr_top.lift()
+            return
+
+        self.hdr_top = tk.Toplevel()  # New window for data dictionary display.
+        self.hdr_top_is_active = True
+        self.win_grp.register_child(title, self.hdr_top)
+
+        if x and y:
+            xy = (x, y)  # passed as parameters
+        else:
+            # Should always be passed x,y coordinates but just in case
+            print("coordinates not passed.")
+            xy = (self.toplevel.winfo_x() + g.PANEL_HGT,  # Use parent's top left position
+                  self.toplevel.winfo_y() + g.PANEL_HGT)
+
+        self.hdr_top.minsize(width=g.BTN_WID * 10, height=g.PANEL_HGT * 4)
+        self.hdr_top.geometry('%dx%d+%d+%d' % (width, height, xy[0], xy[1]))
+        self.hdr_top.title(title)
+        self.hdr_top.configure(background="Gray")
+        self.hdr_top.columnconfigure(0, weight=1)
+        self.hdr_top.rowconfigure(0, weight=1)
+
+        ''' Set program icon in taskbar '''
+        #Piggy back onto parent window as this window is raised overtop oo parent
+        #img.taskbar_icon(self.hdr_top, 64, 'white', 'lightskyblue', 'black', char="S")
+
+        ''' Bind <Escape> to close window '''
+        self.hdr_top.bind("<Escape>", self.pretty_close)
+        self.hdr_top.protocol("WM_DELETE_WINDOW", self.pretty_close)
+
+        ''' frame1 - Holds scrollable text entry '''
+        frame1 = ttk.Frame(self.hdr_top, borderwidth=g.FRM_BRD_WID,
+                           padding=(2, 2, 2, 2), relief=tk.RIDGE)
+        frame1.grid(column=0, row=0, sticky=tk.NSEW)
+        bs_font = (None, g.MON_FONTSIZE)  # bs = bserve, ms = mserve
+
+        ''' Scrollable textbox to show selections / ripping status '''
+        text = ("Retrieving SQL data.\n" +
+                "If this screen can be read, there is a problem.\n\n" +
+                "TIPS:\n\n" +
+                "\tRun in Terminal: 'm' and check for errors.\n\n" +
+                "\twww.pippim.com\n\n")
+
+        # Text padding not working: https://stackoverflow.com/a/51823093/6929343
+        self.scrollbox = CustomScrolledText(
+            frame1, state="normal", font=bs_font, borderwidth=15, relief=tk.FLAT)
+        self.scrollbox.configure(background="#eeeeee")  # Replace "LightGrey"
+        self.scrollbox.insert("end", text)
+        self.scrollbox.grid(row=0, column=1, padx=3, pady=3, sticky=tk.NSEW)
+        tk.Grid.rowconfigure(frame1, 0, weight=1)
+        tk.Grid.columnconfigure(frame1, 1, weight=1)
+
+        self.scrollbox.tag_config('red', foreground='Red')
+        self.scrollbox.tag_config('blue', foreground='Blue')
+        self.scrollbox.tag_config('green', foreground='Green')
+        self.scrollbox.tag_config('black', foreground='Black')
+        self.scrollbox.tag_config('yellow', background='Yellow')
+        self.scrollbox.tag_config('cyan', background='Cyan')
+        self.scrollbox.tag_config('magenta', background='Magenta')
+
+        self.scrollbox.highlight_pattern(u'TIPS:', 'red')
+
+        #self.scrollbox.config(tabs=("2m", "40m", "50m"))  # Apr 9, 2023
+        self.scrollbox.config(tabs=("2m", "65m", "80m"))  # Apr 27, 2023
+        self.scrollbox.tag_configure("margin", lmargin1="2m", lmargin2="65m")
+        # Fix Control+C  https://stackoverflow.com/a/64938516/6929343
+        self.scrollbox.bind("<Button-1>", lambda event: self.scrollbox.focus_set())
+
+    def pretty_close(self, *_args):
+        """ Close window painted by the create_window() function """
+        if self.hdr_top is None:
+            return
+        self.win_grp.unregister_child(self.hdr_top)
+        #self.tt.close(self.hdr_top)  # Close tooltips (There aren't any yet)
+        self.scrollbox.unbind("<Button-1>")
+        self.hdr_top_is_active = False
+        self.hdr_top.destroy()
+        self.hdr_top = None
+        iid_list = self.tree.tag_has("menu_sel")
+        for iid in iid_list:
+            tv_tag_remove(self.tree, iid, "menu_sel")
+
     def rename_column_heading(self, column_name, new):
         """ Called from show_sql_common_click() -> view_sql_heading_menu()
 
@@ -963,13 +1315,405 @@ class DictTreeview:
             :param column_name: tkinter column name from displaycolumns.
             :param new: New tkinter column heading.
         """
-        column_dict = get_dict_column(column_name, self.tree_dict)
+
+        # Update treeview with new column heading
         self.tree.heading(column_name, text=new)
         self.tree.update_idletasks()
+
+        # Update treeview dictionary and save custom configuration for next time
+        column_dict = get_dict_column(column_name, self.tree_dict)
         column_dict['heading'] = new  # unicode testing needed?
         save_dict_column(column_name, self.tree_dict, column_dict)
         sql_key = [self.cfg_name, 'sql_treeview', 'dict_treeview', 'custom']
         self.cfg.insert_update_cfg(sql_key, self.name, self.tree_dict)
+
+    def insert_column(self, column_name, x, y):
+        """ Called from mserve.py view_sql_button_3() -> view_sql_heading_menu()
+
+            Right click (button-3) performed on tkinter column heading.
+
+            Display combobox of unselected columns to pick from.
+
+            Show current column and prompt whether to insert before/after.
+
+            :param column_name: tkinter column name from displaycolumns.
+            :param x: x position 24 pixels left of mouse pointer.
+            :param y: y position 24 pixels below mouse pointer.
+        """
+        if self.hic_top_is_active:
+            return
+
+        title = self.name + " - Add new column to view - mserve"
+        hic_top = tk.Toplevel()  # New window for data dictionary display.
+        self.hic_top_is_active = True
+
+        hic_top.minsize(width=g.BTN_WID * 10, height=g.PANEL_HGT * 4)
+        hic_top.geometry('%dx%d+%d+%d' % (665, 200, x, y))
+        hic_top.title(title)
+        hic_top.configure(background="WhiteSmoke")
+        hic_top.columnconfigure(0, weight=1)
+        hic_top.rowconfigure(0, weight=1)
+
+        ''' Register child window for raising & moving with parent '''
+        self.win_grp.register_child('insert column', hic_top)
+
+        column_dict = get_dict_column(column_name, self.tree_dict)
+        highlight_column = column_dict['heading']
+        # Get real column width, heading, etc. from self.tree.column / .heading
+        unselected_list = []
+        combo_list = []
+        before_after = ["Before '" + highlight_column + "' column",
+                        "After '" + highlight_column + "' column"]
+
+        # Find all unselected columns
+        for d in self.tree_dict:
+            if d['select_order'] == 0:
+                unselected_list.append(d)  # the keys
+                # Because 'heading' can be renamed, user can create duplicates
+                combo_list.append(d['heading'] + " - (" + d['column'] + ")")
+
+        ''' frame1 - Holds combox text entry subclasses '''
+        # ttk.Frame doesn't allow bg color, only style = 
+        frame1 = tk.Frame(hic_top, borderwidth=18,
+                          relief=tk.FLAT, bg="WhiteSmoke")
+        frame1.grid(column=0, row=0, sticky=tk.NSEW)
+
+        # Credit: https://stackoverflow.com/a/72195664/6929343
+        tk.Label(frame1, text="Column to add:", bg="WhiteSmoke", padx=10, pady=10).\
+            grid(column=0, row=0)
+        combo_col_var = tk.StringVar()
+        # https://stackoverflow.com/a/46507359/6929343
+        combo_col_keep = combo_col_var.get()  # Keep from garbage collector
+        combo_col = ttk.Combobox(frame1, textvariable=combo_col_keep, 
+                                 state='readonly', width=30)
+        combo_col['values'] = combo_list
+        combo_col.current(0)
+        combo_col.grid(column=1, row=0, padx=20)
+
+        tk.Label(frame1, text="Insert position:", bg="WhiteSmoke", padx=10, pady=10).\
+            grid(column=0, row=1)
+        combo_pos_var = tk.StringVar()
+        combo_pos_keep = combo_pos_var.get()
+        combo_pos = ttk.Combobox(frame1, textvariable=combo_pos_keep, 
+                                 state='readonly', width=30)
+        combo_pos['values'] = before_after
+        combo_pos.current(0)
+        combo_pos.grid(column=1, row=1, padx=20)
+
+        def close(*_args):
+            """ close the window """
+            if not self.hic_top_is_active:
+                return
+            self.win_grp.unregister_child(hic_top)
+            # self.tt.close(hic_top)  # Close tooltips (There aren't any yet)
+            self.hic_top_is_active = False
+            hic_top.destroy()
+
+        def insert_apply():
+            """ Apply combox boxes. """
+            if not self.hic_top_is_active:
+                return
+
+            combo_col_new = combo_col.get()
+            combo_pos_new = combo_pos.get()
+
+            new_ndx = combo_list.index(combo_col_new)
+            new_column = unselected_list[new_ndx]['column']
+
+            # New displaycolumns with inserted column
+            displaycolumns = list(self.tree['displaycolumns'])
+            position = displaycolumns.index(column_name)  # parameter passed
+            if "After" in combo_pos_new:
+                position += 1
+            displaycolumns.insert(position, str(new_column))  # convert from unicode
+
+            # Update treeview with new columns. These are reread by force_close()
+            select_dict_columns(displaycolumns, self.tree_dict)
+            self.tree['columns'] = displaycolumns
+            self.tree['displaycolumns'] = displaycolumns
+            self.columns = displaycolumns  # extra insurance
+
+            # Set selected column headings text
+            for d2 in self.tree_dict:
+                if d2['select_order'] > 0:
+                    self.tree.heading(d2['column'], text=d2['heading'])
+
+            close()  # Close our window
+            self.force_close()  # Close toplevel window
+
+        ttk.Separator(frame1, orient='horizontal').\
+            grid(column=0, row=2, columnspan=2, sticky=tk.EW)
+        frame1.grid_rowconfigure(2, minsize=30)
+
+        button1 = tk.Button(frame1, text="Apply", pady=5, command=insert_apply)
+        button1.grid(column=0, row=3)
+        button2 = tk.Button(frame1, text="Cancel", pady=5, command=close)
+        button2.grid(column=1, row=3)
+
+        ''' Bind <Escape> to close window '''
+        hic_top.bind("<Escape>", close)
+        hic_top.protocol("WM_DELETE_WINDOW", close)
+
+    def delete_column(self, column_name, x, y):
+        """ Called from mserve.py view_sql_button_3() -> view_sql_heading_menu()
+
+            Right click (button-3) performed on tkinter column heading.
+
+            Prompt to delete the current column from view.
+
+            :param column_name: tkinter column name from displaycolumns.
+            :param x: x position 24 pixels left of mouse pointer.
+            :param y: y position 24 pixels below mouse pointer.
+        """
+        if self.hdc_top_is_active:
+            return
+
+        title = self.name + " - Remove column from view - mserve"
+        hdc_top = tk.Toplevel()
+        self.hdc_top_is_active = True
+
+        hdc_top.minsize(width=g.BTN_WID * 10, height=g.PANEL_HGT * 4)
+        hdc_top.geometry('%dx%d+%d+%d' % (680, 290, x, y))
+        hdc_top.title(title)
+        hdc_top.configure(background="WhiteSmoke")
+        hdc_top.columnconfigure(0, weight=1)
+        hdc_top.rowconfigure(0, weight=1)
+
+        ''' Register child window for raising & moving with parent '''
+        self.win_grp.register_child('delete column', hdc_top)
+
+        column_dict = get_dict_column(column_name, self.tree_dict)
+        highlight_column = column_dict['heading']
+
+        ''' frame1 - Holds text '''
+        frame1 = tk.Frame(hdc_top, borderwidth=18,
+                          relief=tk.FLAT, bg="WhiteSmoke")
+        frame1.grid(column=0, row=0, sticky=tk.NSEW)
+
+        text = "Removing some columns like 'Lyrics' will "
+        text += "disable some buttons.\n\n"
+        text += "After clicking 'Apply' the View SQL window "
+        text += "will close.\n\n"
+        text += "Click 'Apply' to remove the column '" + highlight_column + "'.\n"
+        tk.Label(frame1, text=text, bg="WhiteSmoke", pady=20).\
+            grid(column=0, row=0)
+
+        def close(*_args):
+            """ close the window """
+            if not self.hdc_top_is_active:
+                return
+
+            self.win_grp.unregister_child(hdc_top)
+            # self.tt.close(hdc_top)  # Close tooltips (There aren't any yet)
+            self.hdc_top_is_active = False
+            hdc_top.destroy()
+
+        def delete_apply():
+            """ Delete current column from treeview. """
+            if not self.hdc_top_is_active:
+                return
+
+            # New displaycolumns with inserted column
+            displaycolumns = list(self.tree['displaycolumns'])
+            position = displaycolumns.index(column_name)  # parameter passed
+            displaycolumns.remove(position)
+
+            # Update treeview with new columns. These are reread by force_close()
+            select_dict_columns(displaycolumns, self.tree_dict)
+            self.tree['columns'] = displaycolumns
+            self.tree['displaycolumns'] = displaycolumns
+            self.columns = displaycolumns  # extra insurance
+
+            # Set selected column headings text
+            for d2 in self.tree_dict:
+                if d2['select_order'] > 0:
+                    self.tree.heading(d2['column'], text=d2['heading'])
+
+            close()  # Close our window
+            self.force_close()  # Close toplevel window
+
+        ttk.Separator(frame1, orient='horizontal').\
+            grid(column=0, row=2, sticky=tk.EW)
+        frame1.grid_rowconfigure(2, minsize=30)
+
+        button1 = tk.Button(frame1, text="Apply", padx=25, command=delete_apply)
+        button1.grid(column=0, row=3, ipadx=20, sticky=tk.W)
+        button2 = tk.Button(frame1, text="Cancel", padx=25, command=close)
+        button2.grid(column=0, row=3, ipadx=20, sticky=tk.E)
+
+        ''' Bind <Escape> to close window '''
+        hdc_top.bind("<Escape>", close)
+        hdc_top.protocol("WM_DELETE_WINDOW", close)
+
+    def column_order(self, column_name, x, y):
+        """ Called from mserve.py view_sql_button_3() -> view_sql_heading_menu()
+
+            Right click (button-3) performed on tkinter column heading.
+
+            Display combobox of columns to pick from.
+            Display spinbox to change order
+            Dynamically show column order with each spinbox action.
+
+            Apply changes to self.tree['displaycolumns'] and set tree_dict
+
+            :param column_name: tkinter column name from displaycolumns.
+            :param x: x position 24 pixels left of mouse pointer.
+            :param y: y position 24 pixels below mouse pointer.
+        """
+        if self.hco_top_is_active:
+            return
+
+        title = self.name + " - Change column order - mserve"
+        hco_top = tk.Toplevel()  # New window for data dictionary display.
+        self.hco_top_is_active = True
+
+        hco_top.minsize(width=g.BTN_WID * 10, height=g.PANEL_HGT * 4)
+        hco_top.geometry('%dx%d+%d+%d' % (650, 390, x, y))
+        hco_top.title(title)
+        hco_top.configure(background="WhiteSmoke")
+        hco_top.columnconfigure(0, weight=1)
+        hco_top.rowconfigure(0, weight=1)
+
+        ''' Register child window for raising & moving with parent '''
+        self.win_grp.register_child('column order', hco_top)
+
+        column_dict = get_dict_column(column_name, self.tree_dict)
+
+        # Three synchronized lists
+        combo_list = []  # list of "'Heading' - (column name)"
+        column_list = []  # list of column names dictionary['column']
+        heading_list = []  # list of dictionary['Heading']
+
+        # Build lists in displaycolumns order
+        for column in self.tree['displaycolumns']:  # don't use self.columns!
+            d = get_dict_column(column, self.tree_dict)
+            combo_list.append(d['heading'] + " - (" + column + ")")
+            column_list.append(d['column'])  # the keys
+            heading_list.append(d['heading'])  # the display names
+
+        def spin_update(*_args):
+            """ Spin buttons clicked or new column selected.
+                Remove previous highlight and apply new highlight.
+            """
+            # Get old column index
+            combo_col_new = combo_col.get()  # establish index in list
+            old_ndx = combo_list.index(combo_col_new)
+            heading = heading_list[old_ndx]  # pattern to unhighlight
+
+            spin_new = spin_pos_var.get()
+            new_ndx = spin_new - 1
+
+            # credit: https://stackoverflow.com/a/33933500/6929343
+            combo_list.insert(new_ndx, combo_list.pop(old_ndx))
+            column_list.insert(new_ndx, column_list.pop(old_ndx))
+            heading_list.insert(new_ndx, heading_list.pop(old_ndx))
+            combo_col['values'] = combo_list
+
+            scrollbox.unhighlight_pattern(heading, 'yellow')
+            scrollbox.unhighlight_pattern('|', 'red')  # deleting but un- anyway
+            text = '| ' + ' | '.join(heading_list) + ' |'
+            scrollbox.delete("1.0", "end")
+            scrollbox.insert("end", text)
+            scrollbox.highlight_pattern(heading_list[new_ndx], 'yellow')
+            scrollbox.highlight_pattern('|', 'red')  # Not really red
+
+        def combo_update(*_args):
+            """ New column selected from combo box. Set spin position. """
+            combo_col_new = combo_col_var.get()  # establish index in list
+            new_ndx = combo_list.index(combo_col_new)
+            spin_pos_var.set(new_ndx+1)
+            spin_update()  # Highlight new column selected in columns display
+
+        def close(*_args):
+            """ close the window """
+            if not self.hco_top_is_active:
+                return
+            combo_col.unbind('<<ComboboxSelected>>')
+            self.win_grp.unregister_child(hco_top)
+            # self.tt.close(hco_top)  # Close tooltips (There aren't any yet)
+            self.hco_top_is_active = False
+            hco_top.destroy()
+
+        def order_apply():
+            """ Apply changes and close child window (but not toplevel). """
+            if not self.hco_top_is_active:
+                return
+
+            # Update treeview with displaycolumns.
+            self.tree['displaycolumns'] = column_list
+            select_dict_columns(column_list, self.tree_dict)
+
+            # Set selected column headings text
+            #for d2 in self.tree_dict:
+            #    if d2['select_order'] > 0:
+            #        self.tree.heading(d2['column'], text=d2['heading'])
+
+            close()  # Close our window
+            # No need to close toplevel. Simply change displaycolumns
+            #self.force_close()  # Close toplevel window
+
+
+        ''' frame1 - Holds combox, spinbox, custom scrolledtext and buttons '''
+        # ttk.Frame doesn't allow bg color, only style = 
+        frame1 = tk.Frame(hco_top, borderwidth=18,
+                          relief=tk.FLAT, bg="WhiteSmoke")
+        frame1.grid(column=0, row=0, sticky=tk.NSEW)
+
+        # Combobox selects which column to move
+        tk.Label(frame1, text="Column to move:", bg="WhiteSmoke",
+                 padx=10, pady=10).grid(column=0, row=0)
+        combo_col_var = tk.StringVar()
+        combo_col = ttk.Combobox(frame1, textvariable=combo_col_var,
+                                 state='readonly', width=30)
+        combo_col.grid(column=1, row=0)
+        combo_col['values'] = combo_list  # 'Heading' - (column name) ...
+        ndx = column_list.index(column_dict['column'])  # column_dict set in init
+        combo_col.current(ndx)  # Current treeview column default entry
+
+        # Spinbox to bump up/bump down selected column's order in treeview
+        tk.Label(frame1, text="Column position:", bg="WhiteSmoke", padx=10, pady=10). \
+            grid(column=0, row=1, sticky=tk.W)
+        spin_pos_var = tk.IntVar()
+        spin_pos_var.set(ndx+1)
+        spin_pos = tk.Spinbox(
+            frame1, from_=1, to=len(heading_list), increment=-1, width=3,
+            state='readonly', textvariable=spin_pos_var, command=spin_update)
+        spin_pos.grid(column=1, row=1, sticky=tk.W)
+
+        # Separator around Columns display custom scrolled textbox
+        ttk.Separator(frame1, orient='horizontal').\
+            grid(column=0, row=2, columnspan=2, sticky=tk.EW)
+        frame1.grid_rowconfigure(2, minsize=30)
+
+        # Columns displayed in order with current column highlighted
+        tk.Label(frame1, text="Columns display:", bg="WhiteSmoke",
+                 padx=10, pady=10, anchor=tk.W).grid(column=0, row=3)
+        scrollbox = CustomScrolledText(
+            frame1, state="normal", font=(None, g.MON_FONT), borderwidth=10,
+            pady=2, relief=tk.FLAT, wrap=tk.WORD)
+        scrollbox.grid(row=3, column=1, padx=3, pady=3, sticky=tk.NSEW)
+        tk.Grid.rowconfigure(frame1, 3, weight=1)  # spinbox row expands
+        tk.Grid.columnconfigure(frame1, 1, weight=1)  # column 2 expands
+        scrollbox.tag_config('yellow', background='Yellow')
+        scrollbox.tag_config('red', foreground='White', background="gray")
+
+        # Separator around Columns display custom scrolled textbox
+        ttk.Separator(frame1, orient='horizontal').\
+            grid(column=0, row=4, columnspan=2, sticky=tk.EW)
+        frame1.grid_rowconfigure(4, minsize=30)
+
+        # Buttons to apply or close
+        button1 = tk.Button(frame1, text="Apply", pady=2, command=order_apply)
+        button1.grid(column=0, row=5)
+        button2 = tk.Button(frame1, text="Cancel", pady=2, command=close)
+        button2.grid(column=1, row=5)
+
+        combo_col.bind('<<ComboboxSelected>>', combo_update)
+        spin_update()  # Set initial values in combobox and scrolled textbox
+
+        ''' Bind <Escape> to close window '''
+        hco_top.bind("<Escape>", close)
+        hco_top.protocol("WM_DELETE_WINDOW", close)
 
     def edit_column_dict(self, column_name):
         """ Called from mserve.py view_sql_button_3() -> view_sql_heading_menu()
@@ -2529,7 +3273,7 @@ class ToolTips(CommonTip):
         """ Move window as mouse moves"""
         if self.menu_tuple:
             return  # Dropdown Menus don't have normal widget width or height
-        # s = start, g = geometry, m = mouse, x = x-axis, y = y-axis
+        # s = start, g = self.geometry, m = mouse, x = x-axis, y = y-axis
         sgx, sgy = self.window_geom.split('+')[1:3]
         smx, smy = self.window_mouse_xy[0:2]
         cmx, cmy = self.current_mouse_xy[0:2]

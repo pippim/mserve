@@ -10,6 +10,7 @@ Description: mserve - Music Server - SQLite3 Interface
 from __future__ import print_function  # Must be first import
 from __future__ import with_statement  # Error handling for file opens
 # from __future__ import unicode_literals  # Not needed.
+import copy
 import warnings  # 'warnings' advises which commands aren't supported
 warnings.simplefilter('default')  # in future Python versions.
 
@@ -2036,21 +2037,40 @@ class Config:
         :param sql_key: can be a list or tuple of four values """
         target = self.get_sql(sql_key)
         if target:  # If not empty list, then found in database
-            #print("target:", target)
-            # json.loads() fails but strangely isn't required?
-            #return json.loads(target)
-            return target
+
+            # sql_key = [self.cfg_name, 'sql_treeview', 'dict_treeview', 'custom']
+            '''
+                If last 3 variables match then OrderedDict must be rebuild  
+            '''
+            key = list(sql_key)
+            if key[1:4] == ['sql_treeview', 'dict_treeview', 'custom']:
+                return self.convert_json_to_ordered(target)
+            else:
+                return target
 
         # SQL row doesn't exist in database so return defaults
         tup_key = self.make_key(sql_key)  # Convert list to tuple
         target = self.defaults.get(tup_key, None)
-        if target:
-            return target
-        
-        print("sql.py - Config.get_cfg(): sql_key NOT FOUND in defaults:\n\t")
-        print(sql_key)
-        toolkit.print_trace()
-        exit()
+
+        if target is None:
+            print("sql.py - Config.get_cfg(): sql_key NOT FOUND in defaults:\n\t")
+            print(sql_key)
+            toolkit.print_trace()
+            exit()
+
+        return target
+
+    @staticmethod
+    def convert_json_to_ordered(unordered_dicts):
+        """ json.dumps() doesn't save ordered dicts in order. """
+        sample_list = music_treeview()
+        sample_dict = sample_list[0]  # ordered key/value pairs
+        ordered_dicts = []
+        for unordered in unordered_dicts:
+            ordered = copy.deepcopy(sample_dict)
+            ordered.update(unordered)
+            ordered_dicts.append(ordered)
+        return ordered_dicts
 
     def check_cfg(self, sql_key):
         """ Check if REAL configuration exists. The get_cfg() method will
@@ -2762,7 +2782,7 @@ class PrettyMusic:
         self.part_start = [0]  # First heading starts at field #0
 
         # List of part section headings at part_start[] list above
-        self.part_names = ['SQL and Operating System Information',
+        self.part_names = ['SQL and OS Info (at first encounter!)',
                            'SQL Metadata Subset (more when song playing)',
                            'Lyrics score (usually after Webscraping)',
                            'History Time - Row Number       | Type | Action' +
@@ -2931,7 +2951,7 @@ class PrettyHistory:
         """
 
         self.calc = calc  # Calculated fields such as delete_on
-        self.dict = OrderedDict()  # Python 2.7 version not needed in 3.7
+        self.dict = OrderedDict()
         self.scrollbox = None  # custom scrollbox for display
         self.search = None  # search text
 
@@ -2940,10 +2960,10 @@ class PrettyHistory:
 
         # List of part section headings at part_start[] list above
         self.part_names = [  # List of parts each colored separately
-            'SQL Information', 'Time', 'History Category',
+            'SQL Information', 'Time', 'Timestamp', 'History Category',
             'Source and Target Data', 'Processing Details']
         self.part_color = [  # Colors in order of parts
-            'red', 'blue', 'green', 'red', 'blue']
+            'red', 'blue', 'green', 'red', 'blue', 'green']
 
 
         # Get Music Table row, remove commas
@@ -2971,6 +2991,12 @@ class PrettyHistory:
         self.dict['System Time'] = fmt_time.strftime("%c")
 
         self.part_start.append(len(self.dict))
+        self.dict['Human Time '] = sql_format_date(d['Timestamp'])
+        self.dict['Time in seconds '] = sql_format_value(d['Timestamp'])
+        fmt_time = datetime.datetime.fromtimestamp(d['Timestamp'])
+        self.dict['System Time '] = fmt_time.strftime("%c")
+
+        self.part_start.append(len(self.dict))
         self.dict['Record Type'] = sql_format_value(d['Type'])
         self.dict['Action'] = sql_format_value(d['Action'])
 
@@ -2984,6 +3010,7 @@ class PrettyHistory:
         self.dict['Count'] = sql_format_int(d['Count'])
         self.dict['Comments'] = sql_format_value(d['Comments'])
         self.dict['Seconds'] = sql_format_value(d['Seconds'])
+        self.dict['User'] = sql_format_value(d['User'])  # 2024-03-29 not appearing?
 
         if self.calc is not None:
             self.calc(self.dict)  # Call external function passing our dict
@@ -3081,6 +3108,9 @@ class PrettyMeta:
 
 def sql_format_value(value):
     """ Format variable based on data dictionary """
+    if value is None:
+        return None  # Do we want to return empty string instead?
+
     try:
         formatted = str(value)  # Convert from int
     except UnicodeEncodeError:
@@ -3125,7 +3155,7 @@ def tkinter_display(pretty):
         Requires ordered dict and optional lists specifying sections
         (parts) the part names and part colors for key names.
 
-        IDENTICAL function in ~/bserve/gmail_api.py
+        IDENTICAL function in ~/bserve/gmail_api.py (bserve has own sql.py)
 
     """
 
@@ -3152,8 +3182,15 @@ def tkinter_display(pretty):
 
         # Insert current key and value into text widget
         # TclError: character U+1f913 is above the range (U+0000-U+FFFF) allowed by Tcl
-        pretty.scrollbox.insert("end", u"\t" + key + u":\t" +
-                                pretty.dict[key] + u"\n", u"margin")
+        try:
+            value = pretty.dict[key]
+            if value is None:
+                value = "None"
+            pretty.scrollbox.insert("end", u"\t" + key + u":\t" +
+                                    value + u"\n", u"margin")
+        except TypeError:  # 2024-03-30
+            print("sql.py tkinter_display() pretty.scrollbox.insert",
+                  "TypeError: key:", key)
 
         pretty.scrollbox.highlight_pattern(key + u':', curr_color)
         ''' Hoping | isn't used often, highlight in yellow for field separator '''
@@ -3254,20 +3291,20 @@ def music_treeview():
       OrderedDict([
         ("column", "seconds"), ("heading", "Seconds"), ("sql_table", "Music"),
         ("var_name", "Seconds"), ("select_order", 0), ("unselect_order", 13),
-        ("key", False), ("anchor", "w"), ("instance", "str"), ("format", None),
+        ("key", False), ("anchor", "e"), ("instance", "str"), ("format", None),
         ("width", 80), ("minwidth", 50), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "duration"), ("heading", "Duration"), ("sql_table", "Music"),
         ("var_name", "Duration"), ("select_order", 0), ("unselect_order", 14),
-        ("key", False), ("anchor", "w"), ("instance", "str"), ("format", None),
+        ("key", False), ("anchor", "center"), ("instance", "str"), ("format", None),
         ("width", 80), ("minwidth", 50), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "play_count"), ("heading", "Play Count"), ("sql_table", "Music"),
         ("var_name", "PlayCount"), ("select_order", 0), ("unselect_order", 15),
-        ("key", False), ("anchor", "w"), ("instance", "int"), ("format", "{:,}"),
-        ("width", 80), ("minwidth", 50), ("stretch", 1)]),
+        ("key", False), ("anchor", "center"), ("instance", "int"), ("format", "{:,}"),
+        ("width", 70), ("minwidth", 50), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "track_number"), ("heading", "Track"), ("sql_table", "Music"),

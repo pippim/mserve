@@ -406,7 +406,7 @@ def make_m_cfg():
     cfg.append(make_dict(m, None, "os"))
     cfg.append(make_dict(m, "g", "global_variables", "pippim.com"))
     cfg.append(make_dict(m, "img", "image", "pippim.com"))
-    cfg.append(make_dict(m, "mon", "monitor", "pippim.com"))
+    cfg.append(make_dict(m, "mon", "monitor", "pippim.com"))  # only place as mon
     cfg.append(make_dict(m, None, "mserve", "pippim.com"))
     # Modules not imported. Add here for statistics.
     cfg.append(make_dict(m, None, "m", "pippim.com"))  # 'm' for stats
@@ -684,7 +684,7 @@ def make_img_cfg():
     cfg.append(make_dict(m, "namedtuple", "collections"))
     cfg.append(make_dict(m, None, "x11", "pippim.com"))  # Under review
     cfg.append(make_dict(m, "ext", "external", "pippim.com"))
-    cfg.append(make_dict(m, None, "monitor", "pippim.com"))
+    cfg.append(make_dict(m, None, "monitor", "pippim.com"))  # Not "as mon"
     return cfg
 
 
@@ -746,7 +746,7 @@ def make_web_cfg():
     # Pippim modules
     cfg.append(make_dict(m, "g", "global_variables", "pippim.com"))
     cfg.append(make_dict(m, "ext", "external", "pippim.com"))
-    cfg.append(make_dict(m, None, "monitor", "pippim.com"))
+    cfg.append(make_dict(m, None, "monitor", "pippim.com"))  # Not "as mon"
     cfg.append(make_dict(m, None, "sql", "pippim.com"))
     cfg.append(make_dict(m, None, "toolkit", "pippim.com"))
     cfg.append(make_dict(m, None, "message", "pippim.com"))
@@ -802,7 +802,7 @@ def make_encoding_cfg():
     cfg.append(make_dict(m, "lc", "location", "pippim.com"))
     cfg.append(make_dict(m, "ext", "external", "pippim.com"))
     cfg.append(make_dict(m, None, "toolkit", "pippim.com"))
-    cfg.append(make_dict(m, None, "monitor", "pippim.com"))
+    cfg.append(make_dict(m, None, "monitor", "pippim.com"))  # Not "as mon"
     cfg.append(make_dict(m, None, "message", "pippim.com"))
     cfg.append(make_dict(m, "img", "image", "pippim.com"))
     cfg.append(make_dict(m, "tmf", "timefmt", "pippim.com"))

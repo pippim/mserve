@@ -162,22 +162,33 @@ def get_mouse_coordinates():
 
 class DelayedTextBox:
     """ Delay opening text box for short running process.
-        Don't display every line for long running process. """
+        Don't display every line for long running process.
+        2024-03-27 change frame_rate from 30 to 3 (was too much lag)
+                   add thread & get_thread to update_idletasks
+    """
 
     def __init__(self, title="Status", toplevel=None, width=600, height=400,
-                 startup_delay=2, frame_rate=30):
+                 startup_delay=1, frame_rate=30, print_old=False,
+                 thread=None, get_thread=None, fast_thread=None,
+                 win_grp=None):
 
         self.title = title
         self.toplevel = toplevel
         self.width = width
         self.height = height
+        self.print_old = print_old
+        self.refresh_thread = thread  # Normal way
+        self.fast_thread = fast_thread  # no Tk_after
+        if get_thread:
+            self.refresh_thread = get_thread()  # thread passed is get_refresh_thread
+        self.win_grp = win_grp  # Window Grouping Class
 
         # Current time + startup delay is when we mount our text box
         self.mount_time = time.time() + float(startup_delay)
         self.update_interval = 1.0 / float(frame_rate)
         self.next_update = self.mount_time  # When we will mount textbox
         self.mounted = False  # Is window created & textbox mounted yet?
-        self.textbox = None  # The Text box instance
+        self.textbox = None  # The Textbox instance
         self.old_lines = []  # Lines that were not displayed
         self.line_cnt = 0  # Message lines encountered so far
         self.display_cnt = 0  # Message lines displayed so far
@@ -215,12 +226,22 @@ class DelayedTextBox:
                 #print("Mount DTB:", ext.t(time.time()))
                 #print("=" * 80)
                 self.mounted = True         # Signal that Textbox is mounted
+                if self.win_grp:
+                    # Used for Toolkit ChildWindow().register_child
+                    self.win_grp.register_child('dtb', self.msg_top)
                 
                 # turn on text box editing "normal" mode, to insert lines
                 self.textbox.configure(state="normal")
-                for old_line in self.old_lines: 
-                    # Loop through suppressed lines and insert all.
-                    self.textbox.insert(tk.END, old_line + '\n')
+                # 2024-03-27 No point showing all old lines. Wastes time and
+                # it's inaccurate because default frame rate for new liens is
+                # 30 fps
+                if self.print_old:
+                    for old_line in self.old_lines: 
+                        # Loop through suppressed lines and insert all.
+                        self.textbox.insert(tk.END, old_line + '\n')
+                elif self.old_lines:
+                    # Print first line only
+                    self.textbox.insert(tk.END, self.old_lines[0] + '\n')
 
                 # turn off text box for editing, cannot change text
                 self.textbox.configure(state="disabled")
@@ -231,7 +252,7 @@ class DelayedTextBox:
             return False
 
         if now > self.next_update:
-            # Displaying every line slows down program. Honor frame rate.
+            # Displaying every line slows down program. Use frame rate interval.
             self.textbox.configure(state="normal")
             self.textbox.insert(tk.END, msg_line + '\n')
             self.textbox.configure(state="disabled")
@@ -239,6 +260,10 @@ class DelayedTextBox:
             self.textbox.update()           # Is this necessary? CONFIRMED YES
             self.display_cnt += 1           # Message lines displayed so far
             self.next_update = now + self.update_interval
+            if self.refresh_thread:
+                self.refresh_thread()
+            elif self.fast_thread:
+                self.fast_thread(tk_after=False)
             return True                     # We updated text box
 
         # TODO: 100 messages dropped from gmail api because it is
@@ -246,12 +271,15 @@ class DelayedTextBox:
         return False
 
     def close(self):
-        """ Close Delayed Text Box """
+        """ Close Delayed Textbox """
         # print('DelayedTextBox lines in:',self.line_cnt,'out:',self.display_cnt)
         #print("Close DTB:", ext.t(time.time()), "line_cnt:", self.line_cnt,
         #      "display_cnt:", self.display_cnt, "old lines:", len(self.old_lines))
         #print("=" * 80)
         if self.mounted:                    # Is textbox mounted yet?
+            if self.win_grp:
+                # Used for Toolkit ChildWindow().register_child
+                self.win_grp.unregister_child(self.msg_top)
             self.msg_top.destroy()
             self.msg_top = None  # Extra insurance
             self.mounted = False
@@ -692,7 +720,7 @@ class AskString(simpledialog.Dialog, AskCommonSelf):
     """ Prepends "\nInput:" to text passed.
         Appends Entry field after "Input:"
         Allows text to be highlighted and copied to clipboard with CTRL+C.
-        Blocks other windows from stealing focus
+        Blocks other windows from stealing focus (Play top buttons unresponsive!)
     """
 
     def __init__(self, parent, title=None, text=None, confirm='no',
