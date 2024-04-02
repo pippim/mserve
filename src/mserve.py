@@ -5764,7 +5764,8 @@ Call search.py when these control keys occur
             sql_type=sql_type, name=name, force_close=close)
 
         ''' Treeview Left Click - Drag Column Headings or Popup menu on row '''
-        toolkit.MoveTreeviewColumn(toplevel, dd_view.tree)
+        toolkit.MoveTreeviewColumn(toplevel, dd_view.tree, 
+                                   apply_callback=dd_view.close_common_windows)
         #                           row_release=right_click)  # 2024-03-26
         # Remove row_release feature.
 
@@ -5950,9 +5951,9 @@ Call search.py when these control keys occur
                 - Change window colors
         """
 
-        if dd_view == self.lcs_view:
-            print("View SQL Location Heading right click has no support.")
-            return
+        #if dd_view == self.lcs_view:
+        #    print("View SQL Location Heading right click has no support.")
+        #    return
 
         # TODO: Lock out all View SQL Table toplevel windows with focus in to come
         # back to this window and the active configure window.
@@ -5969,14 +5970,13 @@ Call search.py when these control keys occur
                          command=lambda: self.show_sql_column_details(
                              dd_view, title, column_name, x, y))
         menu.add_command(label="Rename column heading", font=(None, g.MON_FONT),
-                         command=lambda: self.show_sql_rename_heading(dd_view,
-                                                                      column_name))
+                         command=lambda: dd_view.rename_column(column_name, x, y))
         menu.add_separator()
-        menu.add_command(label="Change column order", font=(None, g.MON_FONT),
-                         command=lambda: dd_view.column_order(column_name, x, y))
+        menu.add_command(label="Shift column position", font=(None, g.MON_FONT),
+                         command=lambda: dd_view.move_column(column_name, x, y))
         menu.add_command(label="Remove column from view", font=(None, g.MON_FONT),
                          command=lambda: dd_view.delete_column(column_name, x, y))
-        menu.add_command(label="Add new column to view", font=(None, g.MON_FONT),
+        menu.add_command(label="Insert column into view", font=(None, g.MON_FONT),
                          command=lambda: dd_view.insert_column(column_name, x, y))
         menu.add_separator()
         menu.add_command(label="Change window colors", font=(None, g.MON_FONT),
@@ -6006,7 +6006,10 @@ Call search.py when these control keys occur
         sql.tkinter_display(view_column)  # Populate scrollbox
 
     def show_sql_rename_heading(self, dd_view, column_name):
-        """ Rename column heading """
+        """
+            NO LONGER USED as of 2024-04-01
+            Rename column heading
+        """
         column_dict = toolkit.get_dict_column(column_name, dd_view.tree_dict)
         default_string = column_dict['heading']
         title = "Rename Column Heading"
@@ -6031,8 +6034,9 @@ Call search.py when these control keys occur
         """ Remove View SQL Table popup treeview heading menu """
         menu.unpost()
         if self.view == self.lcs_view:
-            print("View SQL Location Table right-click",
-                  "Treeview Heading Popup Menu closed")
+            #print("View SQL Location Table right-click",
+            #      "Treeview Heading Popup Menu closed")
+            pass
 
         # TODO: Unlock all View SQL Table toplevel windows.
 

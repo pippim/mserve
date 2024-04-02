@@ -738,13 +738,31 @@ class ChildWindows:
         _who = self.who + "destroy_all():"
         #print(_who, "self.window_list:", self.window_list)
         for win_dict in self.window_list:
-            window = win_dict['widget']
-            if tt:
-                if tt.check(window):
-                    tt.close(window)
-            window.destroy()
+            if self.destroy_by_key(win_dict['key'], tt):
+                pass
+            else:
+                print("\n" + _who + "Key won't die:", win_dict['key'])
 
-        self.window_list = []
+        self.window_list = []  # Should be empty now
+
+    def destroy_by_key(self, key, tt=None):
+        """ When caller doesn't know the window widgets at close time """
+        if not len(self.window_list):
+            return
+
+        _who = self.who + "destroy_by_key():"
+        #print(_who, "self.window_list:", self.window_list)
+        for i, win_dict in enumerate(self.window_list):
+            if win_dict['key'] == key:
+                window = win_dict['widget']
+                if tt:
+                    if tt.check(window):
+                        tt.close(window)
+                window.destroy()
+                self.unregister_child(window)  # Extra checking
+                return True
+
+        return False
 
     def key_for_widget(self, widget):
         """ When caller doesn't know the 'key' get it with window widget 
@@ -886,6 +904,7 @@ class DictTreeview:
         self.show = show                    # 'tree' or 'headings'
         self.attached = OrderedDict()       # Rows attached, detached, skipped
         self.highlight_callback = highlight_callback
+        self.colors = colors                # Dictionary colors, edges, etc.
         self.sql_type = sql_type            # E.G. "sql_music"
         self.cfg_name = "cfg_" + sql_type
         self.name = name                    # E.G. "SQL Music Table"
@@ -898,6 +917,7 @@ class DictTreeview:
 
         # ChildWindows() moves children with toplevel and keeps children on top.
         self.win_grp = ChildWindows(self.toplevel)
+        self.who = "toolkit.py DictTreeview()."
         self.hdr_top = None                 # To display column details
         self.hdr_top_is_active = None       # hdr also used to display sql row
         self.scrollbox = None               # CustomScrolltext w/patterns
@@ -908,7 +928,7 @@ class DictTreeview:
         self.hcd_top_is_active = None       # Header Column details
         self.hic_top_is_active = None       # Header insert column
         self.hdc_top_is_active = None       # Header delete column
-        self.hco_top_is_active = None       # Header change column order
+        self.hmc_top_is_active = None       # Header change column order
         self.hrc_top_is_active = None       # Header rename column
 
         # 2024-03-27 last_row will be phased out. use tree.has_tag() instead.
@@ -1161,7 +1181,7 @@ class DictTreeview:
         self.hcd_top_is_active = None       # Header Column details
         self.hic_top_is_active = None       # Header insert column
         self.hdc_top_is_active = None       # Header delete column
-        self.hco_top_is_active = None       # Header change column order
+        self.hmc_top_is_active = None       # Header change column order
         self.hrc_top_is_active = None       # Header rename column
 
         # Deep copy starting list of column dictionaries
@@ -1308,7 +1328,10 @@ class DictTreeview:
             tv_tag_remove(self.tree, iid, "menu_sel")
 
     def rename_column_heading(self, column_name, new):
-        """ Called from show_sql_common_click() -> view_sql_heading_menu()
+        """ 
+            NO LONGER USED as of 2024-04-01
+
+            Called from show_sql_common_click() -> view_sql_heading_menu()
 
             Display current column heading and prompt for new name.
 
@@ -1327,6 +1350,101 @@ class DictTreeview:
         sql_key = [self.cfg_name, 'sql_treeview', 'dict_treeview', 'custom']
         self.cfg.insert_update_cfg(sql_key, self.name, self.tree_dict)
 
+    def rename_column(self, column_name, x, y):
+        """ Called from mserve.py view_sql_button_3() -> view_sql_heading_menu()
+
+            Right click (button-3) performed on tkinter column heading.
+
+            Prompt to delete the current column from view.
+
+            :param column_name: tkinter column name from displaycolumns.
+            :param x: x position 24 pixels left of mouse pointer.
+            :param y: y position 24 pixels below mouse pointer.
+        """
+        if self.hrc_top_is_active:
+            return
+
+        self.hrc_top_is_active = True
+        top = self.make_common_top(
+            'rename column', 'Rename column heading', 680, 390, x, y)
+
+        last_heading = []  # pycharm likes definition higher up
+        column_dict, combo_list, column_list, heading_list, ndx = \
+            self.make_common_data(column_name)
+        last_heading.append(column_dict['heading'])  # Pipe to/from combo_update
+
+        def combo_update(*_args):
+            """ New column selected.
+                Remove previous highlight and apply new highlight.
+            """
+            # Must rebuild heading_list
+            new_heading = heading_list[combo_list.index(combo_col_var.get())]
+            self.update_common_bottom(
+                scrollbox, heading_list, last_heading[0], new_heading)
+            last_heading[0] = new_heading
+            entry_text.set(new_heading)
+
+        def entry_update(*_args):
+            """ New column selected.
+                Remove previous highlight and apply new highlight.
+            """
+            new_heading = entry_text.get()
+            heading_list[combo_list.index(combo_col_var.get())] = new_heading
+            self.update_common_bottom(
+                scrollbox, heading_list, last_heading[0], new_heading)
+            last_heading[0] = new_heading
+
+        def close(*_args):
+            """ close the window """
+            if not self.hrc_top_is_active:
+                return
+
+            self.win_grp.unregister_child(top)
+            # self.tt.close(hrc_top)  # Close tooltips (There aren't any yet)
+            self.hrc_top_is_active = False
+            top.destroy()
+
+        def apply_rename():
+            """ Delete current column from treeview. """
+            if not self.hrc_top_is_active:
+                return
+
+            position = combo_list.index(combo_col_var.get())
+            column = self.tree_dict['displaycolumns'][position]
+            new_heading = heading_list[combo_list.index(combo_col_var.get())]
+            self.tree.heading(column, text=new_heading)
+            d = get_dict_column(column, self.tree_dict)
+            d['heading'] = new_heading
+            save_dict_column(column, self.tree_dict, d)
+
+            close()  # Close our window & save changes to self.dict_tree
+            self.close_common_windows()  # Other common windows must close
+
+        ''' frame - Holds combox, spinbox, custom scrolledtext and buttons '''
+        # Rows: 10 Combobox, 20 Spinbox, 30/50 separators, 40 displaycolumns
+        # Row 60 Buttons - Apply & Cancel (plus callback for combobox update)
+
+        # Combobox selects which column to move/insert/delete/rename
+        frame, combo_col, combo_col_var = self.make_common_frame(
+            top, 'rename', combo_list, ndx)
+
+        text = "New heading:"
+        tk.Label(frame, text=text, bg="WhiteSmoke", pady=20).\
+            grid(column=0, row=20, sticky=tk.W)
+
+        entry_text = tk.StringVar()
+        entry = tk.Entry(frame, textvariable=entry_text)  # self.search_text
+        entry.grid(column=1, row=20, sticky=tk.W)
+        entry_text.set(heading_list[ndx])
+        entry.focus_set()
+        entry_text.trace('w', entry_update)  # realtime changes to text
+
+        scrollbox = self.make_common_bottom(
+            top, frame, combo_col, combo_update, apply_rename, close)
+
+        combo_update()  # Set initial values displaycolumns scrolled textbox
+        top.update_idletasks()
+
     def insert_column(self, column_name, x, y):
         """ Called from mserve.py view_sql_button_3() -> view_sql_heading_menu()
 
@@ -1342,90 +1460,73 @@ class DictTreeview:
         """
         if self.hic_top_is_active:
             return
-
-        title = self.name + " - Add new column to view - mserve"
-        hic_top = tk.Toplevel()  # New window for data dictionary display.
         self.hic_top_is_active = True
+        top = self.make_common_top(
+            'insert column', 'Insert column into view', 665, 390, x, y)
 
-        hic_top.minsize(width=g.BTN_WID * 10, height=g.PANEL_HGT * 4)
-        hic_top.geometry('%dx%d+%d+%d' % (665, 200, x, y))
-        hic_top.title(title)
-        hic_top.configure(background="WhiteSmoke")
-        hic_top.columnconfigure(0, weight=1)
-        hic_top.rowconfigure(0, weight=1)
+        _who = self.who + "insert_column(): "
 
-        ''' Register child window for raising & moving with parent '''
-        self.win_grp.register_child('insert column', hic_top)
-
-        column_dict = get_dict_column(column_name, self.tree_dict)
-        highlight_column = column_dict['heading']
-        # Get real column width, heading, etc. from self.tree.column / .heading
-        unselected_list = []
+        column_dict, combo_list, column_list, heading_list, ndx = \
+            self.make_common_data(column_name)
+        # Throw away combo_list because it has selected (displaycolumns)
+        unselected_list = []  # d['column'] list
+        full_list = []  # Full dictionary list
         combo_list = []
-        before_after = ["Before '" + highlight_column + "' column",
-                        "After '" + highlight_column + "' column"]
+        last_heading = []  # Need mutable list to pass between spin_update()
 
         # Find all unselected columns
         for d in self.tree_dict:
             if d['select_order'] == 0:
-                unselected_list.append(d)  # the keys
-                # Because 'heading' can be renamed, user can create duplicates
+                unselected_list.append(d['column'])  # the keys
                 combo_list.append(d['heading'] + " - (" + d['column'] + ")")
+                full_list.append(d)
 
-        ''' frame1 - Holds combox text entry subclasses '''
-        # ttk.Frame doesn't allow bg color, only style = 
-        frame1 = tk.Frame(hic_top, borderwidth=18,
-                          relief=tk.FLAT, bg="WhiteSmoke")
-        frame1.grid(column=0, row=0, sticky=tk.NSEW)
+        if len(combo_list) == 0:
+            print("\n" + _who + "Need message for empty unselected_list")
+            self.close_common_windows()
+            return
 
-        # Credit: https://stackoverflow.com/a/72195664/6929343
-        tk.Label(frame1, text="Column to add:", bg="WhiteSmoke", padx=10, pady=10).\
-            grid(column=0, row=0)
-        combo_col_var = tk.StringVar()
-        # https://stackoverflow.com/a/46507359/6929343
-        combo_col_keep = combo_col_var.get()  # Keep from garbage collector
-        combo_col = ttk.Combobox(frame1, textvariable=combo_col_keep, 
-                                 state='readonly', width=30)
-        combo_col['values'] = combo_list
-        combo_col.current(0)
-        combo_col.grid(column=1, row=0, padx=20)
+        last_heading.append(full_list[0]['heading'])  # Pipe to/from spin_update
 
-        tk.Label(frame1, text="Insert position:", bg="WhiteSmoke", padx=10, pady=10).\
-            grid(column=0, row=1)
-        combo_pos_var = tk.StringVar()
-        combo_pos_keep = combo_pos_var.get()
-        combo_pos = ttk.Combobox(frame1, textvariable=combo_pos_keep, 
-                                 state='readonly', width=30)
-        combo_pos['values'] = before_after
-        combo_pos.current(0)
-        combo_pos.grid(column=1, row=1, padx=20)
+        def spin_update(*_args):
+            """ Spin buttons clicked or new column selected.
+                Remove previous highlight and apply new highlight.
+            """
+            unselected_ndx = combo_list.index(combo_col_var.get())
+            new_name = full_list[unselected_ndx]['heading']
+            new_ndx = spin_pos_var.get() - 1
+
+            disp_list = list(self.tree['displaycolumns'])  # Build from scratch
+            disp_list.insert(new_ndx, new_name)
+
+            # Rebuild Columns display custom scrolledtext w/patterns
+            self.update_common_bottom(
+                scrollbox, disp_list, last_heading[0], new_name, 'Green')
+            last_heading[0] = new_name
 
         def close(*_args):
             """ close the window """
             if not self.hic_top_is_active:
                 return
-            self.win_grp.unregister_child(hic_top)
-            # self.tt.close(hic_top)  # Close tooltips (There aren't any yet)
+            self.win_grp.unregister_child(top)
+            # self.tt.close(top)  # Close tooltips (There aren't any yet)
             self.hic_top_is_active = False
-            hic_top.destroy()
+            top.destroy()
 
-        def insert_apply():
+        def apply_insert():
             """ Apply combox boxes. """
             if not self.hic_top_is_active:
                 return
 
             combo_col_new = combo_col.get()
-            combo_pos_new = combo_pos.get()
+            pos_new = spin_pos_var.get()
 
             new_ndx = combo_list.index(combo_col_new)
-            new_column = unselected_list[new_ndx]['column']
+            new_column = unselected_list[new_ndx]  # No longer dictionaries
 
             # New displaycolumns with inserted column
             displaycolumns = list(self.tree['displaycolumns'])
-            position = displaycolumns.index(column_name)  # parameter passed
-            if "After" in combo_pos_new:
-                position += 1
-            displaycolumns.insert(position, str(new_column))  # convert from unicode
+            displaycolumns.insert(pos_new-1, str(new_column))  # convert from unicode
 
             # Update treeview with new columns. These are reread by force_close()
             select_dict_columns(displaycolumns, self.tree_dict)
@@ -1441,18 +1542,23 @@ class DictTreeview:
             close()  # Close our window
             self.force_close()  # Close toplevel window
 
-        ttk.Separator(frame1, orient='horizontal').\
-            grid(column=0, row=2, columnspan=2, sticky=tk.EW)
-        frame1.grid_rowconfigure(2, minsize=30)
+        ''' frame - Holds combox, spinbox, custom scrolledtext and buttons '''
+        # Rows: 10 Combobox, 20 Spinbox, 30/50 separators, 40 displaycolumns
+        # Row 60 Buttons - Apply & Cancel (plus callback for combobox update)
 
-        button1 = tk.Button(frame1, text="Apply", pady=5, command=insert_apply)
-        button1.grid(column=0, row=3)
-        button2 = tk.Button(frame1, text="Cancel", pady=5, command=close)
-        button2.grid(column=1, row=3)
+        # Combobox selects which column to move/insert/delete/rename
+        frame, combo_col, combo_col_var = self.make_common_frame(
+            top, 'insert', combo_list, 0)  # Select first entry to insert new
 
-        ''' Bind <Escape> to close window '''
-        hic_top.bind("<Escape>", close)
-        hic_top.protocol("WM_DELETE_WINDOW", close)
+        # Spinbox to bump up/bump down selected column's order in treeview
+        spin_pos, spin_pos_var = self.make_common_spinbox_pos(
+            frame, len(heading_list)+1, spin_update, ndx+1)
+
+        scrollbox = self.make_common_bottom(
+            top, frame, combo_col, spin_update, apply_insert, close)
+
+        spin_update()  # Set initial values displaycolumns scrolled textbox
+        top.update_idletasks()
 
     def delete_column(self, column_name, x, y):
         """ Called from mserve.py view_sql_button_3() -> view_sql_heading_menu()
@@ -1468,54 +1574,42 @@ class DictTreeview:
         if self.hdc_top_is_active:
             return
 
-        title = self.name + " - Remove column from view - mserve"
-        hdc_top = tk.Toplevel()
         self.hdc_top_is_active = True
+        top = self.make_common_top(
+            'delete column', 'Remove column from view', 680, 390, x, y)
 
-        hdc_top.minsize(width=g.BTN_WID * 10, height=g.PANEL_HGT * 4)
-        hdc_top.geometry('%dx%d+%d+%d' % (680, 290, x, y))
-        hdc_top.title(title)
-        hdc_top.configure(background="WhiteSmoke")
-        hdc_top.columnconfigure(0, weight=1)
-        hdc_top.rowconfigure(0, weight=1)
+        last_heading = []  # pycharm likes definition higher up
+        column_dict, combo_list, column_list, heading_list, ndx = \
+            self.make_common_data(column_name)
+        last_heading.append(column_dict['heading'])  # Pipe to/from combo_update
 
-        ''' Register child window for raising & moving with parent '''
-        self.win_grp.register_child('delete column', hdc_top)
-
-        column_dict = get_dict_column(column_name, self.tree_dict)
-        highlight_column = column_dict['heading']
-
-        ''' frame1 - Holds text '''
-        frame1 = tk.Frame(hdc_top, borderwidth=18,
-                          relief=tk.FLAT, bg="WhiteSmoke")
-        frame1.grid(column=0, row=0, sticky=tk.NSEW)
-
-        text = "Removing some columns like 'Lyrics' will "
-        text += "disable some buttons.\n\n"
-        text += "After clicking 'Apply' the View SQL window "
-        text += "will close.\n\n"
-        text += "Click 'Apply' to remove the column '" + highlight_column + "'.\n"
-        tk.Label(frame1, text=text, bg="WhiteSmoke", pady=20).\
-            grid(column=0, row=0)
+        def combo_update(*_args):
+            """ New column selected.
+                Remove previous highlight and apply new highlight.
+            """
+            new_heading = heading_list[combo_list.index(combo_col_var.get())]
+            self.update_common_bottom(
+                scrollbox, heading_list, last_heading[0], new_heading, 'Red')
+            last_heading[0] = new_heading
 
         def close(*_args):
             """ close the window """
             if not self.hdc_top_is_active:
                 return
 
-            self.win_grp.unregister_child(hdc_top)
+            self.win_grp.unregister_child(top)
             # self.tt.close(hdc_top)  # Close tooltips (There aren't any yet)
             self.hdc_top_is_active = False
-            hdc_top.destroy()
+            top.destroy()
 
-        def delete_apply():
+        def apply_delete():
             """ Delete current column from treeview. """
             if not self.hdc_top_is_active:
                 return
 
             # New displaycolumns with inserted column
             displaycolumns = list(self.tree['displaycolumns'])
-            position = displaycolumns.index(column_name)  # parameter passed
+            position = combo_list.index(combo_col_var.get())
             displaycolumns.remove(position)
 
             # Update treeview with new columns. These are reread by force_close()
@@ -1532,20 +1626,25 @@ class DictTreeview:
             close()  # Close our window
             self.force_close()  # Close toplevel window
 
-        ttk.Separator(frame1, orient='horizontal').\
-            grid(column=0, row=2, sticky=tk.EW)
-        frame1.grid_rowconfigure(2, minsize=30)
+        ''' frame - Holds combox, spinbox, custom scrolledtext and buttons '''
+        # Rows: 10 Combobox, 20 Spinbox, 30/50 separators, 40 displaycolumns
+        # Row 60 Buttons - Apply & Cancel (plus callback for combobox update)
 
-        button1 = tk.Button(frame1, text="Apply", padx=25, command=delete_apply)
-        button1.grid(column=0, row=3, ipadx=20, sticky=tk.W)
-        button2 = tk.Button(frame1, text="Cancel", padx=25, command=close)
-        button2.grid(column=0, row=3, ipadx=20, sticky=tk.E)
+        # Combobox selects which column to move/insert/delete/rename
+        frame, combo_col, combo_col_var = self.make_common_frame(
+            top, 'remove', combo_list, ndx)
 
-        ''' Bind <Escape> to close window '''
-        hdc_top.bind("<Escape>", close)
-        hdc_top.protocol("WM_DELETE_WINDOW", close)
+        text = "Some columns like 'Lyrics' are needed for search buttons."
+        tk.Label(frame, text=text, bg="WhiteSmoke", pady=20).\
+            grid(column=0, columnspan=2, row=20, sticky=tk.W)
 
-    def column_order(self, column_name, x, y):
+        scrollbox = self.make_common_bottom(
+            top, frame, combo_col, combo_update, apply_delete, close)
+
+        combo_update()  # Set initial values displaycolumns scrolled textbox
+        top.update_idletasks()
+
+    def move_column(self, column_name, x, y):
         """ Called from mserve.py view_sql_button_3() -> view_sql_heading_menu()
 
             Right click (button-3) performed on tkinter column heading.
@@ -1560,23 +1659,105 @@ class DictTreeview:
             :param x: x position 24 pixels left of mouse pointer.
             :param y: y position 24 pixels below mouse pointer.
         """
-        if self.hco_top_is_active:
+        if self.hmc_top_is_active:
             return
+        self.hmc_top_is_active = True
+        top = self.make_common_top(
+            'move column', 'Shift column position', 650, 390, x, y)
+        column_dict, combo_list, column_list, heading_list, ndx = \
+            self.make_common_data(column_name)
 
-        title = self.name + " - Change column order - mserve"
-        hco_top = tk.Toplevel()  # New window for data dictionary display.
-        self.hco_top_is_active = True
+        def spin_update(*_args):
+            """ Spin buttons clicked or new column selected.
+                Remove previous highlight and apply new highlight.
+            """
+            # Get old column index
+            #combo_col_new = combo_col.get()  # establish index in list
+            old_ndx = combo_list.index(combo_col.get())
+            heading = heading_list[old_ndx]  # pattern to unhighlight
 
-        hco_top.minsize(width=g.BTN_WID * 10, height=g.PANEL_HGT * 4)
-        hco_top.geometry('%dx%d+%d+%d' % (650, 390, x, y))
-        hco_top.title(title)
-        hco_top.configure(background="WhiteSmoke")
-        hco_top.columnconfigure(0, weight=1)
-        hco_top.rowconfigure(0, weight=1)
+            # get new column order (position) and set new index
+            #spin_new = spin_pos_var.get()
+            new_ndx = spin_pos_var.get() - 1
 
-        ''' Register child window for raising & moving with parent '''
-        self.win_grp.register_child('column order', hco_top)
+            # For Insert Column / Move Column
+            # Rearrange lists with new displaycolumns order
+            # credit: https://stackoverflow.com/a/33933500/6929343
+            combo_list.insert(new_ndx, combo_list.pop(old_ndx))
+            column_list.insert(new_ndx, column_list.pop(old_ndx))
+            heading_list.insert(new_ndx, heading_list.pop(old_ndx))
+            combo_col['values'] = combo_list
 
+            # Rebuild Columns display custom scrolledtext with standard colors
+            self.update_common_bottom(
+                scrollbox, heading_list, heading, heading_list[new_ndx])
+
+        def combo_update(*_args):
+            """ New column to move selected from combo box. Set spin position. """
+            combo_col_new = combo_col_var.get()  # establish index in list
+            new_ndx = combo_list.index(combo_col_new)
+            spin_pos_var.set(new_ndx+1)
+            spin_update()  # Highlight new column selected in columns display
+
+        def close(*_args):
+            """ close the window """
+            if not self.hmc_top_is_active:
+                return
+            combo_col.unbind('<<ComboboxSelected>>')
+            self.win_grp.unregister_child(top)
+            # self.tt.close(top)  # Close tooltips (There aren't any yet)
+            self.hmc_top_is_active = False
+            top.destroy()
+
+        def apply_move():
+            """ Apply changes and close child window (but not toplevel). """
+            if not self.hmc_top_is_active:
+                return
+
+            # Update treeview with displaycolumns.
+            self.tree['displaycolumns'] = column_list
+            select_dict_columns(column_list, self.tree_dict)
+            close()  # Close our window
+            self.close_common_windows()  # Other common windows must close
+
+        ''' frame - Holds combox, spinbox, custom scrolledtext and buttons '''
+        # Rows: 10 Combobox, 20 Spinbox, 30/50 separators, 40 displaycolumns
+        # Row 60 Buttons - Apply & Cancel (plus callback for combobox update)
+
+        # Combobox selects which column to move/insert/delete/rename
+        frame, combo_col, combo_col_var = self.make_common_frame(
+            top, 'move', combo_list, ndx)
+
+        # Spinbox to bump up/bump down selected column's order in treeview
+        spin_pos, spin_pos_var = self.make_common_spinbox_pos(
+            frame, len(heading_list), spin_update, ndx+1)
+
+        scrollbox = self.make_common_bottom(
+            top, frame, combo_col, combo_update, apply_move, close)
+
+        spin_update()  # Set initial values displaycolumns scrolled textbox
+        top.update_idletasks()
+
+    def make_common_top(self, key, method, w, h, x, y):
+        """ Make toplevel for insert/remove/move/rename columns """
+
+        top = tk.Toplevel()
+        top.geometry('%dx%d+%d+%d' % (w, h, x, y))
+        top.minsize(width=g.BTN_WID * 10, height=g.PANEL_HGT * 4)
+        title = self.name + " - " + method + " - mserve"
+        top.title(title)
+
+        top.columnconfigure(0, weight=1)
+        top.rowconfigure(0, weight=1)
+        top.configure(background="WhiteSmoke")  # Future user configuration
+        self.win_grp.register_child(key, top)  # Lifting & moving with parent
+
+        return top
+
+    def make_common_data(self, column_name):
+        """ Make data lists for insert/remove/move/rename columns """
+
+        # column_dict with d['column'], d['heading'], d['width'], etc.
         column_dict = get_dict_column(column_name, self.tree_dict)
 
         # Three synchronized lists
@@ -1585,135 +1766,158 @@ class DictTreeview:
         heading_list = []  # list of dictionary['Heading']
 
         # Build lists in displaycolumns order
-        for column in self.tree['displaycolumns']:  # don't use self.columns!
+        for i, column in enumerate(self.tree['displaycolumns']):
             d = get_dict_column(column, self.tree_dict)
             combo_list.append(d['heading'] + " - (" + column + ")")
-            column_list.append(d['column'])  # the keys
-            heading_list.append(d['heading'])  # the display names
+            column_list.append(d['column'])  # the keys (column_name)
+            heading_list.append(d['heading'])  # the display names ('Heading')
 
-        def spin_update(*_args):
-            """ Spin buttons clicked or new column selected.
-                Remove previous highlight and apply new highlight.
-            """
-            # Get old column index
-            combo_col_new = combo_col.get()  # establish index in list
-            old_ndx = combo_list.index(combo_col_new)
-            heading = heading_list[old_ndx]  # pattern to unhighlight
+        ndx = column_list.index(column_name)
+        if ndx is None:
+            print("Could not find column_name:", column_name, "in column_list below:")
+            print(column_list)
+            ndx = 0
 
-            spin_new = spin_pos_var.get()
-            new_ndx = spin_new - 1
+        return column_dict, combo_list, column_list, heading_list, ndx
 
-            # credit: https://stackoverflow.com/a/33933500/6929343
-            combo_list.insert(new_ndx, combo_list.pop(old_ndx))
-            column_list.insert(new_ndx, column_list.pop(old_ndx))
-            heading_list.insert(new_ndx, heading_list.pop(old_ndx))
-            combo_col['values'] = combo_list
+    @staticmethod
+    def make_common_frame(top, action, combo_list, ndx):
+        """ Make toplevel for insert/remove/move/rename columns """
 
-            scrollbox.unhighlight_pattern(heading, 'yellow')
-            scrollbox.unhighlight_pattern('|', 'red')  # deleting but un- anyway
-            text = '| ' + ' | '.join(heading_list) + ' |'
-            scrollbox.delete("1.0", "end")
-            scrollbox.insert("end", text)
-            scrollbox.highlight_pattern(heading_list[new_ndx], 'yellow')
-            scrollbox.highlight_pattern('|', 'red')  # Not really red
+        # Rows: 10 Combobox, 20 Spinbox, 30/50 separators, 40 displaycolumns
+        # Row 60 Buttons - Apply & Cancel (plus callback for combobox update)
 
-        def combo_update(*_args):
-            """ New column selected from combo box. Set spin position. """
-            combo_col_new = combo_col_var.get()  # establish index in list
-            new_ndx = combo_list.index(combo_col_new)
-            spin_pos_var.set(new_ndx+1)
-            spin_update()  # Highlight new column selected in columns display
+        # Combobox selects which column to move/insert/delete/rename
+        # frame1, combo_col, combo_col_var, ndx = make_common_frame(
+        #    top, 'move', combo_list, column_list/unselected_list, column_dict)
 
-        def close(*_args):
-            """ close the window """
-            if not self.hco_top_is_active:
-                return
-            combo_col.unbind('<<ComboboxSelected>>')
-            self.win_grp.unregister_child(hco_top)
-            # self.tt.close(hco_top)  # Close tooltips (There aren't any yet)
-            self.hco_top_is_active = False
-            hco_top.destroy()
-
-        def order_apply():
-            """ Apply changes and close child window (but not toplevel). """
-            if not self.hco_top_is_active:
-                return
-
-            # Update treeview with displaycolumns.
-            self.tree['displaycolumns'] = column_list
-            select_dict_columns(column_list, self.tree_dict)
-
-            # Set selected column headings text
-            #for d2 in self.tree_dict:
-            #    if d2['select_order'] > 0:
-            #        self.tree.heading(d2['column'], text=d2['heading'])
-
-            close()  # Close our window
-            # No need to close toplevel. Simply change displaycolumns
-            #self.force_close()  # Close toplevel window
-
-
-        ''' frame1 - Holds combox, spinbox, custom scrolledtext and buttons '''
         # ttk.Frame doesn't allow bg color, only style = 
-        frame1 = tk.Frame(hco_top, borderwidth=18,
-                          relief=tk.FLAT, bg="WhiteSmoke")
-        frame1.grid(column=0, row=0, sticky=tk.NSEW)
+        frame = tk.Frame(top, borderwidth=18,
+                         relief=tk.FLAT, bg="WhiteSmoke")
+        frame.grid(column=0, row=0, sticky=tk.NSEW)
 
-        # Combobox selects which column to move
-        tk.Label(frame1, text="Column to move:", bg="WhiteSmoke",
-                 padx=10, pady=10).grid(column=0, row=0)
+        # FUTURE: User configuration for colors
+        tk.Label(frame, text="Column to " + action + ":", bg="WhiteSmoke",
+                 padx=10, pady=10).grid(column=0, row=10, sticky=tk.W)
         combo_col_var = tk.StringVar()
-        combo_col = ttk.Combobox(frame1, textvariable=combo_col_var,
+        combo_col = ttk.Combobox(frame, textvariable=combo_col_var,
                                  state='readonly', width=30)
-        combo_col.grid(column=1, row=0)
+        combo_col.grid(column=1, row=10)
         combo_col['values'] = combo_list  # 'Heading' - (column name) ...
-        ndx = column_list.index(column_dict['column'])  # column_dict set in init
         combo_col.current(ndx)  # Current treeview column default entry
 
+        return frame, combo_col, combo_col_var
+
+    @staticmethod
+    def make_common_spinbox_pos(frame, to, callback, initial_value):
+        """ Make toplevel for insert/remove/move/rename columns """
+        # spin_pos, spin_pos_var = make_common_spinbox_pos(
+        #    frame1, to, callback, initial_value)
+
+        # Rows: 10 Combobox, 20 Spinbox, 30/50 separators, 40 displaycolumns
+        # Row 60 Buttons - Apply & Cancel (plus callback for combobox update)
+
         # Spinbox to bump up/bump down selected column's order in treeview
-        tk.Label(frame1, text="Column position:", bg="WhiteSmoke", padx=10, pady=10). \
-            grid(column=0, row=1, sticky=tk.W)
-        spin_pos_var = tk.IntVar()
-        spin_pos_var.set(ndx+1)
+        # Spinbox for Move Column and Insert Column only.
+
+        # Delete and Rename have NO Spinbox. In that place instead:
+        #   - Delete has warning about removing lyrics.
+        #   - Rename prompts for the new 'Heading'
+
+        tk.Label(frame, text="Column position:", bg="WhiteSmoke", padx=10, pady=10). \
+            grid(column=0, row=20, sticky=tk.W)
+        spin_pos_var = tk.IntVar(value=initial_value)
         spin_pos = tk.Spinbox(
-            frame1, from_=1, to=len(heading_list), increment=-1, width=3,
-            state='readonly', textvariable=spin_pos_var, command=spin_update)
-        spin_pos.grid(column=1, row=1, sticky=tk.W)
+            frame, from_=1, to=to, increment=-1, width=3,
+            state='readonly', textvariable=spin_pos_var, command=callback)
+        spin_pos.grid(column=1, row=20, sticky=tk.W)
+
+        return spin_pos, spin_pos_var
+
+    @staticmethod
+    def make_common_bottom(top, frame, combo_col, combo_func, apply_func, close_func):
+        """ Make bottom for insert/remove/move/rename columns """
+        # scrollbox = make_common_bottom(
+        #    top, frame, combo_col, combo_func, apply_func, close_func)
+        
+        # Rows: 10 Combobox, 20 Spinbox, 30/50 separators, 40 displaycolumns
+        # Row 60 Buttons - Apply & Cancel (plus callback for combobox update)
 
         # Separator around Columns display custom scrolled textbox
-        ttk.Separator(frame1, orient='horizontal').\
-            grid(column=0, row=2, columnspan=2, sticky=tk.EW)
-        frame1.grid_rowconfigure(2, minsize=30)
+        ttk.Separator(frame, orient='horizontal').\
+            grid(column=0, row=30, columnspan=2, sticky=tk.EW)
+        frame.grid_rowconfigure(30, minsize=30)
 
         # Columns displayed in order with current column highlighted
-        tk.Label(frame1, text="Columns display:", bg="WhiteSmoke",
-                 padx=10, pady=10, anchor=tk.W).grid(column=0, row=3)
+        # Highlight in yellow Move, Insert, Delete and Rename
+        tk.Label(frame, text="Columns displayed:", bg="WhiteSmoke", padx=10,
+                 pady=10, anchor=tk.W).grid(column=0, row=40, sticky=tk.W)
         scrollbox = CustomScrolledText(
-            frame1, state="normal", font=(None, g.MON_FONT), borderwidth=10,
+            frame, state="normal", font=(None, g.MON_FONT), borderwidth=10,
             pady=2, relief=tk.FLAT, wrap=tk.WORD)
-        scrollbox.grid(row=3, column=1, padx=3, pady=3, sticky=tk.NSEW)
-        tk.Grid.rowconfigure(frame1, 3, weight=1)  # spinbox row expands
-        tk.Grid.columnconfigure(frame1, 1, weight=1)  # column 2 expands
-        scrollbox.tag_config('yellow', background='Yellow')
-        scrollbox.tag_config('red', foreground='White', background="gray")
+        scrollbox.grid(row=40, column=1, padx=3, pady=3, sticky=tk.NSEW)
+        tk.Grid.rowconfigure(frame, 40, weight=1)  # spinbox row expands
+        tk.Grid.columnconfigure(frame, 1, weight=1)  # column 2 expands
+
+        scrollbox.tag_config('Red', foreground='White', background='Red')
+        scrollbox.tag_config('Gray', foreground='White', background='Gray')
+        scrollbox.tag_config('Green', foreground='White', background='Green')
+        scrollbox.tag_config('Yellow', background='Yellow')
 
         # Separator around Columns display custom scrolled textbox
-        ttk.Separator(frame1, orient='horizontal').\
-            grid(column=0, row=4, columnspan=2, sticky=tk.EW)
-        frame1.grid_rowconfigure(4, minsize=30)
+        ttk.Separator(frame, orient='horizontal').\
+            grid(column=0, row=50, columnspan=2, sticky=tk.EW)
+        frame.grid_rowconfigure(50, minsize=30)
 
         # Buttons to apply or close
-        button1 = tk.Button(frame1, text="Apply", pady=2, command=order_apply)
-        button1.grid(column=0, row=5)
-        button2 = tk.Button(frame1, text="Cancel", pady=2, command=close)
-        button2.grid(column=1, row=5)
+        # make_common_buttons(order_apply, close)
+        button1 = tk.Button(frame, text="Apply", pady=2, command=apply_func)
+        button1.grid(column=0, row=60)
+        button2 = tk.Button(frame, text="Cancel", pady=2, command=close_func)
+        button2.grid(column=1, row=60)
 
-        combo_col.bind('<<ComboboxSelected>>', combo_update)
-        spin_update()  # Set initial values in combobox and scrolled textbox
+        combo_col.bind('<<ComboboxSelected>>', combo_func)
+        #spin_update()  # Set initial values in combobox and scrolled textbox
 
         ''' Bind <Escape> to close window '''
-        hco_top.bind("<Escape>", close)
-        hco_top.protocol("WM_DELETE_WINDOW", close)
+        top.bind("<Escape>", close_func)
+        top.protocol("WM_DELETE_WINDOW", close_func)
+
+        return scrollbox
+
+    @staticmethod
+    def update_common_bottom(scrollbox, names, old, new, high_tag=None, sep_tag=None):
+        """ Update text for displaycolumns & highlight pattern """
+
+        if high_tag is None:
+            high_tag = 'Yellow'
+        if sep_tag is None:
+            sep_tag = 'Gray'
+
+        scrollbox.configure(state="normal")
+        scrollbox.unhighlight_pattern(old, high_tag)  # Remove old word highlighting
+        scrollbox.unhighlight_pattern('|', sep_tag)  # not really necessary
+        text = '| ' + ' | '.join(names) + ' |'
+        scrollbox.delete("1.0", "end")
+        scrollbox.insert("end", text)
+        scrollbox.highlight_pattern(new, high_tag)
+        scrollbox.highlight_pattern('|', sep_tag)
+        scrollbox.configure(state="disabled")
+
+    def close_common_windows(self):
+        """ One of move/insert/delete/rename column applied changes. Close all """
+        if self.hmc_top_is_active:
+            self.win_grp.destroy_by_key('move column')
+            self.hmc_top_is_active = False
+        if self.hic_top_is_active:
+            self.win_grp.destroy_by_key('insert column')
+            self.hic_top_is_active = False
+        if self.hdc_top_is_active:
+            self.win_grp.destroy_by_key('delete column')
+            self.hdc_top_is_active = False
+        if self.hrc_top_is_active:
+            self.win_grp.destroy_by_key('rename column')
+            self.hrc_top_is_active = False
 
     def edit_column_dict(self, column_name):
         """ Called from mserve.py view_sql_button_3() -> view_sql_heading_menu()
@@ -2444,10 +2648,11 @@ from os import popen
 class MoveTreeviewColumn:
     """ Shift treeview column to preferred order """
 
-    def __init__(self, toplevel, treeview, row_release=None):
+    def __init__(self, toplevel, treeview, row_release=None, apply_callback=None):
 
         self.toplevel = toplevel
         self.treeview = treeview
+        self.apply_callback = apply_callback
 
         self.row_release = row_release      # Button-Release not on heading
         self.eligible_for_callback = False  # If button-release in cell region
@@ -2540,6 +2745,9 @@ class MoveTreeviewColumn:
                 if self.col_swapped:
                     #print('columns AFTER :', self.canvas_names)
                     self.treeview["displaycolumns"] = self.canvas_names
+                    # 2024-04-01 - dd_view.close_common_windows()
+                    if self.apply_callback:
+                        self.apply_callback()
                     self.toplevel.update_idletasks()  # just in case
                 self.col_cover_top.destroy()
                 self.col_cover_top = None
