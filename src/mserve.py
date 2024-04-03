@@ -5764,7 +5764,8 @@ Call search.py when these control keys occur
             sql_type=sql_type, name=name, force_close=close)
 
         ''' Treeview Left Click - Drag Column Headings or Popup menu on row '''
-        toolkit.MoveTreeviewColumn(toplevel, dd_view.tree, 
+        toolkit.MoveTreeviewColumn(toplevel, dd_view.tree,
+                                   # TODO: Reread Tree columns into dd_view
                                    apply_callback=dd_view.close_common_windows)
         #                           row_release=right_click)  # 2024-03-26
         # Remove row_release feature.

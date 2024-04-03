@@ -608,6 +608,99 @@ class ChildWindows:
         self.toplevel.bind("<Configure>", self.drag_window)
         self.toplevel.bind("<FocusIn>", self.raise_children)
 
+        ''' Event log '''
+        self.init_time = time.time()
+        self.mec = 0  # move children event count
+        self.rec = 0  # raise children event count
+        # times from init_time. Printed to three decimal places
+        self.mit_st = 0.0  # MOVE start time.time() - self.init_time
+        self.mit_en = 0.0
+        self.mit_el = 0.0  # elapsed milliseconds
+        self.rit_st = 0.0  # RAISE start time.time() - self.init_time
+        self.rit_en = 0.0  # Raise end time
+        self.rit_el = 0.0  # Raise elapsed time
+
+        self.last_mit_st = 0.0
+        self.last_rit_st = 0.0
+
+
+
+        ''' Event log - one record for start, one record for end. '''
+        self.event_log = []
+        # Tuple (Event type, Event Count, Start IT, End IT, Elapsed MS)
+        #   Event type = "M" or "R"
+
+
+    # HOUSEKEEPING - Event Logging
+
+    def get_it(self):
+        """ Get Initial Time Offset time.time - init_time """
+        return time.time() - self.init_time
+
+    def get_el(self, start):
+        """ Get End Time and Calculated Elapsed time """
+        end = self.get_it()
+        return end, end - start
+
+    def log_it(self, et, ec, start):
+        """ Log start time """
+        tup = (et, ec, start, 0.0, 0.0)
+        self.event_log.append(tup)
+
+    def log_el(self, et, ec, es, ee, el):
+        """ Log ee time & sanity check """
+        _who = self.who + "log_el():"
+        tup = (et, ec, es, ee, el)
+        self.event_log.append(tup)
+
+        # Sanity check
+        for lt, lc, ls, le, lel in reversed(self.event_log):
+            if et != lt or ec != lc:
+                continue
+            if es != ls:
+                print("\n" + _who, "et:", et, "ec:", ec,
+                      "es times differ:", self.fit(es), self.fit(ls))
+            return
+
+        print("\n" + _who, "et:", et, "ec:", ec,
+              "Log start not found! es:", self.fit(es), "ee", self.fit(ee),
+              "el:", self.fel(el))
+
+    def prt_log(self):
+        """ Print Log """
+        _who = self.who + "prt_log():"
+        cit = time.time() - self.init_time
+        print("\n" + _who, "Log closed after:", self.fit(cit), "seconds.")
+        print("Event (R=Raise Window, M=Move Window), Event Count, Start sec")
+        print(" "*5, "Start sec  End sec  Elapsed ms")
+
+        last_start = 0.0
+        for lt, lc, ls, le, lel in self.event_log:
+            if ls == last_start:  # suppress duplicated start time
+                print(" "*15, self.fit(le).rjust(7), self.fel(lel).rjust(6))
+            else:
+                print(lt, str(lc).rjust(3), self.fit(ls).rjust(7),
+                      self.fit(le).rjust(7), self.fel(lel).rjust(6))  #
+            last_start = ls
+
+    @staticmethod
+    def fit(it):
+        """ Format Initial Time Offset to 3 decimals """
+        if it:
+            return "%.3f" % round(it, 3)
+        else:
+            return "     "
+
+    @staticmethod
+    def fel(it):
+        """ Format Elapsed Initial Time Offset in milliseconds to 2 decimal """
+        if it:
+            it = it * 1000.
+            return "%.2f" % round(it, 2)
+        else:
+            return "    "
+
+    # DOWN TO BUSINESS
     def raise_children(self, *_args):
         """ Focus in on parent. Focus in and lift the children up in the
             order they were registered.
@@ -615,20 +708,31 @@ class ChildWindows:
         if not len(self.window_list):
             return
         _who = self.who + "raise_children():"
+        self.rec += 1  # raise event count
+        self.rit_st = self.get_it()
+        self.log_it("R", self.rec, self.rit_st)
         for win_dict in self.window_list:
             if self.check_candidacy(win_dict):
                 win_dict['widget'].lift()
                 win_dict['widget'].focus_force()
+        self.rit_en, self.rit_el = self.get_el(self.rit_st)
+        self.log_el("R", self.rec, self.rit_st, self.rit_en, self.rit_el)
 
     def move_children(self, x_off, y_off):
         """ Focus in on parent. Focus in and lift the children up in the
             order they were registered.
+
+            2024-04-02 - As window dragged down to left, child raises up to left.
         """
         if not len(self.window_list):
             return
         _who = self.who + "move_children():"
+        self.mec += 1  # raise event count
+        self.mit_st = self.get_it()
+        self.log_it("M", self.mec, self.mit_st)
         if True is False:
             print("\n" + _who, " | x_off:", x_off, " | y_off:", y_off)
+
         for win_dict in self.window_list:
             if self.check_candidacy(win_dict):
                 _w, _h, x, y = self.geometry(win_dict['widget'])
@@ -636,6 +740,9 @@ class ChildWindows:
                 new_y = y + y_off
                 geom = "+" + str(new_x) + "+" + str(new_y)
                 win_dict['widget'].geometry(geom)
+
+        self.mit_en, self.mit_el = self.get_el(self.mit_st)
+        self.log_el("M", self.mec, self.mit_st, self.mit_en, self.mit_el)
 
     def check_candidacy(self, win_dict):
         """ Test if 50% of a window lays inside parent toplevel
@@ -654,7 +761,7 @@ class ChildWindows:
         """ Defined in __init__ with:
                 self.key.bind("<Configure>", drag_window)
         """
-        _who = self.who + "drag_window"
+        _who = self.who + "drag_window():"
         self.curr_geom = self.geometry(self.toplevel)  # window's [wid, hgt, x, y]
         if not self.last_geom[3]:  # Is last window height impossibly zero?
             self.last_geom = copy.deepcopy(self.curr_geom)  # last time not init
@@ -695,7 +802,14 @@ class ChildWindows:
             :param key: 'dtb', 'column details', 'rename heading', etc.
             :param widget: msg_top, or create_window toplevel, etc.
         """
-        _who = self.who + "register_child"
+        _who = self.who + "register_child():"
+        has_key = self.key_for_widget(widget)
+        has_widget = self.widget_for_key(key)
+        if has_key or has_widget:
+            print("\n" + _who, "Window already registered.")
+            print("\tkey:", key, "window:", widget)
+            print("\t", self.window_list)
+
         w, h, x, y = self.geometry(widget)
         #print("\n" + _who, " | key:", key, " | widget:", widget,
         #      "\n\t\t | x:", x, " | y:", y, " | w:", w, " | h:", h)
@@ -712,7 +826,7 @@ class ChildWindows:
         """
         if not len(self.window_list):
             return
-        _who = self.who + "unregister_child"
+        _who = self.who + "unregister_child():"
         #print("\n" + _who, "Searching for:", widget)
         #print(_who, "BEFORE self.window_list:", self.window_list)
 
@@ -729,6 +843,7 @@ class ChildWindows:
             print("\n" + _who, " - Widget not found:", widget)
 
         #print(_who, "AFTER self.window_list:", self.window_list)
+        #self.prt_log()
 
     def destroy_all(self, tt=None):
         """ When caller doesn't know the window widgets at close time """
@@ -738,31 +853,26 @@ class ChildWindows:
         _who = self.who + "destroy_all():"
         #print(_who, "self.window_list:", self.window_list)
         for win_dict in self.window_list:
-            if self.destroy_by_key(win_dict['key'], tt):
-                pass
-            else:
-                print("\n" + _who + "Key won't die:", win_dict['key'])
+            self.destroy_by_key(win_dict['key'], tt)
 
         self.window_list = []  # Should be empty now
 
     def destroy_by_key(self, key, tt=None):
         """ When caller doesn't know the window widgets at close time """
-        if not len(self.window_list):
-            return
-
         _who = self.who + "destroy_by_key():"
-        #print(_who, "self.window_list:", self.window_list)
-        for i, win_dict in enumerate(self.window_list):
-            if win_dict['key'] == key:
-                window = win_dict['widget']
-                if tt:
-                    if tt.check(window):
-                        tt.close(window)
-                window.destroy()
-                self.unregister_child(window)  # Extra checking
-                return True
 
-        return False
+        window = self.widget_for_key(key)
+        if window is None:
+            print("\n" + _who, " - Key not found:", key)
+            return False
+
+        if tt:  # Close all tooltips under the window
+            if tt.check(window):  # window may not have any tooltips
+                tt.close(window)
+
+        window.destroy()
+        self.unregister_child(window)
+        return True
 
     def key_for_widget(self, widget):
         """ When caller doesn't know the 'key' get it with window widget 
@@ -778,7 +888,21 @@ class ChildWindows:
             if win_dict['widget'] == widget:
                 return win_dict['key']
 
-        print("No key for widget:", widget)
+        #print("No key for widget:", widget)
+
+    def widget_for_key(self, key):
+        """ When caller doesn't know the 'key' get it with window widget
+
+            :param key: Child Window's key. E.G. "move column"
+        """
+        if not len(self.window_list):
+            return
+        _who = self.who + "widget_for_key():"
+        for win_dict in self.window_list:
+            if win_dict['key'] == key:
+                return win_dict['widget']
+
+        #print("No key for widget:", widget)
 
     @staticmethod
     def geometry(widget):
@@ -1404,18 +1528,15 @@ class DictTreeview:
             self.hrc_top_is_active = False
             top.destroy()
 
-        def apply_rename():
+        def apply_rename(*_args):
             """ Delete current column from treeview. """
             if not self.hrc_top_is_active:
                 return
 
             position = combo_list.index(combo_col_var.get())
-            column = self.tree_dict['displaycolumns'][position]
-            new_heading = heading_list[combo_list.index(combo_col_var.get())]
+            column = self.tree['displaycolumns'][position]
+            new_heading = heading_list[position]
             self.tree.heading(column, text=new_heading)
-            d = get_dict_column(column, self.tree_dict)
-            d['heading'] = new_heading
-            save_dict_column(column, self.tree_dict, d)
 
             close()  # Close our window & save changes to self.dict_tree
             self.close_common_windows()  # Other common windows must close
@@ -1438,9 +1559,10 @@ class DictTreeview:
         entry_text.set(heading_list[ndx])
         entry.focus_set()
         entry_text.trace('w', entry_update)  # realtime changes to text
+        entry.bind('<Return>', apply_rename)
 
         scrollbox = self.make_common_bottom(
-            top, frame, combo_col, combo_update, apply_rename, close)
+            top, frame, combo_col, combo_update, apply_rename, 'Rename', close)
 
         combo_update()  # Set initial values displaycolumns scrolled textbox
         top.update_idletasks()
@@ -1524,20 +1646,15 @@ class DictTreeview:
             new_ndx = combo_list.index(combo_col_new)
             new_column = unselected_list[new_ndx]  # No longer dictionaries
 
+            save_cols = self.save_common_columns()
             # New displaycolumns with inserted column
             displaycolumns = list(self.tree['displaycolumns'])
             displaycolumns.insert(pos_new-1, str(new_column))  # convert from unicode
 
             # Update treeview with new columns. These are reread by force_close()
-            select_dict_columns(displaycolumns, self.tree_dict)
-            self.tree['columns'] = displaycolumns
+            self.tree['columns'] = displaycolumns  # Destroys headings & sizes
             self.tree['displaycolumns'] = displaycolumns
-            self.columns = displaycolumns  # extra insurance
-
-            # Set selected column headings text
-            for d2 in self.tree_dict:
-                if d2['select_order'] > 0:
-                    self.tree.heading(d2['column'], text=d2['heading'])
+            self.reapply_common_columns(save_cols)
 
             close()  # Close our window
             self.force_close()  # Close toplevel window
@@ -1555,10 +1672,12 @@ class DictTreeview:
             frame, len(heading_list)+1, spin_update, ndx+1)
 
         scrollbox = self.make_common_bottom(
-            top, frame, combo_col, spin_update, apply_insert, close)
+            top, frame, combo_col, spin_update, apply_insert, 'Insert', close)
 
         spin_update()  # Set initial values displaycolumns scrolled textbox
         top.update_idletasks()
+        combo_col.focus_set()
+        combo_col.event_generate('<Down>')
 
     def delete_column(self, column_name, x, y):
         """ Called from mserve.py view_sql_button_3() -> view_sql_heading_menu()
@@ -1607,21 +1726,24 @@ class DictTreeview:
             if not self.hdc_top_is_active:
                 return
 
-            # New displaycolumns with inserted column
+            # New displaycolumns after column removed
             displaycolumns = list(self.tree['displaycolumns'])
             position = combo_list.index(combo_col_var.get())
-            displaycolumns.remove(position)
+            _column = displaycolumns.pop(position)
+            _heading = heading_list.pop(position)
 
-            # Update treeview with new columns. These are reread by force_close()
-            select_dict_columns(displaycolumns, self.tree_dict)
-            self.tree['columns'] = displaycolumns
+            save_cols = self.save_common_columns()
             self.tree['displaycolumns'] = displaycolumns
-            self.columns = displaycolumns  # extra insurance
+            self.tree['columns'] = displaycolumns
+            self.reapply_common_columns(save_cols)
 
-            # Set selected column headings text
-            for d2 in self.tree_dict:
-                if d2['select_order'] > 0:
-                    self.tree.heading(d2['column'], text=d2['heading'])
+            for i, column in enumerate(self.tree['displaycolumns']):
+                #self.tree.heading(column, text=heading_list[i])
+                pass
+                #print(i, self.tree.heading(column), sep=" | ")
+# 0 | {'text': '', 'image': '', 'command': '', 'anchor': u'center', 'state': ''}
+# 1 | {'text': '', 'image': '', 'command': '', 'anchor': u'center', 'state': ''}
+            #print("\n heading_list:", heading_list)
 
             close()  # Close our window
             self.force_close()  # Close toplevel window
@@ -1639,7 +1761,7 @@ class DictTreeview:
             grid(column=0, columnspan=2, row=20, sticky=tk.W)
 
         scrollbox = self.make_common_bottom(
-            top, frame, combo_col, combo_update, apply_delete, close)
+            top, frame, combo_col, combo_update, apply_delete, 'Remove', close)
 
         combo_update()  # Set initial values displaycolumns scrolled textbox
         top.update_idletasks()
@@ -1716,7 +1838,6 @@ class DictTreeview:
 
             # Update treeview with displaycolumns.
             self.tree['displaycolumns'] = column_list
-            select_dict_columns(column_list, self.tree_dict)
             close()  # Close our window
             self.close_common_windows()  # Other common windows must close
 
@@ -1733,7 +1854,7 @@ class DictTreeview:
             frame, len(heading_list), spin_update, ndx+1)
 
         scrollbox = self.make_common_bottom(
-            top, frame, combo_col, combo_update, apply_move, close)
+            top, frame, combo_col, combo_update, apply_move, 'Move', close)
 
         spin_update()  # Set initial values displaycolumns scrolled textbox
         top.update_idletasks()
@@ -1787,16 +1908,12 @@ class DictTreeview:
         # Rows: 10 Combobox, 20 Spinbox, 30/50 separators, 40 displaycolumns
         # Row 60 Buttons - Apply & Cancel (plus callback for combobox update)
 
-        # Combobox selects which column to move/insert/delete/rename
-        # frame1, combo_col, combo_col_var, ndx = make_common_frame(
-        #    top, 'move', combo_list, column_list/unselected_list, column_dict)
-
-        # ttk.Frame doesn't allow bg color, only style = 
+        # FUTURE: User configuration for colors
         frame = tk.Frame(top, borderwidth=18,
                          relief=tk.FLAT, bg="WhiteSmoke")
         frame.grid(column=0, row=0, sticky=tk.NSEW)
 
-        # FUTURE: User configuration for colors
+        # Combobox selects which column to move/insert/delete/rename
         tk.Label(frame, text="Column to " + action + ":", bg="WhiteSmoke",
                  padx=10, pady=10).grid(column=0, row=10, sticky=tk.W)
         combo_col_var = tk.StringVar()
@@ -1835,7 +1952,8 @@ class DictTreeview:
         return spin_pos, spin_pos_var
 
     @staticmethod
-    def make_common_bottom(top, frame, combo_col, combo_func, apply_func, close_func):
+    def make_common_bottom(top, frame, combo_col, combo_func,
+                           apply_func, apply_text, close_func):
         """ Make bottom for insert/remove/move/rename columns """
         # scrollbox = make_common_bottom(
         #    top, frame, combo_col, combo_func, apply_func, close_func)
@@ -1871,7 +1989,7 @@ class DictTreeview:
 
         # Buttons to apply or close
         # make_common_buttons(order_apply, close)
-        button1 = tk.Button(frame, text="Apply", pady=2, command=apply_func)
+        button1 = tk.Button(frame, text=apply_text, pady=2, command=apply_func)
         button1.grid(column=0, row=60)
         button2 = tk.Button(frame, text="Cancel", pady=2, command=close_func)
         button2.grid(column=1, row=60)
@@ -1903,6 +2021,45 @@ class DictTreeview:
         scrollbox.highlight_pattern(new, high_tag)
         scrollbox.highlight_pattern('|', sep_tag)
         scrollbox.configure(state="disabled")
+
+    def save_common_columns(self):
+        """ Save column headings and width to restore later.
+            Used for Insert Column and Remove Column
+        """
+        # Apply column widths and headings to new dict_list
+        ls = []
+        for column in self.tree['displaycolumns']:
+            #attributes = self.tree.column(column)  # Original not current
+            ds = dict()
+            ds['column'] = column
+            ds['anchor'] = self.tree.column(column)['anchor']
+            ds['width'] = self.tree.column(column)['width']
+            ds['heading'] = self.tree.heading(column)['text']
+            ls.append(ds)
+        return ls
+
+    def reapply_common_columns(self, ls):
+        """ Restore column headings and width saved earlier.
+            Used for Insert Column and Remove Column
+        """
+        # Apply column widths and headings to new dict_list
+        for column in self.tree['displaycolumns']:
+            #attributes = self.tree.column(column)  # Original not current
+            found = False
+            for ds in ls:
+                if ds['column'] != column:
+                    continue
+                self.tree.column(column, anchor=ds['anchor'])
+                self.tree.column(column, width=ds['width'])
+                self.tree.heading(column, text=ds['heading'])
+                found = True
+                break
+            if not found:
+                # column inserted, use Pippim dictionary
+                ds = get_dict_column(column, self.tree_dict)
+                self.tree.column(column, anchor=ds['anchor'])
+                self.tree.column(column, width=ds['width'])
+                self.tree.heading(column, text=ds['heading'])
 
     def close_common_windows(self):
         """ One of move/insert/delete/rename column applied changes. Close all """
