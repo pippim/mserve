@@ -1625,7 +1625,7 @@ class Locations(LocationsCommonSelf):
         """ Make display window frame for main_top and test_top """
 
         ''' Common top configuration '''
-        top.configure(background=self.bg)
+        top.configure(bg=self.bg)
         top.columnconfigure(0, weight=1)
         top.rowconfigure(0, weight=1)
 
@@ -1834,8 +1834,8 @@ class Locations(LocationsCommonSelf):
 
         ''' Treeview select item with button clicks '''
         # Moving columns needs work and probably isn't even needed
-        toolkit.MoveTreeviewColumn(self.main_top, self.loc_view.tree,
-                                   row_release=self.loc_button_click)
+        #toolkit.MoveTreeviewColumn(self.main_top, self.loc_view.tree,
+        #                           row_release=self.loc_button_click)
         self.loc_view.tree.bind("<Button-1>", self.loc_button_click)
         self.loc_view.tree.bind("<Button-3>", self.loc_button_click)
         #self.loc_view.tree.bind("<Double-Button-1>", self.apply)

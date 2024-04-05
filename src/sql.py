@@ -1886,10 +1886,16 @@ class Config:
                 {"height": 64, "outline": 'White', "fill": 'LemonChiffon',
                  "text": 'Black', "font_family": 'DejaVuSans.ttf',
                  "char": 'pl'},  # VALUE dictionary or list
-            ('cfg_playlists', 'treeview', 'style', 'color'):
+            # View SQL Music Table treeview displaycolumns (in order of appearance)
+            # Must be sql_treeview for toolkit.py DictTreeview().__init__
+            ('cfg_playlists', 'sql_treeview', 'column', 'order'):
+                ["detail", "comments", "count", "size", "seconds"],
+            ('cfg_playlists', 'sql_treeview', 'style', 'color'):
                 {"name": 'playlists.Treeview', "foreground": "Black",
                  "background": "LemonChiffon", "fieldbackground": "LemonChiffon",
                  "edge_color": "NavajoWhite", "edge_px": 5},
+            ('cfg_playlists', 'sql_treeview', 'style', 'scroll'):
+                {"name": 'playlists.Treeview', "width": 14},
 
             # View SQL Music Table taskbar icon
             ('cfg_sql_music', 'toplevel', 'taskbar_icon', 'height & colors'):
@@ -2072,8 +2078,8 @@ class Config:
             ordered_dicts.append(ordered)
         return ordered_dicts
 
-    def check_cfg(self, sql_key):
-        """ Check if REAL configuration exists. The get_cfg() method will
+    def has_disk_cfg(self, sql_key):
+        """ Check if Disk configuration exists. The get_cfg() method will
             return a real configuration or defaults.
         """
         target = self.get_sql(sql_key)

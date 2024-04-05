@@ -5730,29 +5730,11 @@ Call search.py when these control keys occur
         master_frame.columnconfigure(0, weight=1)
         master_frame.rowconfigure(0, weight=1)
 
-        ''' Get SQl stored treeview 'displaycolumns' (order of columns) '''
-        ''' NOTES for upgrade to user defined columns '''
-        # The 'tree_dict' parameter is the default, E.G. sql.music_treeview
-        # If key 'cfg_sql_music_Xxxx' exists (where Xxxx is a custom name)
-        # then prompt for which view should be displayed
-
-        # 2024-03-10 - Get tk 'displaycolumns' from SQL database's 'cfg_sql_music'
-        # cfg_sql_history and cfg_playlists use same history table with different
-        # history_treeview or playlist_treeview. Consider merging code.
-        # Custom views would be 'cfg_sql_music' + custom_view_name and retrieved
-        # with sql.get_type_with_prefix()
-        sql_key = ['cfg_' + sql_type, 'sql_treeview', 'column', 'order']
-        columns = cfg.get_cfg(sql_key)
-        # 2024-03-20 change treeview dictionary to match tk 'displaycolumns'
-        toolkit.select_dict_columns(columns, tree_dict)
-        # toolkit.print_dict_columns(music_dict)
-
         ''' Create treeview frame with vertical scrollbar '''
         #sql_key = ['cfg_' + sql_type, 'sql_treeview', 'style', 'color']
-        sql_key[2:4] = ['style', 'color']
-        d = cfg.get_cfg(sql_key)
-        sql_key[3] = 'scroll'  # 4th tuple changes from 'color' to 'scroll'
-        sbar_width = cfg.get_cfg(sql_key)['width']  # scroll bar width
+        #d = cfg.get_cfg(sql_key)
+        #sql_key[3] = 'scroll'  # 4th tuple changes from 'color' to 'scroll'
+        #sbar_width = cfg.get_cfg(sql_key)['width']  # scroll bar width
 
         '''
                     B I G   T I C K E T   E V E N T
@@ -5760,7 +5742,7 @@ Call search.py when these control keys occur
                      Create dd_view 
         '''
         dd_view = toolkit.DictTreeview(
-            tree_dict, toplevel, master_frame, sbar_width=sbar_width, colors=d,
+            tree_dict, toplevel, master_frame, # sbar_width=sbar_width, colors=d,
             sql_type=sql_type, name=name, force_close=close)
 
         ''' Treeview Left Click - Drag Column Headings or Popup menu on row '''
@@ -15067,16 +15049,20 @@ class PlaylistsCommonSelf:
         self.names_for_loc = []  # Names sorted for this location
         self.names_all_loc = []  # Names sorted for all locations
 
-        ''' Current Playlist work fields - History Record format '''
-        self.act_row_id = None  # History record number
-        self.act_code = None  # E.G. "P000001"
-        self.act_loc_id = None  # E.G. "L004"
-        self.act_name = None  # E.G. "Oldies"
-        self.act_id_list = []  # Sorted in play order
-        self.act_size = 0  # Size of all song files
-        self.act_count = 0  # len(self.music_id_list)
-        self.act_seconds = 0.0  # Duration of all songs
-        self.act_description = None  # E.G. "Songs from 60's & 70's
+        ''' Current Playlist work fields - History Record format 
+            act_ = "Active" (actively being edited) variables
+        '''
+        self.act_row_id = None  # History Table record number = "RowId"
+        # SQL History Table Row's "Type" column will contain "Playlist"
+        self.act_code = None  # E.G. "P000001" = "Action"
+        self.act_loc_id = None  # E.G. "L004" = "SourceMaster"
+        self.act_name = None  # E.G. "Oldies" = "SourceDetail"
+        self.act_id_list = []  # Sorted in play order = "Target"
+        self.act_size = 0  # Size of all song files = "Size"
+        self.act_count = 0  # len(self.music_id_list) = "Count"
+        self.act_seconds = 0.0  # Duration of all songs = "Seconds"
+        self.act_description = None  # E.G. "Road Tunes" = "Comments"
+
 
         ''' Miscellaneous Playlist work fields '''
         self.state = None  # 'new', 'open', 'save', 'save_as', 'view'
@@ -15107,8 +15093,6 @@ class PlaylistsCommonSelf:
         self.youFullScreen = None  # Was YouTube full screen before?
         self.youForceVideoFull = None  # After video starts send "f" key
 
-        self.youTreeFrame = None  # .grid_remove() for youLrcFrame
-        self.youLrcFrame = None  # .grid_remove() for youPlaylistFrame
         self.scrollYT = None  # Custom Scrolled Text Box
         self.youAssumedAd = None  # Volume was forced automatically down
         self.hasLrcForVideo = None  # Are synchronized lyrics (LRC) stored in dict?
@@ -15140,10 +15124,17 @@ class PlaylistsCommonSelf:
 
         ''' Playlists Maintenance Window and fields '''
         self.top = None  # tk.Toplevel
-        self.frame = None  # tk.Frame inside self.top
+
+        self.frame = None  # main tk.Frame inside self.top
+        self.tree_frame = None  # .grid_remove() for youLrcFrame (Lyrics)
+        self.youLrcFrame = None  # .grid_remove() for you_tree_fame (Treeview)
+        # self.tree_frame will also contain:
+        # self.dd_view = None  # SQL Hist tk.Treeview managed by Data Dictionary
+        # self.you_tree = None  # YouTube Playlist Tree
+        self.dd_view = None  # SQL Hist tk.Treeview managed by Data Dictionary
+        self.you_tree = None  # YouTube Playlist Tree (All songs)
+
         self.you_btn_frm = None  # Tk.Frame button bar
-        self.his_view = None  # SQL Hist tk.Treeview managed by Data Dictionary
-        self.you_tree = None  # YouTube Playlist Tree
         self.fld_name = None  # Field tk.Entry for toggling readonly state
         self.fld_description = None
         self.scr_name = tk.StringVar()  # Input fields
@@ -15299,16 +15290,17 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         self.get_thread_func = thread  # E.G. self.get_refresh_thread
         self.display_lib_title = display_lib_title  # Rebuild lib_top menubar
 
-        ''' Open Playlist fields - History Record format '''
-        self.open_row_id = None  # History record number
-        self.open_code = None  # E.G. "P000001"
-        self.open_loc_id = None  # E.G. "L004"
-        self.open_name = None  # E.G. "Oldies"
-        self.open_id_list = []  # Sorted in play order
-        self.open_size = 0  # Size of all song files
-        self.open_count = 0  # len(self.music_id_list)
-        self.open_seconds = 0.0  # Duration of all songs
-        self.open_description = None  # E.G. "Songs from 60's & 70's
+        ''' Open Playlist variables (Now Playing) - SQL History = "variable" '''
+        self.open_row_id = None  # History Table record number = "RowId"
+        # SQL History Table Row's "Type" column will contain "Playlist"
+        self.open_code = None  # E.G. "P000001" = "Action"
+        self.open_loc_id = None  # E.G. "L004" = "SourceMaster"
+        self.open_name = None  # E.G. "Oldies" = "SourceDetail"
+        self.open_id_list = []  # Sorted in play order = "Target"
+        self.open_size = 0  # Size of all song files = "Size"
+        self.open_count = 0  # len(self.music_id_list) = "Count"
+        self.open_seconds = 0.0  # Duration of all songs = "Seconds"
+        self.open_description = None  # E.G. "Road Tunes" = "Comments"
 
         ''' Save between Playlist Maintenance calls '''
         self.name = None  # Playlist name that is being played right now
@@ -15336,19 +15328,17 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
 
         ''' Instructions when no playlists have been created yet. '''
         if not self.text:  # If text wasn't passed as a parameter use default
-            self.text = "\nNo Playlists have been created yet.\n\n" + \
-                        "After Playlists have been created, they will\n" + \
-                        "appear in this spot.\n\n" + \
-                        "You can create a playlist by selecting\n" + \
-                        "the 'New Playlist' option from the 'File' \n" + \
-                        "dropdown menu bar.\n"
+            self.text = "\nNo Playlists have been created.\n\n" + \
+                        "Create a playlist with the 'File' dropdown menu.\n" + \
+                        "Select the 'New Playlist' option from the menu.\n\n" + \
+                        "Playlists will then appear in this spot.\n\n"
 
-        if len(self.all_numbers) == 0:
-            # No playlists have been created yet
-            tk.Label(self.frame, text=self.text, justify="left", font=ms_font) \
-                .grid(row=0, column=0, columnspan=3, sticky=tk.W, padx=5)
+        if len(self.all_numbers) == 0:  # 2024-04-03 change "==" to "!=" to test
+            # No playlists have been created
+            tk.Label(self.frame, text=self.text, bg="WhiteSmoke", font=ms_font).\
+                grid(row=0, column=0, columnspan=4, sticky=tk.EW)
         else:
-            self.populate_his_tree()  # Paint treeview of playlists
+            self.populate_dd_view()  # Paint treeview of playlists
 
         ''' Playlist Name is readonly except for 'new' and 'rename' '''
         tk.Label(self.frame, text="Playlist name:", bg="WhiteSmoke",
@@ -15483,69 +15473,84 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         self.names_all_loc.sort()
         self.names_for_loc.sort()
 
-    def populate_his_tree(self):
-        """ Use custom Data Dictionary routines for managing treeview. """
+    def populate_dd_view(self):
+        """ Data Dictionary routines for managing treeview. """
+
         ''' Data Dictionary and Treeview column names '''
-        #history_dict = sql.history_treeview()  # Heart of Data Dictionary
-        # Sep 25/23 switch to proper dictionary
         history_dict = sql.playlist_treeview()
-        columns = ("detail", "comments", "count", "size", "seconds")
-        toolkit.select_dict_columns(columns, history_dict)
+
+        # Without below fake call & destroy, dd_view is empty
+        t2 = tk.Toplevel()
+        f2 = tk.Frame(t2)
+        f2.grid()
+        import copy
+        save_dict = copy.deepcopy(history_dict)
+        toolkit.DictTreeview(history_dict, t2, f2, sql_type="playlists")
+        #print("save_dict == history_dict:", save_dict == history_dict)
+        #print([x for x in history_dict if x not in save_dict])
+        save_dict2 = copy.deepcopy(history_dict)
+        t2.destroy()
+
         ''' Create treeview frame with scrollbars '''
-        self.youTreeFrame = tk.Frame(self.frame, bg="LightGrey", relief=tk.RIDGE)
-        self.youTreeFrame.grid(sticky=tk.NSEW, columnspan=4)
-        self.youTreeFrame.columnconfigure(0, weight=1)
-        self.youTreeFrame.rowconfigure(0, weight=1)
+        self.tree_frame = tk.Frame(self.frame, relief=tk.RIDGE)
+        self.tree_frame.grid(row=0, column=0, sticky=tk.NSEW, columnspan=4)
+        self.tree_frame.columnconfigure(0, weight=1)
+        self.tree_frame.rowconfigure(0, weight=1)
 
-        #cfg = sql.Config()
-        sql_key = ['cfg_playlists', 'treeview', 'style', 'color']
-        colors = cfg.get_cfg(sql_key)  # 2024-03-13
+        # Note self.dd_view.frame is created inside self.tree_frame
+        # Then self.dd_view.tree is created inside self.dd_view.frame
+        # self.dd_view.frame is needed for edge borders around tree
 
-        self.his_view = toolkit.DictTreeview(
-            history_dict, self.top, self.youTreeFrame, columns=columns,
-            highlight_callback=self.highlight_callback, colors=colors)
+        self.dd_view = toolkit.DictTreeview(
+            history_dict, self.top, self.tree_frame, sql_type="playlists",
+            highlight_callback=self.highlight_callback)
+
+        #print("save_dict2 == history_dict:", save_dict2 == history_dict)
+        #print([x for x in history_dict if x not in save_dict2])
+
         ''' Override formatting of 'size' column to MB '''
-        self.his_view.change_column_format("MB", "size")
+        self.dd_view.change_column_format("MB", "size")
         ''' Override formatting of 'seconds' column to Days:Hours:Min:Sec '''
-        self.his_view.change_column_format("days", "seconds")
-        ''' Override generic column heading names for Playlist usage '''
-        # Sep 25/23 - Put proper names in proper dictionary
-        #self.his_view.tree.heading('detail', text='Playlist Name')
-        #self.his_view.tree.heading('comments', text='Playlist Description')
-        #self.his_view.tree.heading('count', text='Song Count')
-        #self.his_view.tree.heading('size', text='Size of Files')
-        #self.his_view.tree.heading('seconds', text='Duration')
-        self.his_view.tree["displaycolumns"] = columns  # hide row_id
+        self.dd_view.change_column_format("days", "seconds")
+
         ''' Treeview click and drag columns to different order '''
         # Moving columns needs work and probably isn't even needed
-        #toolkit.MoveTreeviewColumn(self.top, self.his_view.tree,
-        #                           row_release=self.his_button_click)
+        #toolkit.MoveTreeviewColumn(self.top, self.dd_view.tree,
+        #                           row_release=self.dd_view_click)
+
         ''' Treeview select item with button clicks '''
-        self.his_view.tree.bind("<Button-1>", self.his_button_click)
-        self.his_view.tree.bind("<Button-3>", self.his_button_click)
-        self.his_view.tree.bind("<Double-Button-1>", self.apply)
-        self.his_view.tree.tag_configure('play_sel', background='ForestGreen',
-                                         foreground="White")
+        self.dd_view.tree.bind("<Button-1>", self.dd_view_click)
+        self.dd_view.tree.bind("<Button-3>", self.dd_view_click)
+        self.dd_view.tree.bind("<Double-Button-1>", self.apply)
+        # 2024-04-03 SQL Config() to-do: highlight colors
+        self.dd_view.tree.tag_configure('play_sel', background='ForestGreen',
+                                        foreground="White")
+
         ''' Loop through sorted lists, reread history and insert in tree '''
         for name in self.names_for_loc:  # Sorted alphabetically
             ndx = self.all_names.index(name)  # In key order P000001, P000002, etc.
             number_str = self.all_numbers[ndx]
-            d = sql.get_config('playlist', number_str)  # Must be here
-            self.his_view.insert("", d, iid=number_str, tags="unchecked")
+            play_dict = sql.get_config('playlist', number_str)  # Must be here
+            #self.dd_view.insert("", play_dict, iid=number_str, tags="unchecked")
+            # "unchecked" tag is used by CheckboxTreeview class.
+            self.dd_view.insert("", play_dict, number_str)  # 2024-04-04
 
-    def his_button_click(self, event):
+        #self.dd_view.tree['show'] = 'headings'  # 2024-04-03 treeview is blank
+        #self.top.update_idletasks()  # 2024-04-03 treeview is blank
+
+    def dd_view_click(self, event):
         """ Left button clicked on Playlist row. """
-        number_str = self.his_view.tree.identify_row(event.y)
+        number_str = self.dd_view.tree.identify_row(event.y)
         if self.state == "new" or self.state == "save_as":
             # cannot use enable_input because rename needs to pick old name first
             text = "Cannot pick an old playlist when new playlist name required.\n\n" + \
                 "Enter a new Playlist name and description below."
-            message.ShowInfo(self.top, "Existing playlists for reference only!",
+            message.ShowInfo(self.top, "Other playlists are for reference only!",
                              text, icon='warning', thread=self.get_thread_func)
         else:
             ''' Highlight row clicked '''
-            toolkit.tv_tag_remove_all(self.his_view.tree, 'play_sel')
-            toolkit.tv_tag_add(self.his_view.tree, number_str, 'play_sel')
+            toolkit.tv_tag_remove_all(self.dd_view.tree, 'play_sel')
+            toolkit.tv_tag_add(self.dd_view.tree, number_str, 'play_sel')
 
             self.read_playlist(number_str)
             self.scr_name.set(self.act_name)
@@ -15873,9 +15878,9 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             self.top.update_idletasks()
 
         ''' Create treeview frame with scrollbars '''
-        self.youTreeFrame = tk.Frame(self.frame, bg="LightGrey", relief=tk.RIDGE)
-        self.youTreeFrame.grid(row=0, sticky=tk.NSEW)
-        self.youTreeFrame.columnconfigure(0, weight=1)
+        self.tree_frame = tk.Frame(self.frame, bg="LightGrey", relief=tk.RIDGE)
+        self.tree_frame.grid(row=0, sticky=tk.NSEW)
+        self.tree_frame.columnconfigure(0, weight=1)
         self.frame.columnconfigure(0, weight=1)
         #         self.you_btn_frm = tk.Frame(self.frame)
         #         self.you_btn_frm.grid(row=4, column span=4, sticky=tk.NSEW)
@@ -15888,11 +15893,11 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         style.configure("YouTube.Treeview", font=g.FONT14, rowheight=row_height)
 
         # Create Treeview
-        self.you_tree = ttk.Treeview(self.youTreeFrame, column=('name',),
+        self.you_tree = ttk.Treeview(self.tree_frame, column=('name',),
                                      selectmode='none', height=4,
                                      style="YouTube.Treeview")
         self.you_tree.grid(row=0, column=0, sticky='nsew')
-        v_scroll = tk.Scrollbar(self.youTreeFrame, orient=tk.VERTICAL,
+        v_scroll = tk.Scrollbar(self.tree_frame, orient=tk.VERTICAL,
                                 width=SCROLL_WIDTH, command=self.you_tree.yview)
         v_scroll.grid(row=0, column=1, sticky=tk.NS)
         self.you_tree.configure(yscrollcommand=v_scroll.set)
@@ -16140,7 +16145,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         # Is Lrc Frame active?
         if self.hasLrcForVideo:
             self.youLrcFrame.grid_remove()  # Remove LRC frame
-            self.youTreeFrame.grid()  # Restore Treeview frame
+            self.tree_frame.grid()  # Restore Treeview frame
             self.hasLrcForVideo = None
             self.youSetCloseButton()
             return
@@ -17802,14 +17807,14 @@ Redundant calls after turning down to 25% and up to 100%:
         """
         if self.youLrcFrame:
             # 2023-12-28 - This branch never executed. Lag after 500 x.
-            self.youTreeFrame.grid_remove()  # Remove row 0 Treeview Frame
+            self.tree_frame.grid_remove()  # Remove row 0 Treeview Frame
             self.youLrcFrame.grid()  # Reactivate row 1 LRC Frame
             self.youSetCloseButton()  # Set close button text
         else:
 
-            tree_width  = self.youTreeFrame.winfo_width()
-            tree_height = self.youTreeFrame.winfo_height()
-            self.youTreeFrame.grid_remove()  # Remove row 0 Treeview Frame
+            tree_width  = self.tree_frame.winfo_width()
+            tree_height = self.tree_frame.winfo_height()
+            self.tree_frame.grid_remove()  # Remove row 0 Treeview Frame
 
             # Master frame for Artwork and LRC Lyrics lines
             self.youLrcFrame = tk.Frame(self.frame, height=tree_height)
@@ -18012,7 +18017,7 @@ Redundant calls after turning down to 25% and up to 100%:
         self.youLrcFrame.destroy()  # Destroy LRC frame
         self.youLrcFrame = None  # Reflect LRC frame is NOT mounted
         # Above: Quick and dirty speed test after 600 videos is remove slow?
-        self.youTreeFrame.grid()  # Restore Treeview frame
+        self.tree_frame.grid()  # Restore Treeview frame
         self.hasLrcForVideo = None
         self.youSetCloseButton()
         self.top.update_idletasks()

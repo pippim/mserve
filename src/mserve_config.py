@@ -538,6 +538,7 @@ def make_toolkit_cfg():
     cfg.append(make_dict(m, "namedtuple", "collections"))
     cfg.append(make_dict(m, "OrderedDict", "collections"))
     cfg.append(make_dict(m, None, "re"))
+    cfg.append(make_dict(m, None, "copy"))
     cfg.append(make_dict(m, None, "traceback"))
     cfg.append(make_dict(m, None, "locale"))
     cfg.append(make_dict(m, "g", "global_variables", "pippim.com"))

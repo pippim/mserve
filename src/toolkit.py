@@ -34,7 +34,6 @@ from __future__ import with_statement       # Error handling for file opens
 # from clipboard.
 #import gtk                     # Doesn't work. Use xclip instead
 #gtk.set_interactive(False)
-import copy
 
 '''
 
@@ -71,6 +70,7 @@ import time
 import datetime
 from collections import OrderedDict, namedtuple
 import re                   # w, h, old_x, old_y = re.split(r'\D+', geom)
+import copy
 import traceback            # To display call stack (functions that got us here)
 import locale               # Use decimals or commas for float remainder?
 
@@ -630,11 +630,8 @@ class ChildWindows:
         # Tuple (Event type, Event Count, Start IT, End IT, Elapsed MS)
         #   Event type = "M" or "R"
 
-
-    # HOUSEKEEPING - Event Logging
-
     def get_it(self):
-        """ Get Initial Time Offset time.time - init_time """
+        """ Get Initial Time Offset: time.time() - self.init_time """
         return time.time() - self.init_time
 
     def get_el(self, start):
@@ -852,8 +849,11 @@ class ChildWindows:
 
         _who = self.who + "destroy_all():"
         #print(_who, "self.window_list:", self.window_list)
+        safe_list = []  # Can't iterate window_list and remove from it
         for win_dict in self.window_list:
-            self.destroy_by_key(win_dict['key'], tt)
+            safe_list.append(win_dict['key'])
+        for key in safe_list:
+            self.destroy_by_key(key, tt)
 
         self.window_list = []  # Should be empty now
 
@@ -1020,11 +1020,10 @@ class DictTreeview:
     def __init__(self, tree_dict, toplevel, master_frame, show='headings', 
                  columns=(), sbar_width=12, highlight_callback=None, colors=None,
                  sql_type="", name="", use_h_scroll=False, force_close=None,
-                 tt=None):
+                 tt=None, sql_config=True):
 
         self.tree_dict = tree_dict          # Data dictionary
         self.toplevel = toplevel
-        self.master_frame = master_frame    # Master frame for treeview frame
         self.show = show                    # 'tree' or 'headings'
         self.attached = OrderedDict()       # Rows attached, detached, skipped
         self.highlight_callback = highlight_callback
@@ -1060,46 +1059,37 @@ class DictTreeview:
         # 2024-03-27 col_count will be phased out
         self.col_count = 20                 # Set<20 for debug printing
 
-        # TEST font families - Have to move out of sql.py to here Fonts() class
+        # TEST font families - Move out of sql.py to new toolkit Fonts() class
         #self.cfg.show_fonts(self.toplevel)
 
-        ''' Use SQL configuration for column order, width and heading '''
-        #sql_key = [self.cfg_name, 'sql_treeview', 'column', 'custom']
-        sql_key = [self.cfg_name, 'sql_treeview', 'dict_treeview', 'custom']
-        self.use_custom = self.cfg.check_cfg(sql_key)
-        if self.use_custom:
-            self.tree_dict = self.cfg.get_cfg(sql_key)
-            #print_dict_columns(self.tree_dict)
-            '''
-            parts_list = self.cfg.get_cfg(sql_key)
-            columns = []  # displaycolumns
-            for part in parts_list:
-                column, width, heading = part
-                columns.append(column)
-                #print("part:", part)
-                d = get_dict_column(column, self.tree_dict)
-                d['width'] = width
-                d['heading'] = heading
-                save_dict_column(column, self.tree_dict, d)
-            select_dict_columns(columns, self.tree_dict)  # Set 'select_order'
-            '''
-        ''' Auto-generate columns if not passed as parameter '''
+        color_key = [self.cfg_name, 'sql_treeview', 'style', 'color']
+        sbar_key = [self.cfg_name, 'sql_treeview', 'style', 'scroll']
+        order_key = [self.cfg_name, 'sql_treeview', 'column', 'order']
+        custom_key = [self.cfg_name, 'sql_treeview', 'dict_treeview', 'custom']
+
+        if sql_config:  # bserve doesn't have TypeAction Index needed for Config()
+            colors = self.cfg.get_cfg(color_key)
+            sbar_width = self.cfg.get_cfg(sbar_key)['width']
+            # Get SQl stored treeview 'displaycolumns' (order of columns)
+            if len(columns) == 0:
+                columns = self.cfg.get_cfg(order_key)
+                select_dict_columns(columns, self.tree_dict)
+                #print("AFTER column order:", get_dict_displaycolumns(self.tree_dict))
+            # User custom column order, width and heading
+            if self.cfg.has_disk_cfg(custom_key):
+                self.tree_dict = self.cfg.get_cfg(custom_key)  # on disk, no default
+                columns = get_dict_displaycolumns(self.tree_dict)
+
+            self.columns = columns
+            #print("AFTER sql_config:", self.columns)
+
+        ''' Get displaycolumns if not passed & not in SQL config '''
         if len(columns) == 0:
-            self.columns = []
-            for d in self.tree_dict:
-                if d['select_order'] == 0:
-                    continue  # Not selected
-                name_off = d['select_order'] - 1
-                while len(self.columns) - 1 < name_off:
-                    # Fill holes and new ending name with "Reserved" string
-                    self.columns.append("Reserved")
-                self.columns[name_off] = d['column']  # Tk Column Name
-            #print("columns_list:", columns_list)
+            self.columns = self.get_dict_displaycolumns(self.tree_dict)
         else:
             self.columns = list(columns)
-
-        ''' Passed tuple or autogenerated display columns list'''
         displaycolumns = tuple(self.columns)
+        #print("final displaycolumns:", displaycolumns)
 
         ''' Key fields may be hidden. Add as extra column for callback. '''
         for d in self.tree_dict:
@@ -1133,12 +1123,15 @@ class DictTreeview:
         else:
             self.frame = tk.Frame(master_frame)  # No around treeview edge
 
-        tk.Grid.rowconfigure(self.frame, 0, weight=1)
-        tk.Grid.columnconfigure(self.frame, 0, weight=1)
-        self.frame.grid(row=0, column=0, sticky=tk.NSEW)
+        self.frame.rowconfigure(0, weight=1)
+        self.frame.columnconfigure(0, weight=1)
+        self.frame.grid(sticky=tk.NSEW)
+
 
         ''' CheckboxTreeview List Box, Columns and Headings '''
-        self.tree = CheckboxTreeview(
+        #self.tree = CheckboxTreeview(  # NOT USED - SAVE MEMORY AND LAG
+        #    self.frame, select mode='none', columns=self.columns)
+        self.tree = ttk.Treeview(
             self.frame, selectmode='none', columns=self.columns)
         self.tree['displaycolumns'] = displaycolumns
 
@@ -1153,15 +1146,10 @@ class DictTreeview:
         #   https://stackoverflow.com/a/67839537/6929343
         self.tree['show'] = self.show
 
-        # DEBUGGING -  Dump out column values
-        #for col in columns:
-        #    print(self.tree.column(col))
-        #    print(self.tree.heading(col))
-
         style = ttk.Style()
         # print('style.theme_names():', style.theme_names())
         # OUTPUT: style.theme_names(): ('clam', 'alt', 'default', 'classic')
-        # Each color requires unique name for treeview style
+        # Each window requires unique name for treeview style
         style.configure(style_name + ".Heading", font=(None, g.MED_FONT),
                         rowheight=int(g.MED_FONT * 2.2))
         self.tree.configure(style=style_name + ".Heading")
@@ -1172,6 +1160,7 @@ class DictTreeview:
                         fieldbackground=fbg)
         self.tree.configure(style=style_name)
 
+        """ NOT USED - SAVE MEMORY AND LAG
         ''' Create images for checked, unchecked and tristate '''
         self.checkboxes = img.make_checkboxes(
             row_height - 8, 'black', 'white', 'DodgerBlue')  # SkyBlue3 not in Pillow
@@ -1184,7 +1173,8 @@ class DictTreeview:
         self.triangles = []  # list to prevent Garbage Collection
         # TODO: If triangles created already, they are not remade so lost here!
         img.make_triangles(self.triangles, width, 'black', 'grey')
-
+        """
+        
         ''' Configure tag for row highlight '''
         self.tree.tag_configure('highlight', background='lightblue')
         self.tree.bind('<Motion>', self.highlight_row)
@@ -1209,13 +1199,23 @@ class DictTreeview:
 
     def insert(self, parent_iid="", row=None, iid="", tags="unchecked"):
         """ Insert new row or update existing row in treeview.
-            NOTE: Formatting integers "{:,}" and floats "{0:,.0f}"
+            Formatting convention: integers "{:,}" and floats "{0:,.0f}"
+
+            2024-04-03 - Review tags "unchecked" if they were gone that would
+                imply the row item was not checked anyway.
         """
+        who = self.who + 'insert():'  
+        
         if row is None:
-            print('toolkit.py - dict_tree.insert() - row is required parameter')
+            print(who, "- SQL Dictionary row is required parameter")
+            return
+
+        if len(self.columns) == 0:
+            print(who, "- len(self.columns) == 0")
             return
 
         values = []
+
         for col in self.columns:
             data_dict = get_dict_column(col, self.tree_dict)
             unmasked_value = row[data_dict['var_name']]
@@ -1270,8 +1270,9 @@ class DictTreeview:
         try:
             # insert new row into treeview
             self.tree.insert(parent_iid, tk.END, iid=iid, values=values, tags=tags)
-        except tk.TclError:  # Item L001 already exists
+        except tk.TclError as _err:  # Item L001 already exists
             # update existing row into treeview
+            print("err:", _err)  # 2024-04-03 print error msg but nothing so far
             self.tree.item(iid, values=values, tags=tags)
 
         ''' highlight row as mouse traverses across treeview '''
@@ -1729,21 +1730,13 @@ class DictTreeview:
             # New displaycolumns after column removed
             displaycolumns = list(self.tree['displaycolumns'])
             position = combo_list.index(combo_col_var.get())
-            _column = displaycolumns.pop(position)
-            _heading = heading_list.pop(position)
+            displaycolumns.pop(position)
 
+            # "self.tree['columns'] = " destroys attributes; save & reapply
             save_cols = self.save_common_columns()
             self.tree['displaycolumns'] = displaycolumns
             self.tree['columns'] = displaycolumns
             self.reapply_common_columns(save_cols)
-
-            for i, column in enumerate(self.tree['displaycolumns']):
-                #self.tree.heading(column, text=heading_list[i])
-                pass
-                #print(i, self.tree.heading(column), sep=" | ")
-# 0 | {'text': '', 'image': '', 'command': '', 'anchor': u'center', 'state': ''}
-# 1 | {'text': '', 'image': '', 'command': '', 'anchor': u'center', 'state': ''}
-            #print("\n heading_list:", heading_list)
 
             close()  # Close our window
             self.force_close()  # Close toplevel window
@@ -2026,10 +2019,9 @@ class DictTreeview:
         """ Save column headings and width to restore later.
             Used for Insert Column and Remove Column
         """
-        # Apply column widths and headings to new dict_list
+
         ls = []
         for column in self.tree['displaycolumns']:
-            #attributes = self.tree.column(column)  # Original not current
             ds = dict()
             ds['column'] = column
             ds['anchor'] = self.tree.column(column)['anchor']
@@ -2044,7 +2036,6 @@ class DictTreeview:
         """
         # Apply column widths and headings to new dict_list
         for column in self.tree['displaycolumns']:
-            #attributes = self.tree.column(column)  # Original not current
             found = False
             for ds in ls:
                 if ds['column'] != column:
@@ -2318,6 +2309,25 @@ def get_dict_column(column, dict_list):
         if d['column'] == column:
             return d
     return None
+
+
+def get_dict_displaycolumns(dict_list):
+    """ Return list of selected columns in order.
+        :param  dict_list is mutable list of dictionary fields. The
+                "("select_order", 0)" field is changed from 0 to number 1 to last.
+
+    """
+    columns = []
+    for d in dict_list:
+        if d['select_order'] == 0:
+            continue  # Not selected
+        name_off = d['select_order'] - 1
+        while len(columns) - 1 < name_off:
+            # Fill holes and new ending name with "Reserved" string
+            columns.append("Reserved")
+        columns[name_off] = d['column']  # Tk Column Name
+
+    return columns
 
 
 def save_dict_column(column, dict_list, new_dict):
