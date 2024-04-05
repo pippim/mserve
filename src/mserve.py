@@ -5104,6 +5104,9 @@ Call search.py when these control keys occur
                 'sql_music', 'SQL Music Table', music_dict,
                 populate=self.mus_populate, close=self.mus_close)
 
+        if self.mus_top is None:
+            return  # Window closed before all records read
+
         ''' “🗑” U+1F5D1 (trash can) - Missing Metadata '''
         self.mus_view_btn2 = tk.Button(
             btn_frm, text="🗑 Missing Metadata", width=g.BTN_WID,
@@ -5484,6 +5487,10 @@ Call search.py when these control keys occur
 
         :return: 1 new custom view created, 2 existing custom view updated
         """
+        # 2024-04-05 'X'-close window on startup then dd_view is none.
+        if dd_view is None:
+            return None  # No changes were saved
+
         ret = dd_view.close()
         if ret == 1:
             self.info.cast("New view configuration saved: " + dd_view.sql_type)
@@ -5517,6 +5524,9 @@ Call search.py when these control keys occur
             self.show_sql_common_init(
                 'sql_history', 'SQL History Table', history_dict, 
                 populate=self.his_populate, close=self.his_close)
+
+        if self.his_top is None:
+            return  # Window closed before all records read
 
         ''' Configuration Rows '''
         self.his_view_btn2 = tk.Button(
@@ -5637,6 +5647,9 @@ Call search.py when these control keys occur
                 'sql_location', 'SQL location Table', location_dict,
                 populate=self.lcs_populate, close=self.lcs_close)
 
+        if self.lcs_top is None:
+            return  # Window closed before all records read
+
         ''' 🔍 Text Search '''
         self.lcs_view_btn5 = tk.Button(btn_frm, text="🔍  Text Search",
                                        width=g.BTN_WID - 2, command=self.lcs_text_search)
@@ -5692,12 +5705,12 @@ Call search.py when these control keys occur
                              populate=None, close=None):
         """ Common initialization View SQL Tables: Music / History / Location """
 
-        toplevel = tk.Toplevel()
-        toplevel.title(name + " - mserve")
+        top = tk.Toplevel()
+        top.title(name + " - mserve")
 
         ''' Set program icon in taskbar 
 
-            def taskbar_icon(toplevel, hgt, out_c, fill_c, text_c, char='M'):
+            def taskbar_icon(top, hgt, out_c, fill_c, text_c, char='M'):
                         +-------+
                         | _. ._ |
                         |{  M  }|
@@ -5711,42 +5724,36 @@ Call search.py when these control keys occur
         sql_key = ['cfg_' + sql_type, 'toplevel', 'taskbar_icon',
                    'height & colors']
         ti = cfg.get_cfg(sql_key)
-        img.taskbar_icon(toplevel, ti['height'], ti['outline'],
+        img.taskbar_icon(top, ti['height'], ti['outline'],
                          ti['fill'], ti['text'], char=ti['char'])
 
         ''' Recreate window with previously used position & size '''
-        toplevel.minsize(width=g.WIN_MIN_WIDTH, height=g.WIN_MIN_HEIGHT)
+        top.minsize(width=g.WIN_MIN_WIDTH, height=g.WIN_MIN_HEIGHT)
         # What if there is no saved geometry?
         # music=lib+30+30, history=lib+60+60, location=lib+90+90
         geom = monitor.get_window_geom(sql_type)
-        toplevel.geometry(geom)
-        toplevel.configure(background="Gray")
-        toplevel.columnconfigure(0, weight=1)
-        toplevel.rowconfigure(0, weight=1)
+        top.geometry(geom)
+        top.configure(background="Gray")
+        top.columnconfigure(0, weight=1)
+        top.rowconfigure(0, weight=1)
 
         ''' Create master frame for treeview and buttons '''
-        master_frame = tk.Frame(toplevel, bg="LightGrey", relief=tk.RIDGE)
-        master_frame.grid(sticky=tk.NSEW)
-        master_frame.columnconfigure(0, weight=1)
-        master_frame.rowconfigure(0, weight=1)
+        frame = tk.Frame(top, bg="LightGrey", relief=tk.RIDGE)
+        frame.grid(sticky=tk.NSEW)
+        frame.columnconfigure(0, weight=1)
+        frame.rowconfigure(0, weight=1)
 
-        ''' Create treeview frame with vertical scrollbar '''
-        #sql_key = ['cfg_' + sql_type, 'sql_treeview', 'style', 'color']
-        #d = cfg.get_cfg(sql_key)
-        #sql_key[3] = 'scroll'  # 4th tuple changes from 'color' to 'scroll'
-        #sbar_width = cfg.get_cfg(sql_key)['width']  # scroll bar width
 
-        '''
-                    B I G   T I C K E T   E V E N T
+        '''        B I G   T I C K E T   E V E N T
 
-                     Create dd_view 
-        '''
-        dd_view = toolkit.DictTreeview(
-            tree_dict, toplevel, master_frame, # sbar_width=sbar_width, colors=d,
-            sql_type=sql_type, name=name, force_close=close)
+                   Create dd_view - Data Dictionary Driven Treeview  '''
+
+        dd_view = toolkit.DictTreeview(tree_dict, top, frame, name=name,
+                                       sql_type=sql_type, force_close=close)
+
 
         ''' Treeview Left Click - Drag Column Headings or Popup menu on row '''
-        toolkit.MoveTreeviewColumn(toplevel, dd_view.tree,
+        toolkit.MoveTreeviewColumn(top, dd_view.tree,
                                    # TODO: Reread Tree columns into dd_view
                                    apply_callback=dd_view.close_common_windows)
         #                           row_release=right_click)  # 2024-03-26
@@ -5756,33 +5763,41 @@ Call search.py when these control keys occur
         dd_view.tree.bind("<Button-3>", lambda event:
                           self.show_sql_common_click(event, dd_view))
 
-        ''' Populate Treeview item list with all songs. '''
+
+        '''        B I G   T I C K E T   E V E N T
+
+                   Populate Treeview item list with all SQL Table rows.  '''
+
         # Closing window while populating is bad :(
-        toplevel.update_idletasks()  # needed because dtb doesn't appear
-        dtb = message.DelayedTextBox(title="Building " + name + " View",
-                                     toplevel=toplevel, width=1000,
-                                     fast_thread=lcs.fast_refresh,
-                                     frame_rate=3, win_grp=dd_view.win_grp)
-        populate(dtb, dd_view)
+        top.update_idletasks()  # needed because dtb doesn't appear
+        dtb = message.DelayedTextBox(
+            title="Building " + name + " View", toplevel=top, width=500, height=300,
+            fast_thread=lcs.fast_refresh, frame_rate=3, win_grp=dd_view.win_grp)
+        try:
+            populate(dtb, dd_view)
+        except tk.TclError:
+            dtb.close()
+            return None, None, None  # Window was closed (didn't want to wait)
+
         dtb.close()
 
         ''' Treeview Buttons Frame '''
-        btn_frm = tk.Frame(master_frame, bg="LightGrey", bd=2, relief=tk.GROOVE,
+        btn_frm = tk.Frame(frame, bg="LightGrey", bd=2, relief=tk.GROOVE,
                            borderwidth=g.FRM_BRD_WID)
         btn_frm.grid_rowconfigure(0, weight=1)
         btn_frm.grid_columnconfigure(0, weight=0)
         btn_frm.grid(row=1, column=0, sticky=tk.NW)
 
         ''' ✘ Close Button '''
-        toplevel.bind("<Escape>", close)
-        toplevel.protocol("WM_DELETE_WINDOW", close)
+        top.bind("<Escape>", close)
+        top.protocol("WM_DELETE_WINDOW", close)
         dd_view_btn1 = tk.Button(btn_frm, text="✘ Close",
                                  width=g.BTN_WID - 2, command=close)
         dd_view_btn1.grid(row=0, column=0, padx=2)
         self.tt.add_tip(
             dd_view_btn1, "Close " + name + " view.",
             anchor="nw")
-        return toplevel, dd_view, btn_frm
+        return top, dd_view, btn_frm
 
     @staticmethod
     def insert_view_lines(dd_view, rows, delayed_textbox, test=None):
@@ -15530,10 +15545,8 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         for name in self.names_for_loc:  # Sorted alphabetically
             ndx = self.all_names.index(name)  # In key order P000001, P000002, etc.
             number_str = self.all_numbers[ndx]
-            play_dict = sql.get_config('playlist', number_str)  # Must be here
-            #self.dd_view.insert("", play_dict, iid=number_str, tags="unchecked")
-            # "unchecked" tag is used by CheckboxTreeview class.
-            self.dd_view.insert("", play_dict, number_str)  # 2024-04-04
+            playlist = sql.get_config('playlist', number_str)  # Must be here
+            self.dd_view.insert("", playlist, number_str)  # 2024-04-04
 
         #self.dd_view.tree['show'] = 'headings'  # 2024-04-03 treeview is blank
         #self.top.update_idletasks()  # 2024-04-03 treeview is blank

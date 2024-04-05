@@ -1381,7 +1381,7 @@ class DictTreeview:
             xy = (x, y)  # passed as parameters
         else:
             # Should always be passed x,y coordinates but just in case
-            print("coordinates not passed.")
+            print(self.who + "pretty_display(): coordinates not passed.")
             xy = (self.toplevel.winfo_x() + g.PANEL_HGT,  # Use parent's top left position
                   self.toplevel.winfo_y() + g.PANEL_HGT)
 
@@ -1609,7 +1609,7 @@ class DictTreeview:
             self.close_common_windows()
             return
 
-        last_heading.append(full_list[0]['heading'])  # Pipe to/from spin_update
+        last_heading.append(full_list[0]['heading'])  # mutable variable
 
         def spin_update(*_args):
             """ Spin buttons clicked or new column selected.
@@ -1625,6 +1625,7 @@ class DictTreeview:
             # Rebuild Columns display custom scrolledtext w/patterns
             self.update_common_bottom(
                 scrollbox, disp_list, last_heading[0], new_name, 'Green')
+            # Mutable variable in local space
             last_heading[0] = new_name
 
         def close(*_args):
@@ -1655,7 +1656,7 @@ class DictTreeview:
             # Update treeview with new columns. These are reread by force_close()
             self.tree['columns'] = displaycolumns  # Destroys headings & sizes
             self.tree['displaycolumns'] = displaycolumns
-            self.reapply_common_columns(save_cols)
+            self.reapply_common_columns(save_cols, 'add')
 
             close()  # Close our window
             self.force_close()  # Close toplevel window
@@ -1736,7 +1737,7 @@ class DictTreeview:
             save_cols = self.save_common_columns()
             self.tree['displaycolumns'] = displaycolumns
             self.tree['columns'] = displaycolumns
-            self.reapply_common_columns(save_cols)
+            self.reapply_common_columns(save_cols, 'delete')
 
             close()  # Close our window
             self.force_close()  # Close toplevel window
@@ -2030,14 +2031,28 @@ class DictTreeview:
             ls.append(ds)
         return ls
 
-    def reapply_common_columns(self, ls):
+    def reapply_common_columns(self, ls, mode):
         """ Restore column headings and width saved earlier.
             Used for Insert Column and Remove Column
         """
         # Apply column widths and headings to new dict_list
         for column in self.tree['displaycolumns']:
+            # ALTERNATE METHOD SAVES 6 LINES:
+            # https://stackoverflow.com/a/9980160/6929343
+            # lm = [ds for ds in ls if ds['column'] == column]
+            # if lm:  # List of matching dicts has one dict
+            #     self.tree.column(column, anchor=lm[0]['anchor'])
+            #     self.tree.column(column, width=lm[0]['width'])
+            #     self.tree.heading(column, text=lm[0]['heading'])
+            # else:
+            #     # Get dictionary inserted attributes from Data Dictionary
+            #     di = get_dict_column(column, self.tree_dict)
+            #     self.tree.column(column, anchor=di['anchor'])
+            #     self.tree.column(column, width=di['minwidth'])
+            #     self.tree.heading(column, text=di['heading'])
+
             found = False
-            for ds in ls:
+            for ds in ls:  # for dictionary saved in list saved
                 if ds['column'] != column:
                     continue
                 self.tree.column(column, anchor=ds['anchor'])
@@ -2045,12 +2060,28 @@ class DictTreeview:
                 self.tree.heading(column, text=ds['heading'])
                 found = True
                 break
+
             if not found:
-                # column inserted, use Pippim dictionary
-                ds = get_dict_column(column, self.tree_dict)
-                self.tree.column(column, anchor=ds['anchor'])
-                self.tree.column(column, width=ds['width'])
-                self.tree.heading(column, text=ds['heading'])
+                # saved column was not found in new displaycolumns
+                # column inserted, use Pippim dictionary minimum width
+                # to reduce last column being cut off too much.
+                # Get dictionary inserted attributes from Data Dictionary
+                if mode != 'add':
+                    print("mode != 'add'", mode)
+                    continue
+                di = get_dict_column(column, self.tree_dict)
+                self.tree.column(column, anchor=di['anchor'])
+                self.tree.column(column, width=di['minwidth'])
+                self.tree.heading(column, text=di['heading'])
+
+        if mode == 'add':
+            # TODO: reduce other columns share of minwidth for inserted colum
+            pass
+        elif mode == 'delete':
+            # TODO: increase other columns share of width for deleted colum
+            pass
+        else:
+            print("Bad 'mode' !!!", mode)
 
     def close_common_windows(self):
         """ One of move/insert/delete/rename column applied changes. Close all """
