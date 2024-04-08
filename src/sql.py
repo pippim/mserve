@@ -1870,6 +1870,17 @@ class Config:
                 {"height": 64, "outline": 'White', "fill": 'AliceBlue',
                  "text": 'Black', "font_family": 'DejaVuSans.ttf',
                  "char": 'lo'},  # VALUE dictionary or list
+            # View SQL Music Table treeview displaycolumns (in order of appearance)
+            # Must be sql_treeview for toolkit.py DictTreeview().__init__
+            ('cfg_locations', 'sql_treeview', 'column', 'order'):
+                ["detail", "comments", "count", "size", "seconds"],
+            ('cfg_locations', 'sql_treeview', 'style', 'color'):
+                {"name": 'location.Treeview', "foreground": "Black",
+                 "background": "AliceBlue", "fieldbackground": "AliceBlue",
+                 "edge_color": "White", "edge_px": 5},
+            ('cfg_locations', 'sql_treeview', 'style', 'scroll'):
+                {"name": 'location.Treeview', "width": 14},
+            # 2024-04-07 Older "treeview" Action key replaced by "sql_treeview" key
             ('cfg_locations', 'treeview', 'style', 'color'):
                 {"name": 'location.Treeview', "foreground": "Black",
                  "background": "AliceBlue", "fieldbackground": "AliceBlue",
@@ -2794,8 +2805,10 @@ class PrettyMusic:
                            'History Time - Row Number       | Type | Action' +
                            ' | Master | Detail | Target | Comments',
                            'Metadata modified']
-        # List of part colors - applied to key names in that part
-        self.part_color = ['red', 'blue', 'green', 'red', 'blue']
+        # List of part colors - applied to key names. After 5 parts rest are green
+        self.part_color = ['red', 'green', 'green', 'red', 'blue', 'green']
+        # text 'Seconds' appears in 6th group which turns 'seconds' in 2nd & 3rd
+        # groups to green for that word only. So make 2nd & 3rd 'green' too.
 
         # Get Music Table row, remove commas
         key = sql_row_id.replace(',', '')
@@ -2968,9 +2981,10 @@ class PrettyHistory:
         self.part_names = [  # List of parts each colored separately
             'SQL Information', 'Time', 'Timestamp', 'History Category',
             'Source and Target Data', 'Processing Details']
-        self.part_color = [  # Colors in order of parts
-            'red', 'blue', 'green', 'red', 'blue', 'green']
-
+        self.part_color = [  # Colors in order of parts.
+            'red', 'green', 'green', 'red', 'blue', 'green']
+        # text 'Seconds' appears in 6th group which turns 'seconds' in 2nd & 3rd
+        # groups to green for that word only. So make 2nd & 3rd 'green' too.
 
         # Get Music Table row, remove commas
         key = sql_row_id.replace(',', '')
@@ -3026,6 +3040,59 @@ class PrettyHistory:
         # print(json.dumps(self.dict, indent=2))
 
 
+class PrettyLocation:
+    """ Format Location Row using data dictionary """
+    def __init__(self, sql_row_id):
+        """
+            Build a pretty dictionary with user friendly field names
+            Values are from current treeview row for SQL Row
+
+            The pretty dictionary is passed to mserve.py functions.
+
+        """
+
+        self.dict = OrderedDict()
+        self.scrollbox = None  # custom scrollbox for display
+        self.search = None  # search text
+
+        # List of part section starting positions in field display
+        self.part_start = [0]  # First heading starts at field #0
+
+        # List of part section headings at part_start[] list above
+        self.part_names = ['Required Information', 'Optional Host Details']
+        self.part_color = ['blue', 'green']
+
+        # Get Music Table row, remove commas
+        key = sql_row_id.replace(',', '')
+        #print("sql_row_id:", sql_row_id, 'key:', key)
+        loc_cursor.execute("SELECT * FROM Location WHERE Id = ?", [key])
+
+        try:
+            d = dict(loc_cursor.fetchone())
+        except TypeError:  # TypeError: 'NoneType' object is not iterable:
+            d = None
+        if d is None:
+            print('sql.py.PrettyLocation() - No SQL for Location Row Id:', key)
+            return
+
+        self.dict['SQL Location Row Id'] = sql_format_value(d['Id'])
+        self.dict['Location Code'] = sql_format_value(d['Code'])
+        self.dict['Name'] = sql_format_value(d['Name'])
+        self.dict['Modified Time'] = sql_format_date(d['ModifyTime'])
+        self.dict['Image Path'] = sql_format_value(d['ImagePath'])
+        self.dict['Mount Point'] = sql_format_value(d['MountPoint'])
+        self.dict['Music Top Directory'] = sql_format_value(d['TopDir'])
+        self.dict['Comments'] = sql_format_value(d['Comments'])
+        self.part_start.append(len(self.dict))
+        self.dict['Host Name'] = sql_format_value(d['HostName'])
+        self.dict['Host Wakeup Command'] = sql_format_value(d['HostWakeupCmd'])
+        self.dict['Host Test Command'] = sql_format_value(d['HostTestCmd'])
+        self.dict['Host Test Repeat'] = sql_format_value(d['HostTestRepeat'])
+        self.dict['Host Mount Command'] = sql_format_value(d['HostMountCmd'])
+        self.dict['Host Touch Command'] = sql_format_value(d['HostTouchCmd'])
+        self.dict['Host Touch Minutes'] = sql_format_value(d['HostTouchMinutes'])
+
+
 class PrettyTreeHeading:
     """ Format pretty dictionary for treeview column fields """
     def __init__(self, column_dict):
@@ -3040,7 +3107,7 @@ class PrettyTreeHeading:
 
         # Data dictionary for treeview column format is simple
         self.part_start = [0]  # Only 1 part
-        self.part_names = ['Tkinter Treeview - Column Data Dictionary']
+        self.part_names = ['Column Keys\tAttributes\n']
         self.part_color = ['red']
         for key, value in column_dict.iteritems():
             self.dict[key] = sql_format_value(value)
@@ -3218,6 +3285,9 @@ def tkinter_display(pretty):
 def music_treeview():
     """ Define Data Dictionary treeview columns for Music table
         2024-03-24 used to be ("instance", int) but json.dumps would crash.
+                RENAME: int -> "int", str -> "str", float -> "float"
+        2024-04-07 - title, lyrics and os_file_size must be keys for buttons
+            in mus_view to function properly.
     """
 
     music_treeview_list = [
@@ -3255,8 +3325,8 @@ def music_treeview():
       OrderedDict([
         ("column", "os_file_size"), ("heading", "File Size"), ("sql_table", "Music"),
         ("var_name", "OsFileSize"), ("select_order", 0), ("unselect_order", 6),
-        ("key", False), ("anchor", "e"), ("instance", "int"), ("format", "{:,}"),
-        ("width", 150), ("minwidth", 50), ("stretch", 0)]),
+        ("key", True), ("anchor", "e"), ("instance", "int"), ("format", "{:,}"),
+        ("width", 150), ("minwidth", 50), ("stretch", 0)]),  # key for missing art
 
       OrderedDict([
         ("column", "artist"), ("heading", "Artist"), ("sql_table", "Music"),
@@ -3273,8 +3343,8 @@ def music_treeview():
       OrderedDict([
         ("column", "title"), ("heading", "Title"), ("sql_table", "Music"),
         ("var_name", "Title"), ("select_order", 0), ("unselect_order", 9),
-        ("key", False), ("anchor", "w"), ("instance", "str"), ("format", None),
-        ("width", 200), ("minwidth", 50), ("stretch", 1)]),
+        ("key", True), ("anchor", "w"), ("instance", "str"), ("format", None),
+        ("width", 200), ("minwidth", 50), ("stretch", 1)]),  # key for metadata
 
       OrderedDict([
         ("column", "first_date"), ("heading", "Year"), ("sql_table", "Music"),
@@ -3327,14 +3397,14 @@ def music_treeview():
       OrderedDict([
         ("column", "lyrics"), ("heading", "Lyrics"), ("sql_table", "Music"),
         ("var_name", "LyricsScore"), ("select_order", 0), ("unselect_order", 18),
-        ("key", False), ("anchor", "w"), ("instance", "str"), ("format", None),
-        ("width", 200), ("minwidth", 50), ("stretch", 1)]),
+        ("key", True), ("anchor", "w"), ("instance", "str"), ("format", None),
+        ("width", 200), ("minwidth", 50), ("stretch", 1)]),  # key for missing lyrics
 
       OrderedDict([
         ("column", "time_index"), ("heading", "Time Index"), ("sql_table", "Music"),
         ("var_name", "LyricsTimeIndex"), ("select_order", 0), ("unselect_order", 19),
-        ("key", False), ("anchor", "w"), ("instance", "list"), ("format", None),
-        ("width", 100), ("minwidth", 50), ("stretch", 1)]),
+        ("key", True), ("anchor", "w"), ("instance", "list"), ("format", None),
+        ("width", 100), ("minwidth", 50), ("stretch", 1)]),  # key for unsync'd
 
       OrderedDict([
         ("column", "creation_time"), ("heading", "Creation Time"), ("sql_table", "Music"),
@@ -3357,25 +3427,25 @@ def music_treeview():
       OrderedDict([
         ("column", "composer"), ("heading", "Composer"), ("sql_table", "Music"),
         ("var_name", "Composer"), ("select_order", 0), ("unselect_order", 23),
-        ("key", False), ("anchor", "center"), ("instance", "str"), ("format", None),
+        ("key", False), ("anchor", "w"), ("instance", "str"), ("format", None),
         ("width", 160), ("minwidth", 50), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "comment"), ("heading", "Comment"), ("sql_table", "Music"),
         ("var_name", "Comment"), ("select_order", 0), ("unselect_order", 24),
-        ("key", False), ("anchor", "center"), ("instance", "str"), ("format", None),
+        ("key", False), ("anchor", "w"), ("instance", "str"), ("format", None),
         ("width", 160), ("minwidth", 50), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "hyperlink"), ("heading", "Hyperlink"), ("sql_table", "Music"),
         ("var_name", "Hyperlink"), ("select_order", 0), ("unselect_order", 25),
-        ("key", False), ("anchor", "center"), ("instance", "str"), ("format", None),
+        ("key", False), ("anchor", "w"), ("instance", "str"), ("format", None),
         ("width", 160), ("minwidth", 50), ("stretch", 1)]),
 
       OrderedDict([
         ("column", "album_artist"), ("heading", "Album Artist"), ("sql_table", "Music"),
         ("var_name", "AlbumArtist"), ("select_order", 0), ("unselect_order", 26),
-        ("key", False), ("anchor", "center"), ("instance", "str"), ("format", None),
+        ("key", False), ("anchor", "w"), ("instance", "str"), ("format", None),
         ("width", 160), ("minwidth", 50), ("stretch", 1)]),
 
       OrderedDict([
@@ -3393,19 +3463,19 @@ def music_treeview():
       OrderedDict([
         ("column", "ff_major"), ("heading", "Major Brand"), ("sql_table", "Music"),
         ("var_name", "ffMajor"), ("select_order", 0), ("unselect_order", 29),
-        ("key", False), ("anchor", "center"), ("instance", "str"), ("format", None),
+        ("key", False), ("anchor", "w"), ("instance", "str"), ("format", None),
         ("width", 80), ("minwidth", 50), ("stretch", 0)]),
 
       OrderedDict([
         ("column", "ff_minor"), ("heading", "Minor Version"), ("sql_table", "Music"),
         ("var_name", "ffMinor"), ("select_order", 0), ("unselect_order", 30),
-        ("key", False), ("anchor", "center"), ("instance", "str"), ("format", None),
+        ("key", False), ("anchor", "w"), ("instance", "str"), ("format", None),
         ("width", 80), ("minwidth", 50), ("stretch", 0)]),
 
       OrderedDict([
         ("column", "compatible"), ("heading", "Compatible Brands"), ("sql_table", "Music"),
         ("var_name", "ffMinor"), ("select_order", 0), ("unselect_order", 31),
-        ("key", False), ("anchor", "center"), ("instance", "str"), ("format", None),
+        ("key", False), ("anchor", "w"), ("instance", "str"), ("format", None),
         ("width", 160), ("minwidth", 50), ("stretch", 1)]),
 
     ]
@@ -3414,22 +3484,10 @@ def music_treeview():
 
 
 def history_treeview():
-    """ Define Data Dictionary treeview columns for history table.  Snippet:
-        ("column", "time"), ("heading", "Time"), ("sql_table", "History"),
-        ("column", "music_id"), ("heading", "Music ID"), ("sql_table", "History"),
-        ("column", "user"), ("heading", "User"), ("sql_table", "History"),
-        ("column", "type"), ("heading", "Type"), ("sql_table", "History"),
-        ("column", "action"), ("heading", "Action"), ("sql_table", "History"),
-        ("column", "master"), ("heading", "Master"), ("sql_table", "History"),
-        ("column", "detail"), ("heading", "Detail"), ("sql_table", "History"),
-        ("column", "target"), ("heading", "Target"), ("sql_table", "History"),
-        ("column", "size"), ("heading", "Size"), ("sql_table", "History"),
-        ("column", "count"), ("heading", "Count"), ("sql_table", "History"),
-        ("column", "comments"), ("heading", "Comments"), ("sql_table", "History"),
-        ("column", "seconds"), ("heading", "Seconds"), ("sql_table", "History"),
-        ("column", "row_id"), ("heading", "Row ID"), ("sql_table", "History"),
-        ("column", "reason"), ("heading", "Reason"), ("sql_table", "calc"),
+    """ Define Data Dictionary treeview columns for history table.
 
+        2024-04-07 - Music ID must be key for buttons
+        in his_view to function properly.
     """
 
     history_treeview_list = [
@@ -3443,7 +3501,7 @@ def history_treeview():
       OrderedDict([
         ("column", "music_id"), ("heading", "Music ID"), ("sql_table", "History"),
         ("var_name", "MusicId"), ("select_order", 0), ("unselect_order", 2),
-        ("key", False), ("anchor", "e"), ("instance", "int"), ("format", "{:,}"),
+        ("key", True), ("anchor", "e"), ("instance", "int"), ("format", "{:,}"),
         ("width", 100), ("minwidth", 80), ("stretch", 0)]),  # 0=NO, 1=YES
 
       OrderedDict([
@@ -3643,24 +3701,7 @@ def save_config(Type, Action="", SourceMaster="", SourceDetail="", Target="",
 
 
 def location_treeview():
-    """ Define Data Dictionary treeview columns for location table.
-        self.scr_code.set(loc_dict['code'])  # Replacement for 'iid'
-        self.scr_name.set(loc_dict['name'])
-        self.scr_modify_time.set(loc_dict['modify_time'])  # New
-        self.scr_image_path.set(loc_dict['image_path'])  # New
-        self.scr_mount_point.set(loc_dict['mount_point'])  # New
-        self.scr_topdir.set(loc_dict['topdir'])
-        self.scr_host.set(loc_dict['host'])
-        self.scr_wakecmd.set(loc_dict['wakecmd'])
-        self.scr_testcmd.set(loc_dict['testcmd'])
-        self.scr_testrep.set(loc_dict['testrep'])
-        self.scr_mountcmd.set(loc_dict['mountcmd'])
-        self.scr_activecmd.set(loc_dict['activecmd'])
-        self.scr_activemin.set(loc_dict['activemin'])
-        self.scr_touchcmd.set(loc_dict['touch_cmd'])  # Replaces 'activecmd'
-        self.scr_touchmin.set(loc_dict['touch_min'])  # Replaces 'activemin'
-        self.scr_comments.set(loc_dict['comments'])  # New
-    """
+    """ Define Data Dictionary treeview columns for location table. """
 
     location_treeview_list = [
 

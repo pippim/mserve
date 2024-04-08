@@ -1620,7 +1620,6 @@ class Locations(LocationsCommonSelf):
         if self.tt:  # During early boot toolkit.Tooltips() is still 'None'
             self.tt.add_tip(self.test_help_button, help_text, anchor="ne")
 
-
     def make_display_frame(self, top):
         """ Make display window frame for main_top and test_top """
 
@@ -1822,11 +1821,10 @@ class Locations(LocationsCommonSelf):
         self.tree_frame.columnconfigure(0, weight=1)
         self.tree_frame.rowconfigure(0, weight=1)
 
-        # Not to be confused with cfg.get_cfg([]) which takes list of 4 strings
-        colors = self.get_cfg(['treeview', 'style', 'color'])
+        '''   B I G    T I C K E T    E V E N T   (Create dd_view)   '''
         self.loc_view = toolkit.DictTreeview(
             location_dict, self.main_top, self.tree_frame, columns=columns,
-            highlight_callback=self.highlight_callback, colors=colors)
+            sql_type="locations", highlight_callback=self.highlight_callback)
 
         ''' Override generic column heading names for Location usage '''
         self.loc_view.tree.heading('name', text='Location Name')

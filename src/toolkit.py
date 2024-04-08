@@ -1041,13 +1041,11 @@ class DictTreeview:
         # ChildWindows() moves children with toplevel and keeps children on top.
         self.win_grp = ChildWindows(self.toplevel)
         self.who = "toolkit.py DictTreeview()."
-        self.hdr_top = None                 # To display column details
-        self.hdr_top_is_active = None       # hdr also used to display sql row
-        self.scrollbox = None               # CustomScrolltext w/patterns
-        self.hic_top = None                 # Heading insert column
+        self.photo = None                   # To prevent garbage collection
 
-        # xxx_is_active in .close() and __init__
+        # Child Windows - xxx_is_active vars are in .close() and __init__
         self.rsd_top_is_active = None       # Row SQL details
+        self.rmd_top_is_active = None       # Row Metadata Details
         self.hcd_top_is_active = None       # Header Column details
         self.hic_top_is_active = None       # Header insert column
         self.hdc_top_is_active = None       # Header delete column
@@ -1286,6 +1284,8 @@ class DictTreeview:
             width.
 
             Common close for sql_music, sql_history and sql_location.
+            Also for maintenance of locations and playlists.
+
             Compare default dictionary to current treeview columns to see
             if any changes to:
                 'displaycolumns' column order
@@ -1294,15 +1294,11 @@ class DictTreeview:
 
         :return: 1 new custom view created, 2 existing custom view updated
         """
-
-        # Close Pretty column details or Pretty SQL Row details
-        if self.hdr_top:  # Need to get a better name!
-            self.pretty_close()  # This unregisters child as well
-
         self.win_grp.destroy_all()  # Unregister & destroy all child windows
 
-        # xxx_is_active in .close() and __init__
-        self.rsd_top_is_active = None       # Row SQL details
+        # Child Windows - xxx_is_active vars are in .close() and __init__
+        self.rsd_top_is_active = None       # Row SQL Details
+        self.rmd_top_is_active = None       # Row Metadata Details (SQL Music only)
         self.hcd_top_is_active = None       # Header Column details
         self.hic_top_is_active = None       # Header insert column
         self.hdc_top_is_active = None       # Header delete column
@@ -1344,143 +1340,220 @@ class DictTreeview:
         ret = self.cfg.insert_update_cfg(sql_key, self.name, dict_list)
         return ret
 
-    def pretty_display(self, title, width, height, x=None, y=None):
-        """ Create new window top-left of parent window with g.PANEL_HGT padding or
-            at passed x,y coordinates.
+    def pretty_column(self, title, column_name, x=None, y=None):
+        """ Display pretty column details using Data Dictionary of clicked column.
 
-            Before calling:
-                Create pretty data dictionary using tree column data dictionary
-                Or entire treeview data dictionary (E.G. sql.music_treeview)
-            After calling / usage:
-                create_window(title, width, height, top=None)
-                pretty.scrollbox = self.scrollbox
-                # If text search, highlight word(s) in yellow
-                if self.mus_search is not None:
-                    # history doesn't have support. Music & history might both be open
-                    if self.mus_search.entry is not None:
-                        pretty.search = self.mus_search.entry.get()
-                sql.tkinter_display(pretty)
-
-            When Music Location Tree calls from show_raw_metadata it passes
-            top=self.lib_top. In this case not called from SQL Music Table
-            viewer.
-
-            TODO: Instead of parent guessing width, height it would be nice
-                  to pass a maximum and reduce size when text box has extra
-                  white space.
         """
-        if self.hdr_top_is_active:
-            self.hdr_top.lift()
-            return
 
-        self.hdr_top = tk.Toplevel()  # New window for data dictionary display.
-        self.hdr_top_is_active = True
-        self.win_grp.register_child(title, self.hdr_top)
+        top = None
+        scrollbox = None  # custom scrolled text box w/pattern highlighting
+
+        def close(*_args):
+            """ Close window painted by this pretty_column() method """
+            if not self.hcd_top_is_active:
+                return
+            self.win_grp.unregister_child(top)
+            # self.tt.close(top)  # Close tooltips (There aren't any yet)
+            scrollbox.unbind("<Button-1>")
+            self.hcd_top_is_active = False  # heading column details
+            top.destroy()
+            #top = None  # Cannot update variable from outer space
+
+        if self.hcd_top_is_active:
+            close()  # Close the last instance opened
 
         if x and y:
             xy = (x, y)  # passed as parameters
         else:
             # Should always be passed x,y coordinates but just in case
-            print(self.who + "pretty_display(): coordinates not passed.")
+            print(self.who + "pretty_column(): coordinates not passed.")
             xy = (self.toplevel.winfo_x() + g.PANEL_HGT,  # Use parent's top left position
                   self.toplevel.winfo_y() + g.PANEL_HGT)
 
-        self.hdr_top.minsize(width=g.BTN_WID * 10, height=g.PANEL_HGT * 4)
-        self.hdr_top.geometry('%dx%d+%d+%d' % (width, height, xy[0], xy[1]))
-        self.hdr_top.title(title)
-        self.hdr_top.configure(background="Gray")
-        self.hdr_top.columnconfigure(0, weight=1)
-        self.hdr_top.rowconfigure(0, weight=1)
-
-        ''' Set program icon in taskbar '''
-        #Piggy back onto parent window as this window is raised overtop oo parent
-        #img.taskbar_icon(self.hdr_top, 64, 'white', 'lightskyblue', 'black', char="S")
+        self.hcd_top_is_active = True  # heading column details
+        top = self.make_common_top('column details', title, 640, 400, x, y)
 
         ''' Bind <Escape> to close window '''
-        self.hdr_top.bind("<Escape>", self.pretty_close)
-        self.hdr_top.protocol("WM_DELETE_WINDOW", self.pretty_close)
+        top.bind("<Escape>", close)
+        top.protocol("WM_DELETE_WINDOW", close)
 
-        ''' frame1 - Holds scrollable text entry '''
-        frame1 = ttk.Frame(self.hdr_top, borderwidth=g.FRM_BRD_WID,
-                           padding=(2, 2, 2, 2), relief=tk.RIDGE)
-        frame1.grid(column=0, row=0, sticky=tk.NSEW)
-        bs_font = (None, g.MON_FONTSIZE)  # bs = bserve, ms = mserve
+        ''' frame - Holds scrollable text entry '''
+        frame = ttk.Frame(top, borderwidth=g.FRM_BRD_WID,
+                          padding=(2, 2, 2, 2), relief=tk.RIDGE)
+        frame.grid(column=0, row=0, sticky=tk.NSEW)
+        ms_font = (None, g.MON_FONT)  # bs_font = bserve, ms_font = mserve
 
-        ''' Scrollable textbox to show selections / ripping status '''
-        text = ("Retrieving SQL data.\n" +
-                "If this screen can be read, there is a problem.\n\n" +
-                "TIPS:\n\n" +
-                "\tRun in Terminal: 'm' and check for errors.\n\n" +
-                "\twww.pippim.com\n\n")
+        scrollbox = CustomScrolledText(
+            frame, state="normal", font=ms_font, borderwidth=15, relief=tk.FLAT)
+        scroll_defaults(scrollbox)  # Default tab stops are too wide
+        scrollbox.config(tabs=("2m", "40m", "80m"))  # "Nicer" tab stops
+        scrollbox.grid(row=0, column=1, padx=3, pady=3, sticky=tk.NSEW)
+        frame.rowconfigure(0, weight=1)
+        frame.columnconfigure(1, weight=1)  # 2024-04-07 - Why column 1 and not 0?
 
-        # Text padding not working: https://stackoverflow.com/a/51823093/6929343
-        self.scrollbox = CustomScrolledText(
-            frame1, state="normal", font=bs_font, borderwidth=15, relief=tk.FLAT)
-        self.scrollbox.configure(background="#eeeeee")  # Replace "LightGrey"
-        self.scrollbox.insert("end", text)
-        self.scrollbox.grid(row=0, column=1, padx=3, pady=3, sticky=tk.NSEW)
-        tk.Grid.rowconfigure(frame1, 0, weight=1)
-        tk.Grid.columnconfigure(frame1, 1, weight=1)
+        column_dict = get_dict_column(column_name, self.tree_dict)
+        pretty_column = sql.PrettyTreeHeading(column_dict)
+        pretty_column.scrollbox = scrollbox
+        sql.tkinter_display(pretty_column)  # Populate scrollbox
 
-        self.scrollbox.tag_config('red', foreground='Red')
-        self.scrollbox.tag_config('blue', foreground='Blue')
-        self.scrollbox.tag_config('green', foreground='Green')
-        self.scrollbox.tag_config('black', foreground='Black')
-        self.scrollbox.tag_config('yellow', background='Yellow')
-        self.scrollbox.tag_config('cyan', background='Cyan')
-        self.scrollbox.tag_config('magenta', background='Magenta')
+    def pretty_sql_row(self, search, pretty_row, x=None, y=None):
+        """ Display pretty SQL Row details using Data Dictionary of clicked row.
 
-        self.scrollbox.highlight_pattern(u'TIPS:', 'red')
+            Before calling:
+                Create pretty = sql.PrettyMusic(), sql.PrettyHistory(), etc.
 
-        #self.scrollbox.config(tabs=("2m", "40m", "50m"))  # Apr 9, 2023
-        self.scrollbox.config(tabs=("2m", "65m", "80m"))  # Apr 27, 2023
-        self.scrollbox.tag_configure("margin", lmargin1="2m", lmargin2="65m")
-        # Fix Control+C  https://stackoverflow.com/a/64938516/6929343
-        self.scrollbox.bind("<Button-1>", lambda event: self.scrollbox.focus_set())
-
-    def pretty_close(self, *_args):
-        """ Close window painted by the create_window() function """
-        if self.hdr_top is None:
-            return
-        self.win_grp.unregister_child(self.hdr_top)
-        #self.tt.close(self.hdr_top)  # Close tooltips (There aren't any yet)
-        self.scrollbox.unbind("<Button-1>")
-        self.hdr_top_is_active = False
-        self.hdr_top.destroy()
-        self.hdr_top = None
-        iid_list = self.tree.tag_has("menu_sel")
-        for iid in iid_list:
-            tv_tag_remove(self.tree, iid, "menu_sel")
-
-    def rename_column_heading(self, column_name, new):
-        """ 
-            NO LONGER USED as of 2024-04-01
-
-            Called from show_sql_common_click() -> view_sql_heading_menu()
-
-            Display current column heading and prompt for new name.
-
-            :param column_name: tkinter column name from displaycolumns.
-            :param new: New tkinter column heading.
         """
 
-        # Update treeview with new column heading
-        self.tree.heading(column_name, text=new)
-        self.tree.update_idletasks()
+        top = None
+        scrollbox = None  # custom scrolled text box w/pattern highlighting
 
-        # Update treeview dictionary and save custom configuration for next time
-        column_dict = get_dict_column(column_name, self.tree_dict)
-        column_dict['heading'] = new  # unicode testing needed?
-        save_dict_column(column_name, self.tree_dict, column_dict)
-        sql_key = [self.cfg_name, 'sql_treeview', 'dict_treeview', 'custom']
-        self.cfg.insert_update_cfg(sql_key, self.name, self.tree_dict)
+        def close(*_args):
+            """ Close window painted by this pretty_sql_row() method """
+            if not self.rsd_top_is_active:
+                return
+            self.win_grp.unregister_child(top)
+            # self.tt.close(top)  # Close tooltips (There aren't any yet)
+            scrollbox.unbind("<Button-1>")
+            self.rsd_top_is_active = False  # heading column details
+            top.destroy()
+            #top = None  # Cannot update variable from outer space
+
+        if self.rsd_top_is_active:
+            close()  # Close the last instance opened
+
+        if not x or not y:
+            # Should always be passed x,y coordinates but just in case
+            print(self.who + "pretty_sql_row(): coordinates not passed.",
+                  "x:", x, "y:", y)
+            x = self.toplevel.winfo_x() + g.PANEL_HGT  # Use parent's top left position
+            y = self.toplevel.winfo_y() + g.PANEL_HGT
+
+        self.rsd_top_is_active = True  # Row SQL Details
+        title = None
+        try:
+            title = pretty_row.dict['Title']  # Get song title
+        except KeyError:
+            try:
+                title = pretty_row.dict['Master Source Code']  # Get History column
+            except KeyError:
+                try:
+                    title = pretty_row.dict['Name']  # Get Location Name
+                except KeyError:
+                    print("unable to locate key 'Title', 'Source Master' or",
+                          "'Name' in SQL TABLE Music/History/Location")
+                    print(pretty_row.dict)
+
+        if title is None:
+            title = "Unknown Row Title"  # Metadata hasn't been initialized
+
+        top = self.make_common_top('sql row details', title, 1000, 750, x, y)
+
+        ''' Bind <Escape> to close window '''
+        top.bind("<Escape>", close)
+        top.protocol("WM_DELETE_WINDOW", close)
+
+        ''' frame - Holds scrollable text entry '''
+        frame = ttk.Frame(top, borderwidth=g.FRM_BRD_WID,
+                          padding=(2, 2, 2, 2), relief=tk.RIDGE)
+        frame.grid(column=0, row=0, sticky=tk.NSEW)
+        ms_font = (None, g.MON_FONT)  # bs_font = bserve, ms_font = mserve
+
+        ''' custom scrolled text box with pattern highlighting '''
+        scrollbox = CustomScrolledText(
+            frame, state="normal", font=ms_font, borderwidth=15, relief=tk.FLAT)
+        scroll_defaults(scrollbox)
+        scrollbox.grid(row=0, column=0, padx=3, pady=3, sticky=tk.NSEW)
+        frame.rowconfigure(0, weight=1)
+        frame.columnconfigure(0, weight=1)
+
+        pretty_row.scrollbox = scrollbox
+        pretty_row.search = search  # Only relevant for SQL Music Search so far
+        sql.tkinter_display(pretty_row)  # Populate scrollbox
+
+    def pretty_meta_row(self, FileControl, os_filename, info, x=None, y=None):
+        """ Display pretty file metadata details using Data Dictionary of clicked row.
+        """
+
+        top = None
+        scrollbox = None  # custom scrolled text box w/pattern highlighting
+
+        def close(*_args):
+            """ Close window painted by this pretty_sql_row() method """
+            if not self.rmd_top_is_active:
+                return
+            self.win_grp.unregister_child(top)
+            # self.tt.close(top)  # Close tooltips (There aren't any yet)
+            scrollbox.unbind("<Button-1>")
+            self.rmd_top_is_active = False  # heading column details
+            top.destroy()
+            #top = None  # Cannot update variable from outer space
+
+        if self.rmd_top_is_active:
+            close()  # Close the last instance opened
+
+        if not x or not y:
+            # Should always be passed x,y coordinates but just in case
+            print(self.who + "pretty_meta_row(): coordinates not passed.",
+                  "x:", x, "y:", y)
+            x = self.toplevel.winfo_x() + g.PANEL_HGT  # Use parent's top left position
+            y = self.toplevel.winfo_y() + g.PANEL_HGT
+
+        self.rmd_top_is_active = True  # Row SQL Details
+
+        ''' File Control to get metadata loaded. '''
+        view_ctl = FileControl(top, info)
+        view_ctl.new(os_filename)  # Declaring new file populates metadata
+        pretty_row = sql.PrettyMeta(view_ctl.metadata)
+
+        title = pretty_row.dict.get('TITLE', "Unknown Song Title")  # Get song title
+        top = self.make_common_top('row metadata details', title, 1350, 750, x, y)
+
+        ''' Bind <Escape> to close window '''
+        top.bind("<Escape>", close)
+        top.protocol("WM_DELETE_WINDOW", close)
+
+        ''' frame - Holds scrollable text entry '''
+        frame = ttk.Frame(top, borderwidth=g.FRM_BRD_WID,
+                          padding=(2, 2, 2, 2), relief=tk.RIDGE)
+        frame.grid(column=0, row=0, sticky=tk.NSEW)
+        ms_font = (None, g.MON_FONT)  # bs_font = bserve, ms_font = mserve
+
+        ''' Artwork '''
+        sample_art = img.make_image("No Artwork")
+        sample_resized_art = sample_art.resize(
+            (200, 200), Image.ANTIALIAS)
+        self.photo = ImageTk.PhotoImage(sample_resized_art)
+        sample_art_label = tk.Label(frame, image=self.photo,
+                                    font=g.FONT)
+        sample_art_label.grid(row=0, column=0, sticky=tk.EW)
+
+        artwork, resized_art, original_art = \
+            view_ctl.get_artwork(200, 200)
+        view_ctl.close()
+
+        if artwork is not None:
+            self.photo = artwork
+            sample_art_label.configure(image=self.photo)
+            pass
+
+        ''' custom scrolled text box with pattern highlighting '''
+        scrollbox = CustomScrolledText(
+            frame, state="normal", font=ms_font, borderwidth=15, relief=tk.FLAT)
+        scroll_defaults(scrollbox)
+        scrollbox.grid(row=1, column=0, padx=3, pady=3, sticky=tk.NSEW)
+        frame.rowconfigure(1, weight=1)
+        frame.columnconfigure(0, weight=1)
+
+        pretty_row.scrollbox = scrollbox
+        sql.tkinter_display(pretty_row)  # Populate scrollbox
 
     def rename_column(self, column_name, x, y):
         """ Called from mserve.py view_sql_button_3() -> view_sql_heading_menu()
 
-            Right click (button-3) performed on tkinter column heading.
-
-            Prompt to delete the current column from view.
+            Prompt for column to rename (defaults to current column) from view.
+            Prompt for new name.
+            
+            After apply, close all child windows of dd_view.
 
             :param column_name: tkinter column name from displaycolumns.
             :param x: x position 24 pixels left of mouse pointer.
@@ -1571,12 +1644,13 @@ class DictTreeview:
     def insert_column(self, column_name, x, y):
         """ Called from mserve.py view_sql_button_3() -> view_sql_heading_menu()
 
-            Right click (button-3) performed on tkinter column heading.
-
             Display combobox of unselected columns to pick from.
 
-            Show current column and prompt whether to insert before/after.
+            Show current column and prompt where to insert.
 
+            Call self.force_close(restart=True) to close all windows
+            and restart parent.
+            
             :param column_name: tkinter column name from displaycolumns.
             :param x: x position 24 pixels left of mouse pointer.
             :param y: y position 24 pixels below mouse pointer.
@@ -1659,7 +1733,7 @@ class DictTreeview:
             self.reapply_common_columns(save_cols, 'add')
 
             close()  # Close our window
-            self.force_close()  # Close toplevel window
+            self.force_close(restart=True)  # Close toplevel window
 
         ''' frame - Holds combox, spinbox, custom scrolledtext and buttons '''
         # Rows: 10 Combobox, 20 Spinbox, 30/50 separators, 40 displaycolumns
@@ -1686,13 +1760,21 @@ class DictTreeview:
 
             Right click (button-3) performed on tkinter column heading.
 
-            Prompt to delete the current column from view.
+            Prompt for column to delete (default is the current column from view).
+
+            Call self.force_close(restart=True) to close all windows
+            and restart parent.
 
             :param column_name: tkinter column name from displaycolumns.
             :param x: x position 24 pixels left of mouse pointer.
             :param y: y position 24 pixels below mouse pointer.
         """
         if self.hdc_top_is_active:
+            return
+
+        if len(self.tree['displaycolumns']) < 2:
+            print(self.who + "delete_column():",
+                  "len(self.tree['displaycolumns']) < 2:")
             return
 
         self.hdc_top_is_active = True
@@ -1740,7 +1822,7 @@ class DictTreeview:
             self.reapply_common_columns(save_cols, 'delete')
 
             close()  # Close our window
-            self.force_close()  # Close toplevel window
+            self.force_close(restart=True)  # Close toplevel window
 
         ''' frame - Holds combox, spinbox, custom scrolledtext and buttons '''
         # Rows: 10 Combobox, 20 Spinbox, 30/50 separators, 40 displaycolumns
@@ -1770,6 +1852,8 @@ class DictTreeview:
             Dynamically show column order with each spinbox action.
 
             Apply changes to self.tree['displaycolumns'] and set tree_dict
+            
+            After apply, close all child windows of dd_view.
 
             :param column_name: tkinter column name from displaycolumns.
             :param x: x position 24 pixels left of mouse pointer.
@@ -2024,67 +2108,89 @@ class DictTreeview:
         ls = []
         for column in self.tree['displaycolumns']:
             ds = dict()
-            ds['column'] = column
-            ds['anchor'] = self.tree.column(column)['anchor']
-            ds['width'] = self.tree.column(column)['width']
+            # 'minwidth': 99, 'width': 99, 'id': column, 'anchor': 'w', 'stretch': 1
+            ds = self.tree.column(column)  # grab all. note 'column' is 'id'
             ds['heading'] = self.tree.heading(column)['text']
+            #print("self.tree.column(column):", self.tree.column(column))
             ls.append(ds)
+        #print("ls:", ls)
         return ls
 
     def reapply_common_columns(self, ls, mode):
         """ Restore column headings and width saved earlier.
-            Used for Insert Column and Remove Column
+                ls['minwidth': 99, 'width': 99, 'id': COLUMN_NAME, 'anchor': 'w',
+                   'stretch': 1 'heading': HEADING]
+            Used for Insert Column and Remove Column.
+            Tally tot_stretch and tot_width for massaging after insert.
         """
-        # Apply column widths and headings to new dict_list
-        for column in self.tree['displaycolumns']:
-            # ALTERNATE METHOD SAVES 6 LINES:
+        # Apply saved column attributes and headings to new treeview
+        tot_stretch = cnt_stretch = tot_all = add_ndx = add_width = 0
+        for i, column in enumerate(self.tree['displaycolumns']):
             # https://stackoverflow.com/a/9980160/6929343
-            # lm = [ds for ds in ls if ds['column'] == column]
-            # if lm:  # List of matching dicts has one dict
-            #     self.tree.column(column, anchor=lm[0]['anchor'])
-            #     self.tree.column(column, width=lm[0]['width'])
-            #     self.tree.heading(column, text=lm[0]['heading'])
-            # else:
-            #     # Get dictionary inserted attributes from Data Dictionary
-            #     di = get_dict_column(column, self.tree_dict)
-            #     self.tree.column(column, anchor=di['anchor'])
-            #     self.tree.column(column, width=di['minwidth'])
-            #     self.tree.heading(column, text=di['heading'])
-
-            found = False
-            for ds in ls:  # for dictionary saved in list saved
-                if ds['column'] != column:
-                    continue
-                self.tree.column(column, anchor=ds['anchor'])
-                self.tree.column(column, width=ds['width'])
+            lm = [ds for ds in ls if ds['id'] == column]
+            if lm:  # Saved self.tree attributes before add/delete column
+                ds = lm[0]  # List of matching dicts has one dict
+                self.tree.column(column, width=ds['width'], anchor=ds['anchor'],
+                                 stretch=ds['stretch'], minwidth=ds['minwidth'])
                 self.tree.heading(column, text=ds['heading'])
-                found = True
-                break
-
-            if not found:
-                # saved column was not found in new displaycolumns
-                # column inserted, use Pippim dictionary minimum width
-                # to reduce last column being cut off too much.
-                # Get dictionary inserted attributes from Data Dictionary
-                if mode != 'add':
-                    print("mode != 'add'", mode)
-                    continue
+                if ds['stretch'] == 1:  # stretchable columns get allocation
+                    tot_stretch += ds['width']
+                    cnt_stretch += 1
+                tot_all += ds['width']  # Used when no columns stretchable
+            elif mode == 'add':
+                # Get new column attributes from Data Dictionary
                 di = get_dict_column(column, self.tree_dict)
-                self.tree.column(column, anchor=di['anchor'])
-                self.tree.column(column, width=di['minwidth'])
+                self.tree.column(column, width=di['width'], anchor=di['anchor'],
+                                 stretch=di['stretch'], minwidth=di['minwidth'])
                 self.tree.heading(column, text=di['heading'])
+                add_ndx = i
+                add_width += di['width']
+            else:
+                print(self.who + "reapply_common_columns(): mode != 'add'", mode)
+                continue
 
         if mode == 'add':
-            # TODO: reduce other columns share of minwidth for inserted colum
-            pass
+            pass  # Proceed with column width reductions
         elif mode == 'delete':
-            # TODO: increase other columns share of width for deleted colum
-            pass
+            self.tree.update_idletasks()
+            return  # Tkinter automatically widens columns to fill frame
         else:
-            print("Bad 'mode' !!!", mode)
+            print(self.who + "reapply_common_columns(): Bad 'mode' !!!", mode)
+            return
+
+        ''' reduce columns by inserted column width '''
+        cnt_all = len(self.tree['displaycolumns']) - 1
+        COL_SEP_WIDTH = 20  # Treeview column separator width (best guess)
+        if cnt_stretch:
+            adj_amt = add_width / cnt_stretch
+            adj_rounding = add_width - (adj_amt * cnt_stretch) + COL_SEP_WIDTH
+        else:
+            adj_amt = tot_all / cnt_all
+            adj_rounding = add_width - (adj_amt * cnt_all) + COL_SEP_WIDTH
+
+        #print(self.who + "reapply_common_columns(): tot_stretch:", tot_stretch,
+        #       "cnt_stretch:", cnt_stretch, "tot_all:", tot_all, "cnt_all:", cnt_all)
+        #print(" "*30, "add_ndx:", add_ndx, "add_width:", add_width,
+        #      "adj_amt:", adj_amt, "adj_rounding:", adj_rounding)
+
+        for i, column in enumerate(self.tree['displaycolumns']):
+            if i == add_ndx:
+                continue  # Added column isn't adjusted
+            c = self.tree.column(column)
+            if cnt_stretch and c['stretch'] == 0:
+                continue  # Stretchable columns but not this one
+
+            width = c['width'] - adj_amt - adj_rounding
+            adj_rounding = 0  # Only the first column receives rounding amount
+            self.tree.column(column, width=width)
+
+        # After update, close is called to save tree to tree_dict disk image
+        # Then restart SQL Table viewer with force_close(restart=True)
+        self.tree.update_idletasks()
+
 
     def close_common_windows(self):
-        """ One of move/insert/delete/rename column applied changes. Close all """
+        """ Either Move or Rename column applied changes. Close all children """
         if self.hmc_top_is_active:
             self.win_grp.destroy_by_key('move column')
             self.hmc_top_is_active = False
@@ -2218,18 +2324,6 @@ class DictTreeview:
         if data_dict['column'] == search:
             data_dict['format'] = new_format
             save_dict_column(search, self.tree_dict, data_dict)
-
-    def is_attached(self, msgId):
-        """ Is it attached? """
-        return self.attached[msgId] is True
-
-    def is_detached(self, msgId):
-        """ Is it detached? """
-        return self.attached[msgId] is False
-
-    def is_skipped(self, msgId):
-        """ Is it skipped? """
-        return self.attached[msgId] is None
 
     def print_tk_columns(self):
         """
@@ -2496,6 +2590,29 @@ def computer_bytes(size, decimals=False):
     multiplier = uom_dict.get(uom, 1.0)  # If not found multiply by 1.0
     converted = size * multiplier
     return int(converted)
+
+
+def scroll_defaults(scrollbox):
+    """ Assign tag colors to custom text scroll boxes
+        Also set tab stops, margins and button fix for Ctrl+C
+    """
+
+    # Foreground colors
+    scrollbox.tag_config('red', foreground='red')
+    scrollbox.tag_config('blue', foreground='blue')
+    scrollbox.tag_config('green', foreground='green')
+    scrollbox.tag_config('black', foreground='black')
+
+    # Highlighting background colors
+    scrollbox.tag_config('yellow', background='yellow')
+    scrollbox.tag_config('cyan', background='cyan')
+    scrollbox.tag_config('magenta', background='magenta')
+
+    scrollbox.configure(background="WhiteSmoke")
+    scrollbox.config(tabs=("2m", "65m", "80m"))  # tab stops
+    scrollbox.tag_configure("margin", lmargin1="2m", lmargin2="65m")
+    # Fix Control+C  https://stackoverflow.com/a/64938516/6929343
+    scrollbox.bind("<Button-1>", lambda event: scrollbox.focus_set())
 
 
 class SearchText:

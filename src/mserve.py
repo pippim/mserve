@@ -89,6 +89,7 @@ warnings.simplefilter('default')  # in future Python versions.
 #       Feb. 18 2024 - Set SQL last play time same as OS stat file last access.
 #       Mar. 17 2024 - Dropdown menu accelerator keys. SQL color configuration.
 #       Mar. 26 2024 - View SQL Tables - Compact code, rename column headings.
+#       Apr. 06 2024 - lyrics change "{}" to "[]" because it messes up treeview.
 
 # noinspection SpellCheckingInspection
 """
@@ -1182,10 +1183,11 @@ class MusicLocTreeCommonSelf:
         #       self.view is the left-click and right-click menu for single row
         self.view = None                    # Shared view for SQL Music and SQL History
         self.common_top = None              # Top level clone for SQL Music or History
-        # NOTE: self.hdr_top is window opened drilling down into treeview heading too
-        self.hdr_top = None                 # hdr, iid & scrollbox for create_window()
+        # NOTE: self.pre_top is window opened drilling down into treeview heading too
+        self.pre_top = None                 # hdr, iid & scrollbox for create_window()
         self.view_iid = None                # Treeview IID of row ID clicked on
         self.scrollbox = None               # Used by self.create_window()
+        self.photo = None                   # To prevent garbage collection
 
         ''' Tools - batch processing - make .lrc / copy files '''
         self.checked_loc_name = None        # Location name copied to
@@ -1201,7 +1203,7 @@ class MusicLocTreeCommonSelf:
         self.mus_top_is_active = False      # View SQL Music open?
         self.his_top_is_active = False      # View SQL History open?
         self.lcs_top_is_active = False      # View SQL Location open?
-        self.hdr_top_is_active = None       # Did we open SQL drill down window?
+        self.pre_top_is_active = None       # Did we open SQL drill down window?
         self.sync_paused_music = False      # Important this is False now
         self.loc_keep_awake_is_active = False   # Prevent remote host sleeping?
 
@@ -5156,6 +5158,24 @@ Call search.py when these control keys occur
         self.tt.add_tip(self.mus_view_btn7,
                         "Tally sizes and count rows.", anchor="ne")
 
+        # Music dd_view should have button for duplicates.  
+        # E.G. a song in both mp3 and m4a format. Can be done for 
+        # OS Filename match up to extension and Metadata match on 
+
+        # Artist, Album and Title. At same time report files < 100kb
+
+        # Lyrics containing "{}" cause problems
+
+        # Don't forget future plan to display root and all widgets 
+        # underneath with checkbox treeview.
+
+        # Also for SQL History cfg_* type to expand???
+        # The 100kb cut off can be a SQL User Config() setting.
+        # cfg_setting, limit, music_file, min_size.
+
+        # All these settings can be read when "scanning" on startup 
+        # and in SQL Music Table "Warnings" button described above.
+
         ''' Colors for tags '''
         self.ignore_item = None  # purpose?
         self.mus_view.tree.tag_configure('menu_sel', background='Yellow')
@@ -5265,6 +5285,10 @@ Call search.py when these control keys occur
         """
         if self.mus_search:
             self.mus_search.close()  # Close old search
+
+        #   File "/home/rick/python/toolkit.py", line 2443, in column_value
+        #     i = self.columns.index(search)
+        # ValueError: 'os_file_size' is not in list
 
         answer = message.AskQuestion(
             self.mus_top, thread=self.get_refresh_thread, confirm='no',
@@ -5448,7 +5472,7 @@ Call search.py when these control keys occur
             self.mus_artwork_dtb.update("Missing artwork: " + os_filename)
             return True  # keep this one in treeview
 
-    def mus_close(self, *_args):
+    def mus_close(self, restart=False, *_args):
         """ Close SQL Music Table View
             May be called with 'X' to close window while find callbacks running.
 
@@ -5467,6 +5491,14 @@ Call search.py when these control keys occur
         self.mus_artwork_dtb = None
         if self.long_running_process:
             self.end_long_running_process()
+
+        ''' show_sql_music() creates toplevel, frames, buttons, etc. and calls
+            dd_view = toolkit.DictTreeview(top, frame, ... force_close=mus_close)
+            If dd_view needs to restart because Column Inserted or Removed it
+            calls force_close(restart=True) to close everything and restart.
+        '''
+        if restart:
+            self.show_sql_music()
 
     def show_sql_common_close(self, dd_view):
         """ Common close for sql_music, sql_history and sql_location.
@@ -5499,7 +5531,7 @@ Call search.py when these control keys occur
 
         # Need new function self.win_grp.close_all_children()
 
-        self.pretty_close(win_grp=dd_view.win_grp)  # title is unknown
+        #self.pretty_close(win_grp=dd_view.win_grp)  # title is unknown
         last_geometry = monitor.get_window_geom_string(
             dd_view.toplevel, leave_visible=False)
         monitor.save_window_geom(dd_view.sql_type, last_geometry)
@@ -5620,7 +5652,7 @@ Call search.py when these control keys occur
 
         return music_id == 0 and Type == 'encode'
 
-    def his_close(self, *_args):
+    def his_close(self, restart=False, *_args):
         """ Close SQL History Table View """
         self.his_top_is_active = False
 
@@ -5628,6 +5660,14 @@ Call search.py when these control keys occur
         self.show_sql_common_close(self.his_view)
 
         self.his_search = None
+
+        ''' show_sql_history() creates toplevel, frames, buttons, etc. and calls
+            dd_view = toolkit.DictTreeview(top, frame, ... force_close=his_close)
+            If dd_view needs to restart because Column Inserted or Removed it
+            calls force_close(restart=True) to close everything and restart.
+        '''
+        if restart:
+            self.show_sql_history()
 
     def show_sql_location(self):
         """ Open SQL Location treeview. Patterned after show_sql_music() """
@@ -5691,7 +5731,7 @@ Call search.py when these control keys occur
             self.lcs_view, find_str=None, tt=self.tt)
         self.lcs_search.find()
 
-    def lcs_close(self, *_args):
+    def lcs_close(self, restart=False, *_args):
         """ Close SQL Location Table View """
         self.lcs_top_is_active = False
 
@@ -5699,6 +5739,14 @@ Call search.py when these control keys occur
         self.show_sql_common_close(self.lcs_view)
 
         self.lcs_search = None
+
+        ''' show_sql_location() creates toplevel, frames, buttons, etc. and calls
+            dd_view = toolkit.DictTreeview(top, frame, ... force_close=lcs_close)
+            If dd_view needs to restart because Column Inserted or Removed it
+            calls force_close(restart=True) to close everything and restart.
+        '''
+        if restart:
+            self.show_sql_location()
 
     # SHARED SHOW SQL METHODS
     def show_sql_common_init(self, sql_type, name, tree_dict,
@@ -5851,13 +5899,13 @@ Call search.py when these control keys occur
             view = self.his_view, self.mus_view or self.lcs_view """
 
         total_size = 0  # Dubious value for history table
-        total_seconds = 0
+        total_seconds = 0.0
         row_count = 0
         use_file_size = "os_file_size" in view.columns
         # When either 'seconds' or 'duration' column name appears then
         # total music duration in days, hours:minutes:seconds displayed
         use_seconds = "seconds" in view.columns
-        _use_duration = "duration" in view.columns  # add total seconds
+        use_duration = "duration" in view.columns  # add total seconds
         _use_lyrics = "lyrics" in view.columns  # calculate total words
 
         for iid in view.tree.get_children():
@@ -5867,23 +5915,37 @@ Call search.py when these control keys occur
             if use_file_size:
                 size = view.column_value(values, "os_file_size")  # Music Table
             else:
-                size = view.column_value(values, "size")  # History Table
+                try:
+                    size = view.column_value(values, "size")  # History Table
+                except ValueError:
+                    size = None
+                    print("show_sql_summary() view.columns:", view.columns)
             if size is None:
                 print('mserve.py - show_sql_summary() size is None. iid:', iid)
                 size = "0"
-            int_size = int(size.replace(',', ''))
-            total_size += int_size
+            try:
+                int_size = int(size.replace(',', ''))  # TODO: Use locale
+            except ValueError:
+                int_size = 0
+            total_size += int_size  # TODO: Use locale
             if use_seconds:
                 # seconds column might not be in treeview displaycolumns
-                seconds = view.column_value(values, "seconds")  # History Table
-                total_seconds += seconds
+                seconds = view.column_value(values, "seconds")  # Music/History
+                total_seconds += float(seconds.replace(",", ""))
+            if use_duration:
+                duration = view.column_value(values, "duration")  # Music Table
+                if duration is not "":  # Songs with no metadata have no duration
+                    total_seconds += float(tmf.get_sec(duration))
 
-        text = "Total size:  " + "{:,}".format(total_size) + "\n" + \
-               "Row count:  " + "{:,}".format(row_count)
+        text = "Total size:  " + "{:,}".format(total_size) + \
+               "\nRow count:  " + "{:,}".format(row_count)
 
-        view.print_tk_columns()  # Dump out tk treeview column settings
-        print("view.tree['displaycolumns']:", view.tree['displaycolumns'])
-        print("view.tree['columns']:", view.tree['columns'])
+        if use_seconds or use_duration:
+            text += "\nTotal seconds:  " + "{:,}".format(total_seconds)
+            text += "\nTotal duration:  " + tmf.days(total_seconds)
+        #view.print_tk_columns()  # Dump out tk treeview column settings
+        #print("view.tree['displaycolumns']:", view.tree['displaycolumns'])
+        #print("view.tree['columns']:", view.tree['columns'])
 
         message.ShowInfo(view.toplevel, title, text,
                          thread=self.get_refresh_thread)
@@ -5942,19 +6004,15 @@ Call search.py when these control keys occur
         """ Right-clicked (button-3) in View SQL Treeview Heading.
             Popup menu on current treeview column heading. 
                 - 'Xxx' column details
-                - Edit column heading
-                - Change column order (you can drag in GNOME)
+                - Rename column heading
+                - Shift column position (you can drag in GNOME)
                 - Remove column from view
-                - Add new column to view
-                - Change window colors
+                - Insert column into view
         """
 
         #if dd_view == self.lcs_view:
         #    print("View SQL Location Heading right click has no support.")
         #    return
-
-        # TODO: Lock out all View SQL Table toplevel windows with focus in to come
-        # back to this window and the active configure window.
 
         heading = dd_view.tree.heading(column_name)['text']
         title = "'" + heading + "' Column Details"
@@ -5963,13 +6021,17 @@ Call search.py when these control keys occur
         menu = tk.Menu(root, tearoff=0)
         x, y = event.x_root - 24, event.y_root + 24
 
+        # 2024-04-07 pretty_display() and pretty_close() are being phased out
+        #menu.add_command(label=title, font=(None, g.MON_FONT),
+        #                 command=lambda: self.show_sql_column_details(
+        #                     dd_view, title, column_name, x, y))
         # If lambda isn't used, the command is executed immediately.
         menu.add_command(label=title, font=(None, g.MON_FONT),
-                         command=lambda: self.show_sql_column_details(
-                             dd_view, title, column_name, x, y))
+                         command=lambda: dd_view.pretty_column(
+                             title, column_name, x, y))
+        menu.add_separator()
         menu.add_command(label="Rename column heading", font=(None, g.MON_FONT),
                          command=lambda: dd_view.rename_column(column_name, x, y))
-        menu.add_separator()
         menu.add_command(label="Shift column position", font=(None, g.MON_FONT),
                          command=lambda: dd_view.move_column(column_name, x, y))
         menu.add_command(label="Remove column from view", font=(None, g.MON_FONT),
@@ -5977,56 +6039,12 @@ Call search.py when these control keys occur
         menu.add_command(label="Insert column into view", font=(None, g.MON_FONT),
                          command=lambda: dd_view.insert_column(column_name, x, y))
         menu.add_separator()
-        menu.add_command(label="Change window colors", font=(None, g.MON_FONT),
-                         command=lambda: dd_view.edit_column_dict(column_name))
-        menu.add_separator()
         menu.add_command(label="Ignore click", font=(None, g.MON_FONT),
                          command=lambda: self.show_sql_close_heading_menu(menu))
 
         menu.tk_popup(x, y)
         # Without lambda executes immediately, without _: invalid # parameters
         menu.bind("<FocusOut>", lambda _: self.show_sql_close_heading_menu(menu))
-
-    @staticmethod
-    def show_sql_column_details(dd_view, column_title, column_name, x, y):
-        """ Pretty Dictionary display of column dictionary """
-
-        if dd_view.hdr_top:  # Need a better name!
-            dd_view.pretty_close()  # hdr_top could be another column or sql row
-
-        column_dict = toolkit.get_dict_column(column_name, dd_view.tree_dict)
-        view_column = sql.PrettyTreeHeading(column_dict)
-        window_title = dd_view.name + ": " + column_title + " - mserve"
-
-        # create window with width, height
-        dd_view.pretty_display(window_title, 600, 420, x=x, y=y)
-        view_column.scrollbox = dd_view.scrollbox
-        sql.tkinter_display(view_column)  # Populate scrollbox
-
-    def show_sql_rename_heading(self, dd_view, column_name):
-        """
-            NO LONGER USED as of 2024-04-01
-            Rename column heading
-        """
-        column_dict = toolkit.get_dict_column(column_name, dd_view.tree_dict)
-        default_string = column_dict['heading']
-        title = "Rename Column Heading"
-        text = "Current name: " + default_string + "\n\n"
-        text += "Enter new name below.\n"
-
-        answer = message.AskString(
-            dd_view.toplevel, title, text, thread=self.get_refresh_thread,
-            string=default_string, string_width=20)
-
-        if answer.result != "yes":
-            return
-
-        new = answer.string
-        if new == default_string:
-            print("exiting rename_column_heading without any changes.")
-            return
-
-        dd_view.rename_column_heading(column_name, new)
 
     def show_sql_close_heading_menu(self, menu):
         """ Remove View SQL Table popup treeview heading menu """
@@ -6045,9 +6063,9 @@ Call search.py when these control keys occur
         # Get SQL Table's row_id from treeview column (maybe hidden column)
         dd_view_iid = dd_view.tree.identify_row(event.y)
         values = dd_view.tree.item(dd_view_iid, "values")
+        x, y = event.x_root - 24, event.y_root + 24
 
         if len(values) < 1:
-            # This error caught before calling in self.view_iid == "" test above
             print("mserve.py - show_sql_row_menu() len(values)",
                   len(values), "dd_view_iid:", "'" + dd_view_iid + "'")
             return
@@ -6060,11 +6078,20 @@ Call search.py when these control keys occur
             return
 
         ''' Create Pretty Displays from SQL tables '''
+        search = None  # search words to highlight
         if dd_view == self.his_view:
             pretty = sql.PrettyHistory(sql_row_id)
         elif dd_view == self.mus_view:
             pretty = sql.PrettyMusic(sql_row_id)
-        # There is no sql.PrettyLocation
+            if self.mus_search is not None:
+                # history doesn't have support. Music & history might both be open
+                if self.mus_search.entry is not None:
+                    search = self.mus_search.entry.get()
+        elif dd_view == self.lcs_view:
+            pretty = sql.PrettyLocation(sql_row_id)
+        else:
+            print("mserve.py - show_sql_row_menu(): Bad view:", dd_view.name)
+            exit()
 
         # Highlight treeview row and display Popup menu at row
         toolkit.tv_tag_add(dd_view.tree, dd_view_iid, "menu_sel")
@@ -6075,17 +6102,25 @@ Call search.py when these control keys occur
 
         # If lambda isn't used the command is executed as soon as popup
         # menu is displayed, not when option is chosen.
-        menu.add_command(label="View SQL Metadata", font=(None, g.MED_FONT),
-                         command=lambda: self.show_sql_row(dd_view, pretty))
-        ''' show_sql_lib_top will trap Music ID = 0 and give message. '''
-        menu.add_command(label="Open in library", font=(None, g.MED_FONT),
-                         command=lambda: self.show_sql_lib_top(pretty))
+        menu.add_command(label="View SQL Row", font=(None, g.MED_FONT),
+                         command=lambda: dd_view.pretty_sql_row(
+                             search, pretty, x, y))
+        if dd_view != self.lcs_view:
+            ''' show_sql_lib_top will trap Music ID = 0 and give message. '''
+            menu.add_command(label="Open in library", font=(None, g.MED_FONT),
+                             command=lambda: self.show_sql_lib_top(pretty))
         menu.add_separator()
 
         if dd_view == self.mus_view:
             """ SQL Music Table must be opened for show_raw_metadata() """
-            menu.add_command(label="View Raw Metadata", font=(None, g.MED_FONT),
-                             command=lambda: self.show_raw_metadata(pretty))
+            os_filename = PRUNED_DIR + pretty.dict['OS Filename']
+
+            # 2024-04-07 dd_view.pretty_meta_row() replaces self.show_raw_metadata() 
+            #menu.add_command(label="View Raw Metadata", font=(None, g.MED_FONT),
+            #                 command=lambda: self.show_raw_metadata(pretty))
+            menu.add_command(label="View Metadata", font=(None, g.MED_FONT),
+                             command=lambda: dd_view.pretty_meta_row(
+                                 FileControl, os_filename, self.info, x, y))
             menu.add_separator()
 
         menu.add_command(label="Ignore click", font=(None, g.MED_FONT),
@@ -6103,8 +6138,8 @@ Call search.py when these control keys occur
             toolkit.tv_tag_remove(dd_view.tree, iid, "menu_sel")
 
     def show_raw_metadata(self, pretty, os_filename=None, top=None):
-        """ View Metadata - Called from SQL Music Table popup menu
-        Called from Music Location Tree popup menu and passes os_filename
+        """ View Metadata - Called from Music Location Tree popup menu 
+                            which passes os_filename
 
         :param pretty: Dictionary for SQL Music Table. Used to get OsFileName
             and then recycled for metadata dictionary.
@@ -6112,6 +6147,7 @@ Call search.py when these control keys occur
         :param top: When called from Music Location Tree = self.lib_top.
         """
         if not os_filename:
+            # 2024-04-07 Old code for dd_view no longer needed  
             os_filename = PRUNED_DIR + pretty.dict['OS Filename']
         view_ctl = FileControl(self.lib_top, self.info)
         view_ctl.new(os_filename)  # Declaring new file populates metadata
@@ -6119,13 +6155,15 @@ Call search.py when these control keys occur
         view_ctl.close()
 
         # Requires override to def create_window
-        self.create_window("Metadata (ID3 Tags) - mserve", 1400, 975, top=top)
+        self.create_window("Metadata (ID3 Tags) - mserve", 1350, 750, top=top)
         pretty.scrollbox = self.scrollbox
         sql.tkinter_display(pretty)
 
-    def show_sql_row(self, dd_view, pretty):
-        """ View SQL - Music Table, History Table, or Location Table Row """
-        if dd_view.hdr_top:  # Need a better name!
+    def old_show_sql_row(self, dd_view, pretty):
+        """ View SQL - Music Table, History Table, or Location Table Row
+            2024-04-07 - NO LONGER USED.
+        """
+        if dd_view.pre_top:
             dd_view.pretty_close()
         dd_view.pretty_display("SQL Table Row - mserve", 1000, 750)
         # dd_view.scrollbox is toolkit.CustomScrolledText declared in
@@ -6139,7 +6177,10 @@ Call search.py when these control keys occur
         sql.tkinter_display(pretty)  # Populate scrollbox using data dictionary
 
     def show_sql_lib_top(self, pretty):
-        """ View Library Treeview and open current song into view.
+        """ Switch to Library Treeview and position to current song.
+
+            Used in SQL Table Viewers for Music and History.
+
             TODO: When returning, collapse treeview parents forced to open. """
         music_id = pretty.dict['SQL Music Row Id']  # hist & music have same
         ''' SQL History Table configuration rows have music_id with "0" '''
@@ -6201,8 +6242,8 @@ Call search.py when these control keys occur
         """ Create new window top-left of parent window with g.PANEL_HGT padding
 
             2024-03-29 was being used for three SQL Table viewers but now they
-                will use their own display_pretty() methods instead. So for now
-                only lib_top will be calling to display SQL row windows
+                will use their own dd_view.pretty_xxx_xxx() methods.
+                Only lib_top will be calling to display SQL row windows
 
             Before calling:
                 Create pretty data dictionary using tree column data dictionary
@@ -6225,15 +6266,15 @@ Call search.py when these control keys occur
                   to pass a maximum and reduce size when text box has extra
                   white space.
         """
-        if self.hdr_top is not None:
-            self.hdr_top.lift()
-            self.hdr_top.title(title)  # Maybe on different title
+        if self.pre_top is not None:
+            self.pre_top.lift()
+            self.pre_top.title(title)  # Maybe on different title
             return
 
-        self.hdr_top = tk.Toplevel()  # New window for data dictionary display.
-        self.hdr_top_is_active = True
-        if win_grp:
-            win_grp.register_child(title, self.hdr_top)
+        self.pre_top = tk.Toplevel()  # New window for data dictionary display.
+        self.pre_top_is_active = True
+        if win_grp is not None:
+            win_grp.register_child(title, self.pre_top)
 
         if top is None:  # When not None it is lib_top (Music Location)
             top = self.common_top  # Parent Window - mus_top, his_top
@@ -6243,25 +6284,25 @@ Call search.py when these control keys occur
             xy = (top.winfo_x() + g.PANEL_HGT,  # Use parent's top left position
                   top.winfo_y() + g.PANEL_HGT)
 
-        self.hdr_top.minsize(width=g.BTN_WID * 10, height=g.PANEL_HGT * 4)
-        self.hdr_top.geometry('%dx%d+%d+%d' % (width, height, xy[0], xy[1]))
-        self.hdr_top.title(title)
-        self.hdr_top.configure(background="Gray")
-        self.hdr_top.columnconfigure(0, weight=1)
-        self.hdr_top.rowconfigure(0, weight=1)
+        self.pre_top.minsize(width=g.BTN_WID * 10, height=g.PANEL_HGT * 4)
+        self.pre_top.geometry('%dx%d+%d+%d' % (width, height, xy[0], xy[1]))
+        self.pre_top.title(title)
+        self.pre_top.configure(background="Gray")
+        self.pre_top.columnconfigure(0, weight=1)
+        self.pre_top.rowconfigure(0, weight=1)
 
         ''' Set program icon in taskbar '''
-        img.taskbar_icon(self.hdr_top, 64, 'white', 'lightskyblue', 'black', char='S')
+        img.taskbar_icon(self.pre_top, 64, 'white', 'lightskyblue', 'black', char='S')
 
         ''' Bind <Escape> to close window '''
-        if win_grp:
-            self.hdr_top.bind("<Escape>",
+        if win_grp is not None:
+            self.pre_top.bind("<Escape>",
                               lambda _: self.pretty_close(win_grp=win_grp))
-            self.hdr_top.protocol("WM_DELETE_WINDOW",
+            self.pre_top.protocol("WM_DELETE_WINDOW",
                                   lambda: self.pretty_close(win_grp=win_grp))
         else:
-            self.hdr_top.bind("<Escape>", self.pretty_close)
-            self.hdr_top.protocol("WM_DELETE_WINDOW", self.pretty_close)
+            self.pre_top.bind("<Escape>", self.pretty_close)
+            self.pre_top.protocol("WM_DELETE_WINDOW", self.pretty_close)
             # Cope with error message:
             # Exception in Tkinter callback
             # Traceback (most recent call last):
@@ -6270,7 +6311,7 @@ Call search.py when these control keys occur
             # TypeError: <lambda>() takes exactly 1 argument (0 given)
 
         ''' frame1 - Holds scrollable text entry '''
-        frame1 = ttk.Frame(self.hdr_top, borderwidth=g.FRM_BRD_WID,
+        frame1 = ttk.Frame(self.pre_top, borderwidth=g.FRM_BRD_WID,
                            padding=(2, 2, 2, 2), relief=tk.RIDGE)
         frame1.grid(column=0, row=0, sticky=tk.NSEW)
         # 7 rows of text labels and string variables auto adjust with weight 1
@@ -6310,17 +6351,19 @@ Call search.py when these control keys occur
         # Fix Control+C  https://stackoverflow.com/a/64938516/6929343
         self.scrollbox.bind("<Button-1>", lambda event: self.scrollbox.focus_set())
 
-    def pretty_close(self, win_grp=None):
-        """ Close window painted by the create_window() function """
-        if self.hdr_top is None:
+    def pretty_close(self, _win_grp=None):
+        """ Close window painted by the create_window() method. 
+            2024-04-07 No longer used by dd_view = DictTreeview() class. 
+        """
+        if self.pre_top is None:
             return
-        if win_grp:
-            win_grp.unregister_child(self.hdr_top)
-        #self.tt.close(self.hdr_top)  # Close tooltips (There aren't any yet)
+        #if win_grp is not None:
+        #    win_grp.unregister_child(self.pre_top)
+        #self.tt.close(self.pre_top)  # Close tooltips (There aren't any yet)
         self.scrollbox.unbind("<Button-1>")
-        self.hdr_top_is_active = False
-        self.hdr_top.destroy()
-        self.hdr_top = None
+        self.pre_top_is_active = False
+        self.pre_top.destroy()
+        self.pre_top = None
 
         ''' MusicLocationTree option show_raw_metadata() doesn't use self.view '''
         # self.view_iid will also be None when clicked on heading not treeview row
@@ -9322,10 +9365,12 @@ Call search.py when these control keys occur
                 'Clicking Next/Prev song too fast for web scraping to finish'
             self.tt.set_text(self.lyrics_panel_label, text=scrape_text)
 
-        elif not self.lyrics_scrape_done:
+        #elif not self.lyrics_scrape_done:
             # NOT TESTED
-            self.lyrics_panel_text = "Web scrape in progress..."
-            self.tt.set_text(self.lyrics_panel_label, text=scrape_text)
+            #self.lyrics_panel_text = "Web scrape in progress..."
+            #self.tt.set_text(self.lyrics_panel_label, text=scrape_text)
+            # 2024-04-06 When no lyrics, message stays up forever.
+            #pass
 
         elif self.lyrics_train_is_active:
             # NOT TESTED new flag self.lyrics_train_is_active
@@ -9664,6 +9709,8 @@ Call search.py when these control keys occur
             # You find using SQL Music Text String "No lyrics".
             return None
         else:
+            # 2024-04-06 "{}" causes next column in row to disappear in treeview
+            self.lyrics_score = self.lyrics_score.replace("{", "[").replace("}", "]")
             return self.lyrics_score
 
     def play_save_time_index(self):
@@ -10365,9 +10412,10 @@ mark set markName index"
         # select = txt.tag_ranges("sel")                  # something selected?
         # print('edited?:', edited, 'select:', select, "clip:", clip_text)
 
-        menu.add_command(label="Find", command=lambda:
-                         self.play_edit_lyrics_done('save'),
-                         state=tk.NORMAL, font=(None, MED_FONT))
+        # 2024-04-06 Disable 'Find' which isn't implemented... yet
+        #menu.add_command(label="Find", command=lambda:
+        #                 self.play_edit_lyrics_done('save'),
+        #                 state=tk.NORMAL, font=(None, MED_FONT))
         # Find needs to link to search field
         menu.add_command(label="Undo", command=lambda:
                          txt.edit_undo(),
@@ -11461,7 +11509,7 @@ mark set markName index"
         self.chron_tree.tag_configure('highlight', background=t['background'],
                                       foreground=t['foreground'])
 
-        ''' Aug 23/23 - Configure tag for highlight of chron_sel line '''
+        ''' 2024-03-26 Configure tag for highlight of chron_sel line '''
         t = cfg.get_cfg(['cfg_play_top', 'treeview', 'style', 'highlight_sel'])
         self.chron_tree.tag_configure('highlight_sel', background=t['background'],
                                       foreground=t['foreground'])
@@ -11472,6 +11520,7 @@ mark set markName index"
         ''' Mouse right-click for popup menu '''
         # Left click on works when clicked twice
         self.chron_tree.bind('<Button-3>', self.chron_tree_right_click)
+        self.chron_tree.bind('<Double-Button-1>', self.chron_tree_play_now)
 
         ''' Populate chronology treeview '''
         self.populate_chron_tree()
@@ -11540,7 +11589,7 @@ mark set markName index"
         if "chron_sel" in tags:
             # Aug 23/23 - removing chron_sel gives pure highlight color
             toolkit.tv_tag_replace(self.chron_tree, item, "chron_sel", 
-                                   "highlight", strict=True)
+                                   "highlight", strict=False)
             self.chron_last_tag_removed = "chron_sel"
             # Aug 23/23 - Try adding simply adding 'highlight' instead of replace
             # tag color stays chron_sel color and highlight color doesn't morph
@@ -11578,6 +11627,7 @@ mark set markName index"
                                self.chron_last_tag_removed, strict=False)
         self.chron_last_row = None
         self.chron_last_tag_removed = None
+        toolkit.tv_tag_remove_all(self.chron_tree, "highlight")  # 2024-04-06 Hammer
 
     def chron_tree_right_click(self, event):
         """ Popup menu:
@@ -11665,6 +11715,13 @@ mark set markName index"
 
     def chron_tree_play_now(self, item):
         """ Play song highlighted in chronology treeview. """
+        try:
+            # 2024-04-06 item can be event when double-click on song.
+            row = self.chron_tree.identify_row(item.y)
+            item = str(row)
+        except AttributeError:
+            pass  # have song number string in item parameter
+
         passed_ndx = int(item) - 1
         if self.ndx == passed_ndx:
             self.song_set_ndx('restart')  # Restart playing at beginning
@@ -15494,16 +15551,12 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         ''' Data Dictionary and Treeview column names '''
         history_dict = sql.playlist_treeview()
 
-        # Without below fake call & destroy, dd_view is empty
+        # Without the FAKE first call, dd_view is empty on the REAL second call
         t2 = tk.Toplevel()
         f2 = tk.Frame(t2)
         f2.grid()
-        import copy
-        save_dict = copy.deepcopy(history_dict)
-        toolkit.DictTreeview(history_dict, t2, f2, sql_type="playlists")
-        #print("save_dict == history_dict:", save_dict == history_dict)
-        #print([x for x in history_dict if x not in save_dict])
-        save_dict2 = copy.deepcopy(history_dict)
+        _v2 = toolkit.DictTreeview(history_dict, t2, f2, sql_type="playlists")
+        _v2 = None
         t2.destroy()
 
         ''' Create treeview frame with scrollbars '''

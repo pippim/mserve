@@ -11,11 +11,12 @@ from __future__ import with_statement  # Error handling for file opens
 
 # ==============================================================================
 #
-#       webscrape.py - Search and scrape internet for song lyrics
+#       webscrape.py - Search and scrape internet for song lyrics.
 #
-#       June 25 2023 - Use toolkit.uni_str(line)
-#       July 13 2023 - Interface to/from mserve_config.py
-#       Aug. 22 2023 - Temporary files removed on mserve.py close
+#       June 25 2023 - Use toolkit.uni_str(line).
+#       July 13 2023 - Interface to/from mserve_config.py.
+#       Aug. 22 2023 - Temporary files removed on mserve.py close.
+#       Apr. 06 2024 - lyrics change "{}" to "[]" because it messes up treeview.
 #
 # ==============================================================================
 
@@ -403,6 +404,8 @@ def scrape(search):
     # Save file
     with open(SCRAPE_LYRICS_FNAME, "w") as outfile:
         for line in lyrics_output:
+            # 2024-04-06 "{}" causes next column in row to disappear in treeview
+            line = line.replace("{", "[").replace("}", "]")
             outfile.write(toolkit.uni_str(line) + "\n")
 
 
