@@ -1694,6 +1694,10 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
             label="Synchronize Location", font=g.FONT, state=tk.DISABLED,
             command=lambda: lcs.synchronize(self.start_long_running_process,
                                             self.end_long_running_process))
+        self.edit_menu.add_command(
+            label="Analyze Volume", font=g.FONT, state=tk.DISABLED,
+            command=lambda: lcs.analyze_volume(self.start_long_running_process,
+                                               self.end_long_running_process))
         self.edit_menu.add_command(label="Edit Location", font=g.FONT, underline=0,
                                    command=lcs.edit, state=tk.DISABLED)
         self.edit_menu.add_command(label="Delete Location", font=g.FONT, underline=0,
@@ -1790,6 +1794,7 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
             self.edit_menu.entryconfig("Edit Location", state=tk.DISABLED)
             self.edit_menu.entryconfig("Delete Location", state=tk.DISABLED)
             self.edit_menu.entryconfig("Synchronize Location", state=tk.DISABLED)
+            self.edit_menu.entryconfig("Analyze Volume", state=tk.DISABLED)
             self.view_menu.entryconfig("View Locations", state=tk.DISABLED)
             self.tools_menu.entryconfig("Make LRC For Checked Songs",
                                         state=tk.DISABLED)
@@ -1801,6 +1806,7 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
             self.edit_menu.entryconfig("Edit Location", state=tk.NORMAL)
             self.edit_menu.entryconfig("Delete Location", state=tk.NORMAL)
             self.edit_menu.entryconfig("Synchronize Location", state=tk.NORMAL)
+            self.edit_menu.entryconfig("Analyze Volume", state=tk.NORMAL)
             self.view_menu.entryconfig("View Locations", state=tk.NORMAL)
             self.tools_menu.entryconfig("Make LRC For Checked Songs",
                                         state=tk.NORMAL)
@@ -5192,7 +5198,13 @@ Call search.py when these control keys occur
             self.insert_view_lines(dd_view, rows, delayed_textbox)
 
     def mus_text_search(self):
-        """ Search all Music Table treeview columns for text string """
+        """ Search all Music Table treeview columns for text string.
+            Results returned with each key pressed. Multiple word support
+            with "OR" comparison (not "AND"). Hidden Key columns such as
+            Title, OS File Size, Lyrics and Time Index are also searched.
+            To view hidden results pick "View SQL Row" and search matched
+            words are highlighted.
+        """
         if self.mus_search:  # Already running? Close last search.
             self.mus_search.close()
         self.mus_search = toolkit.SearchText(self.mus_view, tt=self.tt,
@@ -5603,12 +5615,18 @@ Call search.py when these control keys occur
             self.insert_view_lines(dd_view, rows, delayed_textbox)
 
     def his_text_search(self):
-        """ Search all treeview columns for text string """
+        """ Search all History Table treeview columns for search words.
+            Results returned with each key pressed. Multiple word support
+            with "OR" comparison (not "AND"). Hidden Key columns such as
+            Music ID are also searched.
+
+            To view hidden results pick "View SQL Row" and search matched
+            words are highlighted.
+        """
         if self.his_search is not None:
             self.his_search.close()
-
-        self.his_search = toolkit.SearchText(
-            self.his_view, find_str=None, tt=self.tt)
+        self.his_search = toolkit.SearchText(self.his_view, tt=self.tt,
+                                             keypress=True)
         self.his_search.find()
 
     def his_configuration_rows(self):
@@ -5723,12 +5741,18 @@ Call search.py when these control keys occur
             self.insert_view_lines(dd_view, rows, delayed_textbox)
 
     def lcs_text_search(self):
-        """ Search all treeview columns for text string """
+        """ Search all Location Table treeview columns for search words.
+            Results returned with each key pressed. Multiple word support
+            with "OR" comparison (not "AND"). Hidden Key columns such as
+            Row ID are also searched.
+
+            To view hidden results pick "View SQL Row" and search matched
+            words are highlighted.
+        """
         if self.lcs_search is not None:
             self.lcs_search.close()
-
-        self.lcs_search = toolkit.SearchText(
-            self.lcs_view, find_str=None, tt=self.tt)
+        self.lcs_search = toolkit.SearchText(self.lcs_view, tt=self.tt,
+                                             keypress=True)
         self.lcs_search.find()
 
     def lcs_close(self, restart=False, *_args):
@@ -6081,17 +6105,20 @@ Call search.py when these control keys occur
         search = None  # search words to highlight
         if dd_view == self.his_view:
             pretty = sql.PrettyHistory(sql_row_id)
+            search = self.his_search
         elif dd_view == self.mus_view:
             pretty = sql.PrettyMusic(sql_row_id)
-            if self.mus_search is not None:
-                # history doesn't have support. Music & history might both be open
-                if self.mus_search.entry is not None:
-                    search = self.mus_search.entry.get()
+            search = self.mus_search
         elif dd_view == self.lcs_view:
             pretty = sql.PrettyLocation(sql_row_id)
+            search = self.lcs_search
         else:
             print("mserve.py - show_sql_row_menu(): Bad view:", dd_view.name)
             exit()
+
+        if search is not None:
+            if search.entry is not None:
+                search = search.entry.get()
 
         # Highlight treeview row and display Popup menu at row
         toolkit.tv_tag_add(dd_view.tree, dd_view_iid, "menu_sel")

@@ -1881,16 +1881,40 @@ class Config:
             ('cfg_locations', 'sql_treeview', 'style', 'scroll'):
                 {"name": 'location.Treeview', "width": 14},
             # 2024-04-07 Older "treeview" Action key replaced by "sql_treeview" key
-            ('cfg_locations', 'treeview', 'style', 'color'):
-                {"name": 'location.Treeview', "foreground": "Black",
-                 "background": "AliceBlue", "fieldbackground": "AliceBlue",
-                 "edge_color": "White", "edge_px": 5},
+            #('cfg_locations', 'treeview', 'style', 'color'):
+            #    {"name": 'location.Treeview', "foreground": "Black",
+            #     "background": "AliceBlue", "fieldbackground": "AliceBlue",
+            #     "edge_color": "White", "edge_px": 5},
             ('cfg_locations', 'frame', 'style', 'color'):
                 {"background": "WhiteSmoke"},
             # Location image border (use edge_px=0 to turn off border)
             # NOTE: Using tk.Label highlight and not tk.Label border
             ('cfg_locations', 'loc_image', 'style', 'color'):
                 {"edge_color": "White", "edge_px": 3},
+
+            # Compare Locations (Synchronize) taskbar icon and treeview colors
+            ('cfg_locations', 'cmp_toplevel', 'taskbar_icon', 'config'):
+                {"height": 64, "outline": 'White', "fill": 'NavajoWhite',
+                 "text": 'Black', "font_family": 'DejaVuSans.ttf',
+                 "char": 'C'},
+            ('cfg_locations', 'cmp_treeview', 'style', 'color'):
+                {"name": 'compare.Treeview', "foreground": "Black",
+                 "background": "NavajoWhite", "fieldbackground": "NavajoWhite",
+                 "edge_color": "White", "edge_px": 5},
+            ('cfg_locations', 'cmp_treeview', 'style', 'scroll'):
+                {"name": 'compare.Treeview', "width": 14},
+
+            # Analyze Volume (Sound Levels) taskbar icon and treeview colors
+            ('cfg_locations', 'avo_toplevel', 'taskbar_icon', 'config'):
+                {"height": 64, "outline": 'White', "fill": 'NavajoWhite',
+                 "text": 'Black', "font_family": 'DejaVuSans.ttf',
+                 "char": 'A'},
+            ('cfg_locations', 'avo_treeview', 'style', 'color'):
+                {"name": 'analyze.Treeview', "foreground": "Black",
+                 "background": "NavajoWhite", "fieldbackground": "NavajoWhite",
+                 "edge_color": "White", "edge_px": 5},
+            ('cfg_locations', 'avo_treeview', 'style', 'scroll'):
+                {"name": 'analyze.Treeview', "width": 14},
 
             # Playlists Maintenance taskbar icon and treeview colors
             ('cfg_playlists', 'toplevel', 'taskbar_icon', 'height & colors'):

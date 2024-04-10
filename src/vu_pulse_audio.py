@@ -71,6 +71,7 @@ class PulseAudio:
             # print("pulse:", dir(pulse))
             ext.t_end('no_print')  # 0.0037407875
         except Exception as err:  # CallError, socket.error, IOError (pidfile), OSError (os.kill)
+            ext.t_end('no_print')  # Just to reset level
             self.pulse_is_working = False
             raise pulsectl.PulseError('mserve.py get_pulse_control() Failed to ' +
                                       'connect to pulse {} {}'.format(type(err),
@@ -88,6 +89,15 @@ class PulseAudio:
         self.err_count = 0  # Errors across session life-span
         self.fade_list = []
         self.dict = {}
+
+        # Piggy-back processing
+        self.is_piggy = False  # Is piggy-back processing running
+        self.piggy_cmd = None  # ffmpeg command line
+        self.piggy_pid = None  # Process ID for ffmpeg
+        self.piggy_file = None  # Filename storing ffmpeg output
+        self.piggy_call = None  # Callback function when done
+        self.piggy_start = None  # Process start time
+        self.who = "vu_pulse_audio.py PulseAudio()."
 
     def fade(self, sink_no_str, begin, end, duration,
              finish_cb=None, arg_cb=None, step_cb=None):
@@ -190,6 +200,9 @@ class PulseAudio:
         ''' Build new self.fade_list without the fades that just finished '''
         self.fade_list = \
             [x for x in self.fade_list if now < x['start_time'] + x['duration']]
+
+        if self.is_piggy:
+            self.check_piggy()
 
     @staticmethod
     def step_callback(fade_dict):
@@ -306,7 +319,8 @@ AttributeError: 'module' object has no attribute 'pulsectl'
                 self.spam_count += 1  # Don't flood with broadcasts
                 self.info.cast(text, 'error')
 
-    def poll_callback(self, scan_dict):
+    @staticmethod
+    def poll_callback(scan_dict):
         """ fade has finished. Now call 'stop' or 'kill' or whatever. """
 
         if scan_dict['finish_cb'] is not None:  # Was callback passed?
@@ -663,6 +677,66 @@ AttributeError: 'module' object has no attribute 'pulsectl'
 
         return self.sinks_now
 
+    # noinspection SpellCheckingInspection
+    def analyze_file_volume(self, fname, output, callback_func):
+        """ Analyze mean volume and max volume of file using ffmpeg
+
+        $ ffmpeg -i "09 The Storm.m4a" -af "volumedetect"
+            -f null /dev/null 2>&1 | grep "_volume:"
+
+        [Parsed_volumedetect_0 @ 0xc11fa0] mean_volume: -21.0 dB
+        [Parsed_volumedetect_0 @ 0xc11fa0] max_volume: -1.0 dB
+        """
+
+        shell_fname = ext.shell_quote(fname)
+        cmd = 'ffmpeg -i "' + shell_fname + '" -af "volumedetect"'
+        cmd += ' -f null /dev/null 2>&1 | grep "_volume:" > ' + output
+
+        self.piggy_start = time.time()
+        self.piggy_pid = ext.launch_command(cmd)
+        self.is_piggy = True  # Poll fades function will see this
+        self.piggy_file = output
+        self.piggy_cmd = cmd  # ffmpeg command line
+
+    # noinspection SpellCheckingInspection
+    def check_piggy(self):
+        """ ffmpeg is running. Check pid and output file until it finishes
+        """
+
+        running = False
+        if self.piggy_pid:
+            running = ext.check_pid_running(self.piggy_pid)
+
+        elapsed = time.time() - self.piggy_start
+        if elapsed > 10.:
+            print(self.who + "check_piggy(): TIME OUT")
+            print(self.piggy_cmd)
+        if running:
+            return
+
+        mean, maximum = self.parse_file_volume()
+
+        self.is_piggy = False
+        self.piggy_pid = None  # Process ID for ffmpeg
+        self.piggy_file = None  # Filename storing ffmpeg output
+        self.piggy_start = None  # Process start time
+
+        self.piggy_call(mean, maximum)
+
+    # noinspection SpellCheckingInspection
+    def parse_file_volume(self):
+        """ Parse mean volume and max volume in output file
+
+        [Parsed_volumedetect_0 @ 0xc11fa0] mean_volume: -21.0 dB
+        [Parsed_volumedetect_0 @ 0xc11fa0] max_volume: -1.0 dB
+        """
+        volumes = ext.read_into_list(self.piggy_file)
+        if volumes is None or len(volumes) != 2:
+            print(self.who + "parse_file_volume(): No volumes found!")
+            print(self.piggy_cmd)
+            return "N/A", "N/A"
+
+        return volumes[0].split("_volume: ")[1], volumes[1].split("_volume: ")[1]
 
     def get_pulse_control(self):
         """ Seemed like a good idea at the time but, it crashes after being
@@ -739,7 +813,6 @@ AttributeError: 'module' object has no attribute 'pulsectl'
         '''
         return self.pulse
 
-
 #class Sink(namedtuple('Sink', 'sink_no_str, volume, name, pid, user')):
 # Future class
 
@@ -793,10 +866,40 @@ loudnorm filter, which implements the EBU R128 algorithm:
 ffmpeg -i input.wav -filter:a loudnorm output.wav
 
 This is recommended for most applications, as it will lead to a more uniform
- loudness level compared to simple peak-based normalization. However, it is
-  recommended to run the normalization with two passes, extracting the measured
-   values from the first run, then using the values in a second run with linear
-    normalization enabled. See the loudnorm filter documentation for more. 
+loudness level compared to simple peak-based normalization. However, it is
+recommended to run the normalization with two passes, extracting the measured
+values from the first run, then using the values in a second run with linear
+normalization enabled. See the loudnorm filter documentation for more. 
+
+================================ Above from unknown date  =======================
+
+2024-04-08 revisit subject.
+
+$ ffmpeg -i "09 The Storm.m4a" -af "volumedetect" -vn -sn -dn -f null /dev/null
+
+[Parsed_volumedetect_0 @ 0x26a4e60] n_samples: 24012800
+[Parsed_volumedetect_0 @ 0x26a4e60] mean_volume: -21.0 dB
+[Parsed_volumedetect_0 @ 0x26a4e60] max_volume: -1.0 dB
+
+
+So far so good... Now try to mormalize:
+
+$ ffmpeg -i "09 The Storm.m4a" -filter:a loudnorm output.m4a
+
+[AVFilterGraph @ 0x15a6760] No such filter: 'loudnorm'
+Error opening filters!
+
+So install ebur128 library:
+
+$ sudo apt install libebur128-1
+
+# PROBLEM NOT FIXED.
+
+$ sudo apt install libebur128-dev
+
+# PROBLEM NOT FIXED.
+
 """
+
 
 # End of vu_pulse_audio.py

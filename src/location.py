@@ -1138,7 +1138,7 @@ class LocationsCommonSelf:
         self.scr_comments = tk.StringVar()  # New
 
         ''' Miscellaneous Location work fields '''
-        self.state = None  # 'load', 'new', 'open', 'save', 'save_as', 'view'
+        self.state = None  # 'load', 'new', 'open', etc.
         self.input_active = False  # Can enter Location Name & Description
         self.pending_counts = None
 
@@ -1443,7 +1443,7 @@ class Locations(LocationsCommonSelf):
         ''' Refresh screen '''
         self.main_top.update_idletasks()
 
-        ''' Preamble messages '''
+        ''' Introduction messages '''
         if self.state == 'delete':
             title = "About the Delete Location function"
             text = "This does NOT delete any music files.\n\n"
@@ -1466,6 +1466,19 @@ class Locations(LocationsCommonSelf):
             text += "instantaneous unless some music files were changed.\n\n"
             text += "The first time will be fast if, the music files were "
             text += "created with 'cp -a' or 'cp -p'\nto preserve timestamps.\n\n"
+            text += "Music will keep playing but some buttons will be disabled. "
+            self.out_fact_show(title, text, align='left')
+
+        if self.state == 'analyze_volume':
+            title = "About the Analyze Volume function"
+            text = "This function does NOT update any music files.\n\n"
+            text += "The sound volume of files are analyzed. Results are both "
+            text += "displayed and saved in history.\n\n"
+            text += "A typical music file takes a fraction of a second "
+            text += "second to analyze over SSD. For files on smartphones\n"
+            text += "connected to WiFi itis much slower. When analyzing a "
+            text += "remote host that is asleep,\nthe host is woken up and "
+            text += "kept awake until all files are analyzed.\n\n"
             text += "Music will keep playing but some buttons will be disabled. "
             self.out_fact_show(title, text, align='left')
 
@@ -1492,6 +1505,8 @@ class Locations(LocationsCommonSelf):
 
         if self.state == 'synchronize':
             help_id = "HelpSynchronizeLocation"
+        elif self.state == 'analyze_volume':
+            help_id = "HelpAnalyzeVolume"
         else:
             help_id = "HelpLocations"
         help_text = "Open new window in default web browser for\n"
@@ -2053,6 +2068,8 @@ class Locations(LocationsCommonSelf):
             text = "Delete"
         elif self.state == 'synchronize':
             text = "Synchronize"
+        elif self.state == 'analyze_volume':
+            text = "Analyze"
         elif self.state == 'open':
             text = "Open"
         elif self.state == 'target':
@@ -2485,6 +2502,21 @@ class Locations(LocationsCommonSelf):
         self.start_long_running = start_long_running
         self.end_long_running = end_long_running
         self.display_main_window("Synchronize Location")
+
+    def analyze_volume(self, start_long_running, end_long_running):
+        """ Called by lib_top Edit Menubar 'Analyze Volume'
+        Click Analyze Button:
+            Warning message appears that it is remote host, but nothing happens
+            Run Test Host which wakes up successfully
+        Then Click Analyze Button again:
+            Test is run a second time when it should have been run first time
+            Now locks up. See synchronize notes above.
+        """
+        LocationsCommonSelf.__init__(self)  # Define self. variables
+        self.state = 'analyze_volume'
+        self.start_long_running = start_long_running
+        self.end_long_running = end_long_running
+        self.display_main_window("Analyze Volume")
 
     def view(self):
         """ Called by lib_top View Menubar 'View Locations' """
@@ -3900,7 +3932,11 @@ filename.
             self.info.cast("Target location: " + self.act_name, action="update")
             self.target_callback(self.act_name, self.act_topdir)
         elif self.state == 'synchronize':
-            self.cmp_build_toplevel(sbar_width=14)
+            self.cmp_build_toplevel()
+            # Problem: We don't want to do reset below, cmp must close itself
+            return  # cmp_close closes cmp_window and main_top stays open for next
+        elif self.state == 'analyze_volume':
+            self.cmp_build_toplevel(prefix="avo")
             # Problem: We don't want to do reset below, cmp must close itself
             return  # cmp_close closes cmp_window and main_top stays open for next
         else:
@@ -3915,8 +3951,13 @@ filename.
     #
     # ==============================================================================
 
-    def cmp_build_toplevel(self, sbar_width=14):
-        """ Compare target location songs to build treeview of differences.
+    def cmp_build_toplevel(self, sbar_width=14, prefix="cmp"):
+        """ Dual purpose Compare Locations & Analyze Volume based on prefix:
+
+            "cmp" = Compare target location songs to build treeview of differences.
+            "avo" = Analyze Volume. Results in treeview and stored in history.
+
+            The notes below are for "cmp" prefix.
 
             Source is self.open_code, Target is self.act_code.
 
@@ -3931,9 +3972,15 @@ filename.
 
         ''' Wake up host as required and keep awake '''
         if self.act_host:
-            title = "Synchronize to Remote Host System? "
+            if prefix == "cmp":
+                title = "Synchronize to Remote Host System? "
+            else:
+                title = "Analyze files on Remote Host System? "
             text = self.act_host + " is a Remote Host.\n"
-            text += "\n\nContinue with synchronization?\n"
+            if prefix == "cmp":
+                text += "\n\nContinue with synchronization?\n"
+            else:
+                text += "\n\nContinue to analyze volume?\n"
             answer = message.AskQuestion(
                 self.main_top, title, text, confirm='no', icon='info',
                 thread=self.get_thread_func)
@@ -3991,19 +4038,36 @@ filename.
         xy = (self.main_top.winfo_x() + g.PANEL_HGT,
               self.main_top.winfo_y() + g.PANEL_HGT)
         self.cmp_top.minsize(width=g.BTN_WID * 10, height=g.PANEL_HGT * 4)
-        self.cmp_top.geometry('%dx%d+%d+%d' % (1800, 500, xy[0], xy[1]))  # 500 pix high
+        self.cmp_top.columnconfigure(0, weight=1)
+        self.cmp_top.rowconfigure(0, weight=1)
+
+        # TODO: load/save window geometry. User configuration colors
+        if prefix == "cmp":
+            self.cmp_top.geometry('%dx%d+%d+%d' % (1800, 500, xy[0], xy[1]))
+        else:
+            self.cmp_top.geometry('%dx%d+%d+%d' % (1100, 500, xy[0], xy[1]))
+
+
         if self.open_topdir.endswith(os.sep):  # the "source" location
             self.open_topdir = self.open_topdir[:-1]
         self.cmp_target_dir = self.act_topdir  # The "other/target" location
         if self.cmp_target_dir.endswith(os.sep):
             self.cmp_target_dir = self.cmp_target_dir[:-1]
-        title = "Compare Locations - SOURCE: " + self.open_topdir + \
-                " - TARGET: " + self.cmp_target_dir
+
+        if prefix == "cmp":
+            title = "Synchronize:  SOURCE: " + self.open_topdir + \
+                    "  <-->  TARGET: " + self.cmp_target_dir
+        else:
+            title = "Analyze volume inside" + self.cmp_target_dir
         self.cmp_top.title(title)
-        self.cmp_top.columnconfigure(0, weight=1)
-        self.cmp_top.rowconfigure(0, weight=1)
+
+
         ''' Set program icon in taskbar '''
-        img.taskbar_icon(self.cmp_top, 64, 'white', 'lightskyblue', 'black')
+        toplevel = prefix + "_toplevel"
+        ti = self.get_cfg([toplevel, 'taskbar_icon', 'config'])
+        img.taskbar_icon(self.cmp_top, ti['height'], ti['outline'],
+                         ti['fill'], ti['text'], char=ti['char'])
+        #img.taskbar_icon(self.cmp_top, 64, 'white', 'lightskyblue', 'black')
 
         ''' Create frames '''
         master_frame = tk.Frame(self.cmp_top, bg="LightGrey", relief=tk.RIDGE)
@@ -4017,32 +4081,47 @@ filename.
         tk.Grid.columnconfigure(frame2, 0, weight=1)
         frame2.grid(row=0, column=0, sticky=tk.NSEW)
 
+        if prefix == "cmp":
+            columns = ("SrcModified", "TrgModified", "SrcSize",
+                       "TrgSize", "Action", "src_time", "trg_time")
+        else:
+            columns = ("Mean", "Maximum")
         ''' Treeview List Box, Columns and Headings '''
         self.cmp_tree = ttk.Treeview(frame2, show=('tree', 'headings'),
-                                     columns=("SrcModified", "TrgModified", "SrcSize",
-                                              "TrgSize", "Action", "src_time", "trg_time"),
-                                     selectmode="none")
+                                     columns=columns, selectmode="none")
         self.cmp_tree.column("#0", width=630, stretch=tk.YES)
         # self.cmp_tree.heading("#0", text = "➕ / ➖   Artist/Album/Song")
         self.cmp_tree.heading(
             "#0", text="Click ▼ (collapse) ▶ (expand) an Artist or Album")
-        self.cmp_tree.column("SrcModified", width=300, stretch=tk.YES)
-        self.cmp_tree.heading("SrcModified", text="Source Modified")
-        self.cmp_tree.column("TrgModified", width=300, stretch=tk.YES)
-        self.cmp_tree.heading("TrgModified", text="Target Modified")
-        self.cmp_tree.column("SrcSize", width=140, anchor=tk.E,
-                             stretch=tk.YES)
-        self.cmp_tree.heading("SrcSize", text="Source " + g.CFG_DIVISOR_UOM)
-        self.cmp_tree.column("TrgSize", width=140, anchor=tk.E,
-                             stretch=tk.YES)
-        self.cmp_tree.heading("TrgSize", text="Target " + g.CFG_DIVISOR_UOM)
-        self.cmp_tree.column("Action", width=280, stretch=tk.YES)
-        self.cmp_tree.heading("Action", text="Action")
-        self.cmp_tree.column("src_time")  # Hidden modification time
-        self.cmp_tree.column("trg_time")  # Hidden modification time
+        if prefix == "cmp":
+            self.cmp_tree.column("SrcModified", width=300, stretch=tk.YES)
+            self.cmp_tree.heading("SrcModified", text="Source Modified")
+            self.cmp_tree.column("TrgModified", width=300, stretch=tk.YES)
+            self.cmp_tree.heading("TrgModified", text="Target Modified")
+            self.cmp_tree.column("SrcSize", width=140, anchor=tk.E,
+                                 stretch=tk.YES)
+            self.cmp_tree.heading("SrcSize", text="Source " + g.CFG_DIVISOR_UOM)
+            self.cmp_tree.column("TrgSize", width=140, anchor=tk.E,
+                                 stretch=tk.YES)
+            self.cmp_tree.heading("TrgSize", text="Target " + g.CFG_DIVISOR_UOM)
+            self.cmp_tree.column("Action", width=280, stretch=tk.YES)
+            self.cmp_tree.heading("Action", text="Action")
+            self.cmp_tree.column("src_time")  # Hidden modification time
+            self.cmp_tree.column("trg_time")  # Hidden modification time
+        else:
+            self.cmp_tree.column("Mean", width=250, anchor="center", stretch=tk.YES)
+            self.cmp_tree.heading("Mean", text="Mean Volume")
+            self.cmp_tree.column("Maximum", width=250, anchor="center", stretch=tk.YES)
+            self.cmp_tree.heading("Maximum", text="Max. Volume")
+
         self.cmp_tree.grid(row=0, column=0, sticky=tk.NSEW)
-        self.cmp_tree["displaycolumns"] = ("SrcModified", "TrgModified",
-                                           "SrcSize", "TrgSize", "Action")
+
+        if prefix == "cmp":
+            self.cmp_tree["displaycolumns"] = ("SrcModified", "TrgModified",
+                                               "SrcSize", "TrgSize", "Action")
+        else:
+            self.cmp_tree["displaycolumns"] = ("Mean", "Maximum")
+
         ''' Treeview Scrollbars - Vertical & Horizontal '''
         v_scroll = tk.Scrollbar(frame2, orient=tk.VERTICAL, width=sbar_width,
                                 command=self.cmp_tree.yview)
@@ -4070,9 +4149,12 @@ filename.
         help_text = "Open new window in default web browser for\n"
         help_text += "videos and explanations on using this screen.\n"
         help_text += "https://www.pippim.com/programs/mserve.html#\n"
+
+
+        help = "HelpSynchronizeActions" if prefix == "cmp" else "HelpAnalyzeVolume"
         self.cmp_help_button = tk.Button(
             self.cmp_btn_frm, text="⧉ Help", font=g.FONT,
-            width=g.BTN_WID2 - 4, command=lambda: g.web_help("HelpSynchronizeActions"))
+            width=g.BTN_WID2 - 4, command=lambda: g.web_help(help))
         self.cmp_help_button.grid(row=0, column=1, padx=10, pady=5, sticky=tk.E)
 
         # Aug 28/23 newly added help button, there are no tooltips used in window
@@ -4086,12 +4168,14 @@ filename.
                                        width=g.BTN_WID - 4, command=self.cmp_close)
         self.cmp_close_btn.grid(row=0, column=2, padx=(10, 5), pady=5,
                                 sticky=tk.E)
+
         ''' Create Treeview. If no differences it gives message '''
-        if not self.cmp_populate_tree():
+        if not self.cmp_populate_tree(prefix):
             self.cmp_close()  # Files are identical
             return
 
-        # NOTE: Only appears AFTER tree is built.
+        # NOTE: Update buttons visible AFTER tree is built.
+        #command = self.cmp_update_files if prefix == "cmp" else self.cmp_update_hist
         ''' 🗘  Update differences Button u1f5d8 🗘 extra wide for count '''
         self.update_differences_btn = tk.Button(
             self.cmp_btn_frm, width=g.BTN_WID + 12, command=self.cmp_update_files,
@@ -4102,7 +4186,7 @@ filename.
         if self.cmp_top_is_active is False:
             #self.called_from_main_top = False  # Added Aug 28/23
             return
-        self.cmp_tree.update_idletasks()
+        self.cmp_tree.update_idletasks()  # Don't want update if tree destroyed
 
     def cmp_keep_awake(self):
         """ Every x minutes issue keep awake command for server. For example:
@@ -4193,9 +4277,7 @@ filename.
         print("location.py cmp_keep_awake() main_top.after - mill:", mill)
         self.main_top.after(mill, self.cmp_keep_awake)  # cmp_top may close early
 
-    # *args reported as unused, but is required for binding <Escape> to cmp_close()
-    # noinspection PyUnusedLocal 
-    def cmp_close(self, *args):
+    def cmp_close(self, *_args):
         """ Close Compare location treeview """
 
         self.end_long_running()  # Restore mserve full playlist buttons
@@ -4215,13 +4297,17 @@ filename.
 
         return True
 
-    def cmp_populate_tree(self):
+    def cmp_populate_tree(self, prefix="cmp"):
 
         """ Add Artist, Album and Song to treeview self.cmp_tree.
             Similar to add_items() in Music Location Tree
 
         :returns True: When locations are different
         """
+
+        ''' TODO: If avo, remove self.src_mt and self.trg_mt.
+        '''
+
         # How many path separators '/' are there in source?
         start_dir_sep = self.open_topdir.count(os.sep)
         self.src_mt = ModTime(self.open_code)
@@ -4269,10 +4355,15 @@ filename.
                 LastAlbum = Album
                 self.cmp_top.update_idletasks()  # Allow close button to abort
 
+            if prefix == "cmp":
+                # str(i) will be iid if and when Song inserted.
+                if not self.cmp_insert_cmp_row(fake_path, CurrAlbumId, str(i), Song):
+                    return False  # Closing down, False indicates no differences
+            else:
+                if not self.cmp_insert_avo_row(fake_path, CurrAlbumId, str(i), Song):
+                    return False  # Closing down, False indicates no differences
 
-            if not self.cmp_top_is_active:
-                return False  # Closing down, False indicates no differences
-
+            """ BELOW NOW INSIDE self.cmp_insert_cmp_row() 
             ''' Compare two files '''
             action, src_path, src_size, src_time, trg_path, \
                 trg_size, trg_time = self.compare_path_pair(fake_path)
@@ -4311,10 +4402,12 @@ filename.
 
             if self.cmp_top_is_active is False:
                 return False  # Closing down, False indicates no differences
+            """
 
         ext.t_end('print')  # No Refresh: Build compare target: 1.2339029312
         # Refresh thread (33ms after)   : Build compare target: 158.4349091053
         # Refresh tk_after=False     : Build compare target: 26.8863759041
+        # TOTALLY DIFFERENT STORY NOW WITH self.cmp_insert_avo_row()
 
         ''' Prune tree - Albums with no differences, Artists with no Albums '''
         for artist in self.cmp_tree.get_children():
@@ -4334,10 +4427,77 @@ filename.
         if self.cmp_tree.get_children():
             return True
         else:
+            """ 
+                For avo, an empty tree means no music files in target location 
+            """
             title = "Files identical"
             text = "Files common to both locations are identical."
             self.out_fact_show(title, text)
             return False
+
+    def cmp_insert_cmp_row(self, fake_path, CurrAlbumId, iid, Song):
+        """ Test if Song is candidate and insert into treeview.
+            Artists and Albums already inserted.
+            Always return True even if not a candidate.
+            Only return False when app is closing.
+        """
+
+        if not self.cmp_top_is_active:
+            return False  # Closing down, False indicates no differences
+
+        ''' Compare two files '''
+        action, src_path, src_size, src_time, trg_path, \
+            trg_size, trg_time = self.compare_path_pair(fake_path)
+
+        if action == "Missing":
+            self.cmp_trg_missing.append(trg_path)  # Not used yet
+            self.cmp_tree.see(CurrAlbumId)  # Files identical
+            return True
+        if action == "Same":
+            self.cmp_tree.see(CurrAlbumId)  # Files identical
+            return True
+        if action == "OOPS":
+            self.cmp_tree.see(CurrAlbumId)  # Files identical
+            return True
+
+        ''' Make pretty fields '''
+        converted = float(src_size) / float(g.CFG_DIVISOR_AMT)
+        src_fsize = '{:n}'.format(round(converted, 3))  # 3 decimal places
+        converted = float(trg_size) / float(g.CFG_DIVISOR_AMT)
+        trg_fsize = '{:n}'.format(round(converted, 3))
+        # Format date as "Abbreviation - 99 Xxx Ago"
+        src_ftime = tmf.ago(float(src_time))
+        trg_ftime = tmf.ago(float(trg_time))
+
+        if not self.cmp_top_is_active:
+            return False  # Closing down, False indicates no differences
+
+        ''' Insert song into comparison treeview and show on screen '''
+        self.cmp_tree.insert(CurrAlbumId, "end", iid=iid, text=Song,
+                             values=(src_ftime, trg_ftime, src_fsize, trg_fsize, action,
+                                     float(src_time), float(trg_time)),
+                             tags=("Song",))
+        self.cmp_tree.see(iid)
+        self.cmp_top.update_idletasks()  # Allow close button to abort
+        self.cmp_found += 1
+
+        return self.cmp_top_is_active
+
+    def cmp_insert_avo_row(self, fake_path, CurrAlbumId, iid, Song):
+        """ Get Song's volume levels (Mean and Maximum) """
+
+        if not self.cmp_top_is_active:
+            return False  # Closing down, False indicates no differences
+
+        ''' Insert song into treeview '''
+        self.cmp_tree.insert(CurrAlbumId, "end", iid=iid, text=Song,
+                             values=("-20 db", "-5 db"),
+                             tags=("Song",))
+        self.cmp_tree.see(iid)
+        self.cmp_top.update_idletasks()  # Allow close button to abort
+        self.cmp_found += 1
+
+        return self.cmp_top_is_active
 
     @staticmethod
     def real_from_fake_path(fake_path):

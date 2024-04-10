@@ -1352,9 +1352,8 @@ class DictTreeview:
             """ Close window painted by this pretty_column() method """
             if not self.hcd_top_is_active:
                 return
-            self.win_grp.unregister_child(top)
-            # self.tt.close(top)  # Close tooltips (There aren't any yet)
             scrollbox.unbind("<Button-1>")
+            self.win_grp.unregister_child(top)
             self.hcd_top_is_active = False  # heading column details
             top.destroy()
             #top = None  # Cannot update variable from outer space
@@ -1362,13 +1361,11 @@ class DictTreeview:
         if self.hcd_top_is_active:
             close()  # Close the last instance opened
 
-        if x and y:
-            xy = (x, y)  # passed as parameters
-        else:
+        if x is None or y is None:
             # Should always be passed x,y coordinates but just in case
             print(self.who + "pretty_column(): coordinates not passed.")
-            xy = (self.toplevel.winfo_x() + g.PANEL_HGT,  # Use parent's top left position
-                  self.toplevel.winfo_y() + g.PANEL_HGT)
+            x = self.toplevel.winfo_x() + g.PANEL_HGT  # Use parent's top left position
+            y = self.toplevel.winfo_y() + g.PANEL_HGT
 
         self.hcd_top_is_active = True  # heading column details
         top = self.make_common_top('column details', title, 640, 400, x, y)
@@ -1411,9 +1408,8 @@ class DictTreeview:
             """ Close window painted by this pretty_sql_row() method """
             if not self.rsd_top_is_active:
                 return
-            self.win_grp.unregister_child(top)
-            # self.tt.close(top)  # Close tooltips (There aren't any yet)
             scrollbox.unbind("<Button-1>")
+            self.win_grp.unregister_child(top)
             self.rsd_top_is_active = False  # heading column details
             top.destroy()
             #top = None  # Cannot update variable from outer space
@@ -1467,7 +1463,7 @@ class DictTreeview:
         frame.columnconfigure(0, weight=1)
 
         pretty_row.scrollbox = scrollbox
-        pretty_row.search = search  # Only relevant for SQL Music Search so far
+        pretty_row.search = search  # To highlight Search Words
         sql.tkinter_display(pretty_row)  # Populate scrollbox
 
     def pretty_meta_row(self, FileControl, os_filename, info, x=None, y=None):
@@ -1478,12 +1474,11 @@ class DictTreeview:
         scrollbox = None  # custom scrolled text box w/pattern highlighting
 
         def close(*_args):
-            """ Close window painted by this pretty_sql_row() method """
+            """ Close window painted by this pretty_meta_row() method """
             if not self.rmd_top_is_active:
                 return
-            self.win_grp.unregister_child(top)
-            # self.tt.close(top)  # Close tooltips (There aren't any yet)
             scrollbox.unbind("<Button-1>")
+            self.win_grp.unregister_child(top)
             self.rmd_top_is_active = False  # heading column details
             top.destroy()
             #top = None  # Cannot update variable from outer space
@@ -1722,7 +1717,7 @@ class DictTreeview:
             new_ndx = combo_list.index(combo_col_new)
             new_column = unselected_list[new_ndx]  # No longer dictionaries
 
-            save_cols = self.save_common_columns()
+            save_cols = self.save_before_update()
             # New displaycolumns with inserted column
             displaycolumns = list(self.tree['displaycolumns'])
             displaycolumns.insert(pos_new-1, str(new_column))  # convert from unicode
@@ -1730,7 +1725,7 @@ class DictTreeview:
             # Update treeview with new columns. These are reread by force_close()
             self.tree['columns'] = displaycolumns  # Destroys headings & sizes
             self.tree['displaycolumns'] = displaycolumns
-            self.reapply_common_columns(save_cols, 'add')
+            self.reapply_after_update(save_cols, 'add')
 
             close()  # Close our window
             self.force_close(restart=True)  # Close toplevel window
@@ -1816,10 +1811,10 @@ class DictTreeview:
             displaycolumns.pop(position)
 
             # "self.tree['columns'] = " destroys attributes; save & reapply
-            save_cols = self.save_common_columns()
+            save_cols = self.save_before_update()
             self.tree['displaycolumns'] = displaycolumns
             self.tree['columns'] = displaycolumns
-            self.reapply_common_columns(save_cols, 'delete')
+            self.reapply_after_update(save_cols, 'delete')
 
             close()  # Close our window
             self.force_close(restart=True)  # Close toplevel window
@@ -1905,7 +1900,6 @@ class DictTreeview:
                 return
             combo_col.unbind('<<ComboboxSelected>>')
             self.win_grp.unregister_child(top)
-            # self.tt.close(top)  # Close tooltips (There aren't any yet)
             self.hmc_top_is_active = False
             top.destroy()
 
@@ -2100,23 +2094,18 @@ class DictTreeview:
         scrollbox.highlight_pattern('|', sep_tag)
         scrollbox.configure(state="disabled")
 
-    def save_common_columns(self):
-        """ Save column headings and width to restore later.
-            Used for Insert Column and Remove Column
-        """
-
+    def save_before_update(self):
+        """ Save column attributes and headings to restore later.
+            Used for Insert Column and Remove Column """
         ls = []
         for column in self.tree['displaycolumns']:
-            ds = dict()
             # 'minwidth': 99, 'width': 99, 'id': column, 'anchor': 'w', 'stretch': 1
-            ds = self.tree.column(column)  # grab all. note 'column' is 'id'
+            ds = self.tree.column(column)  # grab all. 'column' is labelled 'id'
             ds['heading'] = self.tree.heading(column)['text']
-            #print("self.tree.column(column):", self.tree.column(column))
             ls.append(ds)
-        #print("ls:", ls)
         return ls
 
-    def reapply_common_columns(self, ls, mode):
+    def reapply_after_update(self, ls, mode):
         """ Restore column headings and width saved earlier.
                 ls['minwidth': 99, 'width': 99, 'id': COLUMN_NAME, 'anchor': 'w',
                    'stretch': 1 'heading': HEADING]
@@ -2146,7 +2135,7 @@ class DictTreeview:
                 add_ndx = i
                 add_width += di['width']
             else:
-                print(self.who + "reapply_common_columns(): mode != 'add'", mode)
+                print(self.who + "reapply_after_update(): mode != 'add'", mode)
                 continue
 
         if mode == 'add':
@@ -2155,7 +2144,7 @@ class DictTreeview:
             self.tree.update_idletasks()
             return  # Tkinter automatically widens columns to fill frame
         else:
-            print(self.who + "reapply_common_columns(): Bad 'mode' !!!", mode)
+            print(self.who + "reapply_after_update(): Bad 'mode' !!!", mode)
             return
 
         ''' reduce columns by inserted column width '''
@@ -2168,7 +2157,7 @@ class DictTreeview:
             adj_amt = tot_all / cnt_all
             adj_rounding = add_width - (adj_amt * cnt_all) + COL_SEP_WIDTH
 
-        #print(self.who + "reapply_common_columns(): tot_stretch:", tot_stretch,
+        #print(self.who + "reapply_after_update(): tot_stretch:", tot_stretch,
         #       "cnt_stretch:", cnt_stretch, "tot_all:", tot_all, "cnt_all:", cnt_all)
         #print(" "*30, "add_ndx:", add_ndx, "add_width:", add_width,
         #      "adj_amt:", adj_amt, "adj_rounding:", adj_rounding)
@@ -2187,7 +2176,6 @@ class DictTreeview:
         # After update, close is called to save tree to tree_dict disk image
         # Then restart SQL Table viewer with force_close(restart=True)
         self.tree.update_idletasks()
-
 
     def close_common_windows(self):
         """ Either Move or Rename column applied changes. Close all children """
