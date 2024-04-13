@@ -738,6 +738,7 @@ AttributeError: 'module' object has no attribute 'pulsectl'
 
         return volumes[0].split("_volume: ")[1], volumes[1].split("_volume: ")[1]
 
+
     def get_pulse_control(self):
         """ Seemed like a good idea at the time but, it crashes after being
             called a few times.
@@ -812,6 +813,29 @@ AttributeError: 'module' object has no attribute 'pulsectl'
 
         '''
         return self.pulse
+
+
+class FlashMessage:
+    """ Copied from mmm - Make it work later """
+    def __init__(self, widget, var, message, count=5, on=500, off=300):
+        """ widget  = label, button or frame to update idle tasks
+            var     = text variable somewhere within the widget which will be set
+                      eg text variable can be in a label, widget can be frame.
+            count   = number of times to flash message
+            on      = milliseconds the message is displayed
+            off     = milliseconds message is blanked out
+        """
+        self.widget = widget
+        self.delay_show(1, var, "")
+        for _i in range(count):
+            self.delay_show(off, var, message)
+            self.delay_show(on, var, "")
+
+    def delay_show(self, ms, var, message):
+        """ Show message or hide it for duration """
+        self.widget.after(ms, var.set(message))
+        self.widget.update_idletasks()
+
 
 #class Sink(namedtuple('Sink', 'sink_no_str, volume, name, pid, user')):
 # Future class

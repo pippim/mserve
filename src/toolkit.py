@@ -476,6 +476,9 @@ def unique_key(key, dictionary):
 
     print_trace()
     print("toolkit.py - unique_key() has > " + str(i) + " duplicate keys.")
+    print("new_key:", new_key)
+    
+    # 2024-04-12 Not sure if below is copy & paste error or is checked?
     return "toolkit.py ToolTips.list_widgets(): Unknown error?"
 
 

@@ -273,6 +273,7 @@ RENAME WINDOWS:
     'Music Location Tree'   -> doesn't have a name, just location name
 
     'Information Centre'    -> 'Session History' window
+                            -> 'Event Log' window               # 1
 #
 # =============================================================================
 
@@ -312,6 +313,24 @@ REQUIRES:
     sudo apt install xclip                   # Insert clipboard
     sudo apt install xdotool                 # To move Kid3 or Fishing window
 
+
+    ffmpeg & ffprobe
+    ============================================================================
+    The versions released with Ubuntu can be 8 years old. For example, In the
+    year 2024, Ubuntu 16.04 LTS ESM has ffmpeg version 2.8.17 from 2016. As of
+    April 2024, stable 6.1 versions of ffmpeg and ffprobe can be found at:
+    
+         https://ffmpeg.org/download.html
+
+    ffmpeg version 3.1 is minimum version for "loudnorm" filter processing. The
+    "loudnorm" filter is used to normalize maximum volume levels to 0 dB. You
+    can install ffmpeg and ffprobe to ~/bin and keep original versions in
+    /usr/bin.
+    
+
+
+    External Repositories
+    ============================================================================
     sudo add-apt-repository ppa:j-4321-i/ttkwidgets  # CheckboxTreeview
     # NOTE: on Chromebook crostini you need to patch Debian to use Ubuntu key
     To add Ubuntu PPA to Debian for Crostini:
@@ -1772,6 +1791,9 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
 
         self.tools_menu.add_command(label="Repair Last Access", font=g.FONT,
                                     underline=0, command=sql.fix_os_last_access)
+        # Repair Last Access TODO: make local method that explains feature.
+        #   After running, give status message and advise to restart mserve
+        #   or click the "Refresh Library" button.
 
         mb.add_cascade(label="Tools", font=g.FONT, underline=0, menu=self.tools_menu)
         ext.t_end('no_print')  # 0.0006351471
@@ -1946,6 +1968,10 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
             # 2024-03-20 Should only do this if lib_top covers lcs.main_top?
             lcs.main_top.focus_force()  # Get focus
             lcs.main_top.lift()  # Raise in stacking order
+            if lcs.cmp_top_is_active:
+                # Compare locations (long running process) is active
+                lcs.cmp_top.focus_force()  # Get focus
+                lcs.cmp_top.lift()  # Raise in stacking order
 
         ''' Synchronizing lyrics to time index controls music '''
         if self.fine_tune and self.fine_tune.top_is_active:
@@ -2541,6 +2567,7 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
             if size < g.MUSIC_MIN_SIZE:
                 str_size = '{:n}'.format(g.MUSIC_MIN_SIZE)
                 if g.DEBUG_LEVEL:  # set to 99999 for debug
+                    # TODO: Create history "skipped" record if it doesn't exist
                     print(who + "Skipping file less than:", str_size,
                           "bytes. Filename below:")
                     print(" " + full_path)
@@ -4412,8 +4439,8 @@ Call search.py when these control keys occur
                 title="Support for Playlists not finished.",
                 text="The Refresh Library function cannot be run when a\n" +
                      "Playlist is open. Close playlist and use Favorites.\n\n" +
-                     "The Refresh Library function checks for new song files which is\n" +
-                     "a process automatically performed during mserve startup anyway.")
+                     "The Refresh Library function checks for new song files \n" +
+                     "which is automatically performed during mserve startup.")
             return
 
         self.info.cast("Rebuild music library - scan for new songs")
@@ -4472,7 +4499,7 @@ Call search.py when these control keys occur
         self.lib_tree.delete(*self.lib_tree.get_children())
         # Copied from __init__
         dtb = message.DelayedTextBox(title="Building music location treeview",
-                                     toplevel=None, width=1000)
+                                     toplevel=self.lib_top, width=1000)
         '''
                     B I G   T I C K E T   E V E N T
          
@@ -4569,8 +4596,21 @@ Call search.py when these control keys occur
         except NameError:
             self.debug_detail('Pillow Version    :', PIL.__version__)
 
+        def ff_version(ff_name):
+            """ loud norm filter in ffmpeg version 3.1 or higher.
+                :param ff_name: 'ffmpeg', 'ffplay' or 'ffprobe' """
+            result = os.popen(ff_name + " -version").read().strip()
+            version = result.split(" Copyright")[0]
+            version = version.split("version ")[1]
+            prefix = ff_name + " version"
+            self.debug_detail(prefix.ljust(15), "  :", version)
+
+        ff_version("ffmpeg")
+        ff_version("ffplay")
+        ff_version("ffprobe")
         self.debug_detail("Process ID (PID)  :", os.getpid())
         self.debug_detail("Parent's PID      :", os.getppid())  # win needs > 3.2
+
         self.debug_output()  # self.info.fact() + print()
 
         self.debug_header("\nmon = monitor.Monitors()")
@@ -6103,6 +6143,7 @@ Call search.py when these control keys occur
 
         ''' Create Pretty Displays from SQL tables '''
         search = None  # search words to highlight
+        pretty = None  # To make pyCharm happy
         if dd_view == self.his_view:
             pretty = sql.PrettyHistory(sql_row_id)
             search = self.his_search
@@ -6324,9 +6365,9 @@ Call search.py when these control keys occur
         ''' Bind <Escape> to close window '''
         if win_grp is not None:
             self.pre_top.bind("<Escape>",
-                              lambda _: self.pretty_close(win_grp=win_grp))
+                              lambda _: self.pretty_close(_win_grp=win_grp))
             self.pre_top.protocol("WM_DELETE_WINDOW",
-                                  lambda: self.pretty_close(win_grp=win_grp))
+                                  lambda: self.pretty_close(_win_grp=win_grp))
         else:
             self.pre_top.bind("<Escape>", self.pretty_close)
             self.pre_top.protocol("WM_DELETE_WINDOW", self.pretty_close)
@@ -14131,108 +14172,126 @@ class FileControl(FileControlCommonSelf):
         self.new_WIP = False  # Signal new requests will be accepted.
         return True  # Needed for mserve.py mus_artwork()
 
-    def get_metadata(self):
+    def get_metadata(self, ffmpeg_results=None, trg_path=None):
         """ Use ffprobe to write metadata to file self.TMP_FFPROBE
             Loop through self.TMP_FFPROBE lines to create dictionary self.metadata
 
-            oga has DURATION and STREAM #0 first and second instead of near
+            .oga has DURATION and STREAM #0 first and second instead of near
             bottom.
+
+            2024-04-12 Add support for ffmpeg analyze volume results.
 
             TODO: Huge time lag with .oga image of 10 MB inside 30 MB file.
         """
 
-        _who = "mserve.py get_metadata() - "
+        _who = "mserve.py FileControl().get_metadata(): "
         self.metadata = OrderedDict()
+
+        # 2024-04-12 ffmpeg spams some error messages ~100 times
+        spam_err1_cnt = spam_err2_cnt = spam_err3_cnt = spam_err4_cnt = spam_err5_cnt = 0
+        spam_err1_text = 'If you want to help'
+        # noinspection SpellCheckingInspection
+        spam_err2_text = 'overread'
+        spam_err3_text = 'Error applying options'
+        spam_err4_text = 'Error submitting packet'
+        spam_err5_text = 'Error while decoding'
 
         ''' Is host down? '''
         if lcs.host_down:
             return
 
-        #print(who + "Calling ffprobe.")
-        ext.t_init("FileControl.get_metadata() - ffprobe")
-        ''' Problem ffprobe -xerror will crash on good files '''
-        ''' Problem ffprobe without -xerror will crash on bad files 
-            https://stackoverflow.com/questions/77054846/
-            looking-for-ffprobe-ffmpeg-xerror-err-detect-that-works        
-        '''
-        cmd = 'ffprobe ' + '"' + self.last_path + '"' + ' 2>' + self.TMP_FFPROBE
-        #print(who + "cmd=", cmd)
-        result = os.popen(cmd).read().strip()
-        ext.t_end('no_print')
-        # ffprobe on good files: 0.0858271122 0.0899128914 0.0877139568
-        # ffprobe on corrupted : 0.1700458527  (file contains dozen bytes of text)
-        # Jim Stein man Bad for Good: ffprobe: 0.1356880665
-        # 3-12 - Poison.oga (30 MB with 10 MB image) : 10.9 seconds !!!
-        # 3-12 - Poison.oga using kid3 < 1 second
+        if ffmpeg_results is None:
+            #print(who + "Calling ffprobe.")
+            ext.t_init("FileControl.get_metadata() - ffprobe")
+            ''' Problem ffprobe -xerror will crash on good files '''
+            ''' Problem ffprobe without -xerror will crash on bad files 
+                https://stackoverflow.com/questions/77054846/
+                looking-for-ffprobe-ffmpeg-xerror-err-detect-that-works        
+            '''
+            cmd = 'ffprobe ' + '"' + self.last_path + '"' + ' 2>' + self.TMP_FFPROBE
+            #print(who + "cmd=", cmd)
+            result = os.popen(cmd).read().strip()
+            ext.t_end('no_print')
+            # ffprobe on good files: 0.0858271122 0.0899128914 0.0877139568
+            # ffprobe on corrupted : 0.1700458527  (file contains dozen bytes of text)
+            # Jim Stein man Bad for Good: ffprobe: 0.1356880665
+            # 3-12 - Poison.oga (30 MB with 10 MB image) : 10.9 seconds !!!
+            # 3-12 - Poison.oga using kid3 < 1 second
 
-        #print(who + "Calling mutagen.")
-        ext.t_init("FileControl.get_metadata() - mutagen")
-        try:
-            # Song: Heart/GreatestHits/17 Rock and Roll (Live).m4a
-            # Song: /media/rick/SANDISK128/Music/Hello/There/smile.mp3
-            m = mutagen.File(self.last_path)
-            if m:  # .wav files have no metadata
-                for _line in m:
-                    #print("mutagen line:", _line)  # keys are in lowercase with _ removed
-                    pass
-        except Exception as err:
-            print("Mutagen error on:", self.last_path)
-            print("Exception:", err)
+            #print(who + "Calling mutagen.")
+            ext.t_init("FileControl.get_metadata() - mutagen")
+            try:
+                # Song: Heart/GreatestHits/17 Rock and Roll (Live).m4a
+                # Song: /media/rick/SANDISK128/Music/Hello/There/smile.mp3
+                m = mutagen.File(self.last_path)
+                if m:  # .wav files have no metadata
+                    for _line in m:
+                        #print("mutagen line:", _line)  # keys are in lowercase with _ removed
+                        pass
+            except Exception as err:
+                print("Mutagen error on:", self.last_path)
+                print("Exception:", err)
 
-        #   File "/home/rick/python/mserve.py", line 12871, in get_metadata
-        #     m = mutagen.File(self.last_path)
-        #   File "/usr/lib/python2.7/dist-packages/mutagen/_file.py", line 251, in File
-        #     return Kind(filename)
-        #   File "/usr/lib/python2.7/dist-packages/mutagen/_file.py", line 42, in __init__
-        #     self.load(filename, *args, **kwargs)
-        #   File "/usr/lib/python2.7/dist-packages/mutagen/id3/__init__.py", line 1093, in load
-        #     self.info = self._Info(file obj, offset)
-        #   File "/usr/lib/python2.7/dist-packages/mutagen/mp3.py", line 185, in __init__
-        #     self.__try(file obj, offset, size - offset, False)
-        #   File "/usr/lib/python2.7/dist-packages/mutagen/mp3.py", line 223, in __try
-        #     raise HeaderNotFoundError("can't sync to an MPEG frame")
-        # HeaderNotFoundError: can't sync to an MPEG frame
+            #   File "/home/rick/python/mserve.py", line 12871, in get_metadata
+            #     m = mutagen.File(self.last_path)
+            #   File "/usr/lib/python2.7/dist-packages/mutagen/_file.py", line 251, in File
+            #     return Kind(filename)
+            #   File "/usr/lib/python2.7/dist-packages/mutagen/_file.py", line 42, in __init__
+            #     self.load(filename, *args, **kwargs)
+            #   File "/usr/lib/python2.7/dist-packages/mutagen/id3/__init__.py", line 1093, in load
+            #     self.info = self._Info(file obj, offset)
+            #   File "/usr/lib/python2.7/dist-packages/mutagen/mp3.py", line 185, in __init__
+            #     self.__try(file obj, offset, size - offset, False)
+            #   File "/usr/lib/python2.7/dist-packages/mutagen/mp3.py", line 223, in __try
+            #     raise HeaderNotFoundError("can't sync to an MPEG frame")
+            # HeaderNotFoundError: can't sync to an MPEG frame
 
-        #     m = mutagen.File(self.last_path, easy=True)
-        #   File "/usr/lib/python2.7/dist-packages/mutagen/_file.py", line 251, in File
-        #     return Kind(filename)
-        #   File "/usr/lib/python2.7/dist-packages/mutagen/_file.py", line 42, in __init__
-        #     self.load(filename, *args, **kwargs)
-        #   File "/usr/lib/python2.7/dist-packages/mutagen/id3/__init__.py", line 1093, in load
-        #     self.info = self._Info(file obj, offset)
-        #   File "/usr/lib/python2.7/dist-packages/mutagen/mp3.py", line 185, in __init__
-        #     self.__try(file obj, offset, size - offset, False)
-        #   File "/usr/lib/python2.7/dist-packages/mutagen/mp3.py", line 223, in __try
-        #     raise HeaderNotFoundError("can't sync to an MPEG frame")
-        # HeaderNotFoundError: can't sync to an MPEG frame
+            #     m = mutagen.File(self.last_path, easy=True)
+            #   File "/usr/lib/python2.7/dist-packages/mutagen/_file.py", line 251, in File
+            #     return Kind(filename)
+            #   File "/usr/lib/python2.7/dist-packages/mutagen/_file.py", line 42, in __init__
+            #     self.load(filename, *args, **kwargs)
+            #   File "/usr/lib/python2.7/dist-packages/mutagen/id3/__init__.py", line 1093, in load
+            #     self.info = self._Info(file obj, offset)
+            #   File "/usr/lib/python2.7/dist-packages/mutagen/mp3.py", line 185, in __init__
+            #     self.__try(file obj, offset, size - offset, False)
+            #   File "/usr/lib/python2.7/dist-packages/mutagen/mp3.py", line 223, in __try
+            #     raise HeaderNotFoundError("can't sync to an MPEG frame")
+            # HeaderNotFoundError: can't sync to an MPEG frame
 
-        #print("Mutagen m['title']:", m['title'])
-        #print("Mutagen m['artist']:", m['artist'])
-        #print("Mutagen m['album']:", m['album'])
-        # print("Mutagen m:", m)
-        # {'album':, 'title':, 'artist':, 'bpm':, 'genre':, 'date':,
-        # 'tracknumber': [u'1/11'], 'disc number': [u'2/2']}
-        ext.t_end('no_print')  # 40 times faster than ffprobe: 0.002
-        # Jim Stein man Bad for Good: mutagen: 0.01
-        # Coverart STREAM is in main tag section not in separate
-        # DURATION  is in main tag section not in separate
-        # 'Title' and 'Title(1)' are duplicated
+            #print("Mutagen m['title']:", m['title'])
+            #print("Mutagen m['artist']:", m['artist'])
+            #print("Mutagen m['album']:", m['album'])
+            # print("Mutagen m:", m)
+            # {'album':, 'title':, 'artist':, 'bpm':, 'genre':, 'date':,
+            # 'tracknumber': [u'1/11'], 'disc number': [u'2/2']}
+            ext.t_end('no_print')  # 40 times faster than ffprobe: 0.002
+            # Jim Stein man Bad for Good: mutagen: 0.01
+            # Coverart STREAM is in main tag section not in separate
+            # DURATION  is in main tag section not in separate
+            # 'Title' and 'Title(1)' are duplicated
 
-        if len(result) > 1:
-            print('mserve.py FileControl.get_metadata() ffprobe result:', result)
+            if len(result) > 1:
+                print(_who, 'ffprobe result:', result)
 
-        ''' Create self.metadata{} dictionary 
-            oga has 'DURATION' 2nd and 'STREAM #0' 3rd which need to be held
-            and then inserted just before 'CREATION_TIME' '''
+            ''' Create self.metadata{} dictionary 
+                oga has 'DURATION' 2nd and 'STREAM #0' 3rd which need to be held
+                and then inserted just before 'CREATION_TIME' '''
 
         input_encountered = False
 
+        fname = self.TMP_FFPROBE if ffmpeg_results is None else ffmpeg_results
+
+        if not os.path.isfile(fname):
+            print("mserve FileControl().get_metadata(): file not found:")
+            print("\t", fname)
+            return
+
         #print(who + "Calling open(self.TMP_FFPROBE)")
-        with open(self.TMP_FFPROBE) as f:
+        with open(fname) as f:
             for line in f:
                 line = line.rstrip()  # remove \r and \n
                 #print(who + "line:", line)
-
                 if not input_encountered:
                     if line.startswith('Input #0, '):
                         input_encountered = True
@@ -14245,6 +14304,40 @@ class FileControl(FileControlCommonSelf):
 
                 if line.strip().upper().startswith("STREAM #0:"):
                     (key, val) = half_split(line, ':', 2)  # Split second only
+                elif line.startswith("["):
+                    # 2024-04-11 ffmpeg volume detect output. E.G.:
+                    # [Parsed_volume detect_0 @ 0xbdc440] max_volume: -0.3 dB
+                    # [Parsed_volume detect_0 @ 0xbdc440] histogram_0db: 158
+                    volume = line.split("] ")[1]
+                    # 2024-04-12 ffmpeg_results can contain hundreds of this line
+                    if volume.startswith(spam_err1_text):
+                        spam_err1_cnt += 1
+                        continue
+                    if volume.startswith(spam_err2_text):
+                        spam_err2_cnt += 1
+                        continue
+                    if volume.startswith(spam_err3_text):
+                        # Error applying options to the filter
+                        # /media/rick/SANDISK128/Music/Hello/There/smile.mp3
+                        spam_err3_cnt += 1
+                        continue
+                    if volume.startswith(spam_err4_text):
+                        # Error submitting packet to decoder: Invalid data found...
+                        spam_err4_cnt += 1
+                        continue
+
+                    try:
+                        (key, val) = volume.split(':', 1)  # Split first ':' only
+                    except ValueError:
+                        print(_who, "volume.split failed in:", trg_path)
+                        print("line:", line)
+                        continue
+
+                elif line.startswith(spam_err5_text):
+                    # 2024-04-11 ffmpeg volume detect finds more than ffprobe
+                    spam_err5_cnt += 1
+                    continue
+
                 else:
                     (key, val) = line.split(':', 1)  # Split first ':' only
 
@@ -14271,12 +14364,26 @@ class FileControl(FileControlCommonSelf):
 
                 # Convert all keys to upper case for simpler lookups
                 key_unique = toolkit.unique_key(key.upper(), self.metadata)
-                self.metadata[key_unique] = val  # Comment can appear twice
+                if key_unique.startswith(key.upper()):
+                    self.metadata[key_unique] = val  # Comment can appear twice
+                else:
+                    print(_who, "key_unique failed 99 times:", key)
+                    print("line:", line)
+
+                    # line: [aac @ 0x2113220] If you want to help, upload a
+                    # sample of this file to ftp://upload.ffmpeg.org/incoming/
+                    # and contact the ffmpeg-devel mailing list.
+                    # (ffmpeg-devel@ffmpeg.org)
+
+                    # line: [mp3 @ 0x1f4d4a0] over read, skip -4 end dists: -1 -1
+
+                    # Error while decoding stream #0:0: Not yet implemented
+                    # in FF mpeg, patches welcome
 
         # noinspection SpellCheckingInspection
         '''
 
-==== ffprobe SYNOPSIS  ==========================================================
+==== ffprobe result keynotes  =====================================================
 
 WAV: 
 Input #0, wav, from '/media/rick/SANDISK128/Music/Compilations/
@@ -14352,7 +14459,10 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilatio
 
         '''
 
-        path_parts = self.path.split(os.sep)  # In case metadata missing song parts
+        if trg_path is None:
+            path_parts = self.path.split(os.sep)  # In case metadata missing
+        else:
+            path_parts = trg_path.split(os.sep)  # from lcs.avo_insert_tree_row()
 
         self.ffMajor = self.metadata.get('MAJOR_BRAND', None)
         self.ffMinor = self.metadata.get('MINOR_BRAND', None)
@@ -14396,12 +14506,25 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilatio
         self.Duration = self.metadata.get('DURATION', "0.0,0").split(',')[0]
         self.Duration = toolkit.uni_str(self.Duration)
         #self.Duration = self.Duration.split('.')[0]  # Aug 10/23 - dec. secs
-        convert = self.Duration.split('.')  # fractional second to part 2
+        #convert = self.Duration.split('.')  # fractional second to part 2
+        # 2024-04-12 Test text file of length 6 contains "N/A" for self.Duration
+        convert = self.Duration.split('.') if self.Duration != "N/A" else None
         if convert:
-            convert_out = convert_seconds(convert[0])  # Note must save in parent
-            if convert[1]:
-                convert_out = str(convert_out) + "." + convert[1]
-            self.DurationSecs = float(convert_out)
+            try:
+                convert_out = convert_seconds(convert[0])  # Note must save in parent
+                if convert[1]:
+                    convert_out = str(convert_out) + "." + convert[1]
+                self.DurationSecs = float(convert_out)
+            except ValueError:
+                # 2024-04-12: Trap new error introduced with ffmpeg
+                # File "/home/rick/python/mserve.py", line 14455, in get_metadata
+                #     convert_out = convert_seconds(convert[0])  # Note must save in parent
+                #   File "/home/rick/python/mserve.py", line 20413, in convert_seconds
+                #     return sec_str + " seconds (" + min_str + " min: " + rem_str + " sec)"
+                # ValueError: invalid literal for int() with base 10: 'N/A'
+                print("convert = self.Duration.split('.') ValueError:",
+                      self.Duration)
+                exit()
         else:
             self.DurationSecs = 0.0  # Note must save in parent
 
@@ -14429,8 +14552,24 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilatio
         self.MusicBrainzDiscId = \
             toolkit.uni_str(self.metadata.get('MUSICBRAINZ_DISCID', None))
 
-        self.OsFileSize = self.stat_start.st_size
-        self.OsAccessTime = self.stat_start.st_atime
+        if ffmpeg_results is None:
+            self.OsFileSize = self.stat_start.st_size
+            self.OsAccessTime = self.stat_start.st_atime
+
+        def print_spam(count, text):
+            """ Check if spam error occurred and print. """
+            if count == 0:
+                return
+            print("\nSpammed Error '" + text + "' occurred:",
+                  count, "times.")
+            print("line:", line)
+            print("trg_path:", trg_path)
+
+        print_spam(spam_err1_cnt, spam_err1_text)
+        print_spam(spam_err2_cnt, spam_err2_text)
+        print_spam(spam_err3_cnt, spam_err3_text)
+        print_spam(spam_err4_cnt, spam_err4_text)
+        print_spam(spam_err5_cnt, spam_err5_text)
 
     def check_metadata(self):
         """ Ensure Audio stream exists. """
@@ -14971,6 +15110,9 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilatio
         Linux "touch" command to set last access time. When a file is accessed
         Linux doesn't update access time until end of day. Do it immediately so
         lib_top.tree will reflect when each song was played instantly.
+
+        NOTE: Windows can delay up to an hour setting last access time (if that
+              option is enabled in registry.
 
         If less than threshold percentage of song is played (defaults to 80%)
         then reset last access time as if song was not played.

@@ -61,6 +61,7 @@ import os
 import sys
 import errno
 import shutil
+import json
 import pickle
 import time
 import datetime
@@ -1083,6 +1084,7 @@ class LocationsCommonSelf:
         self.all_topdir = []  # Top Directories matching all_codes
         self.loc_list = []  # Inserted into Treeview
         self.loc_dict = {}  # Single line inserted into Treeview
+        self.who = "location.py Locations()."
 
         ''' Current Location work fields - Mirrors SQL Location Table Row '''
         self.act_code = None  # Replacement for 'iid'
@@ -1295,6 +1297,7 @@ class Locations(LocationsCommonSelf):
         self.target_callback = None  # After getting target location for copy
         self.info = None  # InfoCentre() class instance initialized in mserve.py
         self.FileControl = None  # FileControl() class RAW. Needed to reset atime.
+        self.trg_ctl = None  # FileControl for ffmpeg volume detect (Analyze Volume)
         self.enable_lib_menu = None  # Set Locations options on/off in Dropdown
         self.tt = None  # Tooltips pool for buttons
         self.get_thread_func = None  # E.G. self.get_refresh_thread()
@@ -1471,12 +1474,13 @@ class Locations(LocationsCommonSelf):
 
         if self.state == 'analyze_volume':
             title = "About the Analyze Volume function"
-            text = "This function does NOT update any music files.\n\n"
+            text = "This function does NOT update any music files. It takes 10 "
+            text += "minutes to analyze 1,000 files.\n\n"
             text += "The sound volume of files are analyzed. Results are both "
             text += "displayed and saved in history.\n\n"
-            text += "A typical music file takes a fraction of a second "
+            text += "A typical music file takes 1/2 a "
             text += "second to analyze over SSD. For files on smartphones\n"
-            text += "connected to WiFi itis much slower. When analyzing a "
+            text += "connected to WiFi it is much slower. When analyzing a "
             text += "remote host that is asleep,\nthe host is woken up and "
             text += "kept awake until all files are analyzed.\n\n"
             text += "Music will keep playing but some buttons will be disabled. "
@@ -3970,6 +3974,11 @@ filename.
             NOTE: Doesn't export or import songs
                   Android doesn't allow setting mod time so track in mserve """
 
+        ''' Already running? '''
+        if self.cmp_top_is_active:
+            self.cmp_top.lift()
+            return
+
         ''' Wake up host as required and keep awake '''
         if self.act_host:
             if prefix == "cmp":
@@ -4045,7 +4054,7 @@ filename.
         if prefix == "cmp":
             self.cmp_top.geometry('%dx%d+%d+%d' % (1800, 500, xy[0], xy[1]))
         else:
-            self.cmp_top.geometry('%dx%d+%d+%d' % (1100, 500, xy[0], xy[1]))
+            self.cmp_top.geometry('%dx%d+%d+%d' % (1180, 500, xy[0], xy[1]))
 
 
         if self.open_topdir.endswith(os.sep):  # the "source" location
@@ -4058,9 +4067,11 @@ filename.
             title = "Synchronize:  SOURCE: " + self.open_topdir + \
                     "  <-->  TARGET: " + self.cmp_target_dir
         else:
-            title = "Analyze volume inside" + self.cmp_target_dir
+            title = "Analyze volume in: " + self.cmp_target_dir
         self.cmp_top.title(title)
 
+        ''' FileControl() from mserve.py used to parse ffmpeg output '''
+        self.trg_ctl = self.FileControl(self.cmp_top, self.info)
 
         ''' Set program icon in taskbar '''
         toplevel = prefix + "_toplevel"
@@ -4280,7 +4291,8 @@ filename.
     def cmp_close(self, *_args):
         """ Close Compare location treeview """
 
-        self.end_long_running()  # Restore mserve full playlist buttons
+        if self.end_long_running is not None:
+            self.end_long_running()  # Restore mserve full playlist buttons
 
         if self.cmp_keep_awake_is_active:  # Keeping remote host awake?
             self.cmp_keep_awake_is_active = False  # Has 10 minute wakeup cycle
@@ -4357,57 +4369,16 @@ filename.
 
             if prefix == "cmp":
                 # str(i) will be iid if and when Song inserted.
-                if not self.cmp_insert_cmp_row(fake_path, CurrAlbumId, str(i), Song):
+                if not self.cmp_insert_tree_row(fake_path, CurrAlbumId, str(i), Song):
                     return False  # Closing down, False indicates no differences
             else:
-                if not self.cmp_insert_avo_row(fake_path, CurrAlbumId, str(i), Song):
-                    return False  # Closing down, False indicates no differences
-
-            """ BELOW NOW INSIDE self.cmp_insert_cmp_row() 
-            ''' Compare two files '''
-            action, src_path, src_size, src_time, trg_path, \
-                trg_size, trg_time = self.compare_path_pair(fake_path)
-
-            if action == "Missing":
-                self.cmp_trg_missing.append(trg_path)  # Not used yet
-                self.cmp_tree.see(CurrAlbumId)  # Files identical
-                continue
-            if action == "Same":
-                self.cmp_tree.see(CurrAlbumId)  # Files identical
-                continue
-            if action == "OOPS":
-                self.cmp_tree.see(CurrAlbumId)  # Files identical
-                continue
-
-            ''' Make pretty fields '''
-            converted = float(src_size) / float(g.CFG_DIVISOR_AMT)
-            src_fsize = '{:n}'.format(round(converted, 3))  # 3 decimal places
-            converted = float(trg_size) / float(g.CFG_DIVISOR_AMT)
-            trg_fsize = '{:n}'.format(round(converted, 3))
-            # Format date as "Abbreviation - 99 Xxx Ago"
-            src_ftime = tmf.ago(float(src_time))
-            trg_ftime = tmf.ago(float(trg_time))
-
-            if not self.cmp_top_is_active:
-                return False  # Closing down, False indicates no differences
-
-            ''' Insert song into comparison treeview and show on screen '''
-            self.cmp_tree.insert(CurrAlbumId, "end", iid=str(i), text=Song,
-                                 values=(src_ftime, trg_ftime, src_fsize, trg_fsize, action,
-                                         float(src_time), float(trg_time)),
-                                 tags=("Song",))
-            self.cmp_tree.see(str(i))
-            self.cmp_top.update_idletasks()  # Allow close button to abort
-            self.cmp_found += 1
-
-            if self.cmp_top_is_active is False:
-                return False  # Closing down, False indicates no differences
-            """
+                if not self.avo_insert_tree_row(fake_path, CurrAlbumId, str(i), Song):
+                    return False  # Closing down
 
         ext.t_end('print')  # No Refresh: Build compare target: 1.2339029312
         # Refresh thread (33ms after)   : Build compare target: 158.4349091053
         # Refresh tk_after=False     : Build compare target: 26.8863759041
-        # TOTALLY DIFFERENT STORY NOW WITH self.cmp_insert_avo_row()
+        # TOTALLY DIFFERENT STORY NOW WITH self.avo_insert_tree_row()
 
         ''' Prune tree - Albums with no differences, Artists with no Albums '''
         for artist in self.cmp_tree.get_children():
@@ -4435,7 +4406,7 @@ filename.
             self.out_fact_show(title, text)
             return False
 
-    def cmp_insert_cmp_row(self, fake_path, CurrAlbumId, iid, Song):
+    def cmp_insert_tree_row(self, fake_path, CurrAlbumId, iid, Song):
         """ Test if Song is candidate and insert into treeview.
             Artists and Albums already inserted.
             Always return True even if not a candidate.
@@ -4483,21 +4454,153 @@ filename.
 
         return self.cmp_top_is_active
 
-    def cmp_insert_avo_row(self, fake_path, CurrAlbumId, iid, Song):
-        """ Get Song's volume levels (Mean and Maximum) """
+    # noinspection SpellCheckingInspection
+    def avo_insert_tree_row(self, fake_path, CurrAlbumId, iid, Song):
+        """ Get Song's volume levels (Mean, Maximum and Histograms)
 
+            Save and restore song's last access time because ffmpeg
+            "volume detect" feature will reset to current time.
+
+        """
+        _who = self.who + "avo_insert_tree_row():"
         if not self.cmp_top_is_active:
             return False  # Closing down, False indicates no differences
 
+        ''' Build target path, check if exists and use os.stat '''
+        src_path = self.real_from_fake_path(fake_path)
+        trg_path = src_path.replace(self.open_topdir, self.cmp_target_dir)
+        if not os.path.isfile(trg_path):  # If target missing, then return
+            return True
+        trg_stat = os.stat(trg_path)  # os.stat provides file attributes
+        trg_size = trg_stat.st_size
+        trg_time = float(trg_stat.st_atime)
+
+        ''' Save file's Last Access Time because ffmpeg changes when reading '''
+        mean_volume, max_volume = self.avo_run_ffmpeg(trg_path, trg_size)
+        if not self.cmp_top_is_active:
+            return False  # Closing down, False indicates no differences
+
+        ''' ffmpeg changes Last Access Time - Set it back '''
+        date_str = datetime.datetime.fromtimestamp(trg_time)\
+            .strftime('%Y-%m-%d %H:%M:%S')
+        cmd = 'touch -a -c -d"' + date_str + '" "' + trg_path + '"'
+        result = os.popen(cmd).read().strip()
+
+        if len(result) > 4:
+            # touch doesn't write to STDERR
+            print(_who, "Error running touch command.")
+            print(cmd)
+            print("\n" + result)
+
+        ''' Save values in history. '''
+        OsBase = trg_path.split(self.cmp_target_dir)[1]
+        # Strip off any leading /
+        OsBase = OsBase[1:] if OsBase.startswith(os.sep) else OsBase
+        music_id = sql.music_id_for_song(OsBase)
+        if max_volume == "N/A":
+            d = sql.hist_get_music_var(music_id, "Volume", "Analyze")
+            if d:
+                print(_who, "Not overwriting existing music volume:\n\t",
+                      d['Target'], "with 'N/A'.")
+                print("for:", OsBase)
+            music_id = 0  # Don't populate with "N/A"
+        if not self.cmp_top_is_active:
+            return False  # Closing down, False indicates no differences
+
+        if music_id:
+            sql.hist_add_music_var(
+                music_id, 'Volume', 'Analyze', SourceMaster=self.act_code,
+                SourceDetail='volumedetect', Comments="April 12, 2024",
+                Target=json.dumps([mean_volume, max_volume]))
+
         ''' Insert song into treeview '''
         self.cmp_tree.insert(CurrAlbumId, "end", iid=iid, text=Song,
-                             values=("-20 db", "-5 db"),
+                             values=(mean_volume, max_volume),
                              tags=("Song",))
         self.cmp_tree.see(iid)
         self.cmp_top.update_idletasks()  # Allow close button to abort
         self.cmp_found += 1
 
         return self.cmp_top_is_active
+
+    # noinspection SpellCheckingInspection
+    def avo_run_ffmpeg(self, trg_path, size):
+        """ Called when inserting in treeview
+
+One-liner to copy and paste into terminal:
+    ffmpeg -i "/media/rick/SANDISK128/Music/AC_DC/Stiff Upper Lip/09 Damned.m4a" -af "volumedetect" -f null /dev/null
+
+        """
+
+        _shell_fname = ext.shell_quote(trg_path)
+        # Don't use shell_quote on trg_path. It generates error:
+        # ffmpeg -i "/media/rick/SANDISK128/Music/10cc/The Best of 10cc/
+        # 04 Art for Art'\''s Sake.m4a" -af "volumedetect"
+        # -f null /dev/null 2>&1 | grep "_volume:"
+
+        # Version using grep limited 
+        #cmd = 'ffmpeg -i "' + trg_path + '" -af "volumedetect"'
+        #cmd += ' -f null /dev/null 2>&1 | grep "_volume:"'
+
+        # Version using FileControl to create OrderedDict of all lines 
+        cmd = 'ffmpeg -i "' + trg_path + '" -af "volumedetect"'
+        cmd += ' -f null /dev/null'
+
+        self.run_one_command(cmd, size, wait=10, print_stats=False)
+
+        if not self.cmp_top_is_active:
+            return "N/A", "N/A"
+
+        ''' Permission denied if curlftpfs chokes on files with # in name '''
+        if self.act_ftp and self.cmp_return_code != 0:
+            print("Retrying 'self.act_ftp and self.cmp_return_code != 0:'")
+            base_path = trg_path.replace(self.act_topdir, '')
+            self.ftp_retrieve(self.act_ftp, base_path)  # Retrieve manually
+            self.cmp_return_code = 0  # Reset for repeating test
+            cmd = cmd.replace(trg_path, self.TMP_FTP_RETRIEVE)
+            #cmd = 'ffmpeg -i "' + self.TMP_FTP_RETRIEVE + '" -af "volumedetect"'
+            #cmd += ' -f null /dev/null 2>&1 | grep "_volume:"'
+            self.run_one_command(cmd, size, wait=3)  # 5 second wait time
+            print(ext.read_into_string(self.TMP_STDOUT))
+            #  TODO: See cmp_insert_tree_row() for notes on FTP errors.
+
+        ''' Permission denied - Do nothing, just report and skip copy '''
+        if self.cmp_return_code != 0:
+            action = "Error: Permission denied on 'ffmpeg' analyze volume!"
+            print("\nError on file:", trg_path)
+            print(action, "return code:", self.cmp_return_code, "\n")
+            self.cmp_return_code = 0  # Reset so doesn't force end
+            return "N/A", "N/A"
+
+        # Version using grep limited 
+        #volumes = ext.read_into_list(self.TMP_STDOUT)
+        #if volumes is None or len(volumes) != 2:
+        #    print("Location().avo_run_ffmpeg():",
+        #          "No volumes found in self.TMP_STDOUT!")
+        #    print(cmd)
+        #    return "N/A", "N/A"
+
+        # Version using TMP_STDERR to create dictionary self.trg_ctl.metadata 
+        self.trg_ctl.get_metadata(ffmpeg_results=self.TMP_STDERR, trg_path=trg_path)
+
+        if self.cmp_found == 1:
+            # To see dictionary built from parsed ffmpeg output
+            #print("self.trg_ctl.metadata:")
+            #print(self.trg_ctl.metadata)
+            pass
+
+        """ Parse mean volume and max volume in output file
+    
+        [Parsed_volumedetect_0 @ 0xc11fa0] mean_volume: -21.0 dB
+        [Parsed_volumedetect_0 @ 0xc11fa0] max_volume: -1.0 dB
+        """
+        # Version using grep limited
+        #return volumes[0].split("_volume: ")[1], volumes[1].split("_volume: ")[1]
+
+        # Version using dictionary self.trg_ctl.metadata
+        mean_volume = self.trg_ctl.metadata.get("MEAN_VOLUME", "N/A")
+        max_volume = self.trg_ctl.metadata.get("MAX_VOLUME", "N/A")
+        return mean_volume, max_volume
 
     @staticmethod
     def real_from_fake_path(fake_path):
@@ -4612,7 +4715,7 @@ filename.
 
         ''' Permission denied if curlftpfs chokes on files with # in name '''
         if self.act_ftp and self.cmp_return_code != 0:
-            print("Retrying self.act_ftp and self.cmp_return_code != 0:")
+            print("Retrying 'self.act_ftp and self.cmp_return_code != 0:'")
             base_path = trg_path.replace(self.act_topdir, '')
             self.ftp_retrieve(self.act_ftp, base_path)  # Retrieve manually
             self.cmp_return_code = 0  # Reset for repeating test
@@ -4620,7 +4723,7 @@ filename.
                 'diff -s ' + '"' + src_path + '" "' +
                 self.TMP_FTP_RETRIEVE + '"', src_size)
             print(ext.read_into_string(self.TMP_STDOUT))
-            """ 
+            """ Use avo_run_ffmpeg() technique of cmd = cmd.replace()
             TODO:
             1. Assume target is Android and Android is never the source
             2. ftp file transfer to /tmp/mserve_ftp_recv_zs8k6f
@@ -4842,7 +4945,7 @@ filename.
         # All done, close treeview as it's no longer relevant
         self.cmp_close()
 
-    def run_one_command(self, command, size):
+    def run_one_command(self, command, size, wait=60, print_stats=True):
         """ Run 'touch' or 'cp' command. """
         ''' Remove previous stdout/stderr '''
         self.rm_file(self.TMP_STDOUT)  # Remove Standard Output results file
@@ -4859,9 +4962,9 @@ filename.
         else:
             ''' Copy writes to stdout and takes .01 second / MB 
                 'diff' over Wifi FTP Server takes .16 second / MB  '''
-            return self.wait_for_cmd_output(command, size)
+            return self.wait_for_cmd_output(command, size, wait, print_stats)
 
-    def wait_for_cmd_output(self, command, size):
+    def wait_for_cmd_output(self, command, size, wait, print_stats=True):
         """ Wait for cp (copy) command to complete
             Check cmp_top_is_active at top of each loop.
             Maximum time for STDOUT or STDERR to appear is 10 seconds. """
@@ -4870,27 +4973,45 @@ filename.
         command += " 1>" + self.TMP_STDOUT  # mserve_stdout_5sh18d
         command += " 2>" + self.TMP_STDERR  # mserve_stderr_5sh18d
         start_time = time.time()
-        result = os.popen(command + " &").read().strip()
-        if len(result) > 4:
-            print("wait_for_cmd_output() os.popen() unknown result:", result)
-            self.cmp_return_code = 3  # Indicate how update failed
-            return False
+
+        # 2024-04-12: Use run in ext.launch_command() to get PID
+        #result = os.popen(command + " &").read().strip()
+        #if len(result) > 4:
+        #    print("wait_for_cmd_output() os.popen() unknown result:", result)
+        #    self.cmp_return_code = 3  # Indicate how update failed
+        #    return False
+        pid = ext.launch_command(command, self.cmp_top)
+        if pid == 0:
+            print("Warning command finished before PID could be acquired:")
+            print(command)
 
         loop_count = 0
         while True:
+            if not self.cmp_top_is_active:
+                return False
             loop_count += 1
             elapsed = time.time() - start_time
-            if elapsed > 60.0:  # Aug 31/23 WiFi change 10.0 to 60.0 for `diff`
-                # Loops: 270,211 	Size: 8,090,133 	Elapsed sec: 25.513 	Speed (MB/s): 0.317
-                # Loops: 94,729 	Size: 4,726,205 	Elapsed sec: 9.85 	Speed (MB/s): 0.48
-                print("wait_for_cmd_output() 60 second time-out")
+            if elapsed > float(wait):  # Aug 31/23 WiFi change 10.0 to 60.0 for `diff`
+                # 2024-04-09 wait time defaults to 60 but set to 5 for analyze volume
+                # Wait: 270,211  Size: 8,090,133 	Elapsed: 25.513  Speed: 0.317
+                # Wait: 94,729   Size: 4,726,205 	Elapsed: 9.85    Speed: 0.48
+                print("wait_for_cmd_output():", wait, "second time-out")
                 ''' TODO: Test host(s) and set down flags '''
                 self.cmp_return_code = 4  # Indicate how update failed
                 return False
 
-            ''' stdout and stderr may be created with no information yet '''
+            if pid != 0 and ext.check_pid_running(pid):
+                # 2024-04-12 initial version was getting ~800,000 loops and
+                # 1/2 second delay updating play_top animations. Call fast_refresh
+                self.fast_refresh(tk_after=True)
+                # with fast_refresh(), loops are ~150,000 and no animation lag
+                continue
+
             out = self.get_file_data(self.TMP_STDOUT)
             err = self.get_file_data(self.TMP_STDERR)
+
+            ''' stdout and stderr may be created with no information yet '''
+            ''' 2024-04-12 Now checking PID finishing 
             if len(out) == 0 and len(err) == 0:
                 # 'cp' over ethernet, False = 50 loops, True = 8 loops
                 # 'diff' over Wifi, False = 30k to 100k loops, single-Core 100%
@@ -4898,13 +5019,19 @@ filename.
                 if not self.fast_refresh(tk_after=True):
                     return False
                 continue  # No files or empty files
+            '''
 
             ''' TODO: Record test results and cmp_return_code to audit log. '''
             speed = float(size) / elapsed / 1000000.0
-            print("Loops:", '{:n}'.format(loop_count),
-                  "\tSize:", size,  # size is unicode, not int
-                  "\tElapsed sec:", '{:n}'.format(round(elapsed, 3)),
-                  "\tSpeed (MB/s):", '{:n}'.format(round(speed, 3)))
+            if print_stats:
+                print("Wait:", '{:n}'.format(loop_count),
+                      "\tSize:", size,  # size is string, not int
+                      "\tElapsed sec:", '{:n}'.format(round(elapsed, 3)),
+                      "\tSpeed (MB/s):", '{:n}'.format(round(speed, 3)))
+
+            ''' Analyze Volume used STDERR for "normal" output so no errors '''
+            if self.state == 'analyze_volume':
+                return True
 
             ''' stdout or stderr have been populated by cp command '''
             if len(err) > 0:
@@ -4918,7 +5045,9 @@ filename.
 
     @staticmethod
     def get_file_data(f):
-        """ Get data from STDOUT or STDERR """
+        """ Get data from STDOUT or STDERR
+            Return empty string when file doesn't exist or when zero byte size.
+        """
         data = ""
         if os.path.isfile(f):
             with open(f, 'r') as fh:
@@ -4955,7 +5084,7 @@ filename.
                       "and it returned False")
                 return False
             self.last_fast_refresh = time.time()
-        if self.cmp_top_is_active:
+        if self.cmp_top_is_active is not None:
             return self.cmp_top_is_active is True
         else:
             return True  # Could be called from encoding.py, etc.

@@ -250,7 +250,7 @@ def which(cmd, path=None):
     return None
 
 
-def launch_command(ext_name, toplevel=None):
+def launch_command(ext_name, toplevel=None, ms_wait=3000):
     """ Launch external command in background and return PID to parent.
         Use for programs requiring more than .2 seconds to run. Otherwise,
         program could run and finish before PID can be obtained.
@@ -306,6 +306,7 @@ def launch_command(ext_name, toplevel=None):
 
     os.popen(ext_name + ' &')           # Run command in background
     sleep_count = 0
+    sleep_max = ms_wait / 10
     #import psutil  # ImportError: No module named psutil
     #current_process = psutil.Process()
     #children = current_process.children(recursive=True)
@@ -323,8 +324,8 @@ def launch_command(ext_name, toplevel=None):
             else:
                 toplevel.after(10)  # Fine tune for sleep count of 2
         sleep_count += 1
-        if sleep_count == 1000:  # 10 second time-out
-            print('launch_ext_command() ERROR: 10 second timeout reached.')
+        if sleep_count >= sleep_max:  # 3 second time-out
+            print('launch_ext_command() ERROR: ', ms_wait, 'ms timeout reached.')
             print('External command name:', ext_name)
             return 0  # Return no PID found
 
@@ -359,13 +360,12 @@ def pid_list(ext_name):
 
 
 def check_pid_running(active_pid):
-    """ Some parents call 10 times a second until process is finished.
-    """
+    """ Some functions will call 10 times a second until process is finished. """
     if active_pid == 0:
         return 0                    # Could be running in loop until PID ends
 
     try:
-        os.kill(active_pid, 0)      # 0 is status check, 9 kills
+        os.kill(active_pid, 0)      # 0 is simply status check, 9 really kills
         return active_pid           # pid is still running
     except OSError:
         return 0                    # pid has finished

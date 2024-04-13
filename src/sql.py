@@ -1555,12 +1555,54 @@ def hist_add_time_index(key, time_list):
 
 
 def hist_add_shuffle(Action, SourceMaster, SourceDetail):
-    """ Record action of shuffling playlist. """
+    """  Does nothing, FUTURE USE
+    Record action of shuffling playlist. """
     Type = "playlist"
     # Action = 'shuffle'
     if Type == Action == SourceMaster == SourceDetail:
         return  # Above test for pycharm checking  
-  
+
+
+def hist_add_music_var(MusicId, Type, Action, Time=None, User=None,
+                       SourceMaster="", SourceDetail="", Target="",
+                       Size=0, Count=0, Seconds=0.0, Comments=""):
+    """ One variable per Type / Action can be stored per song.
+        For example, Type="Volume", Action="Analyze"
+
+        History variables:
+
+            Time, MusicId, User, Type, Action, SourceMaster, SourceDetail,
+            Target, Size, Count, Seconds, Comments
+
+    """
+    Time = time.time() if Time is None else Time
+    User = g.USER if User is None else User
+    d = hist_get_music_var(MusicId, Type, Action)
+    if d:
+        # Update existing row with new values
+        now = time.time()
+        cmd = "UPDATE History SET Time=?, SourceMaster=?, SourceDetail=?, \
+            Target=?, Size=?, Count=?, Seconds=?, Comments=?, Timestamp=? \
+            WHERE Id = ?"
+        hist_cursor.execute(cmd, (now, SourceMaster, SourceDetail, Target,
+                                  Size, Count, Seconds, Comments, now,
+                                  d['Id']))
+        con.commit()
+
+    else:
+        # Add new row with values
+        hist_add(Time, MusicId, User, Type, Action, SourceMaster, SourceDetail,
+                 Target, Size, Count, Seconds, Comments)
+
+
+def hist_get_music_var(MusicId, Type, Action):
+    """  One variable per Type / Action can be stored per song.
+         For example, Type="Volume", Action="Analyze"
+    """
+    if hist_check(MusicId, Type, Action):
+        return hist_get_row(HISTORY_ID)
+    return None
+
 
 def hist_default_dict(key, time_type='access'):
     """ Construct a default dictionary used to add a new history record """
@@ -2327,10 +2369,14 @@ def save_config(Type, Action="", SourceMaster="", SourceDetail="", Target="",
                  SourceDetail, Target, Size, Count, Seconds, Comments)
         return
 
-    cmd = "UPDATE History SET Timestamp=?, SourceMaster=?, SourceDetail=?, \
-        Target=?, Size=?, Count=?, Seconds=?, Comments=? WHERE Id = ?"
-    hist_cursor.execute(cmd, (time.time(), SourceMaster, SourceDetail, Target,
-                              Size, Count, Seconds, Comments, d['Id']))
+    now = time.time()
+    cmd = "UPDATE History SET Time=?, SourceMaster=?, SourceDetail=?, \
+        Target=?, Size=?, Count=?, Seconds=?, Comments=?, Timestamp=? \
+        WHERE Id = ?"
+    hist_cursor.execute(cmd, (now, SourceMaster, SourceDetail, Target,
+                              Size, Count, Seconds, Comments, now,
+                              d['Id']))
+
     con.commit()
 
 

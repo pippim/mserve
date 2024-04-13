@@ -636,6 +636,7 @@ def make_lc_cfg():
     cfg.append(make_dict(m, None, "sys"))
     cfg.append(make_dict(m, None, "errno"))
     cfg.append(make_dict(m, None, "shutil"))
+    cfg.append(make_dict(m, None, "json"))
     cfg.append(make_dict(m, None, "time"))
     cfg.append(make_dict(m, None, "pickle"))
     cfg.append(make_dict(m, None, "time"))
