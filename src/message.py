@@ -387,7 +387,7 @@ class ShowInfo(simpledialog.Dialog, AskCommonSelf):
                       default=tk.ACTIVE)
         w.pack(side=tk.LEFT, padx=5, pady=5)
 
-        #self.bind("<Return>", self.ok)  # 2024-03-17 Not working
+        self.bind("<Return>", self.ok)  # 2024-03-17 Not working
         # Below from: https://stackoverflow.com/a/33664214/6929343
         self.bind("<KP_Enter>", self.ok)  # info.cast can still intercept Enter
         self.bind("<Escape>", self.ok)  # ShowInfo has no "Cancel" button
@@ -675,7 +675,7 @@ TclError: grab failed: another application has grab
         w = tk.Button(box, text="No", width=10, command=self.cancel)
         w.pack(side=tk.LEFT, padx=5, pady=5)
 
-        #self.bind("<Return>", self.ok)  # June 18, 2023 not working for self.ok()
+        self.bind("<Return>", self.ok)  # June 18, 2023 not working for self.ok()
         # Below from: https://stackoverflow.com/a/33664214/6929343
         self.bind("<KP_Enter>", self.ok)  # 2024-03-17 Replace broken <Return>
         self.bind("<Escape>", self.cancel)  # June 18, 2023 working properly
@@ -778,7 +778,7 @@ class AskString(simpledialog.Dialog, AskCommonSelf):
         w = tk.Button(box, text="Cancel", width=10, command=self.cancel)
         w.pack(side=tk.LEFT, padx=5, pady=5)
 
-        #self.bind("<Return>", self.ok)  # June 18, 2023 not working for self.ok()
+        self.bind("<Return>", self.ok)  # June 18, 2023 not working for self.ok()
         # Below from: https://stackoverflow.com/a/33664214/6929343
         self.bind("<KP_Enter>", self.ok)  # 2024-03-17 Replace broken <Return>
         self.bind("<Escape>", self.cancel)

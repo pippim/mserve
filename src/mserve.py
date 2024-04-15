@@ -1260,6 +1260,7 @@ class MusicLocTreeCommonSelf:
         self.edit_menu = None
         self.view_menu = None
         self.tools_menu = None
+        self.volume_menu = None
         self.playlist_bar = None
 
         ''' last_sleep_time for mor accurate 30 frames per second (fps) '''
@@ -1713,10 +1714,6 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
             label="Synchronize Location", font=g.FONT, state=tk.DISABLED,
             command=lambda: lcs.synchronize(self.start_long_running_process,
                                             self.end_long_running_process))
-        self.edit_menu.add_command(
-            label="Analyze Volume", font=g.FONT, state=tk.DISABLED,
-            command=lambda: lcs.analyze_volume(self.start_long_running_process,
-                                               self.end_long_running_process))
         self.edit_menu.add_command(label="Edit Location", font=g.FONT, underline=0,
                                    command=lcs.edit, state=tk.DISABLED)
         self.edit_menu.add_command(label="Delete Location", font=g.FONT, underline=0,
@@ -1762,6 +1759,8 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
 
         # Tools Dropdown Menu
         self.tools_menu = tk.Menu(mb, tearoff=0)
+        self.volume_menu = tk.Menu(self.tools_menu, tearoff=0)
+
         # If new option, before Enable Hockey, go below bump option # from 0 to 1
         self.play_hockey_allowed = self.get_hockey_state()
         if self.play_hockey_allowed:
@@ -1785,8 +1784,8 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
         self.tools_menu.add_command(label="Debug Information", font=g.FONT,
                                     underline=0, command=self.show_debug)
 
-        self.tools_menu.add_command(label="Pulse Audio", font=g.FONT,
-                                    underline=0, command=self.debug_show_pulse_audio)
+        self.tools_menu.add_cascade(label="Volume", font=g.FONT, underline=0,
+                                    menu=self.volume_menu)
         self.tools_menu.add_separator()  # If countdown running, don't show options
 
         self.tools_menu.add_command(label="Repair Last Access", font=g.FONT,
@@ -1794,10 +1793,32 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
         # Repair Last Access TODO: make local method that explains feature.
         #   After running, give status message and advise to restart mserve
         #   or click the "Refresh Library" button.
+        mb.add_cascade(label="Tools", font=g.FONT, underline=0,
+                       menu=self.tools_menu)
 
-        mb.add_cascade(label="Tools", font=g.FONT, underline=0, menu=self.tools_menu)
         ext.t_end('no_print')  # 0.0006351471
 
+        # Tools Dropdown - Volume Submenu
+        self.volume_menu.add_command(label="Pulse Audio", font=g.FONT,
+                                     underline=0, command=self.debug_show_pulse_audio)
+        self.volume_menu.add_command(
+            label="Analyze Maximum Volume", font=g.FONT, underline=8,
+            state=tk.DISABLED,
+            command=lambda: lcs.analyze_volume(self.start_long_running_process,
+                                               self.end_long_running_process))
+        self.volume_menu.add_command(
+            label="Analyze 'loudnorm' Filter", font=g.FONT, underline=9,
+            state=tk.DISABLED,
+            command=lambda: lcs.analyze_loudnorm(self.start_long_running_process,
+                                                 self.end_long_running_process))
+        self.volume_menu.add_command(
+            label="Update 'loudnorm' Filter", font=g.FONT, underline=0,
+            state=tk.DISABLED,
+            command=lambda: lcs.update_loudnorm(self.start_long_running_process,
+                                                 self.end_long_running_process))
+
+        #self.tools_menu.add_cascade(label="Volume", font=g.FONT,
+        #                            underline=0, menu=self.volume_menu)
         self.enable_lib_menu()
 
     def enable_lib_menu(self):
@@ -1816,24 +1837,28 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
             self.edit_menu.entryconfig("Edit Location", state=tk.DISABLED)
             self.edit_menu.entryconfig("Delete Location", state=tk.DISABLED)
             self.edit_menu.entryconfig("Synchronize Location", state=tk.DISABLED)
-            self.edit_menu.entryconfig("Analyze Volume", state=tk.DISABLED)
             self.view_menu.entryconfig("View Locations", state=tk.DISABLED)
             self.tools_menu.entryconfig("Make LRC For Checked Songs",
                                         state=tk.DISABLED)
             self.tools_menu.entryconfig("Copy Checked To New Location",
                                         state=tk.DISABLED)
+            self.volume_menu.entryconfig("Analyze Maximum Volume", state=tk.DISABLED)
+            self.volume_menu.entryconfig("Analyze 'loudnorm' Filter", state=tk.DISABLED)
+            self.volume_menu.entryconfig("Update 'loudnorm' Filter", state=tk.DISABLED)
         else:
             self.file_menu.entryconfig("Open Location and Play", state=tk.NORMAL)
             self.file_menu.entryconfig("New Location", state=tk.NORMAL)
             self.edit_menu.entryconfig("Edit Location", state=tk.NORMAL)
             self.edit_menu.entryconfig("Delete Location", state=tk.NORMAL)
             self.edit_menu.entryconfig("Synchronize Location", state=tk.NORMAL)
-            self.edit_menu.entryconfig("Analyze Volume", state=tk.NORMAL)
             self.view_menu.entryconfig("View Locations", state=tk.NORMAL)
             self.tools_menu.entryconfig("Make LRC For Checked Songs",
                                         state=tk.NORMAL)
             self.tools_menu.entryconfig("Copy Checked To New Location",
                                         state=tk.NORMAL)
+            self.volume_menu.entryconfig("Analyze Maximum Volume", state=tk.NORMAL)
+            self.volume_menu.entryconfig("Analyze 'loudnorm' Filter", state=tk.NORMAL)
+            self.volume_menu.entryconfig("Update 'loudnorm' Filter", state=tk.NORMAL)
         self.disable_playlist_menu()
         if self.playlists.top:  # If top level is open, everything disabled.
             return  # Playlist Maintenance is active
@@ -4566,7 +4591,7 @@ Call search.py when these control keys occur
         """ Debugging - show machine info, monitors, windows, tooltips 
             locations, sql, metadata, global variables """
 
-        ''' Make TMP names unique for multiple FileControls racing at once '''
+        ''' Make TMP names unique for concurrent FileControl() instances '''
         letters = string.ascii_lowercase + string.digits
         temp_suffix = (''.join(random.choice(letters) for _i in range(6)))
         self.debug_file = TMP_PRINT_FILE + "_" + temp_suffix  # def debug
@@ -14288,6 +14313,8 @@ class FileControl(FileControlCommonSelf):
             return
 
         #print(who + "Calling open(self.TMP_FFPROBE)")
+        in_dictionary = False  # Inside ffmpeg json_print 'loudnorm' filter dict()
+        json_dict = {}
         with open(fname) as f:
             for line in f:
                 line = line.rstrip()  # remove \r and \n
@@ -14299,16 +14326,62 @@ class FileControl(FileControlCommonSelf):
                         self.metadata['INPUT #0'] = val
                     continue
 
-                if ':' not in line:
+                if line.strip().upper().startswith("STREAM #0:"):
+                    # E.G. STREAM #0:0[0X1](UND):
+                    (key, val) = half_split(line, ':', 2)  # Split second only
+                    # Extra effort to get sampling rate for ffmpeg 'loudnorm'
+                    if " Hz, " in val:
+                        # E.G. Audio: aac (LC) (mp4a / 0x6134706D), 44100 Hz, ste
+                        ar = val.split(" Hz, ")[0]
+                        ar = ar.split(" ")[-1]
+                        self.metadata['AUDIO_RATE'] = ar
+
+                elif line.startswith("{"):
+                    ''' In dictionary: 
+                    {
+                        "input_i" : "-11.95",
+                        "input_tp" : "-1.34",
+                        "input_lra" : "4.50",
+                        "input_thresh" : "-22.08",
+                        "output_i" : "-22.61",
+                        "output_tp" : "-7.82",
+                        "output_lra" : "3.80",
+                        "output_thresh" : "-32.73",
+                        "normalization_type" : "dynamic",
+                        "target_offset" : "-0.39"
+                    }
+                    
+                    '''
+                    #print("\n# # #   in_dictionary = True   # # #\n")
+                    in_dictionary = True
+                    continue  # Not a key/value pair to add
+                elif line.startswith("}"):
+                    ''' Leaving dictionary '''
+                    in_dictionary = False
+                    #print("\n# # #   in_dictionary = False   # # #\n")
+                    continue  # Not a key/value pair to add
+                elif in_dictionary:
+                    # json dictionary is "key" : "value" so quotes must strip out
+                    key_value = line.strip()  # Can't use .upper() on keys/values
+                    key_value = key_value.rstrip(",")  # Nuke the trailing comma
+                    key_value = key_value.replace('"', '')
+                    #print("key_value:", key_value)
+                    (key, val) = key_value.split(':', 1)  # Split first ':' only
+                    if key.startswith("input_") or key.startswith("target") :
+                        # skip output_xxx keys and normalization_type key
+                        json_dict[key.strip()] = val.strip()
+                    # key and val also required at bottom of loop where all the
+                    # keys, including output_xxx, are added as "normal" key/values
+
+                elif ':' not in line:  # 2024-04-13 Used to be at top of loop
                     continue  # No key/value pair
 
-                if line.strip().upper().startswith("STREAM #0:"):
-                    (key, val) = half_split(line, ':', 2)  # Split second only
                 elif line.startswith("["):
                     # 2024-04-11 ffmpeg volume detect output. E.G.:
                     # [Parsed_volume detect_0 @ 0xbdc440] max_volume: -0.3 dB
                     # [Parsed_volume detect_0 @ 0xbdc440] histogram_0db: 158
-                    volume = line.split("] ")[1]
+                    volume = line.split("]")[1].strip()  # Usually "] Xxx : xxx"
+
                     # 2024-04-12 ffmpeg_results can contain hundreds of this line
                     if volume.startswith(spam_err1_text):
                         spam_err1_cnt += 1
@@ -14325,7 +14398,6 @@ class FileControl(FileControlCommonSelf):
                         # Error submitting packet to decoder: Invalid data found...
                         spam_err4_cnt += 1
                         continue
-
                     try:
                         (key, val) = volume.split(':', 1)  # Split first ':' only
                     except ValueError:
@@ -14556,6 +14628,11 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilatio
             self.OsFileSize = self.stat_start.st_size
             self.OsAccessTime = self.stat_start.st_atime
 
+        ''' 2024-04-13 ffmpeg_results containing json dictionary '''
+        if json_dict:
+            self.metadata['json_dict'] = json_dict
+
+        ''' 2024-04-12 print_spam introduced with ffmpeg_results flag '''
         def print_spam(count, text):
             """ Check if spam error occurred and print. """
             if count == 0:

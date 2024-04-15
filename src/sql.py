@@ -1595,11 +1595,12 @@ def hist_add_music_var(MusicId, Type, Action, Time=None, User=None,
                  Target, Size, Count, Seconds, Comments)
 
 
-def hist_get_music_var(MusicId, Type, Action):
-    """  One variable per Type / Action can be stored per song.
-         For example, Type="Volume", Action="Analyze"
+def hist_get_music_var(MusicId, Type, Action, SourceMaster=None):
+    """  One variable per Type / Action / SourceMaster can be stored per song.
+         For example, Type="Volume", Action="Analyze", SourceMaster="L004".
+
     """
-    if hist_check(MusicId, Type, Action):
+    if hist_check(MusicId, Type, Action, check_master=SourceMaster):
         return hist_get_row(HISTORY_ID)
     return None
 
@@ -1791,8 +1792,8 @@ def hist_init_lost_and_found():
 HISTORY_ID = None
 
 
-def hist_check(MusicId, check_type, check_action):
-    """ History table usage for Music Lyrics:
+def hist_check(MusicId, check_type, check_action, check_master=None):
+    """ SQL History Table multi-purpose:
 
         VARIABLE        DESCRIPTION
         --------------  -----------------------------------------------------
@@ -1829,15 +1830,18 @@ def hist_check(MusicId, check_type, check_action):
     """
     global HISTORY_ID
 
-    for row in hist_cursor.execute("SELECT Id, Type, Action FROM History " +
-                                   "INDEXED BY MusicIdIndex " +  # Line added May 16 2023
-                                   "WHERE MusicId = ?", [MusicId]):
+    for row in hist_cursor.execute(
+            "SELECT Id, Type, Action, SourceMaster FROM History " +
+            "INDEXED BY MusicIdIndex WHERE MusicId = ?", [MusicId]):
         Id = row[0]
         Type = row[1]
         Action = row[2]
+        SourceMaster = row[3]
         if Type == check_type and Action == check_action:
-            HISTORY_ID = Id
-            return True
+            # SourceMaster check is optional
+            if not check_master or check_master == SourceMaster:
+                HISTORY_ID = Id
+                return True
 
     HISTORY_ID = 0
     return False                # Not Found
@@ -1946,7 +1950,8 @@ class Config:
             ('cfg_locations', 'cmp_treeview', 'style', 'scroll'):
                 {"name": 'compare.Treeview', "width": 14},
 
-            # Analyze Volume (Sound Levels) taskbar icon and treeview colors
+            # Analyze Maximum Volume taskbar icon and treeview colors
+            # Also Analyze 'loudnorm' Filter taskbar icon and treeview colors
             ('cfg_locations', 'avo_toplevel', 'taskbar_icon', 'config'):
                 {"height": 64, "outline": 'White', "fill": 'NavajoWhite',
                  "text": 'Black', "font_family": 'DejaVuSans.ttf',
@@ -2453,6 +2458,28 @@ def hist_count_type_action(Type, Action, prt=True, tab=True):
     prt_type = " | Type='" + Type + "' | Action='" + Action + "' | "
     if prt:
         print(tabs + 'History Table rows:', prt_type,
+              'count:', '{:n}'.format(row_count))
+
+    return row_count
+
+
+def hist_count_type_action_master(Type, Action, SourceMaster, prt=True, tab=True):
+    """ Count History Rows for matching Type, Action and SourceMaster. 
+        Created 2024-04-13 to tally Type == "Volume", Action == "Analyze",
+            SourceMaster == "L004" (Location Code)
+    """
+
+    sql = "SELECT * FROM History INDEXED BY TypeActionIndex " +\
+          "WHERE Type = ? AND Action = ? AND SourceMaster =  ?"
+    hist_cursor.execute(sql, (Type, Action, SourceMaster))
+    rows = hist_cursor.fetchall()
+    row_count = len(rows)
+
+    tabs = "\t\t" if tab else ""  # show_debug() will want a tab to align
+    prt_type = " | Type='" + Type + "' | Action='" + Action + "' | " +\
+               "SourceMaster: '" + SourceMaster + "' | "
+    if prt:
+        print(tabs + 'SQL History:', prt_type,
               'count:', '{:n}'.format(row_count))
 
     return row_count
