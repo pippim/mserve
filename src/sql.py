@@ -2445,6 +2445,25 @@ def hist_delete_type_action(Type, Action):
     con.commit()
 
 
+def hist_rename_type_action(Type, Action, newType, newAction):
+    """ Rename History Rows for matching Type and Action.
+        Created to rename "Volume", "Analyze" to "volume", "detect_1"
+    """
+
+    print("sql.py hist_rename_type_action(Type, Action...) <--- OLD")
+    hist_count_type_action(Type, Action)
+    hist_count_type_action(newType, newAction)
+
+    sql = "UPDATE History INDEXED BY TypeActionIndex " +\
+          "SET Type = ?, Action = ? " +\
+          "WHERE Type = ? AND Action = ? "
+    hist_cursor.execute(sql, (newType, newAction, Type, Action))
+    con.commit()
+
+    print("sql.py hist_count_type_action(...newType, newAction) <--- NEW")
+    hist_count_type_action(newType, newAction)
+
+
 def hist_count_type_action(Type, Action, prt=True, tab=True):
     """ Count History Rows for matching Type and Action. """
 

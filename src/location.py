@@ -1484,7 +1484,8 @@ class Locations(LocationsCommonSelf):
             text += "created with 'cp -a' or 'cp -p'\nto preserve timestamps.\n\n"
             text += "Music will keep playing but some buttons will be disabled. "
 
-        if self.state == 'analyze_volume':
+        if self.state.startswith('analyze_volume'):
+            # analyze_volume and analyze_volume_new
             title = "About the Analyze Maximum Volume function"
             text = "This function does NOT update any music files. It takes 10 "
             text += "minutes to analyze 1,000 files.\n\n"
@@ -1524,6 +1525,9 @@ class Locations(LocationsCommonSelf):
             text += "Music will keep playing but some buttons will be disabled. "
 
         if self.state == 'update_loudnorm':
+            # 2024-04-14 - 3 hours For 716 songs. Friends of Mr. Cairo song is
+            #   15 minutes long and time out in 60 seconds hard stop. So wait
+            #   should be readjusted to song duration.
             title = "About the Update 'loudnorm' Filter (Pass 2) function"
             text = "This function does NOT update any music files. It takes 5 "
             text += "HOURS to analyze 1,000 files.\n\n"
@@ -2128,8 +2132,8 @@ class Locations(LocationsCommonSelf):
             text = "Delete"
         elif self.state == 'synchronize':
             text = "Synchronize"
-        elif self.state == 'analyze_volume' or self.state == 'analyze_loudnorm':
-            text = "Analyze"
+        elif self.state.startswith('analyze_'):
+            text = "Analyze"  # analyze_volume, analyze_loudnorm, analyze_volume_new
         elif self.state == 'update_loudnorm':
             text = "Update"
         elif self.state == 'open':
@@ -2613,6 +2617,21 @@ class Locations(LocationsCommonSelf):
         self.start_long_running = start_long_running
         self.end_long_running = end_long_running
         self.display_main_window("Update 'loudnorm' Filter")
+
+    def analyze_volume_new(self, start_long_running, end_long_running):
+        """ lib_top Tools Menubar, Volume Submenu - 'Analyze Maximum Volume'
+        Click Analyze Button:
+            Warning message appears that it is remote host, but nothing happens
+            Run Test Host which wakes up successfully
+        Then Click Analyze Button again:
+            Test is run a second time when it should have been run first time
+            Now locks up. See synchronize notes above.
+        """
+        LocationsCommonSelf.__init__(self)  # Define self. variables
+        self.state = 'analyze_volume_new'
+        self.start_long_running = start_long_running
+        self.end_long_running = end_long_running
+        self.display_main_window("Analyze New Volume")
 
     def view(self):
         """ Called by lib_top View Menubar 'View Locations' """
@@ -4031,7 +4050,7 @@ filename.
             self.cmp_build_toplevel()
             # Problem: We don't want to do reset below, cmp must close itself
             return  # cmp_close closes cmp_window and main_top stays open for next
-        elif self.state == 'analyze_volume' or \
+        elif self.state == 'analyze_volume' or self.state == 'analyze_volume_new' or \
                 self.state == 'analyze_loudnorm' or self.state == 'update_loudnorm':
             self.cmp_build_toplevel(prefix="avo")
             # Problem: We don't want to do reset below, cmp must close itself
@@ -4057,6 +4076,7 @@ filename.
                 "analyze_volume" - ffmpeg 'volumedetect' filter
                 "analyze_loudnorm" - ffmpeg 'loudnorm' filter
                 "update_loudnorm" - ffmpeg 'loudnorm' filter pass 2
+                "analyze_volume_new" - ffmpeg 'volumedetect' filter after normalizing
 
             The notes below are for "cmp" prefix.
 
@@ -4163,9 +4183,9 @@ filename.
         if prefix == "cmp":
             title = "Synchronize:  SOURCE: " + self.open_topdir + \
                     "  <-->  TARGET: " + self.cmp_target_dir
-        elif self.state == "analyze_volume":
-            title = "Analyze Maximum in: " + self.cmp_target_dir
-        else:
+        elif self.state == "analyze_volume" or self.state == "analyze_volume_new":
+            title = "Analyze Maximum Volume in: " + self.cmp_target_dir
+        else:  # "analyze_loudnorm" and "update_loudnorm" states
             title = "Analyze 'loudnorm' Filter in: " + self.cmp_target_dir
         self.cmp_top.title(title)
 
@@ -4195,9 +4215,9 @@ filename.
         if prefix == "cmp":
             columns = ("SrcModified", "TrgModified", "SrcSize",
                        "TrgSize", "Action", "src_time", "trg_time")
-        elif self.state == "analyze_volume":
+        elif self.state == "analyze_volume" or self.state == "analyze_volume_new":
             columns = ("Mean", "Maximum")
-        else:
+        else:  # "analyze_loudnorm" and "update_loudnorm" states
             columns = ("Integrated", "TruePeak", "LRA", "Threshold")
 
         ''' Treeview List Box, Columns and Headings '''
@@ -4223,13 +4243,13 @@ filename.
             self.cmp_tree.column("src_time")  # Hidden modification time
             self.cmp_tree.column("trg_time")  # Hidden modification time
 
-        elif self.state == "analyze_volume":
+        elif self.state == "analyze_volume" or self.state == "analyze_volume_new":
             self.cmp_tree.column("Mean", width=250, anchor="center", stretch=tk.YES)
             self.cmp_tree.heading("Mean", text="Mean Volume")
             self.cmp_tree.column("Maximum", width=250, anchor="center", stretch=tk.YES)
             self.cmp_tree.heading("Maximum", text="Max. Volume")
 
-        else:
+        else:  # "analyze_loudnorm" and "update_loudnorm" states
             self.cmp_tree.column("Integrated", width=125, anchor="center", stretch=tk.YES)
             self.cmp_tree.heading("Integrated", text="Integrated")
             self.cmp_tree.column("TruePeak", width=125, anchor="center", stretch=tk.YES)
@@ -4244,9 +4264,9 @@ filename.
         if prefix == "cmp":
             self.cmp_tree["displaycolumns"] = ("SrcModified", "TrgModified",
                                                "SrcSize", "TrgSize", "Action")
-        elif self.state == "analyze_volume":
+        elif self.state == "analyze_volume" or self.state == "analyze_volume_new":
             self.cmp_tree["displaycolumns"] = ("Mean", "Maximum")
-        else:
+        else:  # "analyze_loudnorm" and "update_loudnorm" states
             self.cmp_tree["displaycolumns"] = ("Integrated", "TruePeak",
                                                "LRA", "Threshold")
             # Could rename Mean & Maximum to Integrated & Threshold for 'loudnorm'
@@ -4509,6 +4529,9 @@ filename.
             elif self.state == "analyze_volume":
                 if not self.avo_insert_tree_row(fake_path, CurrAlbumId, str(i), Song):
                     return False  # Closing down
+            elif self.state == "analyze_volume_new":
+                if not self.avn_insert_tree_row(fake_path, CurrAlbumId, str(i), Song):
+                    return False  # Closing down
             elif self.state == "analyze_loudnorm":
                 if not self.aln_insert_tree_row(fake_path, CurrAlbumId, str(i), Song):
                     return False  # Closing down
@@ -4603,60 +4626,94 @@ filename.
         if not self.cmp_top_is_active:
             return False  # Closing down, False indicates no differences
 
-        ''' Tally history records. '''
+        ''' Tally history records. 
+                      Type      Action
+            New keys: volume    detect_old
+                      volume    loudnorm_1
+                      volume    loudnorm_2
+                      volume    detect_new
+        '''
+        
+        # ONE TIME EXECUTION
+        #sql.hist_rename_type_action('Volume', 'Analyze', 'volume', 'detect_old')
+        #sql.hist_rename_type_action('Volume', 'loudnorm', 'volume', 'loudnorm_1')
+        #sql.hist_rename_type_action('Update', 'loudnorm', 'volume', 'loudnorm_2')
+
         print("\nTally History Records for Volume Analysis and Update")
         ext.t_init('BEFORE History Records')
-        analyze_count = sql.hist_count_type_action_master(
-            'Volume', 'Analyze', self.act_code, prt=True, tab=False)
-        loudnorm_count = sql.hist_count_type_action_master(
-            'Volume', 'loudnorm', self.act_code, prt=True, tab=False)
-        update_count = sql.hist_count_type_action_master(
-            'Update', 'loudnorm', self.act_code, prt=True, tab=False)
+        detect_old_count = sql.hist_count_type_action_master(
+            'volume', 'detect_old', self.act_code, prt=True, tab=False)
+        loudnorm_1_count = sql.hist_count_type_action_master(
+            'volume', 'loudnorm_1', self.act_code, prt=True, tab=False)
+        loudnorm_2_count = sql.hist_count_type_action_master(
+            'volume', 'loudnorm_2', self.act_code, prt=True, tab=False)
+        detect_new_count = sql.hist_count_type_action_master(
+            'volume', 'detect_new', self.act_code, prt=True, tab=False)
         ext.t_end('print')
         print()
 
         self.cmp_top.update_idletasks()  # ShowInfo appearing on monitor 0, 0
-        if self.state == "analyze_volume" and analyze_count > 0:
+        if self.state == "analyze_volume" and detect_old_count > 0:
             title = "Analyze Maximum Volume has already been run."
             text = "Results from previous run: "
-            text += '{:,}'.format(analyze_count) + " records."
+            text += '{:,}'.format(detect_old_count) + " records."
             # Why is self.out_fact_show going to monitor 0 instead of 1???
             self.out_fact_show(title, text)
 
-        if self.state == "analyze_loudnorm" and loudnorm_count > 0:
+        if self.state == "analyze_loudnorm" and loudnorm_1_count > 0:
             title = "Analyze 'loudnorm' Filter has already been run."
             text = "Results from previous run: "
-            text += '{:,}'.format(loudnorm_count) + " records."
+            text += '{:,}'.format(loudnorm_1_count) + " records."
             self.out_fact_show(title, text)
 
-        if self.state == "analyze_loudnorm" and analyze_count > 0:
+        if self.state == "analyze_loudnorm" and detect_old_count > 0:
             title = "OK to proceed with Analyze 'loudnorm' Filter"
             text = "Results from last Analyze Maximum Volume run: "
-            text += '{:,}'.format(analyze_count) + " records."
+            text += '{:,}'.format(detect_old_count) + " records."
             self.out_fact_show(title, text)
 
-        if self.state == "analyze_loudnorm" and analyze_count <= 0:
+        if self.state == "analyze_loudnorm" and detect_old_count <= 0:
             title = "Analyze Maximum Volume needs to be Run!"
             text = "Analyze Maximum Volume results not found. Run it first."
             text += "Was the correct location selected?"
             self.out_fact_show(title, text)
             return False
 
-        if self.state == "update_loudnorm" and update_count > 0:
+        if self.state == "update_loudnorm" and loudnorm_2_count > 0:
             title = "Update 'loudnorm' Filter has already been run."
             text = "Results from previous run: "
-            text += '{:,}'.format(update_count) + " records."
+            text += '{:,}'.format(loudnorm_2_count) + " records."
             self.out_fact_show(title, text)
 
-        if self.state == "update_loudnorm" and loudnorm_count > 0:
+        if self.state == "update_loudnorm" and loudnorm_1_count > 0:
             title = "OK to proceed with Update 'loudnorm' Filter"
             text = "Results from last Analyze 'loudnorm' Filter run: "
-            text += '{:,}'.format(loudnorm_count) + " records."
+            text += '{:,}'.format(loudnorm_1_count) + " records."
             self.out_fact_show(title, text)
 
-        if self.state == "update_loudnorm" and loudnorm_count <= 0:
+        if self.state == "update_loudnorm" and loudnorm_1_count <= 0:
             title = "Analyze 'loudnorm' Filter needs to be Run"
             text = "Analyze 'loudnorm' Filter results not found. Run it first."
+            text += "Was the correct location selected?"
+            self.out_fact_show(title, text)
+            return False
+
+        if self.state == "analyze_volume_new" and detect_new_count > 0:
+            title = "Analyze New Maximum Volume has already been run."
+            text = "Results from previous run: "
+            text += '{:,}'.format(detect_new_count) + " records."
+            # Why is self.out_fact_show going to monitor 0 instead of 1???
+            self.out_fact_show(title, text)
+
+        if self.state == "analyze_volume_new" and loudnorm_2_count > 0:
+            title = "OK to proceed with Analyze New Maximum Volume"
+            text = "Results from last Update 'loudnorm' Filter run: "
+            text += '{:,}'.format(loudnorm_2_count) + " records."
+            self.out_fact_show(title, text)
+
+        if self.state == "analyze_volume_new" and loudnorm_2_count <= 0:
+            title = "Update 'loudnorm' Filter needs to be Run"
+            text = "Update 'loudnorm' Filter results not found. Run it first."
             text += "Was the correct location selected?"
             self.out_fact_show(title, text)
             return False
@@ -4664,8 +4721,8 @@ filename.
         return True
 
     def avo_job_summary(self, start_time, end_time):
-        """ Read SQL History for Type=="Volume", Action=="Analyze" or
-            Action=="loudnorm" or Action=="Update" where SourceMaster =
+        """ Read SQL History for Type=="volume", Action=="detect_old" or
+            Action=="loudnorm_1" or Action=="loudnorm_2" where SourceMaster =
             self.act_code (location code). """
         _who = self.who + "avo_job_summary():"
         if not self.cmp_top_is_active:
@@ -4674,12 +4731,14 @@ filename.
         ''' Tally history records. '''
         print("\nTally History Records AFTER Volume Analysis and Update")
         ext.t_init('AFTER History Records')
-        analyze_count = sql.hist_count_type_action_master(
-            'Volume', 'Analyze', self.act_code, prt=True, tab=False)
-        loudnorm_count = sql.hist_count_type_action_master(
-            'Volume', 'loudnorm', self.act_code, prt=True, tab=False)
-        update_count = sql.hist_count_type_action_master(
-            'Volume', 'Update', self.act_code, prt=True, tab=False)
+        detect_old_count = sql.hist_count_type_action_master(
+            'volume', 'detect_old', self.act_code, prt=True, tab=False)
+        loudnorm_1_count = sql.hist_count_type_action_master(
+            'volume', 'loudnorm_1', self.act_code, prt=True, tab=False)
+        loudnorm_2_count = sql.hist_count_type_action_master(
+            'volume', 'loudnorm_2', self.act_code, prt=True, tab=False)
+        detect_new_count = sql.hist_count_type_action_master(
+            'volume', 'detect_new', self.act_code, prt=True, tab=False)
         ext.t_end('print')
         print()
 
@@ -4696,6 +4755,8 @@ filename.
         else:
             text += tmf.days(elapsed) + "\n\n"
 
+        text += "Records displayed in treeview:\t"
+        text += '{:,}'.format(self.cmp_found) + "\n\n"
         text += "Records skipped (already created): \t"
         text += '{:,}'.format(self.avo_skip_count) + "\n\n"
         text += "Records processed (created this time):\t"
@@ -4704,48 +4765,38 @@ filename.
         if self.state == "analyze_volume":
             title = "Analyze Maximum Volume Job Summary"
             text += "Analyze Maximum Volume run: "
-            text += '{:,}'.format(analyze_count) + " records.\n\n"
+            text += '{:,}'.format(detect_old_count) + " records.\n\n"
 
         if self.state == "analyze_loudnorm":
             title = "Analyze 'loudnorm' Filter Job Summary"
             text += "Analyze 'loudnorm' Filter run: "
-            text += '{:,}'.format(loudnorm_count) + " records.\n\n"
+            text += '{:,}'.format(loudnorm_1_count) + " records.\n\n"
 
         if self.state == "update_loudnorm":
             title = "Update 'loudnorm' Filter Job Summary"
             text += "Update 'loudnorm' Filter run: "
-            text += '{:,}'.format(update_count) + " records.\n\n"
+            text += '{:,}'.format(loudnorm_2_count) + " records.\n\n"
+
+        if self.state == "analyze_volume_new":
+            title = "Analyze New Maximum Volume Job Summary"
+            text += "Analyze New Maximum Volume run: "
+            text += '{:,}'.format(detect_new_count) + " records.\n\n"
 
         self.out_fact_show(title, text)
 
         return self.cmp_top_is_active
 
     def avo_insert_tree_row(self, fake_path, CurrAlbumId, iid, Song):
-        """ Get Song's volume levels (Mean, Maximum)
+        """ Analyze Mean Volume and Maximum Volume for Old (Original) Song """
 
-            Save and restore song's last access time because ffmpeg
-            "volume detect" feature will reset to current time.
-
-        """
         _who = self.who + "avo_insert_tree_row():"
-        if not self.cmp_top_is_active:
-            return False  # Closing down, False indicates no differences
+        loc = self.act_code  # Just to get a shorter more meaningful var name
 
-        ''' Build target path, check if exists and use os.stat '''
-        src_path = self.real_from_fake_path(fake_path)
-        trg_path = src_path.replace(self.open_topdir, self.cmp_target_dir)
-        if not os.path.isfile(trg_path):  # If target missing, then return
-            return True
-        trg_stat = os.stat(trg_path)  # os.stat provides file attributes
-        trg_size = trg_stat.st_size
-        trg_atime = float(trg_stat.st_atime)
-        trg_mtime = float(trg_stat.st_mtime)
-
-        ''' Get SQL Music Table key (Id) '''
-        OsBase = trg_path.split(self.cmp_target_dir)[1]
-        # Strip off any leading /
-        OsBase = OsBase[1:] if OsBase.startswith(os.sep) else OsBase
-        music_id = sql.music_id_for_song(OsBase)
+        ''' Get target path, size, access, modify time and SQL music ID '''
+        trg_path, trg_size, trg_atime, trg_mtime, music_id, OsBase = \
+            self.avo_trg_info(fake_path)
+        if trg_path is None:  # Target location is missing file in source loc.
+            return True  # Nothing inserted into treeview but, not an error
 
         ''' Insert song into treeview '''
         def insert_tv_row():
@@ -4757,10 +4808,10 @@ filename.
             self.cmp_top.update_idletasks()  # Allow close button to abort
             self.cmp_found += 1
 
-        ''' Skip files already analyzed?? '''
+        ''' Skip files already analyzed? '''
         if self.avo_skip_complete:
             # Skip over completed files (new only).
-            d = sql.hist_get_music_var(music_id, "Volume", "Analyze", self.act_code)
+            d = sql.hist_get_music_var(music_id, 'volume', 'detect_old', loc)
             if d:
                 mean_volume, max_volume = json.loads(d['Target'])
                 if max_volume != "N/A":
@@ -4772,30 +4823,18 @@ filename.
         '''   B I G   T I C K E T   E V E N T   
 
               -  Run ffmpeg 'volumedetect' Filter  
+            Calls self.avo_run_ffmpeg() shared with avn_insert_tree_row()
         '''
         mean_volume, max_volume = self.avo_run_ffmpeg(trg_path, trg_size)
         if not self.cmp_top_is_active:
             return False  # Closing down, False indicates no differences
 
         ''' ffmpeg changes Last Access Time - Set it back '''
-        date_str = datetime.datetime.fromtimestamp(trg_atime)\
-            .strftime('%Y-%m-%d %H:%M:%S')
-        cmd = 'touch -a -c -d"' + date_str + '" "' + trg_path + '"'
-        result = os.popen(cmd).read().strip()
+        self.avo_trg_reset(trg_path, trg_atime, _who)
 
-        if len(result) > 4:
-            # touch doesn't write to STDERR
-            print(_who, "Error running touch command.")
-            print(cmd)
-            print("\n" + result)
-
-        ''' Save values in history. '''
-        OsBase = trg_path.split(self.cmp_target_dir)[1]
-        # Strip off any leading /
-        OsBase = OsBase[1:] if OsBase.startswith(os.sep) else OsBase
-        music_id = sql.music_id_for_song(OsBase)
+        ''' Save ffmpeg results in SQL History Table. '''
         if max_volume == "N/A":
-            d = sql.hist_get_music_var(music_id, "Volume", "Analyze", self.act_code)
+            d = sql.hist_get_music_var(music_id, "volume", "detect_old", loc)
             if d:
                 print(_who, "Not overwriting existing music volume:\n\t",
                       d['Target'], "with 'N/A'.")
@@ -4806,7 +4845,7 @@ filename.
 
         if music_id:
             sql.hist_add_music_var(
-                music_id, 'Volume', 'Analyze', SourceMaster=self.act_code,
+                music_id, 'volume', 'detect_old', SourceMaster=loc,
                 SourceDetail='volumedetect', Comments=self.avo_comment,
                 Target=json.dumps([mean_volume, max_volume]))
 
@@ -4814,32 +4853,106 @@ filename.
         insert_tv_row()
         return self.cmp_top_is_active
 
+    def avo_trg_info(self, fake_path, new=False):
+        """ Get target path, size, access, modify time, music ID & Base filename
+
+            shared by avo_ / aln_ / uln_ and avn_ ... _insert_tree_row()
+
+            :param fake_path: Music Library Sort List fake file name
+            :param new: Append ".new" extension to target path
+            :returns: trg_path, trg_size, trg_atime, trg_mtime, music_id, OsBase
+        """
+
+        point_of_no_return = (None, None, None, None, None, None)
+        src_path = self.real_from_fake_path(fake_path)
+        trg_path = src_path.replace(self.open_topdir, self.cmp_target_dir)
+        if not os.path.isfile(trg_path):  # Target may not exist in other locations
+            return point_of_no_return
+
+        trg_path_new = trg_path + ".new"
+        if new and not os.path.isfile(trg_path_new):
+            print("SQL History row with Type='volume', Action='loudnorm_2",
+                  "should not exist for:")
+            print(trg_path_new)
+            print("avo_trg_info(): Perhaps the file was moved, removed or renamed?")
+            return point_of_no_return
+
+        trg_stat = os.stat(trg_path_new) if new else os.stat(trg_path)
+        trg_size = trg_stat.st_size
+        trg_atime = float(trg_stat.st_atime)
+        trg_mtime = float(trg_stat.st_mtime)
+
+        ''' Get SQL Music Table key (Id) '''
+        OsBase = trg_path.split(self.cmp_target_dir)[1]
+        # Strip off any leading '/'  NOTE: .new extension wouldn't be in SQL 
+        OsBase = OsBase[1:] if OsBase.startswith(os.sep) else OsBase
+        music_id = sql.music_id_for_song(OsBase)
+
+        return trg_path, trg_size, trg_atime, trg_mtime, music_id, OsBase
+
+    @staticmethod
+    def avo_trg_reset(trg_path, trg_atime, _who):
+        """ ffmpeg changes Last Access Time - Set it back
+
+            shared by avo_ / aln_ / uln_ and avn_ ... _insert_tree_row()
+
+            :param trg_path: Full path including basename of song file
+            :param trg_atime: Original file access time before reading
+            :param _who: parent (caller) name
+            :return: Nothing
+        """
+
+        date_str = datetime.datetime.fromtimestamp(trg_atime)\
+            .strftime('%Y-%m-%d %H:%M:%S')
+        cmd = 'touch -a -c -d"' + date_str + '" "' + trg_path + '"'
+        result = os.popen(cmd).read().strip()
+
+        if len(result) > 4:
+            # touch doesn't write to STDERR
+            print(_who, "Error resetting access time using:")
+            print(cmd)
+            print("\n" + result)
+
     def avo_run_ffmpeg(self, trg_path, size):
-        """ Called when inserting in treeview
+        """ Run ffmpeg command to get Maximum Volume
+            Called by avo_insert_tree_row() and avn_insert_tree_row()
 
 One-liner to copy and paste into terminal:
     ffmpeg -i "/media/rick/SANDISK128/Music/AC_DC/Stiff Upper Lip/09 Damned.m4a" -af "volumedetect" -f null /dev/null
 
         """
-
-        _shell_fname = ext.shell_quote(trg_path)
-        # Don't use shell_quote on trg_path. It generates error:
-        # ffmpeg -i "/media/rick/SANDISK128/Music/10cc/The Best of 10cc/
-        # 04 Art for Art'\''s Sake.m4a" -af "volumedetect"
-        # -f null /dev/null 2>&1 | grep "_volume:"
-
-        # Version using grep limited 
-        #cmd = 'ffmpeg -i "' + trg_path + '" -af "volumedetect"'
-        #cmd += ' -f null /dev/null 2>&1 | grep "_volume:"'
-
-        # Version using FileControl to create OrderedDict of all lines 
         cmd = 'ffmpeg -i "' + trg_path + '" -af "volumedetect"'
         cmd += ' -f null /dev/null'
 
-        self.run_one_command(cmd, size, wait=10, print_stats=False)
+        wait = size / 1000000 * 3  # Wait 3 seconds per megabyte before quiting
+        wait = 3 if not wait else wait
+
+        self.run_one_command(cmd, size, wait=wait, print_stats=False)
+
+        if not self.avo_run_retry(cmd, size, wait):
+            return "N/A", "N/A"
+
+        # Use mserve.py FileControl() class methods to parse ffmpeg results
+        self.trg_ctl.get_metadata(ffmpeg_results=self.TMP_STDERR, trg_path=trg_path)
+
+        # Note FileControl() converts all lower-case key names to upper-case
+        mean_volume = self.trg_ctl.metadata.get("MEAN_VOLUME", "N/A")
+        max_volume = self.trg_ctl.metadata.get("MAX_VOLUME", "N/A")
+        return mean_volume, max_volume
+
+    def avo_run_retry(self, cmd, size, wait):
+        """ shared by avo_ / aln_ / uln_ and avn_ ... _run_ffmpeg()
+        :param cmd: ffmpeg formatted command
+        :param size: trg_path file size
+        :param wait: how long to wait for command to finish execution
+        :return: True command successful, False command failed second attempt
+        """
 
         if not self.cmp_top_is_active:
-            return "N/A", "N/A"
+            return False  # Closing down
+
+        if self.cmp_return_code == 0:
+            return True  # Last command successful, nothing to retry
 
         ''' Permission denied if curlftpfs chokes on files with # in name '''
         if self.act_ftp and self.cmp_return_code != 0:
@@ -4848,76 +4961,39 @@ One-liner to copy and paste into terminal:
             self.ftp_retrieve(self.act_ftp, base_path)  # Retrieve manually
             self.cmp_return_code = 0  # Reset for repeating test
             cmd = cmd.replace(trg_path, self.TMP_FTP_RETRIEVE)
-            #cmd = 'ffmpeg -i "' + self.TMP_FTP_RETRIEVE + '" -af "volumedetect"'
-            #cmd += ' -f null /dev/null 2>&1 | grep "_volume:"'
-            self.run_one_command(cmd, size, wait=3)  # 5 second wait time
+            self.run_one_command(cmd, size, wait=wait)
             print(ext.read_into_string(self.TMP_STDOUT))
-            #  TODO: See cmp_insert_tree_row() for notes on FTP errors.
+
+        if not self.cmp_top_is_active:
+            return False  # Closing down
 
         ''' Permission denied - Do nothing, just report and skip copy '''
         if self.cmp_return_code != 0:
-            action = "Error: Permission denied on 'ffmpeg' analyze volume!"
-            print("\nError on file:", trg_path)
+            action = "'ffmpeg' Error (possibly time-out)"
+            print("\nFile:", trg_path)
             print(action, "return code:", self.cmp_return_code, "\n")
             self.cmp_return_code = 0  # Reset so doesn't force end
-            return "N/A", "N/A"
+            return False
 
-        # Version using grep limited 
-        #volumes = ext.read_into_list(self.TMP_STDOUT)
-        #if volumes is None or len(volumes) != 2:
-        #    print("Location().avo_run_ffmpeg():",
-        #          "No volumes found in self.TMP_STDOUT!")
-        #    print(cmd)
-        #    return "N/A", "N/A"
-
-        # Version using TMP_STDERR to create dictionary self.trg_ctl.metadata 
-        self.trg_ctl.get_metadata(ffmpeg_results=self.TMP_STDERR, trg_path=trg_path)
-
-        if self.cmp_found == 1:
-            # To see dictionary built from parsed ffmpeg output
-            #print("self.trg_ctl.metadata:")
-            #print(self.trg_ctl.metadata)
-            pass
-
-        """ Parse mean volume and max volume in output file
-    
-        [Parsed_volumedetect_0 @ 0xc11fa0] mean_volume: -21.0 dB
-        [Parsed_volumedetect_0 @ 0xc11fa0] max_volume: -1.0 dB
-        """
-        # Version using grep limited
-        #return volumes[0].split("_volume: ")[1], volumes[1].split("_volume: ")[1]
-
-        # Version using dictionary self.trg_ctl.metadata
-        mean_volume = self.trg_ctl.metadata.get("MEAN_VOLUME", "N/A")
-        max_volume = self.trg_ctl.metadata.get("MAX_VOLUME", "N/A")
-        return mean_volume, max_volume
+        return True  # Was failure but FTP retry was successful
 
     def aln_insert_tree_row(self, fake_path, CurrAlbumId, iid, Song):
-        """ Get Song's 'loudnorm' levels ()
+        """ Get Song's 'loudnorm' levels for pass 1.  """
 
-            Save and restore song's last access time because ffmpeg
-            "volume detect" feature will reset to current time.
-
-        """
         _who = self.who + "aln_insert_tree_row():"
-        if not self.cmp_top_is_active:
-            return False  # Closing down, False indicates no differences
+        loc = self.act_code  # Just to get a shorter more meaningful var name
 
-        ''' Build target path, check if exists and use os.stat '''
-        src_path = self.real_from_fake_path(fake_path)
-        trg_path = src_path.replace(self.open_topdir, self.cmp_target_dir)
-        if not os.path.isfile(trg_path):  # If target missing, then return
-            return True
+        ''' Get target path, size, access, modify time and SQL music ID '''
+        trg_path, trg_size, trg_atime, trg_mtime, music_id, OsBase = \
+            self.avo_trg_info(fake_path)
+        if trg_path is None:  # Target location is missing file in source loc.
+            return True  # Nothing inserted into treeview but, not an error
 
-        ''' Requires history record Type == "Volume", Action == "Analyze"
-            and SourceMaster matching self.act_code (Location Code) '''
-        OsBase = trg_path.split(self.cmp_target_dir)[1]
-        # Strip off any leading /
-        OsBase = OsBase[1:] if OsBase.startswith(os.sep) else OsBase
-        music_id = sql.music_id_for_song(OsBase)
-        d = sql.hist_get_music_var(music_id, "Volume", "Analyze", self.act_code)
+        ''' History record exists for previous step? '''
+        d = sql.hist_get_music_var(music_id, "volume", "detect_old", loc)
         if not d:
-            print(_who, "MISSING Maximum Volume for location:", self.act_code)
+            # TODO: 2024-04-15 - new change to skip files < 1 MB.
+            print(_who, "MISSING Maximum Volume for location:", loc)
             print("for:", OsBase)
             return True  # Skip this song file
 
@@ -4930,10 +5006,11 @@ One-liner to copy and paste into terminal:
             print(_who, "Skipping song with 'N/A' Maximum Volume")
             print("for:", OsBase)
             return True  # Skip this song file
+
         try:
             max_float = float(max_volume.split(" dB")[0])
         except ValueError:
-            print(_who, "Invalid Maximum Volume", max_volume)
+            print(_who, "Maximum Volume is not a number:", max_volume)
             print("for:", OsBase)
             return True  # Skip this song file
 
@@ -4942,14 +5019,8 @@ One-liner to copy and paste into terminal:
         else:
             return True  # Skip this song file
 
-        ''' Save file's Last Access Time because ffmpeg changes when reading '''
-        trg_stat = os.stat(trg_path)  # os.stat provides file attributes
-        trg_size = trg_stat.st_size
-        trg_atime = float(trg_stat.st_atime)
-        trg_mtime = float(trg_stat.st_mtime)
-
         def insert_tv_row():
-            """ Shared function to Insert song into treeview"""
+            """ Shared function to Insert song into treeview """
             self.cmp_tree.insert(
                 CurrAlbumId, "end", iid=iid, text=Song, tags=("Song",),
                 values=(json_dict.get("input_i", "N/A"), json_dict.get("input_tp", "N/A"),
@@ -4959,10 +5030,10 @@ One-liner to copy and paste into terminal:
             self.cmp_top.update_idletasks()  # Allow close button to abort
             self.cmp_found += 1
 
-        ''' Skip files already analyzed?? '''
+        ''' Skip files already analyzed? '''
         if self.avo_skip_complete:
             # Skip over completed files (new only).
-            d = sql.hist_get_music_var(music_id, "Volume", "loudnorm", self.act_code)
+            d = sql.hist_get_music_var(music_id, "volume", "loudnorm_1", loc)
             if d:
                 json_dict = json.loads(d['Target'])
                 if d['Timestamp'] > trg_mtime:
@@ -4981,28 +5052,13 @@ One-liner to copy and paste into terminal:
             return False  # Closing down, False indicates no differences
 
         ''' ffmpeg changes Last Access Time - Set it back '''
-        date_str = datetime.datetime.fromtimestamp(trg_atime) \
-            .strftime('%Y-%m-%d %H:%M:%S')
-        cmd = 'touch -a -c -d"' + date_str + '" "' + trg_path + '"'
-        result = os.popen(cmd).read().strip()
+        self.avo_trg_reset(trg_path, trg_atime, _who)
 
-        if len(result) > 4:
-            # touch doesn't write to STDERR
-            print(_who, "Error running touch command.")
-            print(cmd)
-            print("\n" + result)
-
-        ''' Save 'loudnorm' values in history. '''
-        OsBase = trg_path.split(self.cmp_target_dir)[1]
-        # Strip off any leading /
-        OsBase = OsBase[1:] if OsBase.startswith(os.sep) else OsBase
-        music_id = sql.music_id_for_song(OsBase)
+        ''' Save 'loudnorm_1' values in SQL History Table. '''
         if json_dict == {}:  # No metadata, dictionary empty
-            d = sql.hist_get_music_var(music_id, "Volume", "loudnorm", self.act_code)
-            # TODO: check if this is same location. If different self.act_code
-            # then how should it be overridden?
+            d = sql.hist_get_music_var(music_id, "volume", "loudnorm_1", loc)
             if d:
-                print(_who, "Not overwriting existing 'loudnorm' Filter':\n\t",
+                print(_who, "Not overwriting existing 'loudnorm_1' Filter':\n\t",
                       d['Target'], "with empty dictionary.")
                 print("for:", OsBase)
             music_id = 0  # Don't populate with "N/A"
@@ -5020,12 +5076,10 @@ One-liner to copy and paste into terminal:
             json_dict['ar'] = "44100"
 
         if music_id:
-            #print("disable History record save for 'loudnorm' Filter.")
             sql.hist_add_music_var(
-                music_id, 'Volume', 'loudnorm', SourceMaster=self.act_code,
+                music_id, 'volume', 'loudnorm_1', SourceMaster=loc,
                 SourceDetail='Analyze', Comments=self.avo_comment,
                 Target=json.dumps(json_dict))
-            pass
 
         ''' Insert song into treeview '''
         insert_tv_row()
@@ -5082,41 +5136,14 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=$int
         cmd += ' loudnorm=I=-23:TP=0:print_format=json'
         cmd += ' -f null -'
 
-        self.run_one_command(cmd, size, wait=60, print_stats=False)
+        wait = size / 1000000 * 8  # Wait 8 seconds per megabyte before quiting
+        wait = 8 if not wait else wait
+        self.run_one_command(cmd, size, wait=wait, print_stats=False)
 
-        if not self.cmp_top_is_active:
+        if not self.avo_run_retry(cmd, size, wait):
             return {}
 
-        if self.cmp_found <= 1:
-            # To see dictionary built from parsed ffmpeg output
-            #print("\n self.get_file_data(self.TMP_STDERR):")
-            #print(self.get_file_data(self.TMP_STDERR))
-            #print("\n self.get_file_data(self.TMP_STDOUT):")
-            #print(self.get_file_data(self.TMP_STDOUT), "\n")
-            pass
-
-        ''' Permission denied if curlftpfs chokes on files with # in name '''
-        if self.act_ftp and self.cmp_return_code != 0:
-            print("Retrying 'self.act_ftp and self.cmp_return_code != 0:'")
-            base_path = trg_path.replace(self.act_topdir, '')
-            self.ftp_retrieve(self.act_ftp, base_path)  # Retrieve manually
-            self.cmp_return_code = 0  # Reset for repeating test
-            cmd = cmd.replace(trg_path, self.TMP_FTP_RETRIEVE)
-            # cmd = 'ffmpeg -i "' + self.TMP_FTP_RETRIEVE + '" -af "volumedetect"'
-            # cmd += ' -f null /dev/null 2>&1 | grep "_volume:"'
-            self.run_one_command(cmd, size, wait=3)  # 5 second wait time
-            print(ext.read_into_string(self.TMP_STDOUT))
-            #  TODO: See cmp_insert_tree_row() for notes on FTP errors.
-
-        ''' Permission denied - Do nothing, just report and skip copy '''
-        if self.cmp_return_code != 0:
-            action = "Error: Permission denied on 'ffmpeg' analyze volume!"
-            print("\nError on file:", trg_path)
-            print(action, "return code:", self.cmp_return_code, "\n")
-            self.cmp_return_code = 0  # Reset so doesn't force end
-            return {}
-
-        # Version using TMP_STDERR to create dictionary self.trg_ctl.metadata
+        # Populate FileControl() class metadata dictionary
         self.trg_ctl.get_metadata(ffmpeg_results=self.TMP_STDERR, trg_path=trg_path)
         """ Parse json formatted 'loudnorm' pass 1 values in output file:
             {
@@ -5133,29 +5160,24 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=$int
             }
         """
 
+        # Get FileControl() class metadata dictionary's json formatted dictionary
         return self.trg_ctl.metadata.get('json_dict', {})
 
     def uln_insert_tree_row(self, fake_path, CurrAlbumId, iid, Song):
         """ Normalize Song's Loudness using 'loudnorm' Filter pass 2 """
         _who = self.who + "uln_insert_tree_row():"
-        if not self.cmp_top_is_active:
-            return False  # Closing down, False indicates no differences
+        loc = self.act_code  # Just to get a shorter more meaningful var name
 
-        ''' Build target path, check if exists and use os.stat '''
-        src_path = self.real_from_fake_path(fake_path)
-        trg_path = src_path.replace(self.open_topdir, self.cmp_target_dir)
-        if not os.path.isfile(trg_path):  # If target missing, then return
-            return True
+        ''' Get target path, size, access, modify time and SQL music ID '''
+        trg_path, trg_size, trg_atime, trg_mtime, music_id, OsBase = \
+            self.avo_trg_info(fake_path)
+        if trg_path is None:  # Target location is missing file in source loc.
+            return True  # Nothing inserted into treeview but, not an error
 
-        ''' Requires history record Type == "Volume", Action == "Analyze"
-            and SourceMaster == self.act_code (Location Code) '''
-        OsBase = trg_path.split(self.cmp_target_dir)[1]
-        # Strip off any leading /
-        OsBase = OsBase[1:] if OsBase.startswith(os.sep) else OsBase
-        music_id = sql.music_id_for_song(OsBase)
-        d = sql.hist_get_music_var(music_id, "Volume", "loudnorm", self.act_code)
+        ''' History record exists for previous step? '''
+        d = sql.hist_get_music_var(music_id, "volume", "loudnorm_1", loc)
         if not d:
-            # Most songs would not have 'loudnorm' pass 1 values
+            # Most songs would not have 'loudnorm_1' pass 1 values
             return True  # Skip this song file
 
         if not self.cmp_top_is_active:
@@ -5177,12 +5199,6 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=$int
             print(json_dict)
             print("for:", OsBase)
             return True  # Skip this song file
-
-        ''' Save file's Last Access Time because ffmpeg changes when reading '''
-        trg_stat = os.stat(trg_path)  # os.stat provides file attributes
-        trg_size = trg_stat.st_size
-        trg_atime = float(trg_stat.st_atime)
-        trg_mtime = float(trg_stat.st_mtime)
 
         def insert_tv_row():
             """ Shared function to Insert song into treeview"""
@@ -5293,13 +5309,10 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=$int
 
         if music_id:
             sql.hist_add_music_var(
-                music_id, 'Update', 'loudnorm', SourceMaster=self.act_code,
+                music_id, 'volume', 'loudnorm_2', SourceMaster=loc,
                 SourceDetail='Analyze', Comments=trg_path_new,
                 Target=json.dumps(json_dict))
             # TODO: Add Music ID to a newly created special playlist
-
-        ''' Rename original file to .bak and .new to original '''
-
 
         ''' Insert song into treeview '''
         insert_tv_row()
@@ -5343,41 +5356,14 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
 
         """
 
-        self.run_one_command(cmd, size, wait=60, print_stats=True)
+        wait = size / 1000000 * 8  # Wait 8 seconds per megabyte before quiting
+        wait = 8 if not wait else wait
+        self.run_one_command(cmd, size, wait=wait, print_stats=False)
 
-        if not self.cmp_top_is_active:
+        if not self.avo_run_retry(cmd, size, wait):
             return {}
 
-        if self.cmp_found <= 1:
-            # To see dictionary built from parsed ffmpeg output
-            # print("\n self.get_file_data(self.TMP_STDERR):")
-            # print(self.get_file_data(self.TMP_STDERR))
-            # print("\n self.get_file_data(self.TMP_STDOUT):")
-            # print(self.get_file_data(self.TMP_STDOUT), "\n")
-            pass
-
-        ''' Permission denied if curlftpfs chokes on files with # in name '''
-        if self.act_ftp and self.cmp_return_code != 0:
-            print("Retrying 'self.act_ftp and self.cmp_return_code != 0:'")
-            base_path = trg_path.replace(self.act_topdir, '')
-            self.ftp_retrieve(self.act_ftp, base_path)  # Retrieve manually
-            self.cmp_return_code = 0  # Reset for repeating test
-            cmd = cmd.replace(trg_path, self.TMP_FTP_RETRIEVE)
-            # cmd = 'ffmpeg -i "' + self.TMP_FTP_RETRIEVE + '" -af "volumedetect"'
-            # cmd += ' -f null /dev/null 2>&1 | grep "_volume:"'
-            self.run_one_command(cmd, size, wait=3)  # 5 second wait time
-            print(ext.read_into_string(self.TMP_STDOUT))
-            #  TODO: See cmp_insert_tree_row() for notes on FTP errors.
-
-        ''' Permission denied - Do nothing, just report and skip copy '''
-        if self.cmp_return_code != 0:
-            action = "Error: Permission denied on 'ffmpeg' analyze volume!"
-            print("\nError on file:", trg_path)
-            print(action, "return code:", self.cmp_return_code, "\n")
-            self.cmp_return_code = 0  # Reset so doesn't force end
-            return {}
-
-        # Version using TMP_STDERR to create dictionary self.trg_ctl.metadata
+        # Populate FileControl() class metadata dictionary
         self.trg_ctl.get_metadata(ffmpeg_results=self.TMP_STDERR, trg_path=trg_path)
         """ Parse json formatted 'loudnorm' pass 1 values in output file:
             {
@@ -5394,7 +5380,94 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
             }
         """
 
+        # Get FileControl() class metadata dictionary's json formatted dictionary
         return self.trg_ctl.metadata.get('json_dict', {})
+
+    def avn_insert_tree_row(self, fake_path, CurrAlbumId, iid, Song):
+        """ Analyze Mean Volume and Maximum Volume for New (Normalized) Song 
+            Calls self.avo_run_ffmpeg() shared with avo_insert_tree_row()
+        """
+
+        _who = self.who + "avn_insert_tree_row():"
+        loc = self.act_code  # Just to get a shorter more meaningful var name
+
+        ''' Get target path, size, access, modify time and SQL music ID '''
+        trg_path, trg_size, trg_atime, trg_mtime, music_id, OsBase = \
+            self.avo_trg_info(fake_path)  # Do NOT use 'new', we need music_id
+        if trg_path is None:  # Target location is missing file in source loc.
+            return True  # Nothing inserted into treeview but, not an error
+
+        ''' History record exists for previous step? '''
+        d = sql.hist_get_music_var(music_id, "volume", "loudnorm_2", loc)
+        if not d:
+            # Most songs would not have 'loudnorm_2' pass 2 values
+            return True  # Skip this song file
+
+        if not self.cmp_top_is_active:
+            return False  # Closing down, False indicates no differences
+
+        ''' trg_path needs ".new" appended to find correct file'''
+        trg_path, trg_size, trg_atime, trg_mtime, music_id, OsBase = \
+            self.avo_trg_info(fake_path, new=True)  # 'new' s/b on file
+        if trg_path is None:  # Target location is missing file in source loc.
+            return True  # Nothing inserted into treeview but, not an error
+        trg_path = trg_path + ".new"
+
+        ''' Insert song into treeview '''
+        def insert_tv_row():
+            """ Shared function to add treeview row """
+            self.cmp_tree.insert(CurrAlbumId, "end", iid=iid, text=Song,
+                                 values=(mean_volume, max_volume),
+                                 tags=("Song",))
+            self.cmp_tree.see(iid)
+            self.cmp_top.update_idletasks()  # Allow close button to abort
+            self.cmp_found += 1
+
+        ''' Skip files already analyzed? '''
+        if self.avo_skip_complete:
+            # Skip over completed files (new only).
+            d = sql.hist_get_music_var(music_id, 'volume', 'detect_new', loc)
+            if d:
+                mean_volume, max_volume = json.loads(d['Target'])
+                # Songs with 'N/A' before, will be analyzed again.
+                if max_volume != "N/A":
+                    if d['Timestamp'] > trg_mtime:
+                        insert_tv_row()  # Show progress so far
+                        self.avo_skip_count += 1
+                        return True  # Skip this song file
+
+        '''   B I G   T I C K E T   E V E N T   
+
+              -  Run ffmpeg 'volumedetect' Filter  
+            Calls self.avo_run_ffmpeg() shared with avo_insert_tree_row()
+        '''
+        mean_volume, max_volume = self.avo_run_ffmpeg(trg_path, trg_size)
+        if not self.cmp_top_is_active:
+            return False  # Closing down, False indicates no differences
+
+        ''' ffmpeg changes Last Access Time - Set it back '''
+        self.avo_trg_reset(trg_path, trg_atime, _who)
+
+        ''' Save ffmpeg results in SQL History Table. '''
+        if max_volume == "N/A":
+            d = sql.hist_get_music_var(music_id, "volume", "detect_new", loc)
+            if d:
+                print(_who, "Not overwriting existing music volume:\n\t",
+                      d['Target'], "with 'N/A'.")
+                print("for:", OsBase)
+            music_id = 0  # Don't populate with "N/A"
+        if not self.cmp_top_is_active:
+            return False  # Closing down, False indicates no differences
+
+        if music_id:
+            sql.hist_add_music_var(
+                music_id, 'volume', 'detect_new', SourceMaster=loc,
+                SourceDetail='volumedetect', Comments=self.avo_comment,
+                Target=json.dumps([mean_volume, max_volume]))
+
+        ''' Insert song into treeview '''
+        insert_tv_row()
+        return self.cmp_top_is_active
 
     @staticmethod
     def real_from_fake_path(fake_path):
@@ -5826,7 +5899,8 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
             ''' Analyze Volume used STDERR for "normal" output so no errors '''
             if self.state == 'analyze_volume' \
                     or self.state == 'analyze_loudnorm' \
-                    or self.state == 'update_loudnorm':
+                    or self.state == 'update_loudnorm' \
+                    or self.state == 'analyze_volume_new':
                 return True
 
             ''' stdout or stderr have been populated by cp command '''

@@ -1815,7 +1815,12 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
             label="Update 'loudnorm' Filter", font=g.FONT, underline=0,
             state=tk.DISABLED,
             command=lambda: lcs.update_loudnorm(self.start_long_running_process,
-                                                 self.end_long_running_process))
+                                                self.end_long_running_process))
+        self.volume_menu.add_command(
+            label="Analyze New Maximum Volume", font=g.FONT, underline=8,
+            state=tk.DISABLED,
+            command=lambda: lcs.analyze_volume_new(self.start_long_running_process,
+                                                   self.end_long_running_process))
 
         #self.tools_menu.add_cascade(label="Volume", font=g.FONT,
         #                            underline=0, menu=self.volume_menu)
@@ -1845,6 +1850,7 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
             self.volume_menu.entryconfig("Analyze Maximum Volume", state=tk.DISABLED)
             self.volume_menu.entryconfig("Analyze 'loudnorm' Filter", state=tk.DISABLED)
             self.volume_menu.entryconfig("Update 'loudnorm' Filter", state=tk.DISABLED)
+            self.volume_menu.entryconfig("Analyze New Maximum Volume", state=tk.DISABLED)
         else:
             self.file_menu.entryconfig("Open Location and Play", state=tk.NORMAL)
             self.file_menu.entryconfig("New Location", state=tk.NORMAL)
@@ -1859,6 +1865,7 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
             self.volume_menu.entryconfig("Analyze Maximum Volume", state=tk.NORMAL)
             self.volume_menu.entryconfig("Analyze 'loudnorm' Filter", state=tk.NORMAL)
             self.volume_menu.entryconfig("Update 'loudnorm' Filter", state=tk.NORMAL)
+            self.volume_menu.entryconfig("Analyze New Maximum Volume", state=tk.NORMAL)
         self.disable_playlist_menu()
         if self.playlists.top:  # If top level is open, everything disabled.
             return  # Playlist Maintenance is active
