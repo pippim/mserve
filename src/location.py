@@ -1221,6 +1221,9 @@ class LocationsCommonSelf:
         self.end_long_running = None  # To control mserve playing buttons
 
         ''' Analyze Volume variables embedded inside Compare Window '''
+        self.avo_ffmpeg_path = g.PROGRAM_DIR + os.sep
+        # Set to None if nothing special. Can't have in regular path because
+        # ffmpeg 6.1 (with 'loudnorm' filter) can't read artwork like ffmpeg 2.8.
         self.avo_select_max_lower = -10.0  # 2024-04-13 Future user config setting
         self.avo_select_max_upper = -0.15  # 2024-04-13 Future user config setting
         # E.G. self.avo_select_max_lower <= song_max <= self.avo_select_max_upper
@@ -1633,7 +1636,7 @@ class Locations(LocationsCommonSelf):
     def make_test_box(self, frame):
         """ Can be in main_top or test_top """
         ''' Create frame for test scrolled text box '''
-        self.test_scroll_frame = tk.Frame(frame, bg="LightGrey", relief=tk.RIDGE)
+        self.test_scroll_frame = tk.Frame(frame, bg=self.bg, relief=tk.RIDGE)
         self.test_scroll_frame.grid(row=0, column=0, sticky=tk.NSEW, columnspan=4)
         self.test_scroll_frame.columnconfigure(0, weight=1)
         self.test_scroll_frame.rowconfigure(0, weight=1)
@@ -1895,7 +1898,7 @@ class Locations(LocationsCommonSelf):
         toolkit.select_dict_columns(columns, location_dict)
 
         ''' Create treeview frame with scrollbars '''
-        self.tree_frame = tk.Frame(self.main_frame, bg="LightGrey", relief=tk.RIDGE)
+        self.tree_frame = tk.Frame(self.main_frame, bg=self.bg, relief=tk.RIDGE)
         self.tree_frame.grid(row=0, column=0, sticky=tk.NSEW, columnspan=4)
         self.tree_frame.columnconfigure(0, weight=1)
         self.tree_frame.rowconfigure(0, weight=1)
@@ -4071,12 +4074,13 @@ filename.
         """ Dual purpose Compare Locations & Analyze Volume based on prefix:
 
             "cmp" = Compare target location songs to build treeview of differences.
-            "avo" = Analyze Volume. Results in treeview and stored in history.
-            When "avo" self.state needs to be checked for
-                "analyze_volume" - ffmpeg 'volumedetect' filter
-                "analyze_loudnorm" - ffmpeg 'loudnorm' filter
-                "update_loudnorm" - ffmpeg 'loudnorm' filter pass 2
-                "analyze_volume_new" - ffmpeg 'volumedetect' filter after normalizing
+            "avX" = Analyze Volume. Results in treeview and stored in history.
+            When "avX" self.state needs to be checked for
+
+                avo - "analyze_volume" - ffmpeg 'volumedetect' filter old/original
+                aln - "analyze_loudnorm" - ffmpeg 'loudnorm' filter
+                uln - "update_loudnorm" - ffmpeg 'loudnorm' filter pass 2
+                avn - "analyze_volume_new" - 'volumedetect' filter after normalizing
 
             The notes below are for "cmp" prefix.
 
@@ -4193,20 +4197,28 @@ filename.
         self.trg_ctl = self.FileControl(self.cmp_top, self.info)
 
         ''' Set program icon in taskbar '''
-        toplevel = prefix + "_toplevel"
+        toplevel = prefix + "_toplevel"  # prefix = "cmp" or "avo" (analyze volume)
         ti = self.get_cfg([toplevel, 'taskbar_icon', 'config'])
         img.taskbar_icon(self.cmp_top, ti['height'], ti['outline'],
                          ti['fill'], ti['text'], char=ti['char'])
         #img.taskbar_icon(self.cmp_top, 64, 'white', 'lightskyblue', 'black')
 
         ''' Create frames '''
-        master_frame = tk.Frame(self.cmp_top, bg="LightGrey", relief=tk.RIDGE)
+        treeview = prefix + "_treeview"  # prefix = "cmp" or "avo" (analyze volume)
+        colors = self.get_cfg([treeview, 'style', 'color'])
+        scroll = self.get_cfg([treeview, 'style', 'scroll'])
+        
+        master_frame = tk.Frame(self.cmp_top, bg=self.bg, relief=tk.RIDGE)
         master_frame.grid(sticky=tk.NSEW)
         master_frame.columnconfigure(0, weight=1)
         master_frame.rowconfigure(0, weight=1)
 
         ''' Create a frame for the treeview and scrollbar(s). '''
-        frame2 = tk.Frame(master_frame)
+        #frame2 = tk.Frame(master_frame)
+        frame2 = tk.Frame(master_frame, relief='solid',
+                          highlightcolor=colors['edge_color'],
+                          highlightbackground=colors['edge_color'],
+                          highlightthickness=colors['edge_px'], bd=0)
         tk.Grid.rowconfigure(frame2, 0, weight=1)
         tk.Grid.columnconfigure(frame2, 0, weight=1)
         frame2.grid(row=0, column=0, sticky=tk.NSEW)
@@ -4279,6 +4291,24 @@ filename.
         self.cmp_tree.tag_configure('cmp_sel', background='ForestGreen',
                                     foreground="White")
 
+        if prefix != "cmp":
+            self.cmp_tree.bind('<Motion>', self.highlight_row)
+            self.cmp_tree.bind("<Leave>", self.leave_row)
+            self.cmp_tree.tag_configure('highlight', background='LightBlue')
+
+        style = ttk.Style()
+        style_name = colors['name']
+        style.configure(style_name + ".Heading", font=(None, g.MED_FONT),
+                        rowheight=int(g.MED_FONT * 2.2))
+        self.cmp_tree.configure(style=style_name + ".Heading")
+
+        row_height = int(g.MON_FONTSIZE * 2.2)
+        style.configure(style_name, font=(None, g.MON_FONTSIZE),
+                        rowheight=row_height, foreground=colors['foreground'],
+                        background=colors['background'],
+                        fieldbackground=colors['fieldbackground'])
+        self.cmp_tree.configure(style=style_name)
+
         # noinspection SpellCheckingInspection
         ''' Aug 5/23 - Horizontal Scrollbar removed for lack of purpose 
         h_scroll = tk.Scrollbar(frame2, orient=tk.HORIZONTAL, width=sbar_width,
@@ -4287,8 +4317,8 @@ filename.
         self.cmp_tree.configure(xscrollcommand=h_scroll.set)
         '''
         ''' Frame3 for Treeview Buttons '''
-        self.cmp_btn_frm = tk.Frame(master_frame, bg="LightGrey", bd=2, relief=tk.GROOVE,
-                                    borderwidth=g.BTN_BRD_WID)
+        self.cmp_btn_frm = tk.Frame(master_frame, bg=self.bg, bd=2, 
+                                    relief=tk.FLAT, borderwidth=g.BTN_BRD_WID)
         self.cmp_btn_frm.grid_rowconfigure(0, weight=1)
         self.cmp_btn_frm.grid_columnconfigure(0, weight=1)
         self.cmp_btn_frm.grid(row=1, column=0, sticky=tk.E)
@@ -5213,7 +5243,7 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=$int
 
         ''' Skip files already updated? '''
         if self.avo_skip_complete:
-            d = sql.hist_get_music_var(music_id, "Update", "loudnorm", self.act_code)
+            d = sql.hist_get_music_var(music_id, "volume", "loudnorm_2", self.act_code)
             # TODO: Check for .new file and .bak file
             if d and d['Timestamp'] > trg_mtime:
                 insert_tv_row()  # Show progress so far
@@ -5285,7 +5315,7 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=$int
         OsBase = OsBase[1:] if OsBase.startswith(os.sep) else OsBase
         music_id = sql.music_id_for_song(OsBase)
         if json_dict == {}:  # No metadata, dictionary empty
-            d = sql.hist_get_music_var(music_id, "Update", "loudnorm", self.act_code)
+            d = sql.hist_get_music_var(music_id, "volume", "loudnorm_2", self.act_code)
             # TODO: check if this is same location. If different self.act_code
             # then how should it be overridden?
             if d:
@@ -5469,6 +5499,20 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
         insert_tv_row()
         return self.cmp_top_is_active
 
+    @staticmethod
+    def highlight_row(event):
+        """ Cursor moving over row highlights row in light blue """
+        tree = event.widget
+        iid = tree.identify_row(event.y)
+        tree.tk.call(tree, "tag", "remove", "highlight")
+        tree.tk.call(tree, "tag", "add", "highlight", iid)
+
+    @staticmethod
+    def leave_row(event):
+        """ Cursor leaving row Un-highlight's the row """
+        tree = event.widget
+        tree.tk.call(tree, "tag", "remove", "highlight")
+            
     @staticmethod
     def real_from_fake_path(fake_path):
         """ Remove <No Artist> and <No Album> from fake paths """

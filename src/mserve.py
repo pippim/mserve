@@ -14343,8 +14343,8 @@ class FileControl(FileControlCommonSelf):
                         ar = ar.split(" ")[-1]
                         self.metadata['AUDIO_RATE'] = ar
 
-                elif line.startswith("{"):
-                    ''' In dictionary: 
+                elif line.strip() == "{":
+                    ''' In dictionary provided by loudnorm filter: 
                     {
                         "input_i" : "-11.95",
                         "input_tp" : "-1.34",
@@ -14362,7 +14362,7 @@ class FileControl(FileControlCommonSelf):
                     #print("\n# # #   in_dictionary = True   # # #\n")
                     in_dictionary = True
                     continue  # Not a key/value pair to add
-                elif line.startswith("}"):
+                elif line.strip() == "}":
                     ''' Leaving dictionary '''
                     in_dictionary = False
                     #print("\n# # #   in_dictionary = False   # # #\n")
@@ -14808,6 +14808,7 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilatio
             if self.log_level == 'all' or self.log_level == 'info':
                 self.info.fact(text, patterns=patterns)
 
+    # noinspection SpellCheckingInspection
     def get_artwork(self, width, height):
         """
             Use ffmpeg to get artwork for song into self.TMP_FFMPEG filename.
@@ -14834,8 +14835,15 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilatio
         # noinspection SpellCheckingInspection
         ext.t_init("'ffmpeg -nostdin -y -vn -an -r 1 -i '")
         # noinspection SpellCheckingInspection
-        cmd = 'ffmpeg -nostdin -y -vn -an -r 1 -i ' + '"' + \
-              self.path + '" ' + self.TMP_FFMPEG + ' 2>' + self.TMP_FFPROBE
+        #cmd = 'ffmpeg -nostdin -y -vn -an -r 1 -i ' + '"' + \
+        #      self.path + '" ' + self.TMP_FFMPEG + ' 2>' + self.TMP_FFPROBE
+
+        # 2024-04-16 - Add support for ffmpeg 6.1 that still works in 2.8:
+        # https://stackoverflow.com/a/13677225/6929343
+        # noinspection SpellCheckingInspection
+        cmd = 'ffmpeg -nostdin -y -an ' + '-i "' + self.path + \
+              '" -vcodec copy ' + self.TMP_FFMPEG + ' 2>' + self.TMP_FFPROBE
+
         result = os.popen(cmd).read().strip()
         ext.t_end('no_print')  # 0.1054868698 0.1005489826 0.0921740532
 
@@ -14844,10 +14852,11 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilatio
                 -nostdin to suppress: Press [q] to stop, [?] for help
                 -y to supppress error when file exists
                 -vn = skip video
-                -vn = skip audio
+                -an = skip audio
                 -r 1 = frame rate 1
                 -i = input filename
-                2> = redirect stderr (where stdout is written) to filename
+                self.TMP_FFMPEG = Filename receiving artwork
+                2> = redirect stderr to self.TMP_FFPROBE filename
         '''
 
         if len(result) > 1:
@@ -14861,7 +14870,26 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilatio
                            "No artwork for:\n\n" + self.path + "\n\n"
                            "However this error should have been caught above.")
             print("\nError getting artwork:\n")
-            print(self.TMP_FFPROBE)
+            print(ext.read_into_string(self.TMP_FFPROBE))
+            print("\nCommand used:\n" + cmd)
+
+            # 2024-04-16 new error using FFMPEG version 6.1
+
+            #   Stream #0:1[0x0]: Video: png, rgba(pc, gbr/unknown/unknown),
+            #   225x225, 90k tbr, 90k tbn (attached pic)
+            # Output #0, image2, to '/run/user/1000/mserve_ffmpeg.jpg_ftoad0.jpg':
+            # [out#0/image2 @ 0x82b4f40] Output file does not contain any stream
+            # Error opening output file /run/user/1000/
+            # mserve_ffmpeg.jpg_ftoad0.jpg.
+            # Error opening output files: Invalid argument
+
+            # Command used:
+
+            # ffmpeg -nostdin -y -vn -an -r 1 -i "/media/rick/SANDISK128/Music
+            # /Silverchair/The Best Of Vol. 1/01 Anthem For The Year 2000.m4a"
+            # /run/user/1000/mserve_ffmpeg.jpg_ftoad0.jpg 2>
+            # /run/user/1000/mserve_ffprobe_ftoad0
+
             return None, None, None
 
         original_art = Image.open(self.TMP_FFMPEG)

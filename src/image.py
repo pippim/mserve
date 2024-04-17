@@ -20,6 +20,7 @@ from __future__ import with_statement  # Error handling for file opens
 #       July 02 2023 - make_image() - Support multi-line text
 #       July 12 2023 - Interface to/from mserve_config.py
 #       Mar. 30 2024 - TCombobox drop down arrow image styling
+#       Apr. 16 2024 - ffmpeg 6.1 artwork now (R, G, B, Alpha). Before RGB only
 #
 #==============================================================================
 
@@ -202,8 +203,21 @@ def hex_to_rgb(hex_str):
 
 def rgb_to_hex(rgb):
     """ translate rgb tuple of integers to tkinter format hex color code
+        2024-04-16 - corrupted artwork tinkering with ffmpeg version 6.1
+            Patch entered here to fix bug but traceback to point of error.
+            rgb was populated with fourth tuple containing alpha = 256
     """
-    return "#%02x%02x%02x" % rgb
+    #rgb_no_alpha = rgb[:3]  # Deal with ffmpeg version 6.1 new feature.
+    #try:
+    #    hex_str = "#%02x%02x%02x" % rgb_no_alpha
+    #except TypeError:
+    #    print("image.py rgb_to_hex(): New ffmpeg version 6.1 glitch.")
+    #    print("rgb value:", rgb_no_alpha)
+    #    hex_str = "#2299ee"
+    #return hex_str
+    # return "#%02x%02x%02x" % rgb   # Initial error using ffmpeg 6.1
+
+    return "#%02x%02x%02x" % rgb[:3]
 
 
 def shade_rgb(rgb):
@@ -247,7 +261,7 @@ def contrasting_rgb_color(dec_tuple):
     """ Pass (r,g,b) tuple of background color.
         Returns white or black (r,g,b) tuple contrasting color passed.
     """
-    (r, g, b) = dec_tuple
+    (r, g, b) = dec_tuple[:3]  # 2024-04-16 ffmpeg 6.1 glitches
     return (0, 0, 0) if 1 - (r * 0.299 + g * 0.587 +
                              b * 0.114) / 255 < 0.5 else (255, 255, 255)
 

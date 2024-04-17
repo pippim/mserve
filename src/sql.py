@@ -1983,6 +1983,7 @@ class Config:
             ('cfg_sql_music', 'toplevel', 'taskbar_icon', 'height & colors'):
                 {"height": 64, "outline": 'White', "fill": 'LemonChiffon',
                  "text": 'Black', "font_family": 'DejaVuSans.ttf', "char": 'M'},
+
             # View SQL Music Table treeview displaycolumns (in order of appearance)
             ('cfg_sql_music', 'sql_treeview', 'column', 'order'):
                 ["os_filename", "track_number", "row_id", "os_atime",
@@ -1991,10 +1992,6 @@ class Config:
             # saved in a new history row:
             # ('cfg_sql_music', 'sql_treeview', 'column', 'custom'):
             #     [["os_filename", 242, "OS Filename"], ["row_id", 80, "Row ID"]...
-
-            # Long term goal to remove 'column'; 'order'/'widths' & replace with:
-            # 'cfg_sql_music', 'sql_treeview', 'custom_view', view_name (variable)
-            # The view_name will be a full copy of music_treeview with new values
 
             ('cfg_sql_music', 'sql_treeview', 'style', 'color'):
                 {"name": 'sql_music.Treeview', "foreground": "Black",
@@ -2041,6 +2038,12 @@ class Config:
                 {"height": 64, "outline": 'Black', "fill": 'LemonChiffon',
                  "text": 'Black', "font_family": 'DejaVuSans.ttf',
                  "char": 'C'},  # VALUE dictionary or list
+
+            # Volume during TV commercials
+            ('cfg_tv_volume', 'toplevel', 'taskbar_icon', 'height & colors'):
+                {"height": 64, "outline": 'Black', "fill": 'LemonChiffon',
+                 "text": 'Black', "font_family": 'DejaVuSans.ttf',
+                 "char": 'V'},
 
             ('cfg_end', 'sql_treeview', 'end', 'end'):
                 {"nothing": 1, "here": 2}  # To make inserting before end easier
@@ -3293,6 +3296,186 @@ class PrettyMeta:
             if key.startswith("DURATION"):
                 # Section starts at this index offset
                 self.part_start.append(curr_line - 1)
+
+
+class PrettyNormalize:
+    """ SQL Music Table viewer Popup menu for 'View Current Row'.
+        Also called from Music Location Tree popup menu for music file.
+    """
+
+    def __init__(self, sql_row_id, calc=None, file_ctl=None):
+        """ Build a pretty dictionary with user friendly field names
+            Values are from current treeview row for SQL Row. See note above.
+
+            The pretty dictionary is passed to mserve.py functions. """
+
+        self.calc = calc  # Calculated fields callback function
+        self.dict = OrderedDict()  # Python 2.7 version not needed in 3.7
+        self.scrollbox = None  # custom scrollbox for display
+        self.search = None  # search text
+        self.synchronized = 0.0  # Only used for PrettyMusic dictionary.
+
+        # List of part section starting positions in field display
+        self.part_start = [0]  # First heading starts at field #0
+
+        # List of part section headings at part_start[] list above
+        self.part_names = ['SQL and OS Info (at first encounter!)',
+                           'SQL Metadata Subset (more when song playing)',
+                           'Lyrics score (usually after Webscraping)',
+                           'History Time - Row Number       | Type | Action' +
+                           ' | Master | Detail | Target | Comments',
+                           'Metadata modified']
+        # List of part colors - applied to key names. After 5 parts rest are green
+        self.part_color = ['red', 'green', 'green', 'red', 'blue', 'green']
+        # text 'Seconds' appears in 6th group which turns 'seconds' in 2nd & 3rd
+        # groups to green for that word only. So make 2nd & 3rd 'green' too.
+
+        # Get Music Table row, remove commas
+        key = sql_row_id.replace(',', '')
+        #print("sql_row_id:", sql_row_id, 'key:', key)
+        # NOTE: This isn't using OsFileName key so ofb.Select() won't work
+        cursor.execute("SELECT * FROM Music WHERE Id = ?", [key])
+
+        try:  # NOTE: This isn't using OsFileName key so ofb.Select() won't work
+            d = dict(cursor.fetchone())
+        except TypeError:  # TypeError: 'NoneType' object is not iterable:
+            d = None
+        if d is None:
+            print('sql.py.PrettyMusic() - No SQL for Music Table Id:', key)
+            return  # Dictionary will be empty
+
+        self.dict['SQL Music Row Id'] = sql_format_value(d['Id'])
+        # 'SQL Music Row Id' is same name in PrettyHistory and is a lookup key
+        self.dict['OS Filename'] = sql_format_value(d['OsFileName'])
+        self.dict['File size'] = sql_format_int(d['OsFileSize'])
+        self.dict['Last Access'] = sql_format_date(d['OsAccessTime'])
+        self.dict['Modification time'] = sql_format_date(d['OsModifyTime'])
+        self.dict['Change time'] = sql_format_date(d['OsChangeTime'])
+        self.part_start.append(len(self.dict))
+
+        self.dict['Title'] = sql_format_value(d['Title'])
+        if d['FirstDate']:
+            self.dict['Year'] = sql_format_value(d['FirstDate'])
+        self.dict['Artist'] = sql_format_value(d['Artist'])
+        self.dict['Album'] = sql_format_value(d['Album'])
+        if d['Compilation']:
+            self.dict['Compilation'] = 'Yes' if d['Compilation'] == "1" else 'No'
+        if d['AlbumArtist']:
+            self.dict['Album Artist'] = sql_format_value(d['AlbumArtist'])
+        if d['AlbumDate']:
+            self.dict['Album Date'] = sql_format_value(d['AlbumDate'])
+        if d['CreationTime']:
+            self.dict['Encoded'] = sql_format_value(d['CreationTime'])
+        if d['DiscNumber']:
+            self.dict['Disc Number'] = sql_format_value(d['DiscNumber'])
+        if d['TrackNumber']:
+            self.dict['Track Number'] = sql_format_value(d['TrackNumber'])
+        if d['Rating']:
+            self.dict['Rating'] = sql_format_value(d['Rating'])
+
+        ''' ffMajor, ffMinor, ffCompatible, Title, Artist, Album, Compilation, 
+        AlbumArtist, AlbumDate, FirstDate, CreationTime, DiscNumber, TrackNumber,
+        Rating, Genre, Composer, Comment, Hyperlink, Duration, Seconds,
+        GaplessPlayback, PlayCount, LastPlayTime, LyricsScore, LyricsTimeIndex 
+        PLUS: EncodingFormat, DiscId, MusicBrainzDiscId, OsFileSize, OsAccessTime '''
+        if d['Genre']:
+            self.dict['Genre'] = sql_format_value(d['Genre'])
+        if d['Composer']:
+            self.dict['Composer'] = sql_format_value(d['Composer'])
+        if d['Comment']:
+            self.dict['Comment'] = sql_format_value(d['Comment'])
+        if d['Hyperlink']:
+            self.dict['Hyperlink'] = sql_format_value(d['Hyperlink'])
+        if d['Duration']:
+            self.dict['Duration'] = sql_format_value(d['Duration'])
+        if d['Seconds']:
+            self.dict['Seconds'] = sql_format_value(d['Seconds'])
+        if d['GaplessPlayback'] and d['GaplessPlayback'] != "0":
+            self.dict['Gapless Playback'] = sql_format_value(d['GaplessPlayback'])
+        if d['PlayCount']:
+            self.dict['Play Count'] = sql_format_value(d['PlayCount'])
+        if d['LastPlayTime']:
+            self.dict['Last Play Time'] = sql_format_date(d['LastPlayTime'])
+        if d['ffMajor']:
+            self.dict['Major Version'] = sql_format_value(d['ffMajor'])
+        if d['ffMinor']:
+            self.dict['Minor Version'] = sql_format_value(d['ffMinor'])
+        if d['ffCompatible']:
+            self.dict['Compatible Brands'] = sql_format_value(d['ffCompatible'])
+
+        ''' If file_ctl passed, path is not none, and matches, use extra data '''
+        # pycharm doesn't like PRUNED_DIR type 'None', expected 'Sized'
+        # noinspection PyTypeChecker
+        if file_ctl and file_ctl.path and \
+                file_ctl.path[len(PRUNED_DIR):] == d['OsFileName']:
+            if file_ctl.Encoder:
+                self.dict['Encoder'] = file_ctl.Encoder
+            if file_ctl.EncodingFormat:
+                self.dict['Encoding Format'] = file_ctl.EncodingFormat
+            if file_ctl.AudioStream:
+                self.dict['Audio Stream'] = file_ctl.AudioStream[:80]
+            if file_ctl.ArtworkStream:
+                self.dict['Artwork Stream'] = file_ctl.ArtworkStream[:80]
+            if file_ctl.DiscId:
+                self.dict['CDDB Disc ID'] = file_ctl.DiscId
+            if file_ctl.MusicBrainzDiscId:
+                self.dict['MusicBrainz ID'] = file_ctl.MusicBrainzDiscId
+
+        self.part_start.append(len(self.dict))
+
+        lyrics_count = 0.0
+        time_count = 0.0
+        if d["LyricsTimeIndex"] is None:
+            time_index_list = ["No time index"]  # Nothing prints yet.
+        else:
+            time_index_list = json.loads(d["LyricsTimeIndex"])
+        if d["LyricsScore"] is None:
+            self.dict['Lyrics score'] = "Webscrape for lyrics not completed."
+        else:
+            lyrics = d["LyricsScore"]
+            lyrics_count = lyrics.count("\n")  # TODO: Test in Windows
+
+            for i, line in enumerate(lyrics.splitlines()):
+                # If time index exists, put value in front of lyric line
+                try:
+                    # pycharm doesn't like time_index_list, unexpected type str
+                    # no inspection PyStringFormat
+                    self.dict[tmf.mm_ss(time_index_list[i], trim=False,
+                                        rem='h', brackets=True)] = line
+                    time_count += 1.0
+                except (IndexError, ValueError):
+                    # IndexError: list index out of range
+                    # ValueError: Unknown format code 'f' for object of type 'unicode'
+                    self.dict['line # ' + str(i + 1)] = line
+
+        if lyrics_count:
+            self.synchronized = float(time_count / lyrics_count)
+        else:
+            self.synchronized = 0.0
+        #print("time_count:", time_count, "lyrics_count:", lyrics_count,
+        #      "percent:", self.synchronized)
+        self.part_start.append(len(self.dict))
+
+        ''' Append SQL History Table Rows matching Music ID '''
+        hist_cursor.execute("SELECT * FROM History INDEXED BY MusicIdIndex \
+                            WHERE MusicId = ?", (d['Id'],))
+        rows = hist_cursor.fetchall()
+        for sql_row in rows:
+            row = dict(sql_row)
+            ''' SQL is in Unicode, to concatenate "-" convert to strings '''
+            self.dict[sql_format_date(row['Time']) + " - " + str(row['Id'])] = \
+                " | " + str(row['Type']) + " | " + str(row['Action']) + " | " + \
+                str(row['SourceMaster']) + " | " + str(row['SourceDetail']) + \
+                " | " + str(row['Target']) + " | " + str(row['Comments'])
+
+        if self.calc is not None:
+            ''' TODO: Run 'ffprobe' for more metadata: 
+                      Encoder Settings
+                      Encoding Time
+                      Free DiscId
+                      Musicbrainz DiscId
+            '''
+            self.calc(self.dict)  # Call external function passing our dict
 
 
 def sql_format_value(value):
