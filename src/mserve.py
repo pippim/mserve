@@ -6435,21 +6435,9 @@ Call search.py when these control keys occur
         tk.Grid.rowconfigure(frame1, 0, weight=1)
         tk.Grid.columnconfigure(frame1, 1, weight=1)
 
-        self.scrollbox.tag_config('red', foreground='Red')
-        self.scrollbox.tag_config('blue', foreground='Blue')
-        self.scrollbox.tag_config('green', foreground='Green')
-        self.scrollbox.tag_config('black', foreground='Black')
-        self.scrollbox.tag_config('yellow', background='Yellow')
-        self.scrollbox.tag_config('cyan', background='Cyan')
-        self.scrollbox.tag_config('magenta', background='Magenta')
-
+        # Set tag Foreground & background colors, tabs and margins
+        toolkit.scroll_defaults(self.scrollbox)
         self.scrollbox.highlight_pattern(u'TIPS:', 'red')
-
-        #self.scrollbox.config(tabs=("2m", "40m", "50m"))  # Apr 9, 2023
-        self.scrollbox.config(tabs=("2m", "65m", "80m"))  # Apr 27, 2023
-        self.scrollbox.tag_configure("margin", lmargin1="2m", lmargin2="65m")
-        # Fix Control+C  https://stackoverflow.com/a/64938516/6929343
-        self.scrollbox.bind("<Button-1>", lambda event: self.scrollbox.focus_set())
 
     def pretty_close(self, _win_grp=None):
         """ Close window painted by the create_window() method. 

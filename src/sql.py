@@ -2900,6 +2900,7 @@ def load_ctl():
 class PrettyMusic:
     """ SQL Music Table viewer Popup menu for 'View Current Row'. 
         Also called from Music Location Tree popup menu for music file.
+        If FileControl() is populated add additional details not in SQL. 
     """
 
     def __init__(self, sql_row_id, calc=None, file_ctl=None):
@@ -3299,183 +3300,109 @@ class PrettyMeta:
 
 
 class PrettyNormalize:
-    """ SQL Music Table viewer Popup menu for 'View Current Row'.
-        Also called from Music Location Tree popup menu for music file.
+    """ View four History Records for Normalizing Song Volume:
+
+            volume detect_old
+            volume loudnorm_1
+            volume loudnorm_2
+            volume detect_new
+
     """
 
-    def __init__(self, sql_row_id, calc=None, file_ctl=None):
+    # noinspection SpellCheckingInspection
+    def __init__(self, music_id, loc):
         """ Build a pretty dictionary with user friendly field names
             Values are from current treeview row for SQL Row. See note above.
 
             The pretty dictionary is passed to mserve.py functions. """
 
-        self.calc = calc  # Calculated fields callback function
         self.dict = OrderedDict()  # Python 2.7 version not needed in 3.7
         self.scrollbox = None  # custom scrollbox for display
-        self.search = None  # search text
-        self.synchronized = 0.0  # Only used for PrettyMusic dictionary.
+        self.search = None
 
         # List of part section starting positions in field display
         self.part_start = [0]  # First heading starts at field #0
 
         # List of part section headings at part_start[] list above
-        self.part_names = ['SQL and OS Info (at first encounter!)',
-                           'SQL Metadata Subset (more when song playing)',
-                           'Lyrics score (usually after Webscraping)',
-                           'History Time - Row Number       | Type | Action' +
-                           ' | Master | Detail | Target | Comments',
-                           'Metadata modified']
-        # List of part colors - applied to key names. After 5 parts rest are green
-        self.part_color = ['red', 'green', 'green', 'red', 'blue', 'green']
-        # text 'Seconds' appears in 6th group which turns 'seconds' in 2nd & 3rd
-        # groups to green for that word only. So make 2nd & 3rd 'green' too.
+        self.part_names = ['Original Volume',
+                           '\nNormalization Analysis',
+                           '\nNormalization Update',
+                           '\nNew Volume']
+        self.part_color = ['red', 'blue', 'green', 'red']
 
-        # Get Music Table row, remove commas
-        key = sql_row_id.replace(',', '')
-        #print("sql_row_id:", sql_row_id, 'key:', key)
-        # NOTE: This isn't using OsFileName key so ofb.Select() won't work
-        cursor.execute("SELECT * FROM Music WHERE Id = ?", [key])
+        def format_dB(val):
+            """ '+' or '-ve' float or None printed as 'N/A' """
+            pass
 
-        try:  # NOTE: This isn't using OsFileName key so ofb.Select() won't work
-            d = dict(cursor.fetchone())
-        except TypeError:  # TypeError: 'NoneType' object is not iterable:
-            d = None
-        if d is None:
-            print('sql.py.PrettyMusic() - No SQL for Music Table Id:', key)
-            return  # Dictionary will be empty
+        # Old volume history record
+        avo_d = hist_get_music_var(music_id, "volume", "detect_old", loc)
+        avo_l = json.loads(avo_d['Target']) if avo_d else None
+        old_mean = avo_l[0] if avo_l else "N/A"  # mean & max in list
+        old_max = avo_l[1] if avo_l else "N/A"
 
-        self.dict['SQL Music Row Id'] = sql_format_value(d['Id'])
-        # 'SQL Music Row Id' is same name in PrettyHistory and is a lookup key
-        self.dict['OS Filename'] = sql_format_value(d['OsFileName'])
-        self.dict['File size'] = sql_format_int(d['OsFileSize'])
-        self.dict['Last Access'] = sql_format_date(d['OsAccessTime'])
-        self.dict['Modification time'] = sql_format_date(d['OsModifyTime'])
-        self.dict['Change time'] = sql_format_date(d['OsChangeTime'])
+        # 'loudnorm' Filter Pass 1 (Measurement)
+        aln_d = hist_get_music_var(music_id, "volume", "loudnorm_1", loc)
+        aln_jd = json.loads(aln_d['Target']) if aln_d else {}
+        input_i1 = aln_jd['input_i'] + " LUFS" if aln_jd else "N/A"  # Integrated
+        input_tp1 = aln_jd['input_tp'] + " dBTP" if aln_jd else "N/A"  # True Peak
+        input_lra1 = aln_jd['input_lra'] + " LU" if aln_jd else "N/A"
+        input_thresh1 = aln_jd['input_thresh'] + " LUFS" if aln_jd else "N/A"
+        target_offset1 = aln_jd['target_offset'] + " LU" if aln_jd else "N/A"
+        audio_rate1 = aln_jd['ar'] + " Hz" if aln_jd else "N/A"
+        '''
+                         V1                  V2
+        1  Input Integrated          -24.7 LUFS
+        2   Input True Peak           -1.6 dBTP
+        3         Input LRA             17.9 LU
+        4   Input Threshold          -37.8 LUFS
+        5 Output Integrated          -23.4 LUFS
+        6  Output True Peak           -2.0 dBTP
+        '''
+        # 'loudnorm' Filter Pass 2 (Normalization)
+        uln_d = hist_get_music_var(music_id, "volume", "loudnorm_2", loc)
+        uln_jd = json.loads(uln_d['Target']) if uln_d else {}
+        input_i2 = uln_jd['input_i'] + " LUFS" if uln_jd else "N/A"  # Integrated
+        input_tp2 = uln_jd['input_tp'] + " dBTP" if uln_jd else "N/A"  # True Peak
+        input_lra2 = uln_jd['input_lra'] + " LU" if uln_jd else "N/A"
+        input_thresh2 = uln_jd['input_thresh'] + " LUFS" if uln_jd else "N/A"
+        target_offset2 = uln_jd['target_offset'] + " LU" if uln_jd else "N/A"
+        output_i2 = uln_jd['output_i'] + " LUFS" if uln_jd else "N/A"  # Integrated
+        output_tp2 = uln_jd['output_tp'] + " dBTP" if uln_jd else "N/A"  # True Peak
+        output_lra2 = uln_jd['output_lra'] + " LU" if uln_jd else "N/A"
+        output_thresh2 = uln_jd['output_thresh'] + " LUFS" if uln_jd else "N/A"
+
+        # New volume history record
+        avn_d = hist_get_music_var(music_id, "volume", "detect_new", loc)
+        avn_l = json.loads(avn_d['Target']) if avn_d else None
+        new_mean = avn_l[0] if avn_l else "N/A"  # mean & max in list
+        new_max = avn_l[1] if avn_l else "N/A"
+
+        self.dict['Old Mean Volume'] = old_mean
+        self.dict['Old Max. Volume'] = old_max
         self.part_start.append(len(self.dict))
 
-        self.dict['Title'] = sql_format_value(d['Title'])
-        if d['FirstDate']:
-            self.dict['Year'] = sql_format_value(d['FirstDate'])
-        self.dict['Artist'] = sql_format_value(d['Artist'])
-        self.dict['Album'] = sql_format_value(d['Album'])
-        if d['Compilation']:
-            self.dict['Compilation'] = 'Yes' if d['Compilation'] == "1" else 'No'
-        if d['AlbumArtist']:
-            self.dict['Album Artist'] = sql_format_value(d['AlbumArtist'])
-        if d['AlbumDate']:
-            self.dict['Album Date'] = sql_format_value(d['AlbumDate'])
-        if d['CreationTime']:
-            self.dict['Encoded'] = sql_format_value(d['CreationTime'])
-        if d['DiscNumber']:
-            self.dict['Disc Number'] = sql_format_value(d['DiscNumber'])
-        if d['TrackNumber']:
-            self.dict['Track Number'] = sql_format_value(d['TrackNumber'])
-        if d['Rating']:
-            self.dict['Rating'] = sql_format_value(d['Rating'])
-
-        ''' ffMajor, ffMinor, ffCompatible, Title, Artist, Album, Compilation, 
-        AlbumArtist, AlbumDate, FirstDate, CreationTime, DiscNumber, TrackNumber,
-        Rating, Genre, Composer, Comment, Hyperlink, Duration, Seconds,
-        GaplessPlayback, PlayCount, LastPlayTime, LyricsScore, LyricsTimeIndex 
-        PLUS: EncodingFormat, DiscId, MusicBrainzDiscId, OsFileSize, OsAccessTime '''
-        if d['Genre']:
-            self.dict['Genre'] = sql_format_value(d['Genre'])
-        if d['Composer']:
-            self.dict['Composer'] = sql_format_value(d['Composer'])
-        if d['Comment']:
-            self.dict['Comment'] = sql_format_value(d['Comment'])
-        if d['Hyperlink']:
-            self.dict['Hyperlink'] = sql_format_value(d['Hyperlink'])
-        if d['Duration']:
-            self.dict['Duration'] = sql_format_value(d['Duration'])
-        if d['Seconds']:
-            self.dict['Seconds'] = sql_format_value(d['Seconds'])
-        if d['GaplessPlayback'] and d['GaplessPlayback'] != "0":
-            self.dict['Gapless Playback'] = sql_format_value(d['GaplessPlayback'])
-        if d['PlayCount']:
-            self.dict['Play Count'] = sql_format_value(d['PlayCount'])
-        if d['LastPlayTime']:
-            self.dict['Last Play Time'] = sql_format_date(d['LastPlayTime'])
-        if d['ffMajor']:
-            self.dict['Major Version'] = sql_format_value(d['ffMajor'])
-        if d['ffMinor']:
-            self.dict['Minor Version'] = sql_format_value(d['ffMinor'])
-        if d['ffCompatible']:
-            self.dict['Compatible Brands'] = sql_format_value(d['ffCompatible'])
-
-        ''' If file_ctl passed, path is not none, and matches, use extra data '''
-        # pycharm doesn't like PRUNED_DIR type 'None', expected 'Sized'
-        # noinspection PyTypeChecker
-        if file_ctl and file_ctl.path and \
-                file_ctl.path[len(PRUNED_DIR):] == d['OsFileName']:
-            if file_ctl.Encoder:
-                self.dict['Encoder'] = file_ctl.Encoder
-            if file_ctl.EncodingFormat:
-                self.dict['Encoding Format'] = file_ctl.EncodingFormat
-            if file_ctl.AudioStream:
-                self.dict['Audio Stream'] = file_ctl.AudioStream[:80]
-            if file_ctl.ArtworkStream:
-                self.dict['Artwork Stream'] = file_ctl.ArtworkStream[:80]
-            if file_ctl.DiscId:
-                self.dict['CDDB Disc ID'] = file_ctl.DiscId
-            if file_ctl.MusicBrainzDiscId:
-                self.dict['MusicBrainz ID'] = file_ctl.MusicBrainzDiscId
-
+        self.dict['Input Integrated 1'] = input_i1
+        self.dict['Input True Peak 1'] = input_tp1
+        self.dict['Input LRA 1'] = input_lra1
+        self.dict['Input Threshold 1'] = input_thresh1
+        self.dict['Target Offset 1'] = target_offset1
+        self.dict['Audio Rate 1'] = audio_rate1
         self.part_start.append(len(self.dict))
 
-        lyrics_count = 0.0
-        time_count = 0.0
-        if d["LyricsTimeIndex"] is None:
-            time_index_list = ["No time index"]  # Nothing prints yet.
-        else:
-            time_index_list = json.loads(d["LyricsTimeIndex"])
-        if d["LyricsScore"] is None:
-            self.dict['Lyrics score'] = "Webscrape for lyrics not completed."
-        else:
-            lyrics = d["LyricsScore"]
-            lyrics_count = lyrics.count("\n")  # TODO: Test in Windows
-
-            for i, line in enumerate(lyrics.splitlines()):
-                # If time index exists, put value in front of lyric line
-                try:
-                    # pycharm doesn't like time_index_list, unexpected type str
-                    # no inspection PyStringFormat
-                    self.dict[tmf.mm_ss(time_index_list[i], trim=False,
-                                        rem='h', brackets=True)] = line
-                    time_count += 1.0
-                except (IndexError, ValueError):
-                    # IndexError: list index out of range
-                    # ValueError: Unknown format code 'f' for object of type 'unicode'
-                    self.dict['line # ' + str(i + 1)] = line
-
-        if lyrics_count:
-            self.synchronized = float(time_count / lyrics_count)
-        else:
-            self.synchronized = 0.0
-        #print("time_count:", time_count, "lyrics_count:", lyrics_count,
-        #      "percent:", self.synchronized)
+        self.dict['Input Integrated 2'] = input_i2
+        self.dict['Input True Peak 2'] = input_tp2
+        self.dict['Input LRA 2'] = input_lra2
+        self.dict['Input Threshold 2'] = input_thresh2
+        self.dict['Target Offset 2'] = target_offset2
+        self.dict['Output Integrated 2'] = output_i2
+        self.dict['Output True Peak 2'] = output_tp2
+        self.dict['Output LRA 2'] = output_lra2
+        self.dict['Output Threshold 2'] = output_thresh2
         self.part_start.append(len(self.dict))
 
-        ''' Append SQL History Table Rows matching Music ID '''
-        hist_cursor.execute("SELECT * FROM History INDEXED BY MusicIdIndex \
-                            WHERE MusicId = ?", (d['Id'],))
-        rows = hist_cursor.fetchall()
-        for sql_row in rows:
-            row = dict(sql_row)
-            ''' SQL is in Unicode, to concatenate "-" convert to strings '''
-            self.dict[sql_format_date(row['Time']) + " - " + str(row['Id'])] = \
-                " | " + str(row['Type']) + " | " + str(row['Action']) + " | " + \
-                str(row['SourceMaster']) + " | " + str(row['SourceDetail']) + \
-                " | " + str(row['Target']) + " | " + str(row['Comments'])
-
-        if self.calc is not None:
-            ''' TODO: Run 'ffprobe' for more metadata: 
-                      Encoder Settings
-                      Encoding Time
-                      Free DiscId
-                      Musicbrainz DiscId
-            '''
-            self.calc(self.dict)  # Call external function passing our dict
+        self.dict['New Mean Volume'] = new_mean
+        self.dict['New Max. Volume'] = new_max
+        self.part_start.append(len(self.dict))
 
 
 def sql_format_value(value):

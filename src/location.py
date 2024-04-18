@@ -1221,9 +1221,11 @@ class LocationsCommonSelf:
         self.end_long_running = None  # To control mserve playing buttons
 
         ''' Analyze Volume variables embedded inside Compare Window '''
-        self.avo_ffmpeg_path = g.PROGRAM_DIR + os.sep
-        # Set to None if nothing special. Can't have in regular path because
-        # ffmpeg 6.1 (with 'loudnorm' filter) can't read artwork like ffmpeg 2.8.
+        self.avo_ffmpeg = 'ffmpeg'
+        #self.avo_ffmpeg = g.PROGRAM_DIR + os.sep + 'ffmpeg'
+        # Set to "ffmpeg" for regular path. If a special version of ffmpeg needed
+        # (E.G. for 'loudnorm' filter) then specify location. Do this if special
+        # version breaks other mserve features like getting artwork.
         self.avo_select_max_lower = -10.0  # 2024-04-13 Future user config setting
         self.avo_select_max_upper = -0.15  # 2024-04-13 Future user config setting
         # E.G. self.avo_select_max_lower <= song_max <= self.avo_select_max_upper
@@ -1234,7 +1236,7 @@ class LocationsCommonSelf:
         self.avo_lra = "11.0"  # AKA input_lra and "LRA"
         self.avo_linear = "true"  # Not using dynamic normalization
         self.avo_use_inputs = True  # Override defaults using pass 1 values
-        self.avo_comment = "April 14, 2024"  # SQL History Table "Comments" column
+        self.avo_comment = "April 16, 2024"  # SQL History Table "Comments" column
 
         ''' Make TMP names unique for multiple OS jobs running at once '''
         letters = string.ascii_lowercase + string.digits
@@ -1245,7 +1247,10 @@ class LocationsCommonSelf:
 
         ''' self.cfg = sql.Config() class '''
         self.cfg = sql.Config()
-        self.bg = None
+        self.bg = None  # WIP - Background color in Analyze Volume (avo)
+
+        ''' self.win_grp class simplifies window management '''
+        self.win_grp = None  # init with class toolkit.ChildWindows(toplevel)
 
 
 class Locations(LocationsCommonSelf):
@@ -4010,6 +4015,7 @@ filename.
             shutdown will contain <Tkinter.Event instance at 0x7f4ebb968ef0> """
         if self.tt and self.main_top:  # toolkit.Tooltips() won't exist during early startup
             self.tt.close(self.main_top)
+
         if self.main_top:
             geom = monitor.get_window_geom_string(self.main_top, leave_visible=False)
             monitor.save_window_geom('locations', geom)
@@ -4171,6 +4177,9 @@ filename.
         self.cmp_top.columnconfigure(0, weight=1)
         self.cmp_top.rowconfigure(0, weight=1)
 
+        ''' self.win_grp class simplifies window management '''
+        self.win_grp = toolkit.ChildWindows(self.cmp_top)
+
         # TODO: load/save window geometry. User configuration colors
         if prefix == "cmp":
             self.cmp_top.geometry('%dx%d+%d+%d' % (1800, 500, xy[0], xy[1]))
@@ -4228,9 +4237,10 @@ filename.
             columns = ("SrcModified", "TrgModified", "SrcSize",
                        "TrgSize", "Action", "src_time", "trg_time")
         elif self.state == "analyze_volume" or self.state == "analyze_volume_new":
-            columns = ("Mean", "Maximum")
+            columns = ("Mean", "Maximum", "MusicId")
+            # MusicId (music_id) is hidden (not in displaycolumns tuple)
         else:  # "analyze_loudnorm" and "update_loudnorm" states
-            columns = ("Integrated", "TruePeak", "LRA", "Threshold")
+            columns = ("Integrated", "TruePeak", "LRA", "Threshold", "MusicId")
 
         ''' Treeview List Box, Columns and Headings '''
         self.cmp_tree = ttk.Treeview(frame2, show=('tree', 'headings'),
@@ -4260,6 +4270,7 @@ filename.
             self.cmp_tree.heading("Mean", text="Mean Volume")
             self.cmp_tree.column("Maximum", width=250, anchor="center", stretch=tk.YES)
             self.cmp_tree.heading("Maximum", text="Max. Volume")
+            self.cmp_tree.column("MusicId")  # Hidden MusicId
 
         else:  # "analyze_loudnorm" and "update_loudnorm" states
             self.cmp_tree.column("Integrated", width=125, anchor="center", stretch=tk.YES)
@@ -4270,6 +4281,7 @@ filename.
             self.cmp_tree.heading("LRA", text="LRA")
             self.cmp_tree.column("Threshold", width=125, anchor="center", stretch=tk.YES)
             self.cmp_tree.heading("Threshold", text="Threshold")
+            self.cmp_tree.column("MusicId")  # Hidden MusicId
 
         self.cmp_tree.grid(row=0, column=0, sticky=tk.NSEW)
 
@@ -4295,6 +4307,8 @@ filename.
             self.cmp_tree.bind('<Motion>', self.highlight_row)
             self.cmp_tree.bind("<Leave>", self.leave_row)
             self.cmp_tree.tag_configure('highlight', background='LightBlue')
+            self.cmp_tree.tag_configure('menu_sel', background='Yellow')
+            self.cmp_tree.bind("<Button-3>", lambda event: self.avo_row_menu(event))
 
         style = ttk.Style()
         style_name = colors['name']
@@ -4475,6 +4489,9 @@ filename.
 
         if self.cmp_keep_awake_is_active:  # Keeping remote host awake?
             self.cmp_keep_awake_is_active = False  # Has 10 minute wakeup cycle
+
+        self.win_grp.destroy_all()  # Close any child windows opened.
+
         if not self.cmp_top_is_active:
             return  # Already closed
         self.cmp_top_is_active = False
@@ -4524,7 +4541,7 @@ filename.
         ''' Traverse fake_paths created by mserve.py make_sorted_list() '''
         for i, fake_path in enumerate(self.fake_paths):
             if not self.cmp_top_is_active:
-                return False  # Closing down, False indicates no differences
+                return False  # Closing down
 
             self.fast_refresh(tk_after=False)  # Update play_top animations
 
@@ -4555,7 +4572,7 @@ filename.
             if prefix == "cmp":
                 # str(i) will be iid if and when Song inserted.
                 if not self.cmp_insert_tree_row(fake_path, CurrAlbumId, str(i), Song):
-                    return False  # Closing down, False indicates no differences
+                    return False  # Closing down
             elif self.state == "analyze_volume":
                 if not self.avo_insert_tree_row(fake_path, CurrAlbumId, str(i), Song):
                     return False  # Closing down
@@ -4579,7 +4596,7 @@ filename.
             album_count = 0
             for album in self.cmp_tree.get_children(artist):
                 if self.cmp_top_is_active is False:
-                    return False  # Closing down, False indicates no differences
+                    return False  # Closing down
                 song_count = len(self.cmp_tree.get_children(album))
                 if song_count == 0:
                     self.cmp_tree.delete(album)
@@ -4608,7 +4625,7 @@ filename.
         """
 
         if not self.cmp_top_is_active:
-            return False  # Closing down, False indicates no differences
+            return False  # Closing down
 
         ''' Compare two files '''
         action, src_path, src_size, src_time, trg_path, \
@@ -4635,7 +4652,7 @@ filename.
         trg_ftime = tmf.ago(float(trg_time))
 
         if not self.cmp_top_is_active:
-            return False  # Closing down, False indicates no differences
+            return False  # Closing down
 
         ''' Insert song into comparison treeview and show on screen '''
         self.cmp_tree.insert(CurrAlbumId, "end", iid=iid, text=Song,
@@ -4654,7 +4671,7 @@ filename.
             self.act_code (location code). """
         _who = self.who + "avo_startup_check():"
         if not self.cmp_top_is_active:
-            return False  # Closing down, False indicates no differences
+            return False  # Closing down
 
         ''' Tally history records. 
                       Type      Action
@@ -4756,7 +4773,7 @@ filename.
             self.act_code (location code). """
         _who = self.who + "avo_job_summary():"
         if not self.cmp_top_is_active:
-            return False  # Closing down, False indicates no differences
+            return False  # Closing down
 
         ''' Tally history records. '''
         print("\nTally History Records AFTER Volume Analysis and Update")
@@ -4773,7 +4790,7 @@ filename.
         print()
 
         if not self.cmp_top_is_active:
-            return False  # Closing down, False indicates no differences
+            return False  # Closing down
 
         title = None  # spread happiness to pycharm syntax checker
         elapsed = end_time - start_time
@@ -4832,7 +4849,7 @@ filename.
         def insert_tv_row():
             """ Shared function to add treeview row """
             self.cmp_tree.insert(CurrAlbumId, "end", iid=iid, text=Song,
-                                 values=(mean_volume, max_volume),
+                                 values=(mean_volume, max_volume, music_id),
                                  tags=("Song",))
             self.cmp_tree.see(iid)
             self.cmp_top.update_idletasks()  # Allow close button to abort
@@ -4857,7 +4874,7 @@ filename.
         '''
         mean_volume, max_volume = self.avo_run_ffmpeg(trg_path, trg_size)
         if not self.cmp_top_is_active:
-            return False  # Closing down, False indicates no differences
+            return False  # Closing down
 
         ''' ffmpeg changes Last Access Time - Set it back '''
         self.avo_trg_reset(trg_path, trg_atime, _who)
@@ -4871,7 +4888,7 @@ filename.
                 print("for:", OsBase)
             music_id = 0  # Don't populate with "N/A"
         if not self.cmp_top_is_active:
-            return False  # Closing down, False indicates no differences
+            return False  # Closing down
 
         if music_id:
             sql.hist_add_music_var(
@@ -4951,7 +4968,7 @@ One-liner to copy and paste into terminal:
     ffmpeg -i "/media/rick/SANDISK128/Music/AC_DC/Stiff Upper Lip/09 Damned.m4a" -af "volumedetect" -f null /dev/null
 
         """
-        cmd = 'ffmpeg -i "' + trg_path + '" -af "volumedetect"'
+        cmd = self.avo_mpeg + ' -i "' + trg_path + '" -af "volumedetect"'
         cmd += ' -f null /dev/null'
 
         wait = size / 1000000 * 3  # Wait 3 seconds per megabyte before quiting
@@ -5028,7 +5045,7 @@ One-liner to copy and paste into terminal:
             return True  # Skip this song file
 
         if not self.cmp_top_is_active:
-            return False  # Closing down, False indicates no differences
+            return False  # Closing down
 
         ''' Does volume qualify? '''
         mean_volume, max_volume = json.loads(d['Target'])
@@ -5054,7 +5071,8 @@ One-liner to copy and paste into terminal:
             self.cmp_tree.insert(
                 CurrAlbumId, "end", iid=iid, text=Song, tags=("Song",),
                 values=(json_dict.get("input_i", "N/A"), json_dict.get("input_tp", "N/A"),
-                        json_dict.get("input_lra", "N/A"), json_dict.get("input_thresh", "N/A"))
+                        json_dict.get("input_lra", "N/A"),
+                        json_dict.get("input_thresh", "N/A"), music_id)
             )
             self.cmp_tree.see(iid)
             self.cmp_top.update_idletasks()  # Allow close button to abort
@@ -5079,7 +5097,7 @@ One-liner to copy and paste into terminal:
         json_dict = self.aln_run_ffmpeg(trg_path, trg_size)
 
         if not self.cmp_top_is_active:
-            return False  # Closing down, False indicates no differences
+            return False  # Closing down
 
         ''' ffmpeg changes Last Access Time - Set it back '''
         self.avo_trg_reset(trg_path, trg_atime, _who)
@@ -5094,7 +5112,7 @@ One-liner to copy and paste into terminal:
             music_id = 0  # Don't populate with "N/A"
 
         if not self.cmp_top_is_active:
-            return False  # Closing down, False indicates no differences
+            return False  # Closing down
 
         # audio_rate was not part of json_dict used by 'loudnorm' filter
         # get it from the stream in self.trg_ctl.metadata dictionary
@@ -5162,7 +5180,7 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=$int
         """
 
         # Version using FileControl to create OrderedDict of all lines
-        cmd = 'ffmpeg -i "' + trg_path + '" -af'
+        cmd = self.avo_mpeg + ' -i "' + trg_path + '" -af'
         cmd += ' loudnorm=I=-23:TP=0:print_format=json'
         cmd += ' -f null -'
 
@@ -5211,7 +5229,7 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=$int
             return True  # Skip this song file
 
         if not self.cmp_top_is_active:
-            return False  # Closing down, False indicates no differences
+            return False  # Closing down
 
         ''' Are pass 1 loudnorm values complete? '''
         json_dict = json.loads(d['Target'])
@@ -5235,7 +5253,8 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=$int
             self.cmp_tree.insert(
                 CurrAlbumId, "end", iid=iid, text=Song, tags=("Song",),
                 values=(json_dict.get("output_i", "N/A"), json_dict.get("output_tp", "N/A"),
-                        json_dict.get("output_lra", "N/A"), json_dict.get("output_thresh", "N/A"))
+                        json_dict.get("output_lra", "N/A"),
+                        json_dict.get("output_thresh", "N/A"), music_id)
             )
             self.cmp_tree.see(iid)
             self.cmp_top.update_idletasks()  # Allow close button to abort
@@ -5244,13 +5263,14 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=$int
         ''' Skip files already updated? '''
         if self.avo_skip_complete:
             d = sql.hist_get_music_var(music_id, "volume", "loudnorm_2", self.act_code)
+            json_dict = json.loads(d['Target'])
             # TODO: Check for .new file and .bak file
             if d and d['Timestamp'] > trg_mtime:
                 insert_tv_row()  # Show progress so far
                 self.avo_skip_count += 1
                 return True  # Skip this song file
 
-        ''' Build output filename for ffmpeg '''
+        ''' Override audio rates too high for ffmpeg codecs '''
         trg_ext = trg_path.split(".")[-1]
         if trg_ext == "m4a":
             # ffmpeg won't look at input file format to devine output file format
@@ -5276,7 +5296,7 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=$int
             IN = self.avo_integrated  # "-23.0"
 
         # -y = overwrite previous .new file.
-        cmd = 'ffmpeg -y -i "' + trg_path + '" -af '
+        cmd = self.avo_mpeg + ' -y -i "' + trg_path + '" -af '
         cmd += 'loudnorm=I=' + IN + ':TP=' + TP + ':LRA=' + LRA
         cmd += ':measured_I=' + input_i + ':measured_TP=' + input_tp
         cmd += ':measured_LRA=' + input_lra + ':measured_thresh=' + input_thresh
@@ -5296,7 +5316,7 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=$int
         json_dict = self.uln_run_ffmpeg(trg_path, trg_size, cmd)
 
         if not self.cmp_top_is_active:
-            return False  # Closing down, False indicates no differences
+            return False  # Closing down
 
         ''' ffmpeg changes Last Access Time - Set it back '''
         date_str = datetime.datetime.fromtimestamp(trg_atime) \
@@ -5325,7 +5345,7 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=$int
             music_id = 0  # Don't populate with "N/A"
 
         if not self.cmp_top_is_active:
-            return False  # Closing down, False indicates no differences
+            return False  # Closing down
 
         # Add missing key/values to json_dict
         output_i = self.trg_ctl.metadata.get("OUTPUT_I", "N/A")
@@ -5434,7 +5454,7 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
             return True  # Skip this song file
 
         if not self.cmp_top_is_active:
-            return False  # Closing down, False indicates no differences
+            return False  # Closing down
 
         ''' trg_path needs ".new" appended to find correct file'''
         trg_path, trg_size, trg_atime, trg_mtime, music_id, OsBase = \
@@ -5447,7 +5467,7 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
         def insert_tv_row():
             """ Shared function to add treeview row """
             self.cmp_tree.insert(CurrAlbumId, "end", iid=iid, text=Song,
-                                 values=(mean_volume, max_volume),
+                                 values=(mean_volume, max_volume, music_id),
                                  tags=("Song",))
             self.cmp_tree.see(iid)
             self.cmp_top.update_idletasks()  # Allow close button to abort
@@ -5473,7 +5493,7 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
         '''
         mean_volume, max_volume = self.avo_run_ffmpeg(trg_path, trg_size)
         if not self.cmp_top_is_active:
-            return False  # Closing down, False indicates no differences
+            return False  # Closing down
 
         ''' ffmpeg changes Last Access Time - Set it back '''
         self.avo_trg_reset(trg_path, trg_atime, _who)
@@ -5487,7 +5507,7 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
                 print("for:", OsBase)
             music_id = 0  # Don't populate with "N/A"
         if not self.cmp_top_is_active:
-            return False  # Closing down, False indicates no differences
+            return False  # Closing down
 
         if music_id:
             sql.hist_add_music_var(
@@ -5512,7 +5532,92 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
         """ Cursor leaving row Un-highlight's the row """
         tree = event.widget
         tree.tk.call(tree, "tag", "remove", "highlight")
-            
+
+    def avo_add_music_id(self):
+        """ Add Music ID (music_id) to treeview row """
+        pass
+
+    def avo_row_menu(self, event):
+        """ Right-clicked (button-3) in one of the analyze volume windows.
+            Popup menu on current treeview row.
+
+            Call:
+                - Collapse All Artists
+                - Expand All Artists
+                - View Pretty Stats
+                - View SQL metadata (sql.PrettyMusic)
+                - Open in Library
+                - Listen Old & New w/Toggle
+                - Accept New
+                - Reject New and redo
+                - Collapse All Albums
+                - Expand All Albums
+
+        """
+
+        tree = event.widget
+        x, y = event.x_root, event.y_root + 24  # set y below row
+        iid = tree.identify_row(event.y)
+        if iid is None:
+            return  # clicked on empty row
+
+        # Get music ID from values of treeview hidden column
+        values = tree.item(iid, "values")
+        music_id = values[len(values) - 1] if len(values) else None
+
+        # Highlight treeview row and display Popup menu at row
+        toolkit.tv_tag_add(tree, iid, "menu_sel")
+        tree.update_idletasks()  # There was delay in yellow highlight
+        menu = tk.Menu(tree, tearoff=0)
+        menu.post(x, y)
+
+        def close():
+            """ Remove popup and treeview row highlight """
+            menu.unpost()
+            tree.tk.call(tree, "tag", "remove", "menu_sel")
+
+        def collapse_all():
+            """ Collapse all artists """
+            for artist in tree.get_children():
+                tree.item(artist, open=False)
+
+        def expand_all():
+            """ Expand all artists """
+            for artist in tree.get_children():
+                tree.item(artist, open=True)
+
+        def view_sql_metadata():
+            """ Popup Window with SQL Music Table Row Metadata for song """
+            m_data = sql.PrettyMusic(music_id)
+            self.pretty_window(
+                self.cmp_top, m_data, "SQL Metadata", 1000, 600, x, y)
+
+        def view_normalize():
+            """ Popup Window with SQL Music Table Row Metadata for song """
+            n_data = sql.PrettyNormalize(music_id, self.act_code)
+            self.pretty_window(
+                self.cmp_top, n_data, "Normalization Details", 1000, 600, x, y)
+
+        menu.add_command(label="Collapse all Artists", font=(None, g.MED_FONT),
+                         command=collapse_all)
+        menu.add_command(label="Expand all Artists", font=(None, g.MED_FONT),
+                         command=expand_all)
+        menu.add_separator()
+
+        if music_id:
+            menu.add_command(label="View SQL Metadata", font=(None, g.MED_FONT),
+                             command=view_sql_metadata)
+            menu.add_command(label="Normalization Details", font=(None, g.MED_FONT),
+                             command=view_normalize)
+            menu.add_separator()
+
+        menu.add_command(label="Ignore click", font=(None, g.MED_FONT),
+                         command=lambda: close())
+        menu.tk_popup(x, y)
+        menu.bind("<FocusOut>", lambda _: close())
+
+
+
     @staticmethod
     def real_from_fake_path(fake_path):
         """ Remove <No Artist> and <No Album> from fake paths """
@@ -6074,6 +6179,102 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
             text += "Contact www.pippim.com"
             self.out_cast_show_print(title, text, 'error', align="left")
             return None, None
+
+    def pretty_window(self, parent, pretty, title, width, height, x=None, y=None):
+        """ Create new window top-left of parent window with g.PANEL_HGT padding
+
+            2024-03-29 was being used for three SQL Table viewers but now they
+                will use their own dd_view.pretty_xxx_xxx() methods.
+                Only lib_top will be calling to display SQL row windows
+
+            Before calling:
+                Create pretty data dictionary using tree column data dictionary
+                Or entire treeview data dictionary (E.G. sql.music_treeview)
+            After calling / usage:
+                create_window(title, width, height, top=None)
+                pretty.scrollbox = self.scrollbox
+                # If text search, highlight word(s) in yellow
+                if self.mus_search is not None:
+                    # history doesn't have support. Music & history might both be open
+                    if self.mus_search.entry is not None:
+                        pretty.search = self.mus_search.entry.get()
+                sql.tkinter_display(pretty)
+
+            When Music Location Tree calls from show_raw_metadata it passes
+            top=self.lib_top. In this case not called from SQL Music Table
+            viewer.
+
+            TODO: Instead of parent guessing width, height it would be nice
+                  to pass a maximum and reduce size when text box has extra
+                  white space.
+        """
+        top = self.win_grp.widget_for_key(title)
+        if top:
+            top.lift()
+            return  # Could make unique key for title to view multiple rows.
+
+        if not x or not y:
+            x = (parent.winfo_x() + g.PANEL_HGT)  # Use parent's top left position
+            y = (parent.winfo_y() + g.PANEL_HGT)
+
+        top = tk.Toplevel()  # Set geometry ASAP to prevent artifacts
+        top.geometry('%dx%d+%d+%d' % (width, height, x, y))
+        top.minsize(width=g.BTN_WID * 10, height=g.PANEL_HGT * 4)
+        top.configure(background=self.bg)
+        top.columnconfigure(0, weight=1)
+        top.rowconfigure(0, weight=1)
+        top.title(title)
+
+        ''' Set program icon in taskbar '''
+        #img.taskbar_icon(top, 64, 'white', 'lightskyblue', 'black', char='S')
+
+        # Trials to get out of taskbar
+        #top.wm_attributes('-type', 'menu')  # Looks the same
+        #top.wm_attributes('-type', 'toolbar')  # Looses decoration
+        # See: https://tcl.tk/man/tcl/TkCmd/wm.htm#M19
+
+        self.win_grp.register_child(title, top)
+
+        def close():
+            """ Close and unregister child  window """
+            self.win_grp.destroy_by_key(title)
+
+        ''' Bind <Escape>, <Alt>+F4 & Window's-X to close window '''
+        top.bind("<Escape>", close)
+        top.protocol("WM_DELETE_WINDOW", close)
+
+        ''' frame - Holds scrollable text entry and close button. '''
+        frame = tk.Frame(top, borderwidth=g.FRM_BRD_WID, bg=self.bg, relief=tk.FLAT)
+        frame.grid(column=0, row=0, sticky=tk.NSEW)
+        fnt = (None, g.MON_FONTSIZE)  # font variable name can't be used
+
+        close_btn = tk.Button(
+            frame, width=g.BTN_WID, command=close, text="✘ Close")
+        close_btn.grid(row=1, column=0, padx=10, pady=5, sticky=tk.E)
+
+        ''' Scrollable textbox to show selections / ripping status '''
+        text = ("Retrieving SQL data.\n" +
+                "If this screen can be read, there is a problem.\n\n" +
+                "TIPS:\n\n" +
+                "\tRun in Terminal: 'm' and check for errors.\n\n" +
+                "\twww.pippim.com\n\n")
+
+        # Text padding not working: https://stackoverflow.com/a/51823093/6929343
+        scrollbox = toolkit.CustomScrolledText(
+            frame, state="normal", font=fnt, borderwidth=15, relief=tk.FLAT)
+        scrollbox.configure(background=self.bg)
+        scrollbox.insert("end", text)
+        scrollbox.grid(row=0, column=0, padx=3, pady=3, sticky=tk.NSEW)
+        frame.rowconfigure(0, weight=1)
+        frame.columnconfigure(0, weight=1)
+
+        # Set tag Foreground & background colors, tabs and margins
+        toolkit.scroll_defaults(scrollbox)
+        scrollbox.highlight_pattern(u'TIPS:', 'red')
+
+        # Update class with scrollbox
+        pretty.scrollbox = scrollbox
+        sql.tkinter_display(pretty)
 
 
 # End of location.py
