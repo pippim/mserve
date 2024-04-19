@@ -14199,7 +14199,7 @@ class FileControl(FileControlCommonSelf):
             .oga has DURATION and STREAM #0 first and second instead of near
             bottom.
 
-            2024-04-12 Add support for ffmpeg analyze volume results.
+            2024-04-12 Add support for ffmpeg_results (normalize loudness).
 
             TODO: Huge time lag with .oga image of 10 MB inside 30 MB file.
         """
@@ -14361,10 +14361,12 @@ class FileControl(FileControlCommonSelf):
                     key_value = key_value.rstrip(",")  # Nuke the trailing comma
                     key_value = key_value.replace('"', '')
                     #print("key_value:", key_value)
-                    (key, val) = key_value.split(':', 1)  # Split first ':' only
-                    if key.startswith("input_") or key.startswith("target") :
+                    #(key, val) = key_value.split(':', 1)  # Split first ':' only
+                    key, val = key_value.split(':', 1)  # Split first ':' only
+                    # 2024-04-18 - Plan B. Return all of dictionary 
+                    #if key.startswith("input_") or key.startswith("target"):
                         # skip output_xxx keys and normalization_type key
-                        json_dict[key.strip()] = val.strip()
+                    json_dict[key.strip()] = val.strip()
                     # key and val also required at bottom of loop where all the
                     # keys, including output_xxx, are added as "normal" key/values
 

@@ -1236,6 +1236,8 @@ class LocationsCommonSelf:
         self.avo_lra = "11.0"  # AKA input_lra and "LRA"
         self.avo_linear = "true"  # Not using dynamic normalization
         self.avo_use_inputs = True  # Override defaults using pass 1 values
+        self.avo_max_m4a_ar = 96000  # ffmpeg default aac codec only goes to 96000
+        self.avo_max_mp3_ar = 44100  # ffmpeg default mp3 codec only goes to 44100
         self.avo_comment = "April 16, 2024"  # SQL History Table "Comments" column
 
         ''' Make TMP names unique for multiple OS jobs running at once '''
@@ -4968,7 +4970,7 @@ One-liner to copy and paste into terminal:
     ffmpeg -i "/media/rick/SANDISK128/Music/AC_DC/Stiff Upper Lip/09 Damned.m4a" -af "volumedetect" -f null /dev/null
 
         """
-        cmd = self.avo_mpeg + ' -i "' + trg_path + '" -af "volumedetect"'
+        cmd = self.avo_ffmpeg + ' -i "' + trg_path + '" -af "volumedetect"'
         cmd += ' -f null /dev/null'
 
         wait = size / 1000000 * 3  # Wait 3 seconds per megabyte before quiting
@@ -4976,8 +4978,8 @@ One-liner to copy and paste into terminal:
 
         self.run_one_command(cmd, size, wait=wait, print_stats=False)
 
-        if not self.avo_run_retry(cmd, size, wait):
-            return "N/A", "N/A"
+        if not self.avo_run_retry(cmd, size, wait, trg_path):
+            return "N/A", "N/A"  # If retry not necessary it returns True
 
         # Use mserve.py FileControl() class methods to parse ffmpeg results
         self.trg_ctl.get_metadata(ffmpeg_results=self.TMP_STDERR, trg_path=trg_path)
@@ -4987,11 +4989,12 @@ One-liner to copy and paste into terminal:
         max_volume = self.trg_ctl.metadata.get("MAX_VOLUME", "N/A")
         return mean_volume, max_volume
 
-    def avo_run_retry(self, cmd, size, wait):
+    def avo_run_retry(self, cmd, size, wait, trg_path):
         """ shared by avo_ / aln_ / uln_ and avn_ ... _run_ffmpeg()
         :param cmd: ffmpeg formatted command
         :param size: trg_path file size
         :param wait: how long to wait for command to finish execution
+        :param trg_path: Song filename - only used for debugging.
         :return: True command successful, False command failed second attempt
         """
 
@@ -5137,6 +5140,7 @@ One-liner to copy and paste into terminal:
         _input_lra = self.trg_ctl.metadata.get("INPUT_LRA", "N/A")
         _input_thresh = self.trg_ctl.metadata.get("INPUT_THRESH", "N/A")
         _target_offset = self.trg_ctl.metadata.get("TARGET_OFFSET", "N/A")
+        _normalization_type = self.trg_ctl.metadata.get("NORMALIZATION_TYPE", "N/A")
         _audio_rate = self.trg_ctl.metadata.get("AUDIO_RATE", "N/A")
 
         return self.cmp_top_is_active
@@ -5180,7 +5184,7 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=$int
         """
 
         # Version using FileControl to create OrderedDict of all lines
-        cmd = self.avo_mpeg + ' -i "' + trg_path + '" -af'
+        cmd = self.avo_ffmpeg + ' -i "' + trg_path + '" -af'
         cmd += ' loudnorm=I=-23:TP=0:print_format=json'
         cmd += ' -f null -'
 
@@ -5188,8 +5192,8 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=$int
         wait = 8 if not wait else wait
         self.run_one_command(cmd, size, wait=wait, print_stats=False)
 
-        if not self.avo_run_retry(cmd, size, wait):
-            return {}
+        if not self.avo_run_retry(cmd, size, wait, trg_path):
+            return {}  # If retry not necessary it returns True
 
         # Populate FileControl() class metadata dictionary
         self.trg_ctl.get_metadata(ffmpeg_results=self.TMP_STDERR, trg_path=trg_path)
@@ -5252,7 +5256,8 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=$int
             """ Shared function to Insert song into treeview"""
             self.cmp_tree.insert(
                 CurrAlbumId, "end", iid=iid, text=Song, tags=("Song",),
-                values=(json_dict.get("output_i", "N/A"), json_dict.get("output_tp", "N/A"),
+                values=(json_dict.get("output_i", "N/A"),
+                        json_dict.get("output_tp", "N/A"),
                         json_dict.get("output_lra", "N/A"),
                         json_dict.get("output_thresh", "N/A"), music_id)
             )
@@ -5262,7 +5267,7 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=$int
 
         ''' Skip files already updated? '''
         if self.avo_skip_complete:
-            d = sql.hist_get_music_var(music_id, "volume", "loudnorm_2", self.act_code)
+            d = sql.hist_get_music_var(music_id, "volume", "loudnorm_2", loc)
             json_dict = json.loads(d['Target'])
             # TODO: Check for .new file and .bak file
             if d and d['Timestamp'] > trg_mtime:
@@ -5277,16 +5282,26 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=$int
             # for non-standard extensions like ".new". When .m4a is the file
             # format, the output file format must be coded as "-f ipod"
             trg_ext = "ipod"
-            if int(ar) > 96000:  # lots of songs are 192000
-                ar = "96000"  # ffmpeg default aac codec only goes to 96000
+            # self.avo_max_m4a_ar default is 96000
+            if int(ar) > self.avo_max_m4a_ar:  # lots of songs are 192000
+                ar = str(self.avo_max_m4a_ar)  # default aac codec limit 96000
+                # TODO - Save override to comments
+            #if int(ar) > 96000:  # lots of songs are 192000
+            #    ar = "96000"  # ffmpeg default aac codec only goes to 96000
 
         if trg_ext == "mp3":
-            if int(ar) > 44100:  # lots of songs are 192000
-                ar = "44100"  # ffmpeg default aac codec only goes to 96000
+            # self.avo_max_mp3_ar default is 44100
+            if int(ar) > self.avo_max_mp3_ar:  # lots of songs are 192000
+                ar = str(self.avo_max_mp3_ar)  # default mp3 codec limit 44100
+                # TODO - Save override to comments
+
+            #if int(ar) > 44100:  # lots of songs are 192000
+            #    ar = "44100"  # ffmpeg default aac codec only goes to 96000
 
         trg_path_new = trg_path + ".new"
 
         ''' Build complex ffmpeg command line '''
+        # TODO - Save settings to comments
         linear = self.avo_linear  # "true"
         TP = self.avo_true_peak  # "0.0"
         LRA = self.avo_lra  # "-11.0"
@@ -5296,7 +5311,7 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=$int
             IN = self.avo_integrated  # "-23.0"
 
         # -y = overwrite previous .new file.
-        cmd = self.avo_mpeg + ' -y -i "' + trg_path + '" -af '
+        cmd = self.avo_ffmpeg + ' -y -i "' + trg_path + '" -af '
         cmd += 'loudnorm=I=' + IN + ':TP=' + TP + ':LRA=' + LRA
         cmd += ':measured_I=' + input_i + ':measured_TP=' + input_tp
         cmd += ':measured_LRA=' + input_lra + ':measured_thresh=' + input_thresh
@@ -5335,7 +5350,7 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=$int
         OsBase = OsBase[1:] if OsBase.startswith(os.sep) else OsBase
         music_id = sql.music_id_for_song(OsBase)
         if json_dict == {}:  # No metadata, dictionary empty
-            d = sql.hist_get_music_var(music_id, "volume", "loudnorm_2", self.act_code)
+            d = sql.hist_get_music_var(music_id, "volume", "loudnorm_2", loc)
             # TODO: check if this is same location. If different self.act_code
             # then how should it be overridden?
             if d:
@@ -5348,14 +5363,19 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=$int
             return False  # Closing down
 
         # Add missing key/values to json_dict
-        output_i = self.trg_ctl.metadata.get("OUTPUT_I", "N/A")
-        output_tp = self.trg_ctl.metadata.get("OUTPUT_TP", "N/A")
-        output_lra = self.trg_ctl.metadata.get("OUTPUT_LRA", "N/A")
-        output_thresh = self.trg_ctl.metadata.get("OUTPUT_THRESH", "N/A")
-        json_dict["output_i"] = output_i
-        json_dict["output_tp"] = output_tp
-        json_dict["output_lra"] = output_lra
-        json_dict["output_thresh"] = output_thresh
+        # 2024-04-18 - All json format dictionary keys are returned now.
+
+        #output_i = self.trg_ctl.metadata.get("OUTPUT_I", "N/A")
+        #output_tp = self.trg_ctl.metadata.get("OUTPUT_TP", "N/A")
+        #output_lra = self.trg_ctl.metadata.get("OUTPUT_LRA", "N/A")
+        #output_thresh = self.trg_ctl.metadata.get("OUTPUT_THRESH", "N/A")
+        #json_dict["output_i"] = output_i
+        #json_dict["output_tp"] = output_tp
+        #json_dict["output_lra"] = output_lra
+        #json_dict["output_thresh"] = output_thresh
+
+        # Audio Rate may have been reduced for ffmpeg codec limitations
+        json_dict["ar"] = ar  # m4a 192k -> 96k, mp3 192k -> 44.1k
 
         if music_id:
             sql.hist_add_music_var(
@@ -5374,18 +5394,18 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=$int
 One-liner to copy and paste into terminal:
 ffmpeg -i ~/Music/"Jim Steinman/Bad for Good/06 Surf’s Up.oga" -af loudnorm=I=-23:TP=0.0:print_format=json -f null -
 
-            {  # '-' = keys omitted, '+' = keys added
+            {  
                 "input_i" : "-18.67",
                 "input_tp" : "-0.83",
                 "input_lra" : "16.70",
                 "input_thresh" : "-29.54",
-                - "output_i" : "-21.53",
-                - "output_tp" : "-5.20",
-                - "output_lra" : "7.70",
-                - "output_thresh" : "-31.70",
-                - "normalization_type" : "dynamic",
+                "output_i" : "-21.53",
+                "output_tp" : "-5.20",
+                "output_lra" : "7.70",
+                "output_thresh" : "-31.70",
+                "normalization_type" : "dynamic",
                 "target_offset" : "-1.47"
-                + "ar": "44100"
+                "ar": "44100"  # Added in by mserve
             }
 
 Cheatsheet: https://gist.github.com/wagesj45/7862866c533e0c93b5d01cf1afbd9ca3
@@ -5410,27 +5430,11 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
         wait = 8 if not wait else wait
         self.run_one_command(cmd, size, wait=wait, print_stats=False)
 
-        if not self.avo_run_retry(cmd, size, wait):
-            return {}
+        if not self.avo_run_retry(cmd, size, wait, trg_path):
+            return {}  # If retry not necessary it returns True
 
-        # Populate FileControl() class metadata dictionary
+        # Populate FileControl() class metadata dictionary & return json_dict
         self.trg_ctl.get_metadata(ffmpeg_results=self.TMP_STDERR, trg_path=trg_path)
-        """ Parse json formatted 'loudnorm' pass 1 values in output file:
-            {
-                "input_i" : "-11.95",
-                "input_tp" : "-1.34",
-                "input_lra" : "4.50",
-                "input_thresh" : "-22.08",
-                "output_i" : "-22.61",
-                "output_tp" : "-7.82",
-                "output_lra" : "3.80",
-                "output_thresh" : "-32.73",
-                "normalization_type" : "dynamic",
-                "target_offset" : "-0.39"
-            }
-        """
-
-        # Get FileControl() class metadata dictionary's json formatted dictionary
         return self.trg_ctl.metadata.get('json_dict', {})
 
     def avn_insert_tree_row(self, fake_path, CurrAlbumId, iid, Song):
@@ -5565,6 +5569,9 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
         values = tree.item(iid, "values")
         music_id = values[len(values) - 1] if len(values) else None
 
+        loc = self.act_code  # shorthand and a more meaningful var name
+        _who = self.who + "avo_row_menu():"
+
         # Highlight treeview row and display Popup menu at row
         toolkit.tv_tag_add(tree, iid, "menu_sel")
         tree.update_idletasks()  # There was delay in yellow highlight
@@ -5598,6 +5605,24 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
             self.pretty_window(
                 self.cmp_top, n_data, "Normalization Details", 1000, 600, x, y)
 
+        def remove_normalize():
+            """ Remove four history records for song """
+            title = "Confirm loudness normalization records removal"
+            text = "Removing the records for this song allows the process\n"
+            text += "to be repeated for this song only. The process is\n"
+            text += "very quick for one song. Remove records for this song?"
+            answer = message.AskQuestion(self.cmp_top, confirm="No",
+                                         thread=self.get_thread_func,
+                                         title=title, text=text)
+            if answer.result != 'yes':
+                return
+            sql.hist_del_music_var(music_id, 'volume', 'detect_old', loc)
+            sql.hist_del_music_var(music_id, 'volume', 'loudnorm_1', loc)
+            sql.hist_del_music_var(music_id, 'volume', 'loudnorm_2', loc)
+            sql.hist_del_music_var(music_id, 'volume', 'detect_new', loc)
+            tree.delete(iid)
+            tree.update_idletasks()
+
         menu.add_command(label="Collapse all Artists", font=(None, g.MED_FONT),
                          command=collapse_all)
         menu.add_command(label="Expand all Artists", font=(None, g.MED_FONT),
@@ -5605,10 +5630,12 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
         menu.add_separator()
 
         if music_id:
-            menu.add_command(label="View SQL Metadata", font=(None, g.MED_FONT),
-                             command=view_sql_metadata)
             menu.add_command(label="Normalization Details", font=(None, g.MED_FONT),
                              command=view_normalize)
+            menu.add_command(label="Remove Normalization", font=(None, g.MED_FONT),
+                             command=remove_normalize)
+            menu.add_command(label="View SQL Metadata", font=(None, g.MED_FONT),
+                             command=view_sql_metadata)
             menu.add_separator()
 
         menu.add_command(label="Ignore click", font=(None, g.MED_FONT),

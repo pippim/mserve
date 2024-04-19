@@ -1605,6 +1605,20 @@ def hist_get_music_var(MusicId, Type, Action, SourceMaster=None):
     return None
 
 
+def hist_del_music_var(MusicId, Type, Action, SourceMaster=None):
+    """  One variable per Type / Action / SourceMaster can be stored per song.
+         For example, Type="Volume", Action="Analyze", SourceMaster="L004".
+
+    """
+    if not hist_check(MusicId, Type, Action, check_master=SourceMaster):
+        return False
+
+    sql = "DELETE FROM History WHERE Id=?"
+    hist_cursor.execute(sql, (HISTORY_ID,))
+    con.commit()
+    return True
+
+
 def hist_default_dict(key, time_type='access'):
     """ Construct a default dictionary used to add a new history record """
 
@@ -3330,9 +3344,8 @@ class PrettyNormalize:
                            '\nNew Volume']
         self.part_color = ['red', 'blue', 'green', 'red']
 
-        def format_dB(val):
-            """ '+' or '-ve' float or None printed as 'N/A' """
-            pass
+        # self.tabs is WIP: https://stackoverflow.com/a/46605414/6929343
+        self.tabs = [('2m', 'black', 'left'), ('40m', 'green', 'right')]
 
         # Old volume history record
         avo_d = hist_get_music_var(music_id, "volume", "detect_old", loc)
@@ -3349,14 +3362,13 @@ class PrettyNormalize:
         input_thresh1 = aln_jd['input_thresh'] + " LUFS" if aln_jd else "N/A"
         target_offset1 = aln_jd['target_offset'] + " LU" if aln_jd else "N/A"
         audio_rate1 = aln_jd['ar'] + " Hz" if aln_jd else "N/A"
-        '''
-                         V1                  V2
-        1  Input Integrated          -24.7 LUFS
-        2   Input True Peak           -1.6 dBTP
-        3         Input LRA             17.9 LU
-        4   Input Threshold          -37.8 LUFS
-        5 Output Integrated          -23.4 LUFS
-        6  Output True Peak           -2.0 dBTP
+        '''  10 pt/ 11 pt Font
+                                         Integrated  True Peak   LRA      Threshold 
+        Old Mean Volume        -3.4 dB
+        Pass 1 Input                    -24.7 LUFS  -1.6 dBTP   17.9 LU  -37.8 LUFS
+        Pass 1 Output                   -24.7 LUFS  -1.6 dBTP   17.9 LU  -37.8 LUFS
+        Pass 1 Target          -3.4 dB
+        Pass 1 Normalization   dynamic
         '''
         # 'loudnorm' Filter Pass 2 (Normalization)
         uln_d = hist_get_music_var(music_id, "volume", "loudnorm_2", loc)
@@ -4673,7 +4685,11 @@ class FixData:
             return False
 
     def populate_lib_tree(self, delayed_textbox):
-        """ Fix os.stat Last Access Time using stored SQL last Access Time """
+        """ Fix os.stat Last Access Time using stored SQL last Access Time
+
+            2024-04-18 - Discovered today. Is this for real?
+                This appears to have been copied from mserve.py and abandoned.
+        """
 
         who = "mserve.py populate_lib_tree() - "
         LastArtist = ""
