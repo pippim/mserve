@@ -14298,7 +14298,7 @@ class FileControl(FileControlCommonSelf):
                 oga has 'DURATION' 2nd and 'STREAM #0' 3rd which need to be held
                 and then inserted just before 'CREATION_TIME' '''
 
-        input_encountered = False
+        input_encountered = False  # Line starts with "Input #0, " - DO ONCE
 
         fname = self.TMP_FFPROBE if ffmpeg_results is None else ffmpeg_results
 
@@ -14323,21 +14323,26 @@ class FileControl(FileControlCommonSelf):
 
                 if line.strip().upper().startswith("STREAM #0:"):
                     # E.G. STREAM #0:0[0X1](UND):
-                    (key, val) = half_split(line, ':', 2)  # Split second only
-                    # Extra effort to get sampling rate for ffmpeg 'loudnorm'
-                    if " Hz, " in val:
+                    (key, val) = half_split(line, ':', 2)  # Split second colon
+                    
+                    if " Hz, " in val:  # Audio rate for ffmpeg 'loudnorm'
                         # E.G. Audio: aac (LC) (mp4a / 0x6134706D), 44100 Hz, ste
                         ar = val.split(" Hz, ")[0]
                         ar = ar.split(" ")[-1]
                         self.metadata['AUDIO_RATE'] = ar
+                    
+                    if " kb/s " in val:  # Bit rate for ffmpeg 'loudnorm'
+                        br = val.split("  kb/s  ")[0]
+                        br = br.split(" ")[-1]
+                        self.metadata['BIT_RATE'] = br
 
                 elif line.strip() == "{":
                     ''' In dictionary provided by loudnorm filter: 
                     {
-                        "input_i" : "-11.95",
-                        "input_tp" : "-1.34",
-                        "input_lra" : "4.50",
-                        "input_thresh" : "-22.08",
+                        "input_i" : "-11.95",       # LU FS
+                        "input_tp" : "-1.34",       # dB TP
+                        "input_lra" : "4.50",       # LU
+                        "input_thresh" : "-22.08",  # LU FS
                         "output_i" : "-22.61",
                         "output_tp" : "-7.82",
                         "output_lra" : "3.80",

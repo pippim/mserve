@@ -1202,7 +1202,9 @@ class LocationsCommonSelf:
         ''' Compare locations variables '''
         self.cmp_top = None  # Compare Locations toplevel window
         self.cmp_top_is_active = False  # mserve.py uses False, not None
+        self.cmp_frame = None  # Master frame for self.cmp_top
         self.cmp_target_dir = None  # OS directory comparing to
+        self.cmp_tree_frame = None  # Treeview frame can be swapped in & out
         self.cmp_tree = None  # Treeview w/difference between src and trg
         self.cmp_btn_frm = None  # Button frame for update diff / progress bar
         self.cmp_close_btn = None  # Button to close Compare Locations window
@@ -1221,15 +1223,15 @@ class LocationsCommonSelf:
         self.end_long_running = None  # To control mserve playing buttons
 
         ''' Analyze Volume variables embedded inside Compare Window '''
-        self.avo_ffmpeg = 'ffmpeg'
-        #self.avo_ffmpeg = g.PROGRAM_DIR + os.sep + 'ffmpeg'
+        self.avo_ffmpeg = g.PROGRAM_DIR + os.sep + 'ffmpeg'  # in mserve directory
+        self.avo_ffmpeg = 'ffmpeg'  # default = find in path
         # Set to "ffmpeg" for regular path. If a special version of ffmpeg needed
-        # (E.G. for 'loudnorm' filter) then specify location. Do this if special
-        # version breaks other mserve features like getting artwork.
-        self.avo_select_max_lower = -10.0  # 2024-04-13 Future user config setting
-        self.avo_select_max_upper = -0.15  # 2024-04-13 Future user config setting
+        # (E.G. for 'loudnorm' filter) then specify location. Needed when special
+        # version breaks other mserve features.
+        self.avo_select_max_lower = -10.0  # Select songs above maximum volume
+        self.avo_select_max_upper = -0.15  # Select songs below maximum volume
         # E.G. self.avo_select_max_lower <= song_max <= self.avo_select_max_upper
-        self.avo_skip_complete = True  # Skip over completed files (new only).
+        self.avo_skip_complete = True  # Skip if step completed for file (new only).
         self.avo_skip_count = True  # How many existing records were skipped
         self.avo_integrated = "-23.0"  # AKA input_i. ffmpeg 'loudnorm' defaults
         self.avo_true_peak = "0.0"  # AKA input_tp  TODO: Setup in user sql.Config()
@@ -1238,7 +1240,7 @@ class LocationsCommonSelf:
         self.avo_use_inputs = True  # Override defaults using pass 1 values
         self.avo_max_m4a_ar = 96000  # ffmpeg default aac codec only goes to 96000
         self.avo_max_mp3_ar = 44100  # ffmpeg default mp3 codec only goes to 44100
-        self.avo_comment = "April 16, 2024"  # SQL History Table "Comments" column
+        self.avo_comment = "April 20, 2024"  # SQL History Table "Comments" column
 
         ''' Make TMP names unique for multiple OS jobs running at once '''
         letters = string.ascii_lowercase + string.digits
@@ -1795,7 +1797,7 @@ class Locations(LocationsCommonSelf):
             ''' When testing host, there are no Treeview rows above '''
             text = "🡅 🡅  Slide scrollbar above to see Test Host results  🡅 🡅"
         self.fld_intro = tk.Label(frame, text=text, font=g.FONT, bg=self.bg)
-        self.fld_intro.grid(row=1, column=1, columnspan=3, pady=5, stick=tk.EW)
+        self.fld_intro.grid(row=1, column=1, columnspan=3, pady=5, sticky=tk.EW)
 
         ''' one_loc_var() wrapper for creating all screen input variables '''
         self.curr_row = 2  # Current row number for self.one_loc_var to incr
@@ -2600,7 +2602,7 @@ class Locations(LocationsCommonSelf):
 
         ''' Analyze Volume variables embedded inside Compare Window '''
         self.avo_select_max_lower = -10.0  # 2024-04-13 Future user config setting
-        self.avo_select_max_upper = -0.1  # 2024-04-13 Future user config setting
+        self.avo_select_max_upper = -0.15  # 2024-04-13 Future user config setting
 
         # E.G. self.avo_select_max_lower <= song_max <= self.avo_select_max_upper
 
@@ -4186,7 +4188,7 @@ filename.
         if prefix == "cmp":
             self.cmp_top.geometry('%dx%d+%d+%d' % (1800, 500, xy[0], xy[1]))
         else:
-            self.cmp_top.geometry('%dx%d+%d+%d' % (1180, 500, xy[0], xy[1]))
+            self.cmp_top.geometry('%dx%d+%d+%d' % (1180, 800, xy[0], xy[1]))
 
 
         if self.open_topdir.endswith(os.sep):  # the "source" location
@@ -4217,22 +4219,21 @@ filename.
         ''' Create frames '''
         treeview = prefix + "_treeview"  # prefix = "cmp" or "avo" (analyze volume)
         colors = self.get_cfg([treeview, 'style', 'color'])
-        scroll = self.get_cfg([treeview, 'style', 'scroll'])
+        _scroll = self.get_cfg([treeview, 'style', 'scroll'])
         
-        master_frame = tk.Frame(self.cmp_top, bg=self.bg, relief=tk.RIDGE)
-        master_frame.grid(sticky=tk.NSEW)
-        master_frame.columnconfigure(0, weight=1)
-        master_frame.rowconfigure(0, weight=1)
+        self.cmp_frame = tk.Frame(self.cmp_top, bg=self.bg, relief=tk.RIDGE)
+        self.cmp_frame.grid(sticky=tk.NSEW)
+        self.cmp_frame.columnconfigure(0, weight=1)
+        self.cmp_frame.rowconfigure(0, weight=1)
 
         ''' Create a frame for the treeview and scrollbar(s). '''
-        #frame2 = tk.Frame(master_frame)
-        frame2 = tk.Frame(master_frame, relief='solid',
-                          highlightcolor=colors['edge_color'],
-                          highlightbackground=colors['edge_color'],
-                          highlightthickness=colors['edge_px'], bd=0)
-        tk.Grid.rowconfigure(frame2, 0, weight=1)
-        tk.Grid.columnconfigure(frame2, 0, weight=1)
-        frame2.grid(row=0, column=0, sticky=tk.NSEW)
+        self.cmp_tree_frame = tk.Frame(self.cmp_frame, relief='solid',
+                                       highlightcolor=colors['edge_color'],
+                                       highlightbackground=colors['edge_color'],
+                                       highlightthickness=colors['edge_px'], bd=0)
+        tk.Grid.rowconfigure(self.cmp_tree_frame, 0, weight=1)
+        tk.Grid.columnconfigure(self.cmp_tree_frame, 0, weight=1)
+        self.cmp_tree_frame.grid(row=0, column=0, sticky=tk.NSEW)
 
         ''' Columns differ for Compare, Analyze Maximum Volume and 'loudnorm' '''
         if prefix == "cmp":
@@ -4245,7 +4246,7 @@ filename.
             columns = ("Integrated", "TruePeak", "LRA", "Threshold", "MusicId")
 
         ''' Treeview List Box, Columns and Headings '''
-        self.cmp_tree = ttk.Treeview(frame2, show=('tree', 'headings'),
+        self.cmp_tree = ttk.Treeview(self.cmp_tree_frame, show=('tree', 'headings'),
                                      columns=columns, selectmode="none")
         self.cmp_tree.column("#0", width=630, stretch=tk.YES)
         # self.cmp_tree.heading("#0", text = "➕ / ➖   Artist/Album/Song")
@@ -4298,7 +4299,7 @@ filename.
             # Could rename Mean & Maximum to Integrated & Threshold for 'loudnorm'
 
         ''' Treeview Scrollbars - Vertical & Horizontal '''
-        v_scroll = tk.Scrollbar(frame2, orient=tk.VERTICAL, width=sbar_width,
+        v_scroll = tk.Scrollbar(self.cmp_tree_frame, orient=tk.VERTICAL, width=sbar_width,
                                 command=self.cmp_tree.yview)
         v_scroll.grid(row=0, column=1, sticky=tk.NS)
         self.cmp_tree.configure(yscrollcommand=v_scroll.set)
@@ -4327,13 +4328,13 @@ filename.
 
         # noinspection SpellCheckingInspection
         ''' Aug 5/23 - Horizontal Scrollbar removed for lack of purpose 
-        h_scroll = tk.Scrollbar(frame2, orient=tk.HORIZONTAL, width=sbar_width,
+        h_scroll = tk.Scrollbar(self.cmp_tree_frame, orient=tk.HORIZONTAL, width=sbar_width,
                                 command=self.cmp_tree.xview)
         h_scroll.grid(row=1, column=0, sticky=tk.EW)
         self.cmp_tree.configure(xscrollcommand=h_scroll.set)
         '''
         ''' Frame3 for Treeview Buttons '''
-        self.cmp_btn_frm = tk.Frame(master_frame, bg=self.bg, bd=2, 
+        self.cmp_btn_frm = tk.Frame(self.cmp_frame, bg=self.bg, bd=2, 
                                     relief=tk.FLAT, borderwidth=g.BTN_BRD_WID)
         self.cmp_btn_frm.grid_rowconfigure(0, weight=1)
         self.cmp_btn_frm.grid_columnconfigure(0, weight=1)
@@ -4492,7 +4493,8 @@ filename.
         if self.cmp_keep_awake_is_active:  # Keeping remote host awake?
             self.cmp_keep_awake_is_active = False  # Has 10 minute wakeup cycle
 
-        self.win_grp.destroy_all()  # Close any child windows opened.
+        if self.win_grp:
+            self.win_grp.destroy_all()  # Close any child windows opened.
 
         if not self.cmp_top_is_active:
             return  # Already closed
@@ -4538,6 +4540,8 @@ filename.
         if prefix != "cmp":
             # Check existing history by Action/Type/SourceMaster
             if not self.avo_startup_check():
+                return False
+            if not self.avo_parameters():
                 return False
 
         ''' Traverse fake_paths created by mserve.py make_sorted_list() '''
@@ -4667,6 +4671,574 @@ filename.
 
         return self.cmp_top_is_active
 
+    @staticmethod
+    def real_from_fake_path(fake_path):
+        """ Remove <No Artist> and <No Album> from fake paths """
+        real_path = fake_path.replace(os.sep + g.NO_ARTIST_STR, '')
+        return real_path.replace(os.sep + g.NO_ALBUM_STR, '')
+
+    def compare_path_pair(self, fake_path):
+        """ Called when inserting in treeview and after copy/touch command.
+
+            NOTES for sshfs:
+                First sync is 8,261 seconds 2 hours 18 minutes for
+                3,800 songs 'diff'.
+
+                Second sync is 1 minute
+
+                Run bash script 'test-for-sync.sh' to change files
+                    in ~/Music/Compilations
+
+                Use Kid3 on song to change some metadata
+
+            RETURNS:
+
+                return action, src_path, src_size, src_time, \
+                    trg_path, trg_size, trg_time
+
+            WHERE:
+                src_path = self.open_topdir + real bottom path
+                trg_path = self.act_topdir + real bottom path
+                size = integer file size in bytes
+                mtime = modification time to filesystems' nanosecond precision
+
+            Possible return actions (hidden detached from treeview):
+                "Missing" - In target(other) location (hidden from view)
+                "Same" - within 2 seconds so no action required (hidden)
+                "Error: Size different, time same" - Don't know copy direction
+                "Error: contents different, time same" -    "   "   "   "
+                "Error: Permission denied from 'diff' command"
+                "OOPS" - programming error that should never happen (hidden)
+                "Copy Trg -> Src (Size)" - Based on size difference
+                "Copy Src -> Trg (Size)" - Based on size difference
+                "Copy Trg -> Src (Diff)" - Based on file difference
+                "Copy Src -> Trg (Diff)" - Based on file difference
+                "Timestamp Trg -> Src" - Prevents future checks
+                "Timestamp Src -> Trg" - Prevents future checks """
+
+        action = ""  # to make pycharm happy
+
+        ''' Build real song path from fake_path and stat '''
+        src_path = self.real_from_fake_path(fake_path)
+
+        ''' Is os.stat() call necessary? '''
+        src_size = 0
+        src_time = 0.0
+        if self.src_paths_and_sizes:
+            src_size = self.src_paths_and_sizes.get(src_path, 0)
+        if not self.src_mt.allows_mtime:
+            old_time, src_time = self.src_mt.mod_dict.get(src_path, (0.0, 0.0))
+
+        if src_size == 0 or src_time == 0.0:
+            src_stat = os.stat(src_path)  # os.stat provides file attributes
+            src_size = src_stat.st_size
+            src_time = float(src_stat.st_mtime)
+
+        ''' Build target path, check if exists and use os.stat '''
+        trg_path = src_path.replace(self.open_topdir, self.cmp_target_dir)
+
+        ''' Is os.stat() call necessary? '''
+        trg_size = 0
+        trg_time = 0.0
+        if self.trg_paths_and_sizes:
+            trg_size = self.trg_paths_and_sizes.get(trg_path, 0)
+        if not self.trg_mt.allows_mtime:
+            old_time, trg_time = self.trg_mt.mod_dict.get(trg_path, (0.0, 0.0))
+
+        ''' check if exists and use os.stat '''
+        if trg_size == 0 or trg_time == 0.0:
+            if not os.path.isfile(trg_path):  # If target missing, then return
+                action = "Missing"  # Will not appear in treeview
+                return action, src_path, src_size, src_time, \
+                    trg_path, None, None
+
+            trg_stat = os.stat(trg_path)  # os.stat provides file attributes
+            trg_size = trg_stat.st_size
+            trg_time = float(trg_stat.st_mtime)
+
+        ''' When Android not updating modification time, keep track ourselves '''
+        src_time = self.src_mt.get(src_path, src_time)
+        trg_time = self.trg_mt.get(trg_path, trg_time)
+        time_diff = abs(src_time - trg_time)  # time diff between src & trg
+
+        ''' Size and modify times match? Already synchronized. '''
+        if src_size == trg_size and time_diff <= 2:
+            action = "Same"  # Will not appear in treeview
+            return action, src_path, src_size, src_time, \
+                trg_path, trg_size, trg_time
+
+        ''' Check difference based on size or diff command '''
+        if src_size != trg_size:
+            ''' Sizes are different - Copy newer file to older file '''
+            if src_time < trg_time:
+                action = "Copy Trg -> Src (Size)"
+            elif src_time > trg_time:
+                action = "Copy Src -> Trg (Size)"
+            else:
+                action = "Error: Size different, time same"
+            return action, src_path, src_size, src_time, \
+                trg_path, trg_size, trg_time
+
+        self.run_one_command(
+            'diff -s ' + '"' + src_path + '" "' + trg_path + '"', src_size)
+
+        ''' Permission denied if curlftpfs chokes on files with # in name '''
+        if self.act_ftp and self.cmp_return_code != 0:
+            print("Retrying 'self.act_ftp and self.cmp_return_code != 0:'")
+            base_path = trg_path.replace(self.act_topdir, '')
+            self.ftp_retrieve(self.act_ftp, base_path)  # Retrieve manually
+            self.cmp_return_code = 0  # Reset for repeating test
+            self.run_one_command(
+                'diff -s ' + '"' + src_path + '" "' +
+                self.TMP_FTP_RETRIEVE + '"', src_size)
+            print(ext.read_into_string(self.TMP_STDOUT))
+            """ Use avo_run_ffmpeg() technique of cmd = cmd.replace()
+            TODO:
+            1. Assume target is Android and Android is never the source
+            2. ftp file transfer to /tmp/mserve_ftp_recv_zs8k6f
+            3. diff between src_path and /tmp file (self.TMP_FTP_RETRIEVE)
+            4. See ftp_retrieve
+            """
+
+        ''' Permission denied - Do nothing, just report and skip copy '''
+        if self.cmp_return_code != 0:
+            action = "Error: Permission denied on 'diff' check"
+            # print("\nError on file:", trg_path)
+            print(action, "return code:", self.cmp_return_code, "\n")
+            self.cmp_return_code = 0  # Reset so doesn't force end
+            return action, src_path, src_size, src_time, \
+                trg_path, trg_size, trg_time
+
+        # Get stdout contents STDOUT from 'diff' command
+        out = self.get_file_data(self.TMP_STDOUT)
+        if not out.strip().endswith(" are identical"):  # TODO: Horrible testing stdout
+            print("out:", out)
+
+            ''' Size same but contents different - Copy newer file to older '''
+            if src_time < trg_time:
+                action = "Copy Trg -> Src (Diff)"
+
+                ''' Size same but contents different - Copy newer file to older '''
+            elif src_time < trg_time:
+                action = "Copy Trg -> Src (Diff)"
+            elif src_time > trg_time:
+                action = "Copy Src -> Trg (Diff)"
+            else:
+                action = "Error: contents different, time same"
+
+        else:
+            ''' Size and contents the same. Set timestamp to oldest time '''
+            # File contents same so modification times must be synced
+            if src_time > trg_time:
+                action = "Timestamp Trg -> Src"
+            elif src_time < trg_time:
+                action = "Timestamp Src -> Trg"
+            else:
+                # Time or Size were different before now same
+                # Another job running perhaps?
+                title = "location.py Locations.compare_song_pair()"
+                text = "Programming error. Different pair now look like twins:\n\n"
+                text += "  - action   :  " + action + "\n"
+                text += "  - src_path :  " + src_path + "\n"
+                text += "  - trg_path :  " + trg_path + "\n"
+                text += "  - src_size :  " + str(src_size) + "\n"
+                text += "  - trg_size :  " + str(trg_size) + "\n"
+                text += "  - src_time :  " + str(src_time) + "\n"
+                text += "  - trg_time :  " + str(trg_time) + "\n"
+                text += "  - trg_size :  " + str(trg_size) + "\n\n"
+                text += "Was another job running? Contact www.pippim.com"
+                self.out_cast_show_print(title, text, 'error', align="left")
+                action = "OOPS"
+
+        return action, src_path, src_size, src_time, \
+            trg_path, trg_size, trg_time
+
+    def ftp_retrieve(self, ftp, path):
+        """ Retrieve file from FTP host """
+
+        prefix, basename = path.rsplit(os.sep, 1)
+        ftp.cwd(prefix)
+        with open(self.TMP_FTP_RETRIEVE, 'wb') as f:
+            ftp.retrbinary('RETR ' + basename, f.write)
+        # error_perm: 550 No such directory.
+
+    def cmp_update_files(self):
+        """ Called via "Update differences" button on cmp_top """
+
+        ''' Replace "update differences" button with progress bar '''
+        self.update_differences_btn.grid_remove()  # Button can't click again
+        progress_var = tk.DoubleVar()
+        progress_bar = ttk.Progressbar(
+            self.cmp_btn_frm, variable=progress_var, length=1200)
+        progress_bar.grid(row=0, column=1, padx=2)  # skinny
+        progress_bar.grid(row=0, column=1, padx=2, pady=2, sticky=tk.NSEW)
+        # self.cmp_btn_frm.columnconfigure(1, weight=1)
+        self.cmp_btn_frm.pack_slaves()
+
+        ''' Build list of commands. Cannot update_idle inside loop (crash) '''
+        self.cmp_return_code = 0  # Indicate how update failed
+        self.cmp_command_list = list()  # List of tuples [(commands, parameters)]
+        self.fast_refresh(tk_after=True)  # Update play_top animations
+        for artist in self.cmp_tree.get_children():
+            for album in self.cmp_tree.get_children(artist):
+                for song in self.cmp_tree.get_children(album):
+                    if not self.build_command_list(song):
+                        self.cmp_return_code = 1  # Indicate how update failed
+                        break  # Programmer error
+        self.fast_refresh(tk_after=True)  # Update play_top animations
+
+        ''' Tally sizes of all files to be copied. For granular progress bars. '''
+        all_sizes = 0
+        command_count = len(self.cmp_command_list)
+        for iid, command, size, src_to_trg, src_time, trg_time in \
+                self.cmp_command_list:
+            if command.startswith("cp"):
+                all_sizes += float(size)  # Total size of all files copied
+
+        last_sel_iid = None  # Last row highlighted in green
+        run_count = 0  # How many commands have be run so far
+        copy_time_so_far = 0.0  # To estimate time remaining
+        copy_size_so_far = 0  # To calculate progress bar percent
+        all_start_time = time.time()  # To give total time duration when done
+
+        ''' Process self.build_command_list(song) list '''
+        for iid, command, size, src_to_trg, src_time, trg_time in \
+                self.cmp_command_list:
+            # Variable src_to_trg: True=source->target. False=target->source
+
+            ''' Initialization '''
+            if self.cmp_return_code != 0:
+                break  # Could be from previous loop too
+
+            ''' Uncomment code below for enough lag to watch progress bar '''
+            # for _i in range(10):  # About 1/2 second lag to test play_top
+            #    time.sleep(.05)
+            #    self.fast_refresh(tk_after=True)
+
+            fake_path = self.fake_paths[int(iid)]  # TODO: put paths in tuple?
+            src_path = self.real_from_fake_path(fake_path)
+            trg_path = src_path.replace(self.open_topdir, self.cmp_target_dir)
+
+            if not self.fast_refresh():  # No sleep after should only take few ms
+                return  # Already know closing down
+
+            ''' 1. Highlight command being run '''
+            ''' Shutting down? '''
+            if not self.cmp_top_is_active:
+                return
+            self.cmp_tree.see(iid)  # tree.see() crashes when window is closed
+            if last_sel_iid:
+                toolkit.tv_tag_remove(self.cmp_tree, last_sel_iid, 'cmp_sel')
+            toolkit.tv_tag_add(self.cmp_tree, iid, 'cmp_sel')
+            last_sel_iid = iid  # Save highlight for removing next cycle
+
+            ''' 2. Run the copy or touch command '''
+            start_time = time.time()
+            if not self.run_one_command(command, size):
+                # self.cmp_return_code can be set to 2, 3, 4 or 5
+                break  # Run one command failed
+
+            ''' 3. Refresh progress bar '''
+            run_count += 1
+            percent = float(100.0 * run_count / command_count)
+            progress_var.set(percent)
+            if command.startswith("cp"):
+                copy_time_so_far += time.time() - start_time
+                copy_size_so_far += float(size)  # Total size of all files copied
+                percent = float(100.0 * copy_size_so_far / all_sizes)
+                if True is False:
+                    progress_var.set(percent)  # No good - timestamps are short.
+            if not self.fast_refresh():  # No sleep after should only take few ms
+                return
+
+            ''' 4. Update modification times for Android cell phones '''
+            self.update_mod_times(
+                src_to_trg, src_path, src_time, trg_path, trg_time)
+            if not self.fast_refresh():  # No sleep after
+                return
+
+            ''' 5. Compare source and target again to verify success '''
+            c_action, c_src_path, c_src_size, c_src_time, c_trg_path, \
+                c_trg_size, c_trg_time = self.compare_path_pair(fake_path)
+            if not c_action == "Same":
+                print("Error: action should be 'Same' but isn't:", c_action)
+                print("c_src_path:", c_src_path)
+                print("c_src_size:", c_src_size)
+                print("c_trg_path:", c_trg_path)
+                print("c_trg_size:", c_trg_size)
+                self.cmp_return_code = 10  # Files not same
+                # self.cmp_return_code UNUSED 6, 7, 8 and 9
+                break
+
+        ''' Shutting down? '''
+        if not self.cmp_top_is_active:
+            return
+
+        ''' Remove last highlight and close ModTime instances '''
+        toolkit.tv_tag_remove(self.cmp_tree, last_sel_iid, 'cmp_sel')
+        self.src_mt.close()  # Save modification_time to disk
+        self.trg_mt.close()  # If no changes then simply exit
+
+        ''' Error message first '''
+        if not self.cmp_return_code == 0:  # An error was found
+            title = "location.py Locations.cmp_update_files()"
+            text = "received non-zero self.cmp_return_code: "
+            text += str(self.cmp_return_code)
+            self.out_cast_show_print(title, text, 'error')
+
+        ''' Summary message '''
+        missing_count = len(self.cmp_trg_missing)
+        elapsed = time.time() - all_start_time
+        if copy_time_so_far:
+            speed = float(all_sizes) / copy_time_so_far
+        else:
+            speed = 0.0
+
+        print("commands:", command_count, "\tsize:", all_sizes,
+              "\telapsed:", '{:n}'.format(round(copy_time_so_far, 3)),
+              "\tspeed:", '{:n}'.format(round(speed, 3)))
+
+        title = "Locations synchronized"
+        text = "Open Location:  " + self.open_name
+        # TODO: Open Location missing: 999 music files.
+        text += "\nOther Location: " + self.act_name
+        if missing_count:
+            text += "\nOther location is missing: " + '{:n}'.format(missing_count)
+            text += " music files."
+        text += "\n\nFile synchronization count: " + '{:n}'.format(run_count)
+        if speed > 0:
+            text += "\n\nCopy speed (MB/s): " + '{:n}'.format(speed)
+        text += "\n\nTotal time (D.HH:MM:SS): " + tmf.mm_ss(elapsed)
+        self.out_cast_show_print(title, text, align="left")
+
+        # All done, close treeview as it's no longer relevant
+        self.cmp_close()
+
+    def run_one_command(self, command, size, wait=60, print_stats=True):
+        """ Run 'touch' or 'cp' command. """
+        ''' Remove previous stdout/stderr '''
+        self.rm_file(self.TMP_STDOUT)  # Remove Standard Output results file
+        self.rm_file(self.TMP_STDERR)  # Remove Standard Error results file
+        if command.startswith("touch"):
+            ''' Touch doesn't write to stdout and takes .003 seconds '''
+            result = os.popen(command).read().strip()
+            if len(result) > 4:
+                with open(self.TMP_STDERR, "w") as text_file:
+                    text_file.write(result)
+                print("run_one_command() touch command returned results (stderr)")
+                self.cmp_return_code = 2  # Indicate how update failed
+            return self.fast_refresh()  # Give little time slice to other threads
+        else:
+            ''' Copy writes to stdout and takes .01 second / MB 
+                'diff' over Wifi FTP Server takes .16 second / MB  '''
+            return self.wait_for_cmd_output(command, size, wait, print_stats)
+
+    def wait_for_cmd_output(self, command, size, wait, print_stats=True):
+        """ Wait for cp (copy) command to complete
+            Check cmp_top_is_active at top of each loop.
+            Maximum time for STDOUT or STDERR to appear is 10 seconds. """
+
+        ''' Build full command with stdout & stderr appended '''
+        command += " 1>" + self.TMP_STDOUT  # mserve_stdout_5sh18d
+        command += " 2>" + self.TMP_STDERR  # mserve_stderr_5sh18d
+        start_time = time.time()
+
+        # 2024-04-12: Use run in ext.launch_command() to get PID
+        # result = os.popen(command + " &").read().strip()
+        # if len(result) > 4:
+        #    print("wait_for_cmd_output() os.popen() unknown result:", result)
+        #    self.cmp_return_code = 3  # Indicate how update failed
+        #    return False
+        pid = ext.launch_command(command, self.cmp_top)
+        if pid == 0:
+            print("Warning command finished before PID could be acquired:")
+            print(command)
+
+        loop_count = 0
+        while True:
+            if not self.cmp_top_is_active:
+                return False
+            loop_count += 1
+            elapsed = time.time() - start_time
+            if elapsed > float(wait):  # Aug 31/23 WiFi change 10.0 to 60.0 for `diff`
+                # 2024-04-09 wait time defaults to 60 but set to 5 for analyze volume
+                # Wait: 270,211  Size: 8,090,133 	Elapsed: 25.513  Speed: 0.317
+                # Wait: 94,729   Size: 4,726,205 	Elapsed: 9.85    Speed: 0.48
+                print("wait_for_cmd_output():", wait, "second time-out")
+                ''' TODO: Test host(s) and set down flags '''
+                self.cmp_return_code = 4  # Indicate how update failed
+                return False
+
+            if pid != 0 and ext.check_pid_running(pid):
+                # 2024-04-12 initial version was getting ~800,000 loops and
+                # 1/2 second delay updating play_top animations. Call fast_refresh
+                self.fast_refresh(tk_after=True)
+                # with fast_refresh(), loops are ~150,000 and no animation lag
+                continue
+
+            out = self.get_file_data(self.TMP_STDOUT)
+            err = self.get_file_data(self.TMP_STDERR)
+
+            ''' stdout and stderr may be created with no information yet '''
+            ''' 2024-04-12 Now checking PID finishing 
+            if len(out) == 0 and len(err) == 0:
+                # 'cp' over ethernet, False = 50 loops, True = 8 loops
+                # 'diff' over Wifi, False = 30k to 100k loops, single-Core 100%
+                # 'diff' over Wifi, False = 5k to 20k loops, single-Core 50%
+                if not self.fast_refresh(tk_after=True):
+                    return False
+                continue  # No files or empty files
+            '''
+
+            ''' TODO: Record test results and cmp_return_code to audit log. '''
+            speed = float(size) / elapsed / 1000000.0
+            if print_stats:
+                print("Wait:", '{:n}'.format(loop_count),
+                      "\tSize:", size,  # size is string, not int
+                      "\tElapsed sec:", '{:n}'.format(round(elapsed, 3)),
+                      "\tSpeed (MB/s):", '{:n}'.format(round(speed, 3)))
+
+            ''' Analyze Volume used STDERR for "normal" output so no errors '''
+            if self.state == 'analyze_volume' \
+                    or self.state == 'analyze_loudnorm' \
+                    or self.state == 'update_loudnorm' \
+                    or self.state == 'analyze_volume_new':
+                return True
+
+            ''' stdout or stderr have been populated by cp command '''
+            if len(err) > 0:
+                print("'diff -s' or 'cp -v' errors reported below:\n", err)
+                if len(out) > 0:
+                    print("cp verbose reported too!:", out)
+                self.cmp_return_code = 5
+                return False
+            if len(out) > 0:
+                return True
+
+    @staticmethod
+    def get_file_data(f):
+        """ Get data from STDOUT or STDERR
+            Return empty string when file doesn't exist or when zero byte size.
+        """
+        data = ""
+        if os.path.isfile(f):
+            with open(f, 'r') as fh:
+                data = fh.read()
+        return data
+
+    def update_mod_times(self, src_to_trg, src_path, src_time, trg_path, trg_time):
+        """ Update for Android, does nothing for other OS """
+        ''' Update Modification Times from old time to new time '''
+        if src_to_trg:  # Copy/Touch direction is from Src -> Trg
+            self.src_mt.update(src_path, trg_time, src_time)
+            self.trg_mt.update(trg_path, trg_time, src_time)
+        else:  # Action is from Trg -> Src
+            self.src_mt.update(src_path, src_time, trg_time)
+            self.trg_mt.update(trg_path, src_time, trg_time)
+
+    def fast_refresh(self, tk_after=False):
+        """ Quickly update animations with no sleep after """
+
+        if not self.get_thread_func:
+            return True  # Still 'NoneType' during mserve startup & no windows
+
+        if not self.last_fast_refresh:
+            self.last_fast_refresh = 0.0  # Not init. May be mserve.py call.
+        elapsed = time.time() - self.last_fast_refresh
+        ''' Refresh designed for .033 seconds. If less art spins faster. '''
+        if elapsed > .02:  # .02 + refresh time close to .033 for 30 FPS.
+            # Aug 9/23 elapsed change from .2 to .1 for missing_artwork_callback
+            #          No performance improvement so it's simply metadata read
+            thr = self.get_thread_func()  # main_top, play_top or lib_top
+            thr_ret = thr(tk_after=tk_after)
+            if not thr_ret:
+                print("fast_refresh() called thr(tk_after=tk_after))",
+                      "and it returned False")
+                return False
+            self.last_fast_refresh = time.time()
+        if self.cmp_top_is_active is not None:
+            return self.cmp_top_is_active is True
+        else:
+            return True  # Could be called from encoding.py, etc.
+
+    @staticmethod
+    def rm_file(fname):
+        """ Remove file if it exists """
+        if os.path.isfile(fname):
+            os.remove(fname)
+
+    def build_command_list(self, iid):
+        """ Extract commands from treeview and stick into list """
+        ''' fields from .insert() method
+            self.cmp_tree.insert(CurrAlbumId, "end", iid=str(i), text=Song,
+                values=(src_ftime, trg_ftime, src_fsize, trg_fsize, action,
+                                    float(src_time), float(trg_time)), '''
+        action = self.cmp_tree.item(iid)['values'][4]  # 6th treeview column
+        if action.startswith("Error:"):  # Modification time unknown.
+            return True  # True = looks like command built so action displayed
+
+        src_time = self.cmp_tree.item(iid)['values'][5]
+        trg_time = self.cmp_tree.item(iid)['values'][6]
+        """ Set REAL paths for source and target """
+        fake_path = self.fake_paths[int(iid)]
+        src_path = self.real_from_fake_path(fake_path)
+        trg_path = src_path.replace(self.open_topdir, self.cmp_target_dir)
+        ''' src=from path, trg=to path. Can be flipped src_path/trg_path '''
+        src, trg = self.cmp_decipher_arrow(action, src_path, trg_path)
+        if src is None:
+            print("Programmer made error - src is None")
+            return False  # Programmer made error
+        src_to_trg = src == src_path  # src_to_trg same(True) or flipped(False)
+        if src_to_trg:
+            size = self.cmp_tree.item(iid)['values'][2]  # str src size 3 dec
+        else:
+            size = self.cmp_tree.item(iid)['values'][3]  # str trg size 3 dec
+
+        ''' Build command line so far '''
+        if action.startswith("Copy "):  # Is it a copy?
+            command_str = u"cp --preserve=timestamps --verbose"
+        elif action.startswith("Timestamp "):  # Is it a timestamp?
+            command_str = u"touch -m -r"
+        else:  # None of above? - ERROR!
+            title = "location.py Locations.build_command_list()"
+            text = "Programming error. 'action' is not 'Copy' or 'Timestamp':\n\n"
+            text += "  - action  :  " + action + "\n\n"
+            text += "Contact www.pippim.com"
+            self.out_cast_show_print(title, text, 'error', align="left")
+            return False  # False = action not displayed in treeview
+
+        ''' Complete command line with extra space:  "source"  "target" '''
+        command_str += u'  "' + src + u'"  "' + trg + u'"'
+
+        ''' add command & control tuple to list '''
+        self.cmp_command_list.append((iid, command_str, size, src_to_trg,
+                                      src_time, trg_time))
+
+        return True
+
+    def cmp_decipher_arrow(self, action, src_path, trg_path):
+        """ Flip src_path (full_path) and trg_path (full_path2) around """
+        if "Trg -> Src" in action:
+            return trg_path, src_path
+        elif "Src -> Trg" in action:
+            return src_path, trg_path
+        else:
+            title = "location.py Locations.build_command_list()"
+            text = "Programming error. Method failed to return results:\n\n"
+            text += "self.cmp_decipher_arrow(action, src_path, trg_path):\n"
+            text += "  - action  :  " + action + "\n"
+            text += "  - src_path:  " + src_path + "\n"
+            text += "  - trg_path:  " + trg_path + "\n\n"
+            text += "Contact www.pippim.com"
+            self.out_cast_show_print(title, text, 'error', align="left")
+            return None, None
+
+    # =========================================================================
+    #                                                                         #
+    #               Loudness Normalization - avo_ aln_ uln_ avn_              #
+    #                                                                         #
+    # =========================================================================
+
     def avo_startup_check(self):
         """ Read SQL History for Type=="Volume", Action=="Analyze" or
             Action=="loudnorm" or Action=="Update" where SourceMaster =
@@ -4676,11 +5248,8 @@ filename.
             return False  # Closing down
 
         ''' Tally history records. 
-                      Type      Action
-            New keys: volume    detect_old
-                      volume    loudnorm_1
-                      volume    loudnorm_2
-                      volume    detect_new
+            Type=volume, SourceMaster=loc for the four
+            Action=detect_old / loudnorm_1 / loudnorm_2 / detect_new
         '''
         
         # ONE TIME EXECUTION
@@ -4688,18 +5257,18 @@ filename.
         #sql.hist_rename_type_action('Volume', 'loudnorm', 'volume', 'loudnorm_1')
         #sql.hist_rename_type_action('Update', 'loudnorm', 'volume', 'loudnorm_2')
 
-        print("\nTally History Records for Volume Analysis and Update")
+        #print("\nTally History Records for Volume Analysis and Update")
         ext.t_init('BEFORE History Records')
         detect_old_count = sql.hist_count_type_action_master(
-            'volume', 'detect_old', self.act_code, prt=True, tab=False)
+            'volume', 'detect_old', self.act_code, prt=False, tab=False)
         loudnorm_1_count = sql.hist_count_type_action_master(
-            'volume', 'loudnorm_1', self.act_code, prt=True, tab=False)
+            'volume', 'loudnorm_1', self.act_code, prt=False, tab=False)
         loudnorm_2_count = sql.hist_count_type_action_master(
-            'volume', 'loudnorm_2', self.act_code, prt=True, tab=False)
+            'volume', 'loudnorm_2', self.act_code, prt=False, tab=False)
         detect_new_count = sql.hist_count_type_action_master(
-            'volume', 'detect_new', self.act_code, prt=True, tab=False)
-        ext.t_end('print')
-        print()
+            'volume', 'detect_new', self.act_code, prt=False, tab=False)
+        ext.t_end('no_print')  # 0.032 seconds for 6K records
+        #print()
 
         self.cmp_top.update_idletasks()  # ShowInfo appearing on monitor 0, 0
         if self.state == "analyze_volume" and detect_old_count > 0:
@@ -4778,18 +5347,18 @@ filename.
             return False  # Closing down
 
         ''' Tally history records. '''
-        print("\nTally History Records AFTER Volume Analysis and Update")
+        #print("\nTally History Records AFTER Volume Analysis and Update")
         ext.t_init('AFTER History Records')
         detect_old_count = sql.hist_count_type_action_master(
-            'volume', 'detect_old', self.act_code, prt=True, tab=False)
+            'volume', 'detect_old', self.act_code, prt=False, tab=False)
         loudnorm_1_count = sql.hist_count_type_action_master(
-            'volume', 'loudnorm_1', self.act_code, prt=True, tab=False)
+            'volume', 'loudnorm_1', self.act_code, prt=False, tab=False)
         loudnorm_2_count = sql.hist_count_type_action_master(
-            'volume', 'loudnorm_2', self.act_code, prt=True, tab=False)
+            'volume', 'loudnorm_2', self.act_code, prt=False, tab=False)
         detect_new_count = sql.hist_count_type_action_master(
-            'volume', 'detect_new', self.act_code, prt=True, tab=False)
-        ext.t_end('print')
-        print()
+            'volume', 'detect_new', self.act_code, prt=False, tab=False)
+        ext.t_end('no_print')  # 0.024 seconds for 6K records
+        #print()
 
         if not self.cmp_top_is_active:
             return False  # Closing down
@@ -4835,6 +5404,301 @@ filename.
 
         return self.cmp_top_is_active
 
+    def avo_parameters(self):
+        """ Parameters for dB levels, skip completed, codecs and bit rates """
+
+        self.cmp_tree_frame.grid_remove()  # Swap out treeview frame
+
+        colors = self.get_cfg(["avo_treeview", 'style', 'color'])
+
+        frame = tk.Frame(self.cmp_frame, relief='solid',
+                         highlightcolor=colors['edge_color'],
+                         highlightbackground=colors['edge_color'],
+                         highlightthickness=colors['edge_px'], bd=0)
+        #tk.Grid.rowconfigure(frame, 0, weight=1)
+        tk.Grid.columnconfigure(frame, 2, weight=1)
+        frame.grid(row=0, column=0, sticky=tk.NSEW)
+        proceed = self.display_avo_parameters(frame)
+        if not self.cmp_top:
+            return False  # Closing down
+        self.cmp_top.update_idletasks()
+        #time.sleep(5)
+
+        frame.grid_remove()  # Swap out parameters frame
+        self.cmp_tree_frame.grid()  # Swap in treeview frame
+        self.cmp_top.update_idletasks()
+        return proceed
+
+    # noinspection SpellCheckingInspection
+    def display_avo_parameters(self, frame):
+        """ Analyze Volume (avo_) parameters populate frame where treeview
+            eventually appears.
+
+            Field Reference: http://k.ylo.ph/2016/04/04/loudnorm.html
+
+        """
+
+        text = "Control Setting"
+        tk.Label(frame, text=text, anchor=tk.CENTER, font=g.FONT, bg=self.bg).\
+            grid(row=0, column=0, pady=5, sticky=tk.EW)
+        tk.Label(frame, text="Value", anchor=tk.CENTER, font=g.FONT, bg=self.bg).\
+            grid(row=0, column=1, pady=5, sticky=tk.EW)
+
+        def one_avo_var(txt, scr_name, row, col, span=1, width=10):
+            """ Create screen field text and value. """
+            #tk.Label(frame, text=txt, bg=self.bg, font=g.FONT). \
+            tk.Label(frame, text=txt, anchor=tk.E, font=g.FONT). \
+                grid(row=row, column=col, sticky=tk.EW)
+            fld = tk.Entry(frame, textvariable=scr_name, width=width,
+                           state='normal', font=g.FONT)
+            fld.grid(row=row, column=col+1, columnspan=span, sticky=tk.EW,
+                     padx=5, pady=5)
+            return fld
+
+        var_select_max_lower = tk.DoubleVar(value=self.avo_select_max_lower)
+        var_select_max_upper = tk.DoubleVar(value=self.avo_select_max_upper)
+        var_skip_complete = tk.BooleanVar(value=self.avo_skip_complete)
+        var_integrated = tk.DoubleVar(value=float(self.avo_integrated))
+        var_true_peak = tk.DoubleVar(value=float(self.avo_true_peak))
+        var_lra = tk.DoubleVar(value=float(self.avo_lra))  # Stored as string
+        var_linear = tk.StringVar(value=self.avo_linear)
+        var_use_inputs = tk.BooleanVar(value=self.avo_use_inputs)
+        var_max_m4a_ar = tk.IntVar(value=self.avo_max_m4a_ar)
+        var_max_mp3_ar = tk.IntVar(value=self.avo_max_mp3_ar)
+        var_comment = tk.StringVar(value=self.avo_comment)
+
+        txt_select_max_lower = "Select Maximum Volume lower"
+        txt_select_max_upper = "Select Maximum Volume upper"
+        txt_skip_complete = "Skip songs already analyzed?"
+        txt_integrated = "Integrated Loudness Target LUFS"
+        txt_true_peak = "Maximum True Peak dBTP"
+        txt_lra = "Loudness Range Target (LRA) LU"
+        txt_linear = "Linear Normalization?"
+        txt_use_inputs = "Force feed inputs?"
+        txt_max_m4a_ar = "Maximum supported M4A audio rate Hz"
+        txt_max_mp3_ar = "Maximum supported MP3 audio rate Hz"
+        txt_comment = "Comment for records"
+
+        _fld_select_max_lower = one_avo_var(
+            txt_select_max_lower, var_select_max_lower, 10, 0)
+        _fld_select_max_upper = one_avo_var(
+            txt_select_max_upper, var_select_max_upper, 11, 0)
+        _fld_skip_complete = one_avo_var(
+            txt_skip_complete, var_skip_complete, 12, 0)
+        _fld_integrated = one_avo_var(
+            txt_integrated, var_integrated, 14, 0)
+        _fld_true_peak = one_avo_var(
+            txt_true_peak, var_true_peak, 15, 0)
+        _fld_lra = one_avo_var(
+            txt_lra, var_lra, 16, 0)
+        _fld_linear = one_avo_var(
+            txt_linear, var_linear, 17, 0)
+        _fld_use_inputs = one_avo_var(
+            txt_use_inputs, var_use_inputs, 18, 0)
+        _fld_max_m4a_ar = one_avo_var(
+            txt_max_m4a_ar, var_max_m4a_ar, 19, 0)
+        _fld_max_mp3_ar = one_avo_var(
+            txt_max_mp3_ar, var_max_mp3_ar, 20, 0)
+        if self.state.startswith("analyze_"):
+            _fld_comment = one_avo_var(
+                txt_comment, var_comment, 21, 0, span=2, width=60)
+        frame.update()
+
+        retn = [None]  # mutable variable list: inner function <-> local space
+
+        def cancel():
+            """ Back """
+            retn[0] = False
+
+        def proceed():
+            """ Forward """
+            title = "Control setting error."
+
+            def get_double(var, name, old, dec=2):
+                """ 
+                :param var: tkinter FloatVar
+                :param name: field name on screen (label text=)
+                :param old: old valid value to restore 
+                :param dec: decimal point precision
+                :return: valid value entered or None
+                """
+                try:
+                    hold = var.get()
+                    s_hold = '{:n}'.format(round(hold, dec))
+                    n_hold = float(s_hold)
+                    if hold != n_hold:
+                        self.out_fact_show(
+                            title, "The setting '" + name + "',\n"
+                            "rounded to " + str(dec) + " decimal digits",
+                            icon='error')
+                        var.set(n_hold)
+                    return n_hold
+
+                except (ValueError, TypeError, tk.TclError):
+                    self.out_fact_show(
+                        title, "The setting '" + name + "',\n"
+                        "is not a valid number.", icon='error')
+                    var.set(old)
+                    return None
+
+            def get_0_or_1(var, name, old):
+                """
+                :param var: tkinter IntVar
+                :param name: field name on screen (label text=)
+                :param old: old valid value to restore
+                :return: valid value entered or None
+                """
+                hold = "invalid integer"  # E.G. letter "a"
+                try:
+                    hold = var.get()
+                    if hold != 0 and hold != 1:
+                        raise ValueError
+                    return hold
+                except (ValueError, TypeError, tk.TclError):
+                    self.out_fact_show(
+                        title, "The setting '" + name + "', must be \n"
+                        "'0' or '1': '" + hold.strip() + "' was entered", icon='error')
+                    var.set(old)
+                    return None
+
+            def get_integer(var, name, old):
+                """
+                :param var: tkinter IntVar
+                :param name: field name on screen (label text=)
+                :param old: old valid value to restore
+                :return: valid value entered or None
+                """
+                try:
+                    hold = var.get()
+                    return hold
+                except (ValueError, TypeError, tk.TclError):
+                    self.out_fact_show(
+                        title, "The setting '" + name + "',\n"
+                        "is not a valid integer.", icon='error')
+                    var.set(old)
+                    return None
+
+            new_select_max_lower = get_double(
+                var_select_max_lower, txt_select_max_lower, self.avo_select_max_lower)   
+            if new_select_max_lower is None:
+                return
+
+            new_select_max_upper = get_double(
+                var_select_max_upper, txt_select_max_upper, self.avo_select_max_upper)   
+            if new_select_max_upper is None:
+                return
+
+            if not new_select_max_lower < new_select_max_upper <= 0.0:
+                self.out_fact_show(
+                    title, "The setting '" + txt_select_max_lower + "', must be" +
+                    "\n< '" + txt_select_max_upper + "' and <= 0.0", icon='error')
+                return
+
+            new_skip_complete = get_0_or_1(
+                var_skip_complete, txt_skip_complete, self.avo_skip_complete)
+            if new_skip_complete is None:
+                return
+
+            new_integrated = get_double(
+                var_integrated, txt_integrated, self.avo_integrated)
+            if new_integrated is None:
+                return
+            if not -50.0 < new_integrated < -5.0:
+                self.out_fact_show(
+                    title, "The setting '" + txt_integrated + "'," +
+                    "\nmust be >= -50.0 and <= -5.0", icon='error')
+                return
+
+            new_true_peak = get_double(
+                var_true_peak, txt_true_peak, self.avo_true_peak)
+            if new_true_peak is None:
+                return
+
+            if not -9.0 <= new_true_peak <= 0.0:
+                self.out_fact_show(
+                    title, "The setting '" + txt_true_peak + "'," +
+                    "\nmust be >= -9.0 and <= 0", icon='error')
+                return
+
+            new_lra = get_double(var_lra, txt_lra, self.avo_lra)
+            if new_lra is None:
+                return
+            if not 1.0 <= new_lra <= 50.0:
+                self.out_fact_show(
+                    title, "The setting '" + txt_lra + "'" +
+                    "\nmust be >= 1.0 and <= 50.0", icon='error')
+                return
+
+            new_linear = var_linear.get()
+            if not (new_linear == "true" or new_linear == "false"):
+                self.out_fact_show(
+                    title, "The setting 'Linear Normalization?'" +
+                    "\nmust be 'true' or 'false'", icon='error')
+                return
+
+            new_use_inputs = get_0_or_1(
+                var_use_inputs, txt_use_inputs, self.avo_use_inputs)
+            if new_use_inputs is None:
+                return
+
+            new_max_m4a_ar = get_integer(
+                var_max_m4a_ar, txt_max_m4a_ar, self.avo_max_m4a_ar)
+            if new_max_m4a_ar is None:
+                return
+            if not 20000 <= new_max_m4a_ar <= 192000:
+                self.out_fact_show(
+                    title, "The setting '" + new_max_m4a_ar + "'" +
+                    "\nmust be >= 20000 and <= 192000", icon='error')
+                return
+
+            new_max_mp3_ar = get_integer(
+                var_max_mp3_ar, txt_max_mp3_ar, self.avo_max_mp3_ar)
+            if new_max_mp3_ar is None:
+                return
+            if not 20000 <= new_max_mp3_ar <= 192000:
+                self.out_fact_show(
+                    title, "The setting '" + new_max_mp3_ar + "'" +
+                    "\nmust be >= 20000 and <= 192000", icon='error')
+                return
+
+            new_max_mp3_ar = var_max_mp3_ar.get()
+            if not 20000 <= new_max_mp3_ar <= 192000:
+                self.out_fact_show(
+                    title, "The setting 'Maximum supported MP3 audio rate Hz'" +
+                    "\nmust be >= 20000 and <= 192000", icon='error')
+                return
+
+            new_comment = var_comment.get()
+
+            self.avo_select_max_lower = new_select_max_lower
+            self.avo_select_max_upper = new_select_max_upper
+            self.avo_skip_complete = new_skip_complete
+            self.avo_integrated = str(new_integrated)
+            self.avo_true_peak = str(new_true_peak)
+            self.avo_lra = str(new_lra)
+            #print("self.avo_lra:", self.avo_lra)
+            self.avo_linear = new_linear
+            self.avo_use_inputs = new_use_inputs
+            self.avo_max_m4a_ar = new_max_m4a_ar
+            self.avo_max_mp3_ar = new_max_mp3_ar
+            self.avo_comment = new_comment
+
+            retn[0] = True
+
+        cancel_btn = tk.Button(
+            frame, width=g.BTN_WID, command=cancel, text="✘ Cancel")
+        cancel_btn.grid(row=50, column=2, padx=10, pady=5, sticky=tk.E)
+
+        proceed_btn = tk.Button(
+            frame, width=g.BTN_WID, command=proceed, text="✔ Proceed")
+        proceed_btn.grid(row=50, column=0, padx=10, pady=5, sticky=tk.E)
+        
+        while retn[0] is None:  # Wait until Proceed or Cancel selected.
+            if not self.fast_refresh(tk_after=True):
+                return False  # Closing down
+
+        return retn[0]
+
     def avo_insert_tree_row(self, fake_path, CurrAlbumId, iid, Song):
         """ Analyze Mean Volume and Maximum Volume for Old (Original) Song """
 
@@ -4847,9 +5711,18 @@ filename.
         if trg_path is None:  # Target location is missing file in source loc.
             return True  # Nothing inserted into treeview but, not an error
 
-        ''' Insert song into treeview '''
         def insert_tv_row():
             """ Shared function to add treeview row """
+            try:
+                max_float = float(max_volume.split(" dB")[0])
+            except ValueError:
+                print(_who, "Maximum Volume is not a number:", max_volume)
+                print("for:", OsBase)
+                max_float = self.avo_select_max_lower - 50.0  # make it stick out
+
+            if self.avo_select_max_lower <= max_float <= self.avo_select_max_upper:
+                pass  # Need button to pick "Show All" or "Selected"
+
             self.cmp_tree.insert(CurrAlbumId, "end", iid=iid, text=Song,
                                  values=(mean_volume, max_volume, music_id),
                                  tags=("Song",))
@@ -4868,6 +5741,9 @@ filename.
                         insert_tv_row()  # Show progress so far
                         self.avo_skip_count += 1
                         return True  # Skip this song file
+            else:
+                print(_who, "Retrying song with 'N/A' maximum volume:")
+                print("\t", OsBase)
 
         '''   B I G   T I C K E T   E V E N T   
 
@@ -4888,7 +5764,7 @@ filename.
                 print(_who, "Not overwriting existing music volume:\n\t",
                       d['Target'], "with 'N/A'.")
                 print("for:", OsBase)
-            music_id = 0  # Don't populate with "N/A"
+            music_id = 0  # Don't overwrite previous value with "N/A"
         if not self.cmp_top_is_active:
             return False  # Closing down
 
@@ -4912,19 +5788,20 @@ filename.
             :returns: trg_path, trg_size, trg_atime, trg_mtime, music_id, OsBase
         """
 
-        point_of_no_return = (None, None, None, None, None, None)
+        _who = self.who + "avo_trg_info():"
+        six_nones = (None, None, None, None, None, None)
         src_path = self.real_from_fake_path(fake_path)
         trg_path = src_path.replace(self.open_topdir, self.cmp_target_dir)
         if not os.path.isfile(trg_path):  # Target may not exist in other locations
-            return point_of_no_return
+            return six_nones
 
         trg_path_new = trg_path + ".new"
         if new and not os.path.isfile(trg_path_new):
-            print("SQL History row with Type='volume', Action='loudnorm_2",
-                  "should not exist for:")
-            print(trg_path_new)
-            print("avo_trg_info(): Perhaps the file was moved, removed or renamed?")
-            return point_of_no_return
+            print("\n" + _who + " New normalized file not found:")
+            print(trg_path)
+            print("\tThe NEW file was never created or, it was moved,",
+                  "removed or renamed.")
+            return six_nones
 
         trg_stat = os.stat(trg_path_new) if new else os.stat(trg_path)
         trg_size = trg_stat.st_size
@@ -4971,7 +5848,7 @@ One-liner to copy and paste into terminal:
 
         """
         cmd = self.avo_ffmpeg + ' -i "' + trg_path + '" -af "volumedetect"'
-        cmd += ' -f null /dev/null'
+        cmd += ' -f null -'
 
         wait = size / 1000000 * 3  # Wait 3 seconds per megabyte before quiting
         wait = 3 if not wait else wait
@@ -5268,12 +6145,13 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=$int
         ''' Skip files already updated? '''
         if self.avo_skip_complete:
             d = sql.hist_get_music_var(music_id, "volume", "loudnorm_2", loc)
-            json_dict = json.loads(d['Target'])
-            # TODO: Check for .new file and .bak file
-            if d and d['Timestamp'] > trg_mtime:
-                insert_tv_row()  # Show progress so far
-                self.avo_skip_count += 1
-                return True  # Skip this song file
+            if d:
+                json_dict = json.loads(d['Target'])
+                # TODO: Check for .new file and .bak file
+                if d and d['Timestamp'] > trg_mtime:
+                    insert_tv_row()  # Show progress so far
+                    self.avo_skip_count += 1
+                    return True  # Skip this song file
 
         ''' Override audio rates too high for ffmpeg codecs '''
         trg_ext = trg_path.split(".")[-1]
@@ -5351,8 +6229,7 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=$int
         music_id = sql.music_id_for_song(OsBase)
         if json_dict == {}:  # No metadata, dictionary empty
             d = sql.hist_get_music_var(music_id, "volume", "loudnorm_2", loc)
-            # TODO: check if this is same location. If different self.act_code
-            # then how should it be overridden?
+
             if d:
                 print(_who, "Not overwriting existing 'loudnorm' Filter':\n\t",
                       d['Target'], "with empty dictionary.")
@@ -5361,18 +6238,6 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=$int
 
         if not self.cmp_top_is_active:
             return False  # Closing down
-
-        # Add missing key/values to json_dict
-        # 2024-04-18 - All json format dictionary keys are returned now.
-
-        #output_i = self.trg_ctl.metadata.get("OUTPUT_I", "N/A")
-        #output_tp = self.trg_ctl.metadata.get("OUTPUT_TP", "N/A")
-        #output_lra = self.trg_ctl.metadata.get("OUTPUT_LRA", "N/A")
-        #output_thresh = self.trg_ctl.metadata.get("OUTPUT_THRESH", "N/A")
-        #json_dict["output_i"] = output_i
-        #json_dict["output_tp"] = output_tp
-        #json_dict["output_lra"] = output_lra
-        #json_dict["output_thresh"] = output_thresh
 
         # Audio Rate may have been reduced for ffmpeg codec limitations
         json_dict["ar"] = ar  # m4a 192k -> 96k, mp3 192k -> 44.1k
@@ -5465,7 +6330,7 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
             self.avo_trg_info(fake_path, new=True)  # 'new' s/b on file
         if trg_path is None:  # Target location is missing file in source loc.
             return True  # Nothing inserted into treeview but, not an error
-        trg_path = trg_path + ".new"
+        trg_path_new = trg_path + ".new"
 
         ''' Insert song into treeview '''
         def insert_tv_row():
@@ -5495,12 +6360,12 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
               -  Run ffmpeg 'volumedetect' Filter  
             Calls self.avo_run_ffmpeg() shared with avo_insert_tree_row()
         '''
-        mean_volume, max_volume = self.avo_run_ffmpeg(trg_path, trg_size)
+        mean_volume, max_volume = self.avo_run_ffmpeg(trg_path_new, trg_size)
         if not self.cmp_top_is_active:
             return False  # Closing down
 
         ''' ffmpeg changes Last Access Time - Set it back '''
-        self.avo_trg_reset(trg_path, trg_atime, _who)
+        self.avo_trg_reset(trg_path_new, trg_atime, _who)
 
         ''' Save ffmpeg results in SQL History Table. '''
         if max_volume == "N/A":
@@ -5603,25 +6468,49 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
             """ Popup Window with SQL Music Table Row Metadata for song """
             n_data = sql.PrettyNormalize(music_id, self.act_code)
             self.pretty_window(
-                self.cmp_top, n_data, "Normalization Details", 1000, 600, x, y)
+                self.cmp_top, n_data, "Normalization Details", 1300, 700,
+                x, y, new=True)  # new = use right align tab stops and uom
 
-        def remove_normalize():
+        def remove_normalize(prompt=True):
             """ Remove four history records for song """
-            title = "Confirm loudness normalization records removal"
+            title = "Confirm loudness normalization removal"
             text = "Removing the records for this song allows the process\n"
             text += "to be repeated for this song only. The process is\n"
             text += "very quick for one song. Remove records for this song?"
-            answer = message.AskQuestion(self.cmp_top, confirm="No",
-                                         thread=self.get_thread_func,
-                                         title=title, text=text)
-            if answer.result != 'yes':
-                return
+            if prompt:
+                answer = message.AskQuestion(self.cmp_top, confirm="No",
+                                             thread=self.get_thread_func,
+                                             title=title, text=text)
+                if answer.result != 'yes':
+                    return
+
             sql.hist_del_music_var(music_id, 'volume', 'detect_old', loc)
             sql.hist_del_music_var(music_id, 'volume', 'loudnorm_1', loc)
             sql.hist_del_music_var(music_id, 'volume', 'loudnorm_2', loc)
             sql.hist_del_music_var(music_id, 'volume', 'detect_new', loc)
             tree.delete(iid)
             tree.update_idletasks()
+
+            # Remove ".new" song file (if it exists)
+            sql_row = sql.music_get_row(music_id)
+            OsBase = sql_row['OsFileName']
+            if sql_row:
+                trg_path_new = self.cmp_target_dir + os.sep + OsBase + ".new"
+                if os.path.isfile(trg_path_new):
+                    self.rm_file(trg_path_new)
+
+        def redo_normalize():
+            """ Redo loudness normalization for song """
+            title = "Confirm loudness normalization records removal"
+            text = "Removing the records for this song allows the process\n"
+            text += "to be repeated for this song only. The process is\n"
+            text += "very quick for one song. Remove records for this song?"
+            if confirm:
+                answer = message.AskQuestion(self.cmp_top, confirm="No",
+                                             thread=self.get_thread_func,
+                                             title=title, text=text)
+                if answer.result != 'yes':
+                    return
 
         menu.add_command(label="Collapse all Artists", font=(None, g.MED_FONT),
                          command=collapse_all)
@@ -5634,6 +6523,8 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
                              command=view_normalize)
             menu.add_command(label="Remove Normalization", font=(None, g.MED_FONT),
                              command=remove_normalize)
+            menu.add_command(label="Redo Normalization", font=(None, g.MED_FONT),
+                             command=redo_normalize)
             menu.add_command(label="View SQL Metadata", font=(None, g.MED_FONT),
                              command=view_sql_metadata)
             menu.add_separator()
@@ -5643,571 +6534,8 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
         menu.tk_popup(x, y)
         menu.bind("<FocusOut>", lambda _: close())
 
-
-
-    @staticmethod
-    def real_from_fake_path(fake_path):
-        """ Remove <No Artist> and <No Album> from fake paths """
-        real_path = fake_path.replace(os.sep + g.NO_ARTIST_STR, '')
-        return real_path.replace(os.sep + g.NO_ALBUM_STR, '')
-
-    def compare_path_pair(self, fake_path):
-        """ Called when inserting in treeview and after copy/touch command.
-
-            NOTES for sshfs:
-                First sync is 8,261 seconds 2 hours 18 minutes for
-                3,800 songs 'diff'.
-
-                Second sync is 1 minute
-
-                Run bash script 'test-for-sync.sh' to change files
-                    in ~/Music/Compilations
-
-                Use Kid3 on song to change some metadata
-
-            RETURNS:
-
-                return action, src_path, src_size, src_time, \
-                    trg_path, trg_size, trg_time
-
-            WHERE:
-                src_path = self.open_topdir + real bottom path
-                trg_path = self.act_topdir + real bottom path
-                size = integer file size in bytes
-                mtime = modification time to filesystems' nanosecond precision
-
-            Possible return actions (hidden detached from treeview):
-                "Missing" - In target(other) location (hidden from view)
-                "Same" - within 2 seconds so no action required (hidden)
-                "Error: Size different, time same" - Don't know copy direction
-                "Error: contents different, time same" -    "   "   "   "
-                "Error: Permission denied from 'diff' command"
-                "OOPS" - programming error that should never happen (hidden)
-                "Copy Trg -> Src (Size)" - Based on size difference
-                "Copy Src -> Trg (Size)" - Based on size difference
-                "Copy Trg -> Src (Diff)" - Based on file difference
-                "Copy Src -> Trg (Diff)" - Based on file difference
-                "Timestamp Trg -> Src" - Prevents future checks
-                "Timestamp Src -> Trg" - Prevents future checks """
-
-        action = ""  # to make pycharm happy
-
-        ''' Build real song path from fake_path and stat '''
-        src_path = self.real_from_fake_path(fake_path)
-        
-        ''' Is os.stat() call necessary? '''
-        src_size = 0
-        src_time = 0.0
-        if self.src_paths_and_sizes:
-            src_size = self.src_paths_and_sizes.get(src_path, 0)
-        if not self.src_mt.allows_mtime:
-            old_time, src_time = self.src_mt.mod_dict.get(src_path, (0.0, 0.0))
-
-        if src_size == 0 or src_time == 0.0:
-            src_stat = os.stat(src_path)  # os.stat provides file attributes
-            src_size = src_stat.st_size
-            src_time = float(src_stat.st_mtime)
-
-        ''' Build target path, check if exists and use os.stat '''
-        trg_path = src_path.replace(self.open_topdir, self.cmp_target_dir)
-
-        ''' Is os.stat() call necessary? '''
-        trg_size = 0
-        trg_time = 0.0
-        if self.trg_paths_and_sizes:
-            trg_size = self.trg_paths_and_sizes.get(trg_path, 0)
-        if not self.trg_mt.allows_mtime:
-            old_time, trg_time = self.trg_mt.mod_dict.get(trg_path, (0.0, 0.0))
-
-        ''' check if exists and use os.stat '''
-        if trg_size == 0 or trg_time == 0.0:
-            if not os.path.isfile(trg_path):  # If target missing, then return
-                action = "Missing"  # Will not appear in treeview
-                return action, src_path, src_size, src_time, \
-                    trg_path, None, None
-
-            trg_stat = os.stat(trg_path)  # os.stat provides file attributes
-            trg_size = trg_stat.st_size
-            trg_time = float(trg_stat.st_mtime)
-
-        ''' When Android not updating modification time, keep track ourselves '''
-        src_time = self.src_mt.get(src_path, src_time)
-        trg_time = self.trg_mt.get(trg_path, trg_time)
-        time_diff = abs(src_time - trg_time)  # time diff between src & trg
-
-        ''' Size and modify times match? Already synchronized. '''
-        if src_size == trg_size and time_diff <= 2:
-            action = "Same"  # Will not appear in treeview
-            return action, src_path, src_size, src_time, \
-                trg_path, trg_size, trg_time
-
-        ''' Check difference based on size or diff command '''
-        if src_size != trg_size:
-            ''' Sizes are different - Copy newer file to older file '''
-            if src_time < trg_time:
-                action = "Copy Trg -> Src (Size)"
-            elif src_time > trg_time:
-                action = "Copy Src -> Trg (Size)"
-            else:
-                action = "Error: Size different, time same"
-            return action, src_path, src_size, src_time, \
-                trg_path, trg_size, trg_time
-
-        self.run_one_command(
-            'diff -s ' + '"' + src_path + '" "' + trg_path + '"', src_size)
-
-        ''' Permission denied if curlftpfs chokes on files with # in name '''
-        if self.act_ftp and self.cmp_return_code != 0:
-            print("Retrying 'self.act_ftp and self.cmp_return_code != 0:'")
-            base_path = trg_path.replace(self.act_topdir, '')
-            self.ftp_retrieve(self.act_ftp, base_path)  # Retrieve manually
-            self.cmp_return_code = 0  # Reset for repeating test
-            self.run_one_command(
-                'diff -s ' + '"' + src_path + '" "' +
-                self.TMP_FTP_RETRIEVE + '"', src_size)
-            print(ext.read_into_string(self.TMP_STDOUT))
-            """ Use avo_run_ffmpeg() technique of cmd = cmd.replace()
-            TODO:
-            1. Assume target is Android and Android is never the source
-            2. ftp file transfer to /tmp/mserve_ftp_recv_zs8k6f
-            3. diff between src_path and /tmp file (self.TMP_FTP_RETRIEVE)
-            4. See ftp_retrieve
-            """
-
-        ''' Permission denied - Do nothing, just report and skip copy '''
-        if self.cmp_return_code != 0:
-            action = "Error: Permission denied on 'diff' check"
-            #print("\nError on file:", trg_path)
-            print(action, "return code:", self.cmp_return_code, "\n")
-            self.cmp_return_code = 0  # Reset so doesn't force end
-            return action, src_path, src_size, src_time, \
-                trg_path, trg_size, trg_time
-
-        # Get stdout contents STDOUT from 'diff' command
-        out = self.get_file_data(self.TMP_STDOUT)
-        if not out.strip().endswith(" are identical"):  # TODO: Horrible testing stdout
-            print("out:", out)
-
-            ''' Size same but contents different - Copy newer file to older '''
-            if src_time < trg_time:
-                action = "Copy Trg -> Src (Diff)"
-
-                ''' Size same but contents different - Copy newer file to older '''
-            elif src_time < trg_time:
-                action = "Copy Trg -> Src (Diff)"
-            elif src_time > trg_time:
-                action = "Copy Src -> Trg (Diff)"
-            else:
-                action = "Error: contents different, time same"
-
-        else:
-            ''' Size and contents the same. Set timestamp to oldest time '''
-            # File contents same so modification times must be synced
-            if src_time > trg_time:
-                action = "Timestamp Trg -> Src"
-            elif src_time < trg_time:
-                action = "Timestamp Src -> Trg"
-            else:
-                # Time or Size were different before now same
-                # Another job running perhaps?
-                title = "location.py Locations.compare_song_pair()"
-                text = "Programming error. Different pair now look like twins:\n\n"
-                text += "  - action   :  " + action + "\n"
-                text += "  - src_path :  " + src_path + "\n"
-                text += "  - trg_path :  " + trg_path + "\n"
-                text += "  - src_size :  " + str(src_size) + "\n"
-                text += "  - trg_size :  " + str(trg_size) + "\n"
-                text += "  - src_time :  " + str(src_time) + "\n"
-                text += "  - trg_time :  " + str(trg_time) + "\n"
-                text += "  - trg_size :  " + str(trg_size) + "\n\n"
-                text += "Was another job running? Contact www.pippim.com"
-                self.out_cast_show_print(title, text, 'error', align="left")
-                action = "OOPS"
-
-        return action, src_path, src_size, src_time, \
-            trg_path, trg_size, trg_time
-
-    def ftp_retrieve(self, ftp, path):
-        """ Retrieve file from FTP host """
-
-        prefix, basename = path.rsplit(os.sep, 1)
-        ftp.cwd(prefix)
-        with open(self.TMP_FTP_RETRIEVE, 'wb') as f:
-            ftp.retrbinary('RETR ' + basename, f.write)
-        # error_perm: 550 No such directory.
-
-    def cmp_update_files(self):
-        """ Called via "Update differences" button on cmp_top """
-
-        ''' Replace "update differences" button with progress bar '''
-        self.update_differences_btn.grid_remove()  # Button can't click again
-        progress_var = tk.DoubleVar()
-        progress_bar = ttk.Progressbar(
-            self.cmp_btn_frm, variable=progress_var, length=1200)
-        progress_bar.grid(row=0, column=1, padx=2)  # skinny
-        progress_bar.grid(row=0, column=1, padx=2, pady=2, sticky=tk.NSEW)
-        #self.cmp_btn_frm.columnconfigure(1, weight=1)
-        self.cmp_btn_frm.pack_slaves()
-
-        ''' Build list of commands. Cannot update_idle inside loop (crash) '''
-        self.cmp_return_code = 0  # Indicate how update failed
-        self.cmp_command_list = list()  # List of tuples [(commands, parameters)]
-        self.fast_refresh(tk_after=True)  # Update play_top animations
-        for artist in self.cmp_tree.get_children():
-            for album in self.cmp_tree.get_children(artist):
-                for song in self.cmp_tree.get_children(album):
-                    if not self.build_command_list(song):
-                        self.cmp_return_code = 1  # Indicate how update failed
-                        break  # Programmer error
-        self.fast_refresh(tk_after=True)  # Update play_top animations
-
-        ''' Tally sizes of all files to be copied. For granular progress bars. '''
-        all_sizes = 0
-        command_count = len(self.cmp_command_list)
-        for iid, command, size, src_to_trg, src_time, trg_time in \
-                self.cmp_command_list:
-            if command.startswith("cp"):
-                all_sizes += float(size)  # Total size of all files copied
-
-        last_sel_iid = None  # Last row highlighted in green
-        run_count = 0  # How many commands have be run so far
-        copy_time_so_far = 0.0  # To estimate time remaining
-        copy_size_so_far = 0  # To calculate progress bar percent
-        all_start_time = time.time()  # To give total time duration when done
-
-        ''' Process self.build_command_list(song) list '''
-        for iid, command, size, src_to_trg, src_time, trg_time in \
-                self.cmp_command_list:
-            # Variable src_to_trg: True=source->target. False=target->source
-
-            ''' Initialization '''
-            if self.cmp_return_code != 0:
-                break  # Could be from previous loop too
-
-            ''' Uncomment code below for enough lag to watch progress bar '''
-            #for _i in range(10):  # About 1/2 second lag to test play_top
-            #    time.sleep(.05)
-            #    self.fast_refresh(tk_after=True)
-
-            fake_path = self.fake_paths[int(iid)]  # TODO: put paths in tuple?
-            src_path = self.real_from_fake_path(fake_path)
-            trg_path = src_path.replace(self.open_topdir, self.cmp_target_dir)
-
-            if not self.fast_refresh():  # No sleep after should only take few ms
-                return  # Already know closing down
-
-            ''' 1. Highlight command being run '''
-            ''' Shutting down? '''
-            if not self.cmp_top_is_active:
-                return
-            self.cmp_tree.see(iid)  # tree.see() crashes when window is closed
-            if last_sel_iid:
-                toolkit.tv_tag_remove(self.cmp_tree, last_sel_iid, 'cmp_sel')
-            toolkit.tv_tag_add(self.cmp_tree, iid, 'cmp_sel')
-            last_sel_iid = iid  # Save highlight for removing next cycle
-
-            ''' 2. Run the copy or touch command '''
-            start_time = time.time()
-            if not self.run_one_command(command, size):
-                #self.cmp_return_code can be set to 2, 3, 4 or 5
-                break  # Run one command failed
-
-            ''' 3. Refresh progress bar '''
-            run_count += 1
-            percent = float(100.0 * run_count / command_count)
-            progress_var.set(percent)
-            if command.startswith("cp"):
-                copy_time_so_far += time.time() - start_time
-                copy_size_so_far += float(size)  # Total size of all files copied
-                percent = float(100.0 * copy_size_so_far / all_sizes)
-                if True is False:
-                    progress_var.set(percent)  # No good - timestamps are short.
-            if not self.fast_refresh():  # No sleep after should only take few ms
-                return
-
-            ''' 4. Update modification times for Android cell phones '''
-            self.update_mod_times(
-                src_to_trg, src_path, src_time, trg_path, trg_time)
-            if not self.fast_refresh():  # No sleep after
-                return
-
-            ''' 5. Compare source and target again to verify success '''
-            c_action, c_src_path, c_src_size, c_src_time, c_trg_path, \
-                c_trg_size, c_trg_time = self.compare_path_pair(fake_path)
-            if not c_action == "Same":
-                print("Error: action should be 'Same' but isn't:", c_action)
-                print("c_src_path:", c_src_path)
-                print("c_src_size:", c_src_size)
-                print("c_trg_path:", c_trg_path)
-                print("c_trg_size:", c_trg_size)
-                self.cmp_return_code = 10  # Files not same
-                # self.cmp_return_code UNUSED 6, 7, 8 and 9
-                break
-
-        ''' Shutting down? '''
-        if not self.cmp_top_is_active:
-            return
-
-        ''' Remove last highlight and close ModTime instances '''
-        toolkit.tv_tag_remove(self.cmp_tree, last_sel_iid, 'cmp_sel')
-        self.src_mt.close()  # Save modification_time to disk
-        self.trg_mt.close()  # If no changes then simply exit
-
-        ''' Error message first '''
-        if not self.cmp_return_code == 0:  # An error was found
-            title = "location.py Locations.cmp_update_files()"
-            text = "received non-zero self.cmp_return_code: "
-            text += str(self.cmp_return_code)
-            self.out_cast_show_print(title, text, 'error')
-
-        ''' Summary message '''
-        missing_count = len(self.cmp_trg_missing)
-        elapsed = time.time() - all_start_time
-        if copy_time_so_far:
-            speed = float(all_sizes) / copy_time_so_far
-        else:
-            speed = 0.0
-
-        print("commands:", command_count, "\tsize:", all_sizes,
-              "\telapsed:", '{:n}'.format(round(copy_time_so_far, 3)),
-              "\tspeed:", '{:n}'.format(round(speed, 3)))
-
-        title = "Locations synchronized"
-        text = "Open Location:  " + self.open_name
-        # TODO: Open Location missing: 999 music files.
-        text += "\nOther Location: " + self.act_name
-        if missing_count:
-            text += "\nOther location is missing: " + '{:n}'.format(missing_count)
-            text += " music files."
-        text += "\n\nFile synchronization count: " + '{:n}'.format(run_count)
-        if speed > 0:
-            text += "\n\nCopy speed (MB/s): " + '{:n}'.format(speed)
-        text += "\n\nTotal time (D.HH:MM:SS): " + tmf.mm_ss(elapsed)
-        self.out_cast_show_print(title, text, align="left")
-
-        # All done, close treeview as it's no longer relevant
-        self.cmp_close()
-
-    def run_one_command(self, command, size, wait=60, print_stats=True):
-        """ Run 'touch' or 'cp' command. """
-        ''' Remove previous stdout/stderr '''
-        self.rm_file(self.TMP_STDOUT)  # Remove Standard Output results file
-        self.rm_file(self.TMP_STDERR)  # Remove Standard Error results file
-        if command.startswith("touch"):
-            ''' Touch doesn't write to stdout and takes .003 seconds '''
-            result = os.popen(command).read().strip()
-            if len(result) > 4:
-                with open(self.TMP_STDERR, "w") as text_file:
-                    text_file.write(result)
-                print("run_one_command() touch command returned results (stderr)")
-                self.cmp_return_code = 2  # Indicate how update failed
-            return self.fast_refresh()  # Give little time slice to other threads
-        else:
-            ''' Copy writes to stdout and takes .01 second / MB 
-                'diff' over Wifi FTP Server takes .16 second / MB  '''
-            return self.wait_for_cmd_output(command, size, wait, print_stats)
-
-    def wait_for_cmd_output(self, command, size, wait, print_stats=True):
-        """ Wait for cp (copy) command to complete
-            Check cmp_top_is_active at top of each loop.
-            Maximum time for STDOUT or STDERR to appear is 10 seconds. """
-
-        ''' Build full command with stdout & stderr appended '''
-        command += " 1>" + self.TMP_STDOUT  # mserve_stdout_5sh18d
-        command += " 2>" + self.TMP_STDERR  # mserve_stderr_5sh18d
-        start_time = time.time()
-
-        # 2024-04-12: Use run in ext.launch_command() to get PID
-        #result = os.popen(command + " &").read().strip()
-        #if len(result) > 4:
-        #    print("wait_for_cmd_output() os.popen() unknown result:", result)
-        #    self.cmp_return_code = 3  # Indicate how update failed
-        #    return False
-        pid = ext.launch_command(command, self.cmp_top)
-        if pid == 0:
-            print("Warning command finished before PID could be acquired:")
-            print(command)
-
-        loop_count = 0
-        while True:
-            if not self.cmp_top_is_active:
-                return False
-            loop_count += 1
-            elapsed = time.time() - start_time
-            if elapsed > float(wait):  # Aug 31/23 WiFi change 10.0 to 60.0 for `diff`
-                # 2024-04-09 wait time defaults to 60 but set to 5 for analyze volume
-                # Wait: 270,211  Size: 8,090,133 	Elapsed: 25.513  Speed: 0.317
-                # Wait: 94,729   Size: 4,726,205 	Elapsed: 9.85    Speed: 0.48
-                print("wait_for_cmd_output():", wait, "second time-out")
-                ''' TODO: Test host(s) and set down flags '''
-                self.cmp_return_code = 4  # Indicate how update failed
-                return False
-
-            if pid != 0 and ext.check_pid_running(pid):
-                # 2024-04-12 initial version was getting ~800,000 loops and
-                # 1/2 second delay updating play_top animations. Call fast_refresh
-                self.fast_refresh(tk_after=True)
-                # with fast_refresh(), loops are ~150,000 and no animation lag
-                continue
-
-            out = self.get_file_data(self.TMP_STDOUT)
-            err = self.get_file_data(self.TMP_STDERR)
-
-            ''' stdout and stderr may be created with no information yet '''
-            ''' 2024-04-12 Now checking PID finishing 
-            if len(out) == 0 and len(err) == 0:
-                # 'cp' over ethernet, False = 50 loops, True = 8 loops
-                # 'diff' over Wifi, False = 30k to 100k loops, single-Core 100%
-                # 'diff' over Wifi, False = 5k to 20k loops, single-Core 50%
-                if not self.fast_refresh(tk_after=True):
-                    return False
-                continue  # No files or empty files
-            '''
-
-            ''' TODO: Record test results and cmp_return_code to audit log. '''
-            speed = float(size) / elapsed / 1000000.0
-            if print_stats:
-                print("Wait:", '{:n}'.format(loop_count),
-                      "\tSize:", size,  # size is string, not int
-                      "\tElapsed sec:", '{:n}'.format(round(elapsed, 3)),
-                      "\tSpeed (MB/s):", '{:n}'.format(round(speed, 3)))
-
-            ''' Analyze Volume used STDERR for "normal" output so no errors '''
-            if self.state == 'analyze_volume' \
-                    or self.state == 'analyze_loudnorm' \
-                    or self.state == 'update_loudnorm' \
-                    or self.state == 'analyze_volume_new':
-                return True
-
-            ''' stdout or stderr have been populated by cp command '''
-            if len(err) > 0:
-                print("'diff -s' or 'cp -v' errors reported below:\n", err)
-                if len(out) > 0:
-                    print("cp verbose reported too!:", out)
-                self.cmp_return_code = 5
-                return False
-            if len(out) > 0:
-                return True
-
-    @staticmethod
-    def get_file_data(f):
-        """ Get data from STDOUT or STDERR
-            Return empty string when file doesn't exist or when zero byte size.
-        """
-        data = ""
-        if os.path.isfile(f):
-            with open(f, 'r') as fh:
-                data = fh.read()
-        return data
-
-    def update_mod_times(self, src_to_trg, src_path, src_time, trg_path, trg_time):
-        """ Update for Android, does nothing for other OS """
-        ''' Update Modification Times from old time to new time '''
-        if src_to_trg:  # Copy/Touch direction is from Src -> Trg
-            self.src_mt.update(src_path, trg_time, src_time)
-            self.trg_mt.update(trg_path, trg_time, src_time)
-        else:  # Action is from Trg -> Src
-            self.src_mt.update(src_path, src_time, trg_time)
-            self.trg_mt.update(trg_path, src_time, trg_time)
-
-    def fast_refresh(self, tk_after=False):
-        """ Quickly update animations with no sleep after """
-
-        if not self.get_thread_func:
-            return True  # Still 'NoneType' during mserve startup & no windows
-
-        if not self.last_fast_refresh:
-            self.last_fast_refresh = 0.0  # Not init. May be mserve.py call.
-        elapsed = time.time() - self.last_fast_refresh
-        ''' Refresh designed for .033 seconds. If less art spins faster. '''
-        if elapsed > .02:  # .02 + refresh time close to .033 for 30 FPS.
-            # Aug 9/23 elapsed change from .2 to .1 for missing_artwork_callback
-            #          No performance improvement so it's simply metadata read
-            thr = self.get_thread_func()  # main_top, play_top or lib_top
-            thr_ret = thr(tk_after=tk_after)
-            if not thr_ret:
-                print("fast_refresh() called thr(tk_after=tk_after))",
-                      "and it returned False")
-                return False
-            self.last_fast_refresh = time.time()
-        if self.cmp_top_is_active is not None:
-            return self.cmp_top_is_active is True
-        else:
-            return True  # Could be called from encoding.py, etc.
-
-    @staticmethod
-    def rm_file(fname):
-        """ Remove file if it exists """
-        if os.path.isfile(fname):
-            os.remove(fname)
-
-    def build_command_list(self, iid):
-        """ Extract commands from treeview and stick into list """
-        ''' fields from .insert() method
-            self.cmp_tree.insert(CurrAlbumId, "end", iid=str(i), text=Song,
-                values=(src_ftime, trg_ftime, src_fsize, trg_fsize, action,
-                                    float(src_time), float(trg_time)), '''
-        action = self.cmp_tree.item(iid)['values'][4]  # 6th treeview column
-        if action.startswith("Error:"):  # Modification time unknown.
-            return True  # True = looks like command built so action displayed
-
-        src_time = self.cmp_tree.item(iid)['values'][5]
-        trg_time = self.cmp_tree.item(iid)['values'][6]
-        """ Set REAL paths for source and target """
-        fake_path = self.fake_paths[int(iid)]
-        src_path = self.real_from_fake_path(fake_path)
-        trg_path = src_path.replace(self.open_topdir, self.cmp_target_dir)
-        ''' src=from path, trg=to path. Can be flipped src_path/trg_path '''
-        src, trg = self.cmp_decipher_arrow(action, src_path, trg_path)
-        if src is None:
-            print("Programmer made error - src is None")
-            return False  # Programmer made error
-        src_to_trg = src == src_path  # src_to_trg same(True) or flipped(False)
-        if src_to_trg:
-            size = self.cmp_tree.item(iid)['values'][2]  # str src size 3 dec
-        else:
-            size = self.cmp_tree.item(iid)['values'][3]  # str trg size 3 dec
-
-        ''' Build command line so far '''
-        if action.startswith("Copy "):  # Is it a copy?
-            command_str = u"cp --preserve=timestamps --verbose"
-        elif action.startswith("Timestamp "):  # Is it a timestamp?
-            command_str = u"touch -m -r"
-        else:  # None of above? - ERROR!
-            title = "location.py Locations.build_command_list()"
-            text = "Programming error. 'action' is not 'Copy' or 'Timestamp':\n\n"
-            text += "  - action  :  " + action + "\n\n"
-            text += "Contact www.pippim.com"
-            self.out_cast_show_print(title, text, 'error', align="left")
-            return False  # False = action not displayed in treeview
-
-        ''' Complete command line with extra space:  "source"  "target" '''
-        command_str += u'  "' + src + u'"  "' + trg + u'"'
-
-        ''' add command & control tuple to list '''
-        self.cmp_command_list.append((iid, command_str, size, src_to_trg,
-                                      src_time, trg_time))
-
-        return True
-
-    def cmp_decipher_arrow(self, action, src_path, trg_path):
-        """ Flip src_path (full_path) and trg_path (full_path2) around """
-        if "Trg -> Src" in action:
-            return trg_path, src_path
-        elif "Src -> Trg" in action:
-            return src_path, trg_path
-        else:
-            title = "location.py Locations.build_command_list()"
-            text = "Programming error. Method failed to return results:\n\n"
-            text += "self.cmp_decipher_arrow(action, src_path, trg_path):\n"
-            text += "  - action  :  " + action + "\n"
-            text += "  - src_path:  " + src_path + "\n"
-            text += "  - trg_path:  " + trg_path + "\n\n"
-            text += "Contact www.pippim.com"
-            self.out_cast_show_print(title, text, 'error', align="left")
-            return None, None
-
-    def pretty_window(self, parent, pretty, title, width, height, x=None, y=None):
+    def pretty_window(self, parent, pretty, title, width, height, 
+                      x=None, y=None, new=False, tabs=None):
         """ Create new window top-left of parent window with g.PANEL_HGT padding
 
             2024-03-29 was being used for three SQL Table viewers but now they
@@ -6296,12 +6624,15 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
         frame.columnconfigure(0, weight=1)
 
         # Set tag Foreground & background colors, tabs and margins
-        toolkit.scroll_defaults(scrollbox)
+        toolkit.scroll_defaults(scrollbox, tabs=tabs)
         scrollbox.highlight_pattern(u'TIPS:', 'red')
 
         # Update class with scrollbox
-        pretty.scrollbox = scrollbox
-        sql.tkinter_display(pretty)
+        if new:
+            sql.pretty_display(pretty, scrollbox)  # Support uom and right tab stops
+        else:
+            pretty.scrollbox = scrollbox
+            sql.tkinter_display(pretty)  # original version < 2024-04-21
 
 
 # End of location.py

@@ -1201,6 +1201,7 @@ def music_get_row(key):
         row = dict(cursor.fetchone())
     except TypeError:  # TypeError: 'NoneType' object is not iterable:
         row = None
+
     if row is None:
         print('sql.py - music_get_row() not found:', key)
         return None
@@ -3339,13 +3340,30 @@ class PrettyNormalize:
 
         # List of part section headings at part_start[] list above
         self.part_names = ['Original Volume',
-                           '\nNormalization Analysis',
+                           '\nNormalization Pass 1',
                            '\nNormalization Update',
-                           '\nNew Volume']
+                           '\nNew Loudness Volume']
         self.part_color = ['red', 'blue', 'green', 'red']
 
         # self.tabs is WIP: https://stackoverflow.com/a/46605414/6929343
-        self.tabs = [('2m', 'black', 'left'), ('40m', 'green', 'right')]
+        self.uom = True  # Units of Measure used
+        self.tabs = [('2m', 'left', 'black'),  # var name
+                     ('108m', 'right', 'black'),  # value
+                     ('111m', 'left', 'black'),  # UoM
+                     ('150m', 'right', 'black'),  # integrated value
+                     ('153m', 'left', 'red'),  # UoM
+                     ('200m', 'right', 'black'),  # value
+                     ('203m', 'left', 'red'),  # UoM
+                     ('250m', 'right', 'black'),  # value
+                     ('253m', 'left', 'red'),  # UoM
+                     ('300m', 'right', 'black'),  # value
+                     ('303m', 'left', 'red')]  # UoM
+
+        self.heading = "Normaliztion Steps\t\tValue\t\t" + \
+                       "Integra\t-ted\tTrue\tPeak\tLRA\t\tThresh\t-old\n"
+
+        self.units = ["dB", "dBTP", "LUFS", "LU", "Hz"]
+        self.unit_color = "gray"  # Highligh units in gray
 
         # Old volume history record
         avo_d = hist_get_music_var(music_id, "volume", "detect_old", loc)
@@ -3356,12 +3374,38 @@ class PrettyNormalize:
         # 'loudnorm' Filter Pass 1 (Measurement)
         aln_d = hist_get_music_var(music_id, "volume", "loudnorm_1", loc)
         aln_jd = json.loads(aln_d['Target']) if aln_d else {}
-        input_i1 = aln_jd['input_i'] + " LUFS" if aln_jd else "N/A"  # Integrated
-        input_tp1 = aln_jd['input_tp'] + " dBTP" if aln_jd else "N/A"  # True Peak
-        input_lra1 = aln_jd['input_lra'] + " LU" if aln_jd else "N/A"
-        input_thresh1 = aln_jd['input_thresh'] + " LUFS" if aln_jd else "N/A"
-        target_offset1 = aln_jd['target_offset'] + " LU" if aln_jd else "N/A"
-        audio_rate1 = aln_jd['ar'] + " Hz" if aln_jd else "N/A"
+        input_i1 = aln_jd['input_i'] + " LUFS" if aln_jd else "N/A ."  # Integrated
+        input_tp1 = aln_jd['input_tp'] + " dBTP" if aln_jd else "N/A ."  # True Peak
+        input_lra1 = aln_jd['input_lra'] + " LU" if aln_jd else "N/A ."
+        input_thresh1 = aln_jd['input_thresh'] + " LUFS" if aln_jd else "N/A ."
+        # 2024-04-01 - Temporary untio output_ variables created
+        if aln_jd:
+            output_i1 = aln_jd.get('output_i', "N/A .")
+            if not output_i1.startswith("N/A"):
+                output_i1 = output_i1 + " LUFS"
+            output_tp1 = aln_jd.get('output_tp', "N/A .")
+            if not output_tp1.startswith("N/A"):
+                output_tp1 = output_tp1 + " dBTP"
+            output_lra1 = aln_jd.get('output_lra', "N/A .")
+            if not output_lra1.startswith("N/A"):
+                output_lra1 = output_lra1 + " LU"
+            output_thresh1 = aln_jd.get('output_thresh', "N/A .")
+            if not output_thresh1.startswith("N/A"):
+                output_thresh1 = output_thresh1 + " LUFS"
+        else:
+            output_i1 = aln_jd['output_i'] + " LUFS" if aln_jd else "N/A ."  # Integrated
+            output_tp1 = aln_jd['output_tp'] + " dBTP" if aln_jd else "N/A ."  # True Peak
+            output_lra1 = aln_jd['output_lra'] + " LU" if aln_jd else "N/A ."
+            output_thresh1 = aln_jd['output_thresh'] + " LUFS" if aln_jd else "N/A ."
+        target_offset1 = aln_jd['target_offset'] + " LU" if aln_jd else "N/A ."
+        audio_rate1 = aln_jd['ar'] + " Hz" if aln_jd else "N/A ."
+        # 2024-04-01 - Temporary untio output_ variables created
+        if aln_jd:
+            normalization_type1 = aln_jd.get('normalization_type', "N/A")
+        else:
+            normalization_type1 = "N/A"
+
+
         '''  10 pt/ 11 pt Font
                                          Integrated  True Peak   LRA      Threshold 
         Old Mean Volume        -3.4 dB
@@ -3377,11 +3421,19 @@ class PrettyNormalize:
         input_tp2 = uln_jd['input_tp'] + " dBTP" if uln_jd else "N/A"  # True Peak
         input_lra2 = uln_jd['input_lra'] + " LU" if uln_jd else "N/A"
         input_thresh2 = uln_jd['input_thresh'] + " LUFS" if uln_jd else "N/A"
-        target_offset2 = uln_jd['target_offset'] + " LU" if uln_jd else "N/A"
         output_i2 = uln_jd['output_i'] + " LUFS" if uln_jd else "N/A"  # Integrated
         output_tp2 = uln_jd['output_tp'] + " dBTP" if uln_jd else "N/A"  # True Peak
         output_lra2 = uln_jd['output_lra'] + " LU" if uln_jd else "N/A"
         output_thresh2 = uln_jd['output_thresh'] + " LUFS" if uln_jd else "N/A"
+
+        target_offset2 = uln_jd['target_offset'] + " LU" if uln_jd else "N/A"
+        # 2024-04-01 - Temporary untio output_ variables created
+        if uln_jd:
+            audio_rate2 = uln_jd.get('ar', "N/A") + " Hz"
+            normalization_type2 = uln_jd.get('normalization_type', "N/A")
+        else:
+            audio_rate2 = "N/A ."
+            normalization_type2 = "N/A"
 
         # New volume history record
         avn_d = hist_get_music_var(music_id, "volume", "detect_new", loc)
@@ -3389,27 +3441,54 @@ class PrettyNormalize:
         new_mean = avn_l[0] if avn_l else "N/A"  # mean & max in list
         new_max = avn_l[1] if avn_l else "N/A"
 
-        self.dict['Old Mean Volume'] = old_mean
+        self.dict['Old Mean Volume'] = old_mean  # -18.2 dB split into two fields
         self.dict['Old Max. Volume'] = old_max
         self.part_start.append(len(self.dict))
 
-        self.dict['Input Integrated 1'] = input_i1
-        self.dict['Input True Peak 1'] = input_tp1
-        self.dict['Input LRA 1'] = input_lra1
-        self.dict['Input Threshold 1'] = input_thresh1
-        self.dict['Target Offset 1'] = target_offset1
-        self.dict['Audio Rate 1'] = audio_rate1
+        # noinspection SpellCheckingInspection
+        def tab_it(value):
+            """ Insert tabs and split values. E.G. '-11.91 LUFS'
+                becomes '\t -11.91 \t LUFS' (without spaces) """
+            values = value.split()
+            if len(values) == 2:
+                return "\t" + values[0] + "\t" + values[1]
+            else:
+                return "\t" + value + "\t????"  # tab_it shouldn't have been called
+
+        # Four variables on one line separated by tabs
+        self.dict['Input Pass 1'] = "\t\t" + tab_it(input_i1) + \
+            tab_it(input_tp1) + tab_it(input_lra1) + tab_it(input_thresh1)
+        self.dict['Output Pass 1'] = "\t\t" + tab_it(output_i1) + \
+            tab_it(output_tp1) + tab_it(output_lra1) + tab_it(output_thresh1)
+
+        #self.dict['Input Integrated 1'] = input_i1
+        #self.dict['Input True Peak 1'] = input_tp1
+        #self.dict['Input LRA 1'] = input_lra1
+        #self.dict['Input Threshold 1'] = input_thresh1
+
+        self.dict['Target Offset 1'] = tab_it(target_offset1)
+        self.dict['Audio Rate 1'] = tab_it(audio_rate1)
+        self.dict['Normalization Type 1'] = normalization_type1
         self.part_start.append(len(self.dict))
 
-        self.dict['Input Integrated 2'] = input_i2
-        self.dict['Input True Peak 2'] = input_tp2
-        self.dict['Input LRA 2'] = input_lra2
-        self.dict['Input Threshold 2'] = input_thresh2
-        self.dict['Target Offset 2'] = target_offset2
-        self.dict['Output Integrated 2'] = output_i2
-        self.dict['Output True Peak 2'] = output_tp2
-        self.dict['Output LRA 2'] = output_lra2
-        self.dict['Output Threshold 2'] = output_thresh2
+        # Four variables on one line separated by tabs
+        self.dict['Input Pass 2'] = "\t\t" + tab_it(input_i2) + \
+            tab_it(input_tp2) + tab_it(input_lra2) + tab_it(input_thresh2)
+        self.dict['Output Pass 2'] = "\t\t" + tab_it(output_i2) + \
+            tab_it(output_tp2) + tab_it(output_lra2) + tab_it(output_thresh2)
+
+        #self.dict['Input Integrated 2'] = input_i2
+        #self.dict['Input True Peak 2'] = input_tp2
+        #self.dict['Input LRA 2'] = input_lra2
+        #self.dict['Input Threshold 2'] = input_thresh2
+        #self.dict['Output Integrated 2'] = output_i2
+        #self.dict['Output True Peak 2'] = output_tp2
+        #self.dict['Output LRA 2'] = output_lra2
+        #self.dict['Output Threshold 2'] = output_thresh2
+
+        self.dict['Target Offset 2'] = tab_it(target_offset2)
+        self.dict['Audio Rate 2'] = tab_it(audio_rate2)
+        self.dict['Normalization Type 2'] = normalization_type2
         self.part_start.append(len(self.dict))
 
         self.dict['New Mean Volume'] = new_mean
@@ -3515,6 +3594,106 @@ def tkinter_display(pretty):
         #pretty.scrollbox.highlight_pattern(pretty.search, "yellow")
         for w in words:
             pretty.scrollbox.highlight_pattern(w, "yellow")
+
+    # Don't allow changes to displayed selections (test copy clipboard)
+    pretty.scrollbox.configure(state="disabled")
+
+
+def pretty_display(pretty, scrollbox):
+    """ Popup display all values in pretty print format based on tkinter_display()
+        Support for pretty.uom and pretty.tabs
+
+        Requires ordered dict and optional lists specifying sections
+        (parts) the part names and part colors for key names. """
+
+    # Allow program changes to scrollable text widget
+    pretty.scrollbox = scrollbox
+    pretty.scrollbox.configure(state="normal")
+    pretty.scrollbox.delete('1.0', 'end')  # Delete previous entries
+
+    # Split string values into two fields: 'value' and 'uom'
+    use_uom = True if pretty.uom is True else False
+    use_tabs = True if pretty.tabs else False  # list of tuples may exist
+
+    # self.tabs is WIP: https://stackoverflow.com/a/46605414/6929343
+    if use_tabs:
+        tab_list = []; tab_colors = []
+        for tab in pretty.tabs:
+            tab_list.append(tab[0])  # Tab stop
+            tab_list.append(tab[1])  # Tab alignment ('left' or 'right')
+            tab_colors.append(tab[2])
+            #tab_anchors.append(tab[2])
+        # Override toolkit.py scroll_defaults()
+        #print("\ntab_list:", tab_list, "\ntab_colors:", tab_colors)
+        pretty.scrollbox.config(tabs=tuple(tab_list))  # tab stops
+        pretty.scrollbox.update()  # Necessary?
+
+    def reset_tabs(event):
+        """ https://stackoverflow.com/a/46605414/6929343 """
+        event.widget.configure(tabs=tab_list)
+        #print("Reset tabs:", tab_list)  # It's working
+
+    pretty.scrollbox.bind("<Configure>", reset_tabs)
+
+    if pretty.heading is not None:
+        pretty.scrollbox.insert("end", pretty.heading + u"\n")
+
+    curr_key = 0  # Current key index
+    curr_level = 0  # Current dictionary part
+    curr_color = 'black'
+    # for key, value in pretty.dict.iteritems():    # Don't use iteritems
+    for key in pretty.dict:  # Don't need iteritems on ordered dict
+        if curr_key == pretty.part_start[curr_level]:
+            curr_level_name = pretty.part_names[curr_level]
+            curr_color = pretty.part_color[curr_level]
+            pretty.scrollbox.insert("end", curr_level_name + "\n")
+            # pretty.scrollbox.highlight_pattern(curr_level_name, 'yellow')
+            curr_level += 1
+
+            if curr_level >= len(pretty.part_start):
+                curr_level = len(pretty.part_start) - 1
+                # We are in last part so no next part to check
+                # print('resetting curr_level at:', key)
+
+        # Insert current key and value into text widget
+        # TclError: character U+1f913 is above the range (U+0000-U+FFFF) allowed by Tcl
+        try:
+            value = pretty.dict[key]
+            if value is None:
+                value = "None"
+
+            values = value.split()
+            if use_uom and len(values) == 2 and "\t" not in value:
+                pretty.scrollbox.insert("end", u"\t" + key + u":\t" + values[0] +
+                                        u"\t" + values[1] + u"\n", u"margin")
+            elif "\t" in value:
+                pretty.scrollbox.insert("end", u"\t" + key + u":" +
+                                        value + u"\n", u"margin")
+            else:
+                pretty.scrollbox.insert("end", u"\t" + key + u":\t" +
+                                        value + u"\n", u"margin")
+        except TypeError:  # 2024-03-30
+            print("sql.py tkinter_display() pretty.scrollbox.insert",
+                  "TypeError: key:", key)
+
+        pretty.scrollbox.highlight_pattern(key + u':', curr_color)
+        ''' Hoping | isn't used often, highlight in yellow for field separator '''
+        pretty.scrollbox.highlight_pattern(u'|', 'magenta')
+        curr_key += 1  # Current key index
+
+    if pretty.search is not None:
+        # Breakdown string into set of words
+        words = pretty.search.split()
+        # NOTE: yellow, cyan and magenta are defined to highlight background
+        #pretty.scrollbox.highlight_pattern(pretty.search, "yellow")
+        for w in words:
+            pretty.scrollbox.highlight_pattern(w, "yellow")
+
+    if use_uom:
+        for unit in pretty.units:
+            #print("highlighting:", unit, "in:", pretty.unit_color)
+            pretty.scrollbox.highlight_pattern(unit, pretty.unit_color,
+                                               upper_and_lower=False)
 
     # Don't allow changes to displayed selections (test copy clipboard)
     pretty.scrollbox.configure(state="disabled")
@@ -3642,7 +3821,7 @@ def music_treeview():
         ("column", "time_index"), ("heading", "Time Index"), ("sql_table", "Music"),
         ("var_name", "LyricsTimeIndex"), ("select_order", 0), ("unselect_order", 19),
         ("key", True), ("anchor", "w"), ("instance", "list"), ("format", None),
-        ("width", 100), ("minwidth", 50), ("stretch", 1)]),  # key for unsync'd
+        ("width", 100), ("minwidth", 50), ("stretch", 1)]),  # key for unsync
 
       OrderedDict([
         ("column", "creation_time"), ("heading", "Creation Time"), ("sql_table", "Music"),

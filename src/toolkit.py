@@ -949,7 +949,7 @@ class CustomScrolledText(scrolledtext.ScrolledText):
         scrolledtext.ScrolledText.__init__(self, *args, **kwargs)
 
     def highlight_pattern(self, pattern, tag, start="1.0", end="end",
-                          regexp=False):
+                          regexp=False, upper_and_lower=True):
         """ Apply the given tag to all text that matches the given pattern
 
         If 'regexp' is set to True, pattern will be treated as a regular
@@ -964,8 +964,8 @@ class CustomScrolledText(scrolledtext.ScrolledText):
 
         count = tk.IntVar()
         while True:
-            index = self.search(pattern, "matchEnd", "searchLimit",
-                                count=count, regexp=regexp, nocase=True)
+            index = self.search(pattern, "matchEnd", "searchLimit", count=count,
+                                regexp=regexp, nocase=upper_and_lower)
             if index == "":
                 break
             # degenerate pattern which matches zero-length strings
@@ -2583,7 +2583,7 @@ def computer_bytes(size, decimals=False):
     return int(converted)
 
 
-def scroll_defaults(scrollbox):
+def scroll_defaults(scrollbox, tabs=None):
     """ Assign tag colors to custom text scroll boxes
         Also set tab stops, margins and button fix for Ctrl+C
     """
@@ -2593,6 +2593,7 @@ def scroll_defaults(scrollbox):
     scrollbox.tag_config('blue', foreground='blue')
     scrollbox.tag_config('green', foreground='green')
     scrollbox.tag_config('black', foreground='black')
+    scrollbox.tag_config('gray', foreground='gray')
 
     # Highlighting background colors
     scrollbox.tag_config('yellow', background='yellow')
@@ -2600,7 +2601,9 @@ def scroll_defaults(scrollbox):
     scrollbox.tag_config('magenta', background='magenta')
 
     scrollbox.configure(background="WhiteSmoke")
-    scrollbox.config(tabs=("2m", "65m", "80m"))  # tab stops
+    if not tabs:
+        tabs = ("2m", "65m", "80m")
+    scrollbox.config(tabs=tabs)  # tab stops
     scrollbox.tag_configure("margin", lmargin1="2m", lmargin2="65m")
     # Fix Control+C  https://stackoverflow.com/a/64938516/6929343
     scrollbox.bind("<Button-1>", lambda event: scrollbox.focus_set())
