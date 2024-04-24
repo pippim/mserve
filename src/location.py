@@ -5259,13 +5259,13 @@ filename.
 
         #print("\nTally History Records for Volume Analysis and Update")
         ext.t_init('BEFORE History Records')
-        detect_old_count = sql.hist_count_type_action_master(
+        detect_old_count, detect_old_size = sql.hist_tally_type_action_master(
             'volume', 'detect_old', self.act_code, prt=False, tab=False)
-        loudnorm_1_count = sql.hist_count_type_action_master(
+        loudnorm_1_count, loudnorm_1_size = sql.hist_tally_type_action_master(
             'volume', 'loudnorm_1', self.act_code, prt=False, tab=False)
-        loudnorm_2_count = sql.hist_count_type_action_master(
+        loudnorm_2_count, loudnorm_2_size = sql.hist_tally_type_action_master(
             'volume', 'loudnorm_2', self.act_code, prt=False, tab=False)
-        detect_new_count = sql.hist_count_type_action_master(
+        detect_new_count, detect_new_size = sql.hist_tally_type_action_master(
             'volume', 'detect_new', self.act_code, prt=False, tab=False)
         ext.t_end('no_print')  # 0.032 seconds for 6K records
         #print()
@@ -5349,13 +5349,13 @@ filename.
         ''' Tally history records. '''
         #print("\nTally History Records AFTER Volume Analysis and Update")
         ext.t_init('AFTER History Records')
-        detect_old_count = sql.hist_count_type_action_master(
+        detect_old_count, detect_old_size = sql.hist_tally_type_action_master(
             'volume', 'detect_old', self.act_code, prt=False, tab=False)
-        loudnorm_1_count = sql.hist_count_type_action_master(
+        loudnorm_1_count, loudnorm_1_size = sql.hist_tally_type_action_master(
             'volume', 'loudnorm_1', self.act_code, prt=False, tab=False)
-        loudnorm_2_count = sql.hist_count_type_action_master(
+        loudnorm_2_count, loudnorm_2_size = sql.hist_tally_type_action_master(
             'volume', 'loudnorm_2', self.act_code, prt=False, tab=False)
-        detect_new_count = sql.hist_count_type_action_master(
+        detect_new_count, detect_new_size = sql.hist_tally_type_action_master(
             'volume', 'detect_new', self.act_code, prt=False, tab=False)
         ext.t_end('no_print')  # 0.024 seconds for 6K records
         #print()
@@ -5427,6 +5427,12 @@ filename.
         frame.grid_remove()  # Swap out parameters frame
         self.cmp_tree_frame.grid()  # Swap in treeview frame
         self.cmp_top.update_idletasks()
+
+        # Activate progress frame
+        # self.avo_progress_init(pro_song_dict, pro_func_dict)
+        # single song will call:
+        # self.avo_progress_init(pro_func_dict, pro_song_dict)
+
         return proceed
 
     # noinspection SpellCheckingInspection
@@ -5506,10 +5512,12 @@ filename.
 
         retn = [None]  # mutable variable list: inner function <-> local space
 
+        # noinspection PyTypeChecker
         def cancel():
             """ Back """
             retn[0] = False
 
+        # noinspection PyTypeChecker
         def proceed():
             """ Forward """
             title = "Control setting error."
@@ -5699,8 +5707,10 @@ filename.
 
         return retn[0]
 
-    def avo_insert_tree_row(self, fake_path, CurrAlbumId, iid, Song):
-        """ Analyze Mean Volume and Maximum Volume for Old (Original) Song """
+    def avo_insert_tree_row(self, fake_path, CurrAlbumId, iid, Song, use_tv=True):
+        """ Analyze Mean Volume and Maximum Volume for Old (Original) Song
+            use_tv = False when analyzing one song not in treeview.
+        """
 
         _who = self.who + "avo_insert_tree_row():"
         loc = self.act_code  # Just to get a shorter more meaningful var name
@@ -5723,6 +5733,9 @@ filename.
             if self.avo_select_max_lower <= max_float <= self.avo_select_max_upper:
                 pass  # Need button to pick "Show All" or "Selected"
 
+            if not use_tv:
+                return  # Processing single song not in Treeview.
+
             self.cmp_tree.insert(CurrAlbumId, "end", iid=iid, text=Song,
                                  values=(mean_volume, max_volume, music_id),
                                  tags=("Song",))
@@ -5742,8 +5755,9 @@ filename.
                         self.avo_skip_count += 1
                         return True  # Skip this song file
             else:
-                print(_who, "Retrying song with 'N/A' maximum volume:")
-                print("\t", OsBase)
+                if use_tv:  # Redo normalization would have deleted history
+                    print(_who, "Retrying song with 'N/A' maximum volume:")
+                    print("\t", OsBase)
 
         '''   B I G   T I C K E T   E V E N T   
 
@@ -5772,7 +5786,7 @@ filename.
             sql.hist_add_music_var(
                 music_id, 'volume', 'detect_old', SourceMaster=loc,
                 SourceDetail='volumedetect', Comments=self.avo_comment,
-                Target=json.dumps([mean_volume, max_volume]))
+                Target=json.dumps([mean_volume, max_volume]), Size=trg_size)
 
         ''' Insert song into treeview '''
         insert_tv_row()
@@ -5904,7 +5918,7 @@ One-liner to copy and paste into terminal:
 
         return True  # Was failure but FTP retry was successful
 
-    def aln_insert_tree_row(self, fake_path, CurrAlbumId, iid, Song):
+    def aln_insert_tree_row(self, fake_path, CurrAlbumId, iid, Song, use_tv=True):
         """ Get Song's 'loudnorm' levels for pass 1.  """
 
         _who = self.who + "aln_insert_tree_row():"
@@ -5948,6 +5962,10 @@ One-liner to copy and paste into terminal:
 
         def insert_tv_row():
             """ Shared function to Insert song into treeview """
+
+            if not use_tv:
+                return  # Processing single song not in Treeview.
+
             self.cmp_tree.insert(
                 CurrAlbumId, "end", iid=iid, text=Song, tags=("Song",),
                 values=(json_dict.get("input_i", "N/A"), json_dict.get("input_tp", "N/A"),
@@ -6007,7 +6025,7 @@ One-liner to copy and paste into terminal:
             sql.hist_add_music_var(
                 music_id, 'volume', 'loudnorm_1', SourceMaster=loc,
                 SourceDetail='Analyze', Comments=self.avo_comment,
-                Target=json.dumps(json_dict))
+                Target=json.dumps(json_dict), Size=trg_size)
 
         ''' Insert song into treeview '''
         insert_tv_row()
@@ -6033,11 +6051,11 @@ ffmpeg -i ~/Music/"Jim Steinman/Bad for Good/06 Surf’s Up.oga" -af loudnorm=I=
                 "input_tp" : "-0.83",
                 "input_lra" : "16.70",
                 "input_thresh" : "-29.54",
-                - "output_i" : "-21.53",
-                - "output_tp" : "-5.20",
-                - "output_lra" : "7.70",
-                - "output_thresh" : "-31.70",
-                - "normalization_type" : "dynamic",
+                "output_i" : "-21.53",
+                "output_tp" : "-5.20",
+                "output_lra" : "7.70",
+                "output_thresh" : "-31.70",
+                "normalization_type" : "dynamic",
                 "target_offset" : "-1.47"
                 + "ar": "44100"
             }
@@ -6059,11 +6077,22 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=$int
 :offset=-0.3:linear=true:print_format=summary "$output"
 
         """
+        linear = self.avo_linear  # "true"
+        TP = self.avo_true_peak  # "0.0"
+        LRA = self.avo_lra  # "-11.0"
+        IN = self.avo_integrated  # "-23.0"
+
+        # -y = overwrite previous .new file.
 
         # Version using FileControl to create OrderedDict of all lines
-        cmd = self.avo_ffmpeg + ' -i "' + trg_path + '" -af'
-        cmd += ' loudnorm=I=-23:TP=0:print_format=json'
-        cmd += ' -f null -'
+        cmd = self.avo_ffmpeg + ' -i "' + trg_path + '" -af '
+
+        # 2024-04-23 - original version below
+        #    cmd += ' loudnorm=I=-23:TP=0:print_format=json'
+
+        cmd += 'loudnorm=I=' + IN + ':TP=' + TP + ':LRA=' + LRA +
+        cmd += ':linear=' + linear
+        cmd += ':print_format=json -f null -'
 
         wait = size / 1000000 * 8  # Wait 8 seconds per megabyte before quiting
         wait = 8 if not wait else wait
@@ -6092,7 +6121,7 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=$int
         # Get FileControl() class metadata dictionary's json formatted dictionary
         return self.trg_ctl.metadata.get('json_dict', {})
 
-    def uln_insert_tree_row(self, fake_path, CurrAlbumId, iid, Song):
+    def uln_insert_tree_row(self, fake_path, CurrAlbumId, iid, Song, use_tv=True):
         """ Normalize Song's Loudness using 'loudnorm' Filter pass 2 """
         _who = self.who + "uln_insert_tree_row():"
         loc = self.act_code  # Just to get a shorter more meaningful var name
@@ -6130,7 +6159,11 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=$int
             return True  # Skip this song file
 
         def insert_tv_row():
-            """ Shared function to Insert song into treeview"""
+            """ Shared function to Insert song into treeview """
+
+            if not use_tv:
+                return  # Processing single song not in Treeview.
+
             self.cmp_tree.insert(
                 CurrAlbumId, "end", iid=iid, text=Song, tags=("Song",),
                 values=(json_dict.get("output_i", "N/A"),
@@ -6187,6 +6220,10 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=$int
             IN = input_i  # pycharm doesn't like variable name "I"
         else:
             IN = self.avo_integrated  # "-23.0"
+
+        # Cheatsheet:
+        # https://gist.github.com/wagesj45/7862866c533e0c93b5d01cf1afbd9ca3
+
 
         # -y = overwrite previous .new file.
         cmd = self.avo_ffmpeg + ' -y -i "' + trg_path + '" -af '
@@ -6246,7 +6283,7 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=$int
             sql.hist_add_music_var(
                 music_id, 'volume', 'loudnorm_2', SourceMaster=loc,
                 SourceDetail='Analyze', Comments=trg_path_new,
-                Target=json.dumps(json_dict))
+                Target=json.dumps(json_dict), Size=trg_size)
             # TODO: Add Music ID to a newly created special playlist
 
         ''' Insert song into treeview '''
@@ -6302,7 +6339,7 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
         self.trg_ctl.get_metadata(ffmpeg_results=self.TMP_STDERR, trg_path=trg_path)
         return self.trg_ctl.metadata.get('json_dict', {})
 
-    def avn_insert_tree_row(self, fake_path, CurrAlbumId, iid, Song):
+    def avn_insert_tree_row(self, fake_path, CurrAlbumId, iid, Song, use_tv=True):
         """ Analyze Mean Volume and Maximum Volume for New (Normalized) Song 
             Calls self.avo_run_ffmpeg() shared with avo_insert_tree_row()
         """
@@ -6335,6 +6372,10 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
         ''' Insert song into treeview '''
         def insert_tv_row():
             """ Shared function to add treeview row """
+
+            if not use_tv:
+                return  # Processing single song not in Treeview.
+
             self.cmp_tree.insert(CurrAlbumId, "end", iid=iid, text=Song,
                                  values=(mean_volume, max_volume, music_id),
                                  tags=("Song",))
@@ -6382,7 +6423,7 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
             sql.hist_add_music_var(
                 music_id, 'volume', 'detect_new', SourceMaster=loc,
                 SourceDetail='volumedetect', Comments=self.avo_comment,
-                Target=json.dumps([mean_volume, max_volume]))
+                Target=json.dumps([mean_volume, max_volume]), Size=trg_size)
 
         ''' Insert song into treeview '''
         insert_tv_row()
@@ -6410,6 +6451,13 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
         """ Right-clicked (button-3) in one of the analyze volume windows.
             Popup menu on current treeview row.
 
+            TODO:
+            - Put file size into History Record
+            - Put Seconds into History Record
+            - Count field can be used for?
+            - Comment can contain target Maximum Volume, TP=, I=, Linear=
+
+
             Call:
                 - Collapse All Artists
                 - Expand All Artists
@@ -6423,6 +6471,8 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
                 - Expand All Albums
 
         """
+        loc = self.act_code  # shorthand and a more meaningful var name
+        _who = self.who + "avo_row_menu():"
 
         tree = event.widget
         x, y = event.x_root, event.y_root + 24  # set y below row
@@ -6434,8 +6484,17 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
         values = tree.item(iid, "values")
         music_id = values[len(values) - 1] if len(values) else None
 
-        loc = self.act_code  # shorthand and a more meaningful var name
-        _who = self.who + "avo_row_menu():"
+        # Construct parameters to call loudness normalization methods
+        music_row = sql.music_get_row(music_id)
+        if not music_row:
+            print(_who, "music_id:", music_id, "is invalid SQL row not found.")
+            return
+        OsBase = music_row['OsFileName']
+        CurrAlbumId = tree.parent(iid)
+        Song = OsBase.split(os.sep)[-1]
+        fake_path = self.open_topdir + os.sep + OsBase
+        trg_path = self.cmp_target_dir + os.sep + OsBase  # self.cmp_target_dir
+        trg_path_new = trg_path + ".new"
 
         # Highlight treeview row and display Popup menu at row
         toolkit.tv_tag_add(tree, iid, "menu_sel")
@@ -6488,29 +6547,58 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
             sql.hist_del_music_var(music_id, 'volume', 'loudnorm_1', loc)
             sql.hist_del_music_var(music_id, 'volume', 'loudnorm_2', loc)
             sql.hist_del_music_var(music_id, 'volume', 'detect_new', loc)
-            tree.delete(iid)
-            tree.update_idletasks()
+            if prompt:  # If not prompt redoing normalization 
+                tree.delete(iid)
+                tree.update_idletasks()
 
             # Remove ".new" song file (if it exists)
-            sql_row = sql.music_get_row(music_id)
-            OsBase = sql_row['OsFileName']
-            if sql_row:
-                trg_path_new = self.cmp_target_dir + os.sep + OsBase + ".new"
-                if os.path.isfile(trg_path_new):
-                    self.rm_file(trg_path_new)
+            if os.path.isfile(trg_path_new):
+                self.rm_file(trg_path_new)
 
         def redo_normalize():
             """ Redo loudness normalization for song """
-            title = "Confirm loudness normalization records removal"
-            text = "Removing the records for this song allows the process\n"
-            text += "to be repeated for this song only. The process is\n"
-            text += "very quick for one song. Remove records for this song?"
-            if confirm:
-                answer = message.AskQuestion(self.cmp_top, confirm="No",
-                                             thread=self.get_thread_func,
-                                             title=title, text=text)
-                if answer.result != 'yes':
-                    return
+            title = "Confirm begin loudness normalization"
+            text = "The first step will remove all records for this song.\n"
+            text += "Then all four steps of loudness normalization is performed.\n"
+            text += "Although it is quick, it still takes a few minutes.\n\n"
+            text += "A music file with a '.new' extension is created.\n\n"
+            text += "Perform loudness normalization for this song?"
+            answer = message.AskQuestion(self.cmp_top, confirm="No",
+                                         thread=self.get_thread_func,
+                                         title=title, text=text)
+            if answer.result != 'yes':
+                return
+
+            if not self.avo_parameters():
+                return  # selected Cancel (not Proceed)
+
+            # Activate progress frame
+            # self.avo_progress_init(pro_func_dict, pro_song_dict)
+            # Step that processes all function will call:
+            # self.avo_progress_init(pro_song_dict, pro_func_dict)
+
+            remove_normalize(prompt=False)  # Remove 4 records w/o confirmation
+
+            use_tv = False  # Don't insert new row into treeview
+            #current_tree = True if self.state == "analyze_volume" else False
+            #print("\navo_insert_tree_row(fake_path,...use_tv:", use_tv)
+            #print(fake_path)
+            #print("CurrAlbumId:", CurrAlbumId, "iid:", iid, "Song:", Song)
+            #print("trg_path:", trg_path)
+            self.avo_insert_tree_row(fake_path, CurrAlbumId, iid, Song, use_tv)
+            current_tree = True if self.state == "analyze_loudnorm" else False
+            #print("aln_insert_tree_row(fake_path,...use_tv:", use_tv)
+            self.aln_insert_tree_row(fake_path, CurrAlbumId, iid, Song, use_tv)
+            #current_tree = True if self.state == "update_loudnorm" else False
+            #print("uln_insert_tree_row(fake_path,...use_tv:", use_tv)
+            self.uln_insert_tree_row(fake_path, CurrAlbumId, iid, Song, use_tv)
+            #current_tree = True if self.state == "analyze_volume_new" else False
+            #print("avn_insert_tree_row(fake_path,...use_tv:", use_tv)
+            self.avn_insert_tree_row(fake_path, CurrAlbumId, iid, Song, use_tv)
+            tree.update_idletasks()
+            #print("Four steps completed")
+
+        # Display popup menu at cursor location
 
         menu.add_command(label="Collapse all Artists", font=(None, g.MED_FONT),
                          command=collapse_all)

@@ -5697,8 +5697,8 @@ Call search.py when these control keys occur
         """
         if self.his_search is not None:
             self.his_search.close()
-        self.his_search = toolkit.SearchText(self.his_view, tt=self.tt,
-                                             keypress=True)
+        self.his_search = toolkit.SearchText(
+            self.his_view, tt=self.tt, thread=self.get_refresh_thread, keypress=True)
         self.his_search.find()
 
     def his_configuration_rows(self):
@@ -5823,8 +5823,8 @@ Call search.py when these control keys occur
         """
         if self.lcs_search is not None:
             self.lcs_search.close()
-        self.lcs_search = toolkit.SearchText(self.lcs_view, tt=self.tt,
-                                             keypress=True)
+        self.lcs_search = toolkit.SearchText(
+            self.lcs_view, tt=self.tt, thread=self.get_refresh_thread, keypress=True)
         self.lcs_search.find()
 
     def lcs_close(self, restart=False, *_args):

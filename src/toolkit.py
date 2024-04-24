@@ -2610,7 +2610,7 @@ def scroll_defaults(scrollbox, tabs=None):
 
 
 class SearchText:
-    """ Search for string in text and highlight it from:
+    """ Search for string in text and highlight it. Based on:
     https://www.geeksforgeeks.org/search-string-in-text-using-python-tkinter/
     """
     def __init__(self, view, column=None, find_str=None, find_op='in',
@@ -2643,9 +2643,10 @@ class SearchText:
         ''' keypress search variables '''
         self.keypress_waiting = None  # A keypress is waiting
         self.search_text = tk.StringVar()
-        self.new_str = None  # New search string
-        self.old_str = None  # Last search string
+        self.new_str = ""  # New search string
+        self.old_str = ""  # Last search string
         self.sip = False  # Search in progress?
+        self.last_refresh = time.time()
 
         if self.find_str is not None:
             return  # search string passed, no need for frame
@@ -2686,19 +2687,56 @@ class SearchText:
 
     def search_changed(self, *_args):
         """ Callback as string variable changes in TK entry """
-        if self.keypress_waiting:
-            #print("if self.keypress_waiting:")
-            # Never executed because can't type faster than search 0.0055580139
-            return  # Already have another keypress waiting to be processed
+        #if self.keypress_waiting:
+        #    print("if self.keypress_waiting:")
+        #    # Never executed because can't type faster than search 0.0055580139
+        #    return  # Already have another keypress waiting to be processed
         self.keypress_waiting = True  # Tell previous find() call to end now
         #print("self.keypress_waiting = True")
 
-        # Wait for find() to shutdown
+        # Wait for last find() to shutdown (self.sip is False)
+        start = time.time()
         while self.sip is True:
-            self.toplevel.after(100)  # Maybe refresh thread instead?
-            if self.sip:
-                print("toolkit.py - SearchText.search_changed() Waiting another 100 ms")
+            if time.time() - start > 3.0:
+                print("toolkit.py - SearchText.search_changed() Waited 3 seconds!")
+                self.sip = False
+                break
+            if not self.check_refresh():
+                self.toplevel.after(100)  # Maybe refresh thread instead?
+            #if self.sip:
+            #    print("toolkit.py - SearchText.search_changed() Waiting another 100 ms")
+
+        self.keypress_waiting = False  # Start a fresh find() with no key waiting
         self.find()
+
+    def reattach(self):
+        """ Reattach treeview items detached by search method """
+        i_r = -1  # https://stackoverflow.com/a/47055786/6929343
+        for msgId in self.attached.keys():
+            # 2024-04-23 Leave screen stale to service waiting keypress
+            self.check_refresh()
+            if self.keypress_waiting:
+                return
+
+            # If not attached then reattach it
+            i_r += 1  # Get back attached in same position!
+            if self.attached[msgId] is False:
+                #i_r += 1  # Causing attached to go near bottom!
+                self.tree.reattach(msgId, '', i_r)
+                self.attached[msgId] = True
+
+    def check_refresh(self):
+        """ check if refresh function used and call it periodically. """
+        if not self.get_thread_func:
+            return False  # Caller will have to do toplevel.after(999)
+
+        elapsed = time.time() - self.last_refresh
+        if elapsed > 0.1:  # Call refresh 10 times a second
+            thread = self.get_thread_func()
+            thread()
+            self.last_refresh = time.time()
+
+        return True  # There is a refresh function
 
     def find(self, *_args):
         """ Search treeview for string in all string columns
@@ -2716,11 +2754,18 @@ class SearchText:
             self.find_column()
             return
 
+
         s = self.search_text.get()
         stripped = s.strip()
         self.new_str = stripped
+        #print("self.new_str: '" + self.new_str + \
+        #      "'  | self.old_str: '" + self.old_str + "'.")
+        if self.new_str == self.old_str:
+            self.keypress_waiting = False
+            self.sip = False
+            return
 
-        #ext.t_init('reattach')
+        ext.t_init('reattach')
         if not self.keypress_waiting:  # None or false
             self.reattach()         # Put back items excluded on last search
         elif self.new_str.startswith(self.old_str):
@@ -2729,16 +2774,25 @@ class SearchText:
         else:
             # backspace erased character or text inserted/deleted before end
             self.reattach()  # Put back items excluded on last search
-        #ext.t_end('print')   # For 1200 messages 0.00529 seconds
+
+        # 2024-04-23 Leave screen stale to service waiting keypress
+        #self.check_refresh()
+        #if self.keypress_waiting:
+        #    self.sip = False
+        #    return
+
+        ext.t_end('print')   # For 1200 messages 0.00529 seconds
+        # For 28k history records 0.038 seconds
+        # For 28k history records with whole bunch of typing 11.26 seconds
         self.old_str = self.new_str
         self.keypress_waiting = False
+        self.sip = True  # Search in progress
 
         if len(stripped) == 0:
             return  # Nothing to search for
 
         search_or = False  # Later make a choice box
         search_and = True
-        self.sip = True  # Search in progress
 
         # Breakdown string into set of words
         words = s.split()
@@ -2747,6 +2801,7 @@ class SearchText:
         for iid in self.tree.get_children():
             # self.toplevel.update_idletasks()  # Causes crazy lag
             # Was keyboard character entered/erased?
+            #self.check_refresh()
             if self.keypress_waiting:
                 self.sip = False
                 #print("if self.keypress_waiting: early exit")
@@ -2780,8 +2835,7 @@ class SearchText:
             self.attached[iid] = False
 
         #ext.t_end('print')  #  Loop over every treeview row: 0.0026471615
-
-        self.sip = False  # Search ended
+        self.sip = False  # Search is over.
         self.entry.focus_set()
 
     def find_callback(self):
@@ -2911,17 +2965,6 @@ class SearchText:
                 print("Rare event known to happen when song ends. Reason unknown")
                 return
 
-    def reattach(self):
-        """ Reattach items detached """
-        i_r = -1  # https://stackoverflow.com/a/47055786/6929343
-        for msgId in self.attached.keys():
-            # If not attached then reattach it
-            i_r += 1  # Get back attached in same position!
-            if self.attached[msgId] is False:
-                #i_r += 1  # Causing attached to go near bottom!
-                self.tree.reattach(msgId, '', i_r)
-                self.attached[msgId] = True
-
     def close(self):
         """ Remove find search bar
             TODO: No way of stopping find loop when window closed by parent
@@ -2930,6 +2973,8 @@ class SearchText:
             return  # Closed window
         self.reattach()
         self.search_text.set("")  # Prevent future text highlighting of old search
+        self.new_str = ""  # New and old are compared to see if find() should
+        self.old_str = ""  # begin execution. Ensure they are both blank.
         if self.find_str is None:
             self.frame.grid_remove()  # Next pack is faster this way?
 

@@ -2500,26 +2500,30 @@ def hist_count_type_action(Type, Action, prt=True, tab=True):
     return row_count
 
 
-def hist_count_type_action_master(Type, Action, SourceMaster, prt=True, tab=True):
+def hist_tally_type_action_master(Type, Action, SourceMaster, prt=True, tab=True):
     """ Count History Rows for matching Type, Action and SourceMaster. 
         Created 2024-04-13 to tally Type == "Volume", Action == "Analyze",
             SourceMaster == "L004" (Location Code)
+        2024-04-22 Return total size for granular progress displays.
     """
 
     sql = "SELECT * FROM History INDEXED BY TypeActionIndex " +\
-          "WHERE Type = ? AND Action = ? AND SourceMaster =  ?"
+          "WHERE Type = ? AND Action = ? AND SourceMaster = ?"
     hist_cursor.execute(sql, (Type, Action, SourceMaster))
     rows = hist_cursor.fetchall()
-    row_count = len(rows)
+    tot_size = 0
+    for i, row in enumerate(rows):
+        tot_size += row['Size']
+    row_count = i + 1
 
-    tabs = "\t\t" if tab else ""  # show_debug() will want a tab to align
+    tabs = "\t\t" if tab else ""  # show_debug() needs tabs to align
     prt_type = " | Type='" + Type + "' | Action='" + Action + "' | " +\
                "SourceMaster: '" + SourceMaster + "' | "
     if prt:
-        print(tabs + 'SQL History:', prt_type,
-              'count:', '{:n}'.format(row_count))
+        print(tabs + 'SQL History:', prt_type, 'count:', '{:n}'.format(row_count),
+              'total size:', ext.human_bytes(tot_size))
 
-    return row_count
+    return row_count, tot_size
 
 
 def hist_tally_whole(prt=True, tab=True):
@@ -3378,7 +3382,7 @@ class PrettyNormalize:
         input_tp1 = aln_jd['input_tp'] + " dBTP" if aln_jd else "N/A ."  # True Peak
         input_lra1 = aln_jd['input_lra'] + " LU" if aln_jd else "N/A ."
         input_thresh1 = aln_jd['input_thresh'] + " LUFS" if aln_jd else "N/A ."
-        # 2024-04-01 - Temporary untio output_ variables created
+        # 2024-04-01 - Temporary until output_ variables created
         if aln_jd:
             output_i1 = aln_jd.get('output_i', "N/A .")
             if not output_i1.startswith("N/A"):
@@ -3417,16 +3421,16 @@ class PrettyNormalize:
         # 'loudnorm' Filter Pass 2 (Normalization)
         uln_d = hist_get_music_var(music_id, "volume", "loudnorm_2", loc)
         uln_jd = json.loads(uln_d['Target']) if uln_d else {}
-        input_i2 = uln_jd['input_i'] + " LUFS" if uln_jd else "N/A"  # Integrated
-        input_tp2 = uln_jd['input_tp'] + " dBTP" if uln_jd else "N/A"  # True Peak
-        input_lra2 = uln_jd['input_lra'] + " LU" if uln_jd else "N/A"
-        input_thresh2 = uln_jd['input_thresh'] + " LUFS" if uln_jd else "N/A"
-        output_i2 = uln_jd['output_i'] + " LUFS" if uln_jd else "N/A"  # Integrated
-        output_tp2 = uln_jd['output_tp'] + " dBTP" if uln_jd else "N/A"  # True Peak
-        output_lra2 = uln_jd['output_lra'] + " LU" if uln_jd else "N/A"
-        output_thresh2 = uln_jd['output_thresh'] + " LUFS" if uln_jd else "N/A"
+        input_i2 = uln_jd['input_i'] + " LUFS" if uln_jd else "N/A ."  # Integrated
+        input_tp2 = uln_jd['input_tp'] + " dBTP" if uln_jd else "N/A ."  # True Peak
+        input_lra2 = uln_jd['input_lra'] + " LU" if uln_jd else "N/A ."
+        input_thresh2 = uln_jd['input_thresh'] + " LUFS" if uln_jd else "N/A ."
+        output_i2 = uln_jd['output_i'] + " LUFS" if uln_jd else "N/A ."  # Integrated
+        output_tp2 = uln_jd['output_tp'] + " dBTP" if uln_jd else "N/A ."  # True Peak
+        output_lra2 = uln_jd['output_lra'] + " LU" if uln_jd else "N/A ."
+        output_thresh2 = uln_jd['output_thresh'] + " LUFS" if uln_jd else "N/A ."
 
-        target_offset2 = uln_jd['target_offset'] + " LU" if uln_jd else "N/A"
+        target_offset2 = uln_jd['target_offset'] + " LU" if uln_jd else "N/A ."
         # 2024-04-01 - Temporary untio output_ variables created
         if uln_jd:
             audio_rate2 = uln_jd.get('ar', "N/A") + " Hz"
@@ -3438,8 +3442,8 @@ class PrettyNormalize:
         # New volume history record
         avn_d = hist_get_music_var(music_id, "volume", "detect_new", loc)
         avn_l = json.loads(avn_d['Target']) if avn_d else None
-        new_mean = avn_l[0] if avn_l else "N/A"  # mean & max in list
-        new_max = avn_l[1] if avn_l else "N/A"
+        new_mean = avn_l[0] if avn_l else "N/A ."  # mean & max in list
+        new_max = avn_l[1] if avn_l else "N/A ."
 
         self.dict['Old Mean Volume'] = old_mean  # -18.2 dB split into two fields
         self.dict['Old Max. Volume'] = old_max
