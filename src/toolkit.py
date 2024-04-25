@@ -2635,6 +2635,7 @@ class SearchText:
         self.get_thread_func = thread  # mserve.py self.get_refresh_thread
         self.use_keypress = keypress  # Launch search with each key press?
         # print('column:', column, 'find_str:', find_str)
+        self.who = "toolkit.SearchText()."
 
         self.frame = None  # frame for input
         # Search text entry box
@@ -2643,9 +2644,14 @@ class SearchText:
         ''' keypress search variables '''
         self.keypress_waiting = None  # A keypress is waiting
         self.search_text = tk.StringVar()
-        self.new_str = ""  # New search string
+
+        self.search_or = False  # Later make a choice box. Find word OR word...
+        self.search_and = True  # Find word AND word AND word
+
+        self.new_str = ""  # New search string. Cannot be none for comparison.
         self.old_str = ""  # Last search string
         self.sip = False  # Search in progress?
+        self.rip = False  # Reattach in progress?
         self.last_refresh = time.time()
 
         if self.find_str is not None:
@@ -2707,23 +2713,47 @@ class SearchText:
             #    print("toolkit.py - SearchText.search_changed() Waiting another 100 ms")
 
         self.keypress_waiting = False  # Start a fresh find() with no key waiting
+        wait_cursor(self.toplevel)
         self.find()
+        self.toplevel.config(cursor="")
+        #self.toplevel.update_idletasks()
 
     def reattach(self):
         """ Reattach treeview items detached by search method """
         i_r = -1  # https://stackoverflow.com/a/47055786/6929343
-        for msgId in self.attached.keys():
+        words = self.new_str.split() if self.new_str else None
+        self.rip = True  # Reattach in progress
+        self.last_refresh = time.time()  # skip .1 second first time penalty
+        for iid in self.attached.keys():
             # 2024-04-23 Leave screen stale to service waiting keypress
-            self.check_refresh()
+            self.check_refresh()  # spamming backspace getting .1 sec delay.
+            #self.check_refresh()  # spamming backspace getting .11 sec delay.
             if self.keypress_waiting:
                 return
 
+            # Does it qualify for attaching?
+
+            if words:
+                ret = self.search_matches(iid, words)
+                if ret is None:
+                    return  # Window is closing down
+                elif ret is True:
+                    pass  # drop down and reattach treeview row
+                elif ret is False:
+                    continue  # doesn't contain search words, remains detached
+                else:
+                    print(self.who + "find(): ret is not 'None', 'True' or 'False'")
+                    exit()
+
             # If not attached then reattach it
             i_r += 1  # Get back attached in same position!
-            if self.attached[msgId] is False:
+            if self.attached[iid] is False:
                 #i_r += 1  # Causing attached to go near bottom!
-                self.tree.reattach(msgId, '', i_r)
-                self.attached[msgId] = True
+                self.tree.reattach(iid, '', i_r)
+                self.attached[iid] = True
+
+        self.rip = False  # Reattach completed
+
 
     def check_refresh(self):
         """ check if refresh function used and call it periodically. """
@@ -2731,12 +2761,38 @@ class SearchText:
             return False  # Caller will have to do toplevel.after(999)
 
         elapsed = time.time() - self.last_refresh
-        if elapsed > 0.1:  # Call refresh 10 times a second
+        if elapsed > 0.033:  # Call refresh 30 times a second
             thread = self.get_thread_func()
             thread()
             self.last_refresh = time.time()
 
         return True  # There is a refresh function
+
+    def search_matches(self, iid, words):
+        """ Does the treeview row contain the search string? """
+        # searches for desired string
+        try:
+            values = self.tree.item(iid)['values']
+        except TclError:  # Window was closed
+            return None
+
+        found_one = False  # Assume worst case
+        found_all = True  # Assume best case
+        for w in words:
+            if any(w.lower() in t.lower()
+                   for t in values if isinstance(t, basestring)):
+                # Searching all columns of basestring type
+                found_one = True
+            else:
+                found_all = False
+
+        if self.search_or and found_one:
+            return True
+
+        if self.search_and and found_one and found_all:
+            return True
+
+        return False
 
     def find(self, *_args):
         """ Search treeview for string in all string columns
@@ -2754,25 +2810,25 @@ class SearchText:
             self.find_column()
             return
 
-
         s = self.search_text.get()
         stripped = s.strip()
         self.new_str = stripped
         #print("self.new_str: '" + self.new_str + \
         #      "'  | self.old_str: '" + self.old_str + "'.")
         if self.new_str == self.old_str:
-            self.keypress_waiting = False
+            # self.keypress_waiting = False
+            # 2024-04-24 keypress_waiting already False on startup.
             self.sip = False
             return
 
         ext.t_init('reattach')
-        if not self.keypress_waiting:  # None or false
-            self.reattach()         # Put back items excluded on last search
-        elif self.new_str.startswith(self.old_str):
-            # print("self.new_str.startswith(self.old_str):")
-            pass  # What was detached before would remain detached
-        else:
-            # backspace erased character or text inserted/deleted before end
+        #if not self.keypress_waiting:  # None or false
+        #    self.reattach()         # Put back items excluded on last search
+        # 2024-04-24 new design where self.reattach() will quit on keypress
+        if not self.new_str.startswith(self.old_str) or self.rip:
+            # 1. Backspace erased character or text inserted/deleted before end
+            # 2. Previously reattaching and got interrupted by keypress so
+            #    need to continue last reattaching
             self.reattach()  # Put back items excluded on last search
 
         # 2024-04-23 Leave screen stale to service waiting keypress
@@ -2786,16 +2842,17 @@ class SearchText:
         # For 28k history records with whole bunch of typing 11.26 seconds
         self.old_str = self.new_str
         self.keypress_waiting = False
-        self.sip = True  # Search in progress
 
-        if len(stripped) == 0:
+        if len(self.new_str) == 0:
             return  # Nothing to search for
 
-        search_or = False  # Later make a choice box
-        search_and = True
+        self.sip = True  # Search in progress
+        self.search_or = False  # Later make a choice box
+        self.search_and = True
 
         # Breakdown string into set of words
-        words = s.split()
+        #words = s.split()
+        words = self.new_str.split()
         #ext.t_init('Loop over every treeview row')
         # Loop over every treeview row
         for iid in self.tree.get_children():
@@ -2806,8 +2863,21 @@ class SearchText:
                 self.sip = False
                 #print("if self.keypress_waiting: early exit")
                 #ext.t_end('print')  # Never executed loop is: 0.02236
-                return  # Will be called again from search_changed()
+                return  # Will be called again from self.search_changed()
 
+            ret = self.search_matches(iid, words)
+            if ret is None:
+                self.sip = False
+                return
+            elif ret is True:
+                continue
+            elif ret is False:
+                pass  # drop down and detach from treeview row
+            else:
+                print(self.who + "find(): ret is not 'None', 'True' or 'False'")
+                exit()
+                ""
+            ''' 2024-04-24 old code
             # searches for desired string
             try:
                 values = self.tree.item(iid)['values']
@@ -2825,12 +2895,12 @@ class SearchText:
                 else:
                     found_all = False
 
-            if search_or and found_one:
+            if self.search_or and found_one:
                 continue
 
-            if search_and and found_one and found_all:
+            if self.search_and and found_one and found_all:
                 continue
-
+            '''
             self.tree.detach(iid)
             self.attached[iid] = False
 
@@ -2971,10 +3041,10 @@ class SearchText:
         """
         if not self.toplevel:
             return  # Closed window
-        self.reattach()
         self.search_text.set("")  # Prevent future text highlighting of old search
         self.new_str = ""  # New and old are compared to see if find() should
         self.old_str = ""  # begin execution. Ensure they are both blank.
+        self.reattach()  # 2024-04-24 was higher up but do with empty self.new_str
         if self.find_str is None:
             self.frame.grid_remove()  # Next pack is faster this way?
 
@@ -3389,6 +3459,18 @@ class MoveTreeviewColumn:
             top_geom.w, top_geom.h, top_geom.x, top_geom.y))
         self.col_cover_top.deiconify()  # Forces window to appear
         self.col_cover_top.update()  # This is required for visibility
+
+
+def wait_cursor(toplevel):
+    """ Turn mouse pointer (cursor) into hour glass """
+    try:
+        toplevel.config(cursor="watch")  # Ubuntu 16.04
+        #print('toplevel.config(cursor="watch")')
+    except tk.TclError:
+        toplevel.config(cursor="clock")  # Ubuntu 18.04
+        #print('toplevel.config(cursor="clock")')
+
+    toplevel.update_idletasks()
 
 
 def move_mouse_to(x, y):

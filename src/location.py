@@ -1206,6 +1206,7 @@ class LocationsCommonSelf:
         self.cmp_target_dir = None  # OS directory comparing to
         self.cmp_tree_frame = None  # Treeview frame can be swapped in & out
         self.cmp_tree = None  # Treeview w/difference between src and trg
+        self.cmp_pro_frm = None  # Progress Bars (one file & all files) frame
         self.cmp_btn_frm = None  # Button frame for update diff / progress bar
         self.cmp_close_btn = None  # Button to close Compare Locations window
         self.update_differences_btn = None  # Click button to synchronize
@@ -1240,7 +1241,8 @@ class LocationsCommonSelf:
         self.avo_use_inputs = True  # Override defaults using pass 1 values
         self.avo_max_m4a_ar = 96000  # ffmpeg default aac codec only goes to 96000
         self.avo_max_mp3_ar = 44100  # ffmpeg default mp3 codec only goes to 44100
-        self.avo_comment = "April 20, 2024"  # SQL History Table "Comments" column
+        self.loudnorm_cmd = ""  # Common parm. E.G. loudnorm=I=-23.0:TP=0.0:LRA=11.0
+        self.avo_comment = "April 23, 2024"  # SQL History Table "Comments" column
 
         ''' Make TMP names unique for multiple OS jobs running at once '''
         letters = string.ascii_lowercase + string.digits
@@ -4326,6 +4328,13 @@ filename.
                         fieldbackground=colors['fieldbackground'])
         self.cmp_tree.configure(style=style_name)
 
+        ''' Frame3 for Progress Bars '''
+        self.cmp_pro_frm = tk.Frame(self.cmp_frame, bg=self.bg, bd=2, 
+                                    relief=tk.FLAT, borderwidth=g.BTN_BRD_WID)
+        self.cmp_pro_frm.grid_rowconfigure(0, weight=1)
+        self.cmp_pro_frm.grid_columnconfigure(0, weight=1)
+        self.cmp_pro_frm.grid(row=10, column=0, sticky=tk.NSEW)  # Row 10
+
         # noinspection SpellCheckingInspection
         ''' Aug 5/23 - Horizontal Scrollbar removed for lack of purpose 
         h_scroll = tk.Scrollbar(self.cmp_tree_frame, orient=tk.HORIZONTAL, width=sbar_width,
@@ -4333,12 +4342,12 @@ filename.
         h_scroll.grid(row=1, column=0, sticky=tk.EW)
         self.cmp_tree.configure(xscrollcommand=h_scroll.set)
         '''
-        ''' Frame3 for Treeview Buttons '''
+        ''' Frame4 for Treeview Buttons '''
         self.cmp_btn_frm = tk.Frame(self.cmp_frame, bg=self.bg, bd=2, 
                                     relief=tk.FLAT, borderwidth=g.BTN_BRD_WID)
         self.cmp_btn_frm.grid_rowconfigure(0, weight=1)
         self.cmp_btn_frm.grid_columnconfigure(0, weight=1)
-        self.cmp_btn_frm.grid(row=1, column=0, sticky=tk.E)
+        self.cmp_btn_frm.grid(row=20, column=0, sticky=tk.E)  # Row 20
 
         ''' Help Button - https://www.pippim.com/programs/mserve.html#HelpSynchronizeActions
                           Optional-Remote-Host-Support '''
@@ -5428,6 +5437,7 @@ filename.
         self.cmp_tree_frame.grid()  # Swap in treeview frame
         self.cmp_top.update_idletasks()
 
+
         # Activate progress frame
         # self.avo_progress_init(pro_song_dict, pro_func_dict)
         # single song will call:
@@ -5764,7 +5774,9 @@ filename.
               -  Run ffmpeg 'volumedetect' Filter  
             Calls self.avo_run_ffmpeg() shared with avn_insert_tree_row()
         '''
+        start_ffmpeg = time.time()
         mean_volume, max_volume = self.avo_run_ffmpeg(trg_path, trg_size)
+        end_ffmpeg = time.time()
         if not self.cmp_top_is_active:
             return False  # Closing down
 
@@ -5786,7 +5798,8 @@ filename.
             sql.hist_add_music_var(
                 music_id, 'volume', 'detect_old', SourceMaster=loc,
                 SourceDetail='volumedetect', Comments=self.avo_comment,
-                Target=json.dumps([mean_volume, max_volume]), Size=trg_size)
+                Target=json.dumps([mean_volume, max_volume]), Size=trg_size,
+                Seconds=round(end_ffmpeg - start_ffmpeg, 4))
 
         ''' Insert song into treeview '''
         insert_tv_row()
@@ -5992,7 +6005,14 @@ One-liner to copy and paste into terminal:
 
               -  Run ffmpeg 'loudnorm' Filter (Pass 1)  
         '''
+        # Parameters shared by loudnorm_1 & loudnorm_2 and comments
+        IN = self.avo_integrated  # Separate var name for consistency
+        self.loudnorm_cmd = 'loudnorm=I=' + IN + ':TP=' + self.avo_true_peak
+        self.loudnorm_cmd += ':LRA=' + self.avo_lra
+
+        start_ffmpeg = time.time()
         json_dict = self.aln_run_ffmpeg(trg_path, trg_size)
+        end_ffmpeg = time.time()
 
         if not self.cmp_top_is_active:
             return False  # Closing down
@@ -6024,8 +6044,9 @@ One-liner to copy and paste into terminal:
         if music_id:
             sql.hist_add_music_var(
                 music_id, 'volume', 'loudnorm_1', SourceMaster=loc,
-                SourceDetail='Analyze', Comments=self.avo_comment,
-                Target=json.dumps(json_dict), Size=trg_size)
+                SourceDetail='Analyze', Comments=self.loudnorm_cmd,
+                Target=json.dumps(json_dict), Size=trg_size,
+                Seconds=round(end_ffmpeg - start_ffmpeg, 4))
 
         ''' Insert song into treeview '''
         insert_tv_row()
@@ -6077,21 +6098,12 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=$int
 :offset=-0.3:linear=true:print_format=summary "$output"
 
         """
-        linear = self.avo_linear  # "true"
-        TP = self.avo_true_peak  # "0.0"
-        LRA = self.avo_lra  # "-11.0"
-        IN = self.avo_integrated  # "-23.0"
 
-        # -y = overwrite previous .new file.
 
-        # Version using FileControl to create OrderedDict of all lines
         cmd = self.avo_ffmpeg + ' -i "' + trg_path + '" -af '
-
         # 2024-04-23 - original version below
         #    cmd += ' loudnorm=I=-23:TP=0:print_format=json'
-
-        cmd += 'loudnorm=I=' + IN + ':TP=' + TP + ':LRA=' + LRA +
-        cmd += ':linear=' + linear
+        cmd += self.loudnorm_cmd  # 'loudnorm=I=' + IN + ':TP=' + TP + ':LRA=' + LRA
         cmd += ':print_format=json -f null -'
 
         wait = size / 1000000 * 8  # Wait 8 seconds per megabyte before quiting
@@ -6211,26 +6223,20 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=$int
 
         trg_path_new = trg_path + ".new"
 
+        # Parameters shared by loudnorm_1 & loudnorm_2 and comments
+        IN = input_i if self.avo_use_inputs else self.avo_integrated
+        self.loudnorm_cmd = 'loudnorm=I=' + IN + ':TP=' + self.avo_true_peak
+        self.loudnorm_cmd += ':LRA=' + self.avo_lra
+
         ''' Build complex ffmpeg command line '''
-        # TODO - Save settings to comments
-        linear = self.avo_linear  # "true"
-        TP = self.avo_true_peak  # "0.0"
-        LRA = self.avo_lra  # "-11.0"
-        if self.avo_use_inputs:
-            IN = input_i  # pycharm doesn't like variable name "I"
-        else:
-            IN = self.avo_integrated  # "-23.0"
-
-        # Cheatsheet:
-        # https://gist.github.com/wagesj45/7862866c533e0c93b5d01cf1afbd9ca3
-
-
         # -y = overwrite previous .new file.
         cmd = self.avo_ffmpeg + ' -y -i "' + trg_path + '" -af '
-        cmd += 'loudnorm=I=' + IN + ':TP=' + TP + ':LRA=' + LRA
+        #cmd += 'loudnorm=I=' + IN + ':TP=' + TP + ':LRA=' + LRA
+        cmd += self.loudnorm_cmd  # 'loudnorm=I=' + IN + ':TP=' + TP + ':LRA=' + LRA
+
         cmd += ':measured_I=' + input_i + ':measured_TP=' + input_tp
         cmd += ':measured_LRA=' + input_lra + ':measured_thresh=' + input_thresh
-        cmd += ':offset=' + target_offset + ':linear=' + linear
+        cmd += ':offset=' + target_offset + ':linear=' + self.avo_linear
         cmd += ':print_format=json -ar ' + ar
         # Fix height error E.G. 224x225 not divisible by 2
         # See: https://stackoverflow.com/a/53024964/6929343
@@ -6243,7 +6249,9 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=$int
 
               -  Run ffmpeg 'loudnorm' (Pass 2)  
         '''
+        start_ffmpeg = time.time()
         json_dict = self.uln_run_ffmpeg(trg_path, trg_size, cmd)
+        end_ffmpeg = time.time()
 
         if not self.cmp_top_is_active:
             return False  # Closing down
@@ -6282,8 +6290,10 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=$int
         if music_id:
             sql.hist_add_music_var(
                 music_id, 'volume', 'loudnorm_2', SourceMaster=loc,
-                SourceDetail='Analyze', Comments=trg_path_new,
-                Target=json.dumps(json_dict), Size=trg_size)
+                SourceDetail='Analyze', Comments=self.loudnorm_cmd +
+                ":linear=" + self.avo_linear,
+                Target=json.dumps(json_dict), Size=trg_size,
+                Seconds=round(end_ffmpeg - start_ffmpeg, 4))
             # TODO: Add Music ID to a newly created special playlist
 
         ''' Insert song into treeview '''
@@ -6401,7 +6411,9 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
               -  Run ffmpeg 'volumedetect' Filter  
             Calls self.avo_run_ffmpeg() shared with avo_insert_tree_row()
         '''
+        start_ffmpeg = time.time()
         mean_volume, max_volume = self.avo_run_ffmpeg(trg_path_new, trg_size)
+        end_ffmpeg = time.time()
         if not self.cmp_top_is_active:
             return False  # Closing down
 
@@ -6423,7 +6435,8 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
             sql.hist_add_music_var(
                 music_id, 'volume', 'detect_new', SourceMaster=loc,
                 SourceDetail='volumedetect', Comments=self.avo_comment,
-                Target=json.dumps([mean_volume, max_volume]), Size=trg_size)
+                Target=json.dumps([mean_volume, max_volume]), Size=trg_size,
+                Seconds=round(end_ffmpeg - start_ffmpeg, 4))
 
         ''' Insert song into treeview '''
         insert_tv_row()
