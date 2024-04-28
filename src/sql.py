@@ -1869,12 +1869,12 @@ class Config:
     # Treeview background colors
     # background="LemonChiffon"    VERY NICE
     # background="NavajoWhite"     VERY NICE
+    # background="LightSalmon"     BEST at night
     # background="OliveDrab"       TOO DARK for black text
     # background="PaleTurquoise"   OK but highlight bar not as strong
     # background="LightGoldenrod"  Similar to Lemon Chiffon (Very Nice)
     # background="RosyBrown"       NOT BAD but a little dark at night
     # background="AliceBlue"       BEST at day
-    # background="LightSalmon"     BEST at night
     # background="WhiteSmoke"      BEST all around
 
     def __init__(self):
@@ -3366,8 +3366,8 @@ class PrettyNormalize:
         self.heading = "Normaliztion Steps\t\tValue\t\t" + \
                        "Integra\t-ted\tTrue\tPeak\tLRA\t\tThresh\t-old\n"
 
-        self.units = ["dB", "dBTP", "LUFS", "LU", "Hz"]
-        self.unit_color = "gray"  # Highligh units in gray
+        self.units = ["dB", "dBTP", "LUFS", "LU", "Hz", "seconds."]
+        self.unit_color = "gray"  # Highlight units of measure in gray
 
         # Old volume history record
         avo_d = hist_get_music_var(music_id, "volume", "detect_old", loc)
@@ -3493,6 +3493,8 @@ class PrettyNormalize:
         self.dict['Target Offset 2'] = tab_it(target_offset2)
         self.dict['Audio Rate 2'] = tab_it(audio_rate2)
         self.dict['Normalization Type 2'] = normalization_type2
+        self.dict['Parameters 2'] = "\t" + str(uln_d['Seconds']) + "\t" + \
+            "seconds. Options: " + uln_d['Comments']
         self.part_start.append(len(self.dict))
 
         self.dict['New Mean Volume'] = new_mean

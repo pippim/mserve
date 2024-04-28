@@ -7558,6 +7558,11 @@ Call search.py when these control keys occur
     def lift_lib_top(self):
         """ Clicked the dynamic button 'Show library' """
         print("lifting lib_top")
+        # 2024-04-26 - If play_top not active, start it up
+        if not self.play_top_is_active:
+            self.play_selected_list()  # 2024-04-26 - Added today.
+            return
+
         self.lib_top.focus_set()
         self.lib_top.lift()
         self.play_on_top = False
@@ -7618,14 +7623,16 @@ Call search.py when these control keys occur
                   and tooltip is invalid with search widget errors.
         """
         self.long_running_process = True
-        self.play_btn_frm.grid_forget()
-        self.build_play_btn_frm()
+        if self.play_top_is_active:
+            self.play_btn_frm.grid_forget()
+            self.build_play_btn_frm()
 
     def end_long_running_process(self):
         """ Restore "normal" buttons to play_top """
         self.long_running_process = False
-        self.play_btn_frm.grid_forget()
-        self.build_play_btn_frm()
+        if self.play_top_is_active:  # 2024-04-26 window was closed
+            self.play_btn_frm.grid_forget()
+            self.build_play_btn_frm()
 
     def build_play_btn_frm(self):
         """ Create frame for play_top buttons.
@@ -14086,6 +14093,7 @@ class FileControl(FileControlCommonSelf):
         self.last_path = None       # Use for fast clicking Next
         self.new_WIP = None         # .new() is Work In Progress
         self.close_WIP = None       # .close() is Work In Progress
+        self.who = "FileControl()."
 
         ''' Make TMP names unique for multiple FileControls racing at once '''
         letters = string.ascii_lowercase + string.digits
@@ -14204,7 +14212,7 @@ class FileControl(FileControlCommonSelf):
             TODO: Huge time lag with .oga image of 10 MB inside 30 MB file.
         """
 
-        _who = "mserve.py FileControl().get_metadata(): "
+        _who = self.who + "get_metadata():"
         self.metadata = OrderedDict()
 
         # 2024-04-12 ffmpeg spams some error messages ~100 times
@@ -14532,7 +14540,6 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilatio
 
 
         '''
-
         if trg_path is None:
             path_parts = self.path.split(os.sep)  # In case metadata missing
         else:
@@ -14639,10 +14646,14 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilatio
             """ Check if spam error occurred and print. """
             if count == 0:
                 return
-            print("\nSpammed Error '" + text + "' occurred:",
+            print("\tSpammed error '" + text + "' occurred:",
                   count, "times.")
-            print("line:", line)
-            print("trg_path:", trg_path)
+            #print("line:", line)  # 2024-04-24 'line' value irrelevant now?
+
+        if spam_err1_cnt or spam_err2_cnt or spam_err3_cnt or \
+                spam_err4_cnt or spam_err5_cnt:
+            print("\n" + _who, "Errors reported by ffmpeg on file:")
+            print(trg_path)
 
         print_spam(spam_err1_cnt, spam_err1_text)
         print_spam(spam_err2_cnt, spam_err2_text)

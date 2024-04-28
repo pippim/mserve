@@ -1206,10 +1206,11 @@ class LocationsCommonSelf:
         self.cmp_target_dir = None  # OS directory comparing to
         self.cmp_tree_frame = None  # Treeview frame can be swapped in & out
         self.cmp_tree = None  # Treeview w/difference between src and trg
+        self.cmp_radio_boxes = None  # Radio button check boxes (larger)
         self.cmp_pro_frm = None  # Progress Bars (one file & all files) frame
         self.cmp_btn_frm = None  # Button frame for update diff / progress bar
         self.cmp_close_btn = None  # Button to close Compare Locations window
-        self.update_differences_btn = None  # Click button to synchronize
+        self.update_differences_btn = None  # Click button to synchronize files
         self.cmp_found = 0  # Number of files goes into differences button
         self.cmp_command_list = []  # iid,command_str,src_to_trg,src_time,trg_time
         self.cmp_return_code = 0  # Indicate how update failed
@@ -1224,13 +1225,15 @@ class LocationsCommonSelf:
         self.end_long_running = None  # To control mserve playing buttons
 
         ''' Analyze Volume variables embedded inside Compare Window '''
+        self.avo_use_open_location = True  # Later make user controlled.
+        # Using open location streamlines GUI - no need to pick target location
         self.avo_ffmpeg = g.PROGRAM_DIR + os.sep + 'ffmpeg'  # in mserve directory
         self.avo_ffmpeg = 'ffmpeg'  # default = find in path
         # Set to "ffmpeg" for regular path. If a special version of ffmpeg needed
         # (E.G. for 'loudnorm' filter) then specify location. Needed when special
         # version breaks other mserve features.
-        self.avo_select_max_lower = -10.0  # Select songs above maximum volume
-        self.avo_select_max_upper = -0.15  # Select songs below maximum volume
+        self.avo_select_max_lower = -10.0  # Select songs >= maximum volume
+        self.avo_select_max_upper = -0.20  # Select songs <= maximum volume
         # E.G. self.avo_select_max_lower <= song_max <= self.avo_select_max_upper
         self.avo_skip_complete = True  # Skip if step completed for file (new only).
         self.avo_skip_count = True  # How many existing records were skipped
@@ -1242,7 +1245,9 @@ class LocationsCommonSelf:
         self.avo_max_m4a_ar = 96000  # ffmpeg default aac codec only goes to 96000
         self.avo_max_mp3_ar = 44100  # ffmpeg default mp3 codec only goes to 44100
         self.loudnorm_cmd = ""  # Common parm. E.G. loudnorm=I=-23.0:TP=0.0:LRA=11.0
-        self.avo_comment = "April 23, 2024"  # SQL History Table "Comments" column
+        #self.avo_comment = "April 23, 2024"  # SQL History Table "Comments" column
+
+        self.avo_comment = datetime.datetime.fromtimestamp(float(int(time.time())))
 
         ''' Make TMP names unique for multiple OS jobs running at once '''
         letters = string.ascii_lowercase + string.digits
@@ -1255,7 +1260,7 @@ class LocationsCommonSelf:
         self.cfg = sql.Config()
         self.bg = None  # WIP - Background color in Analyze Volume (avo)
 
-        ''' self.win_grp class simplifies window management '''
+        ''' self.win_grp class lifts and drags child windows '''
         self.win_grp = None  # init with class toolkit.ChildWindows(toplevel)
 
 
@@ -1559,6 +1564,12 @@ class Locations(LocationsCommonSelf):
 
         if title is not None:  # If title defined, display & cast the message
             self.out_fact_show(title, text, align='left')
+
+        if self.state.startswith('analyze_') or self.state == 'update_loudnorm':
+            if self.avo_use_open_location and self.open_code is not None:
+                self.loc_button_click(None, use_open_location=True)
+                self.apply()
+
 
     def make_main_close_button(self):
         """ Added by main window, removed by testing. """
@@ -1939,7 +1950,7 @@ class Locations(LocationsCommonSelf):
             code = loc_dict['Code']
             self.loc_view.insert("", loc_dict, code)  # Updates when in treeview
 
-    def loc_button_click(self, event):
+    def loc_button_click(self, event, use_open_location=False):
         """ Left button clicked to select a row.
 
         ''' Was region of treeview clicked a "separator"? '''
@@ -1966,7 +1977,10 @@ class Locations(LocationsCommonSelf):
 
         """
 
-        tree_code = self.loc_view.tree.identify_row(event.y)
+        if use_open_location:
+            tree_code = self.open_code
+        else:
+            tree_code = self.loc_view.tree.identify_row(event.y)
         if not tree_code:
             return  # clicked on empty row
 
@@ -2604,7 +2618,7 @@ class Locations(LocationsCommonSelf):
 
         ''' Analyze Volume variables embedded inside Compare Window '''
         self.avo_select_max_lower = -10.0  # 2024-04-13 Future user config setting
-        self.avo_select_max_upper = -0.15  # 2024-04-13 Future user config setting
+        self.avo_select_max_upper = -0.20  # 2024-04-13 Future user config setting
 
         # E.G. self.avo_select_max_lower <= song_max <= self.avo_select_max_upper
 
@@ -4068,8 +4082,7 @@ filename.
         elif self.state == 'analyze_volume' or self.state == 'analyze_volume_new' or \
                 self.state == 'analyze_loudnorm' or self.state == 'update_loudnorm':
             self.cmp_build_toplevel(prefix="avo")
-            # Problem: We don't want to do reset below, cmp must close itself
-            return  # cmp_close closes cmp_window and main_top stays open for next
+            return  # Don't want to do reset below, cmp will close itself
         else:
             toolkit.print_trace()
             print("Unknown Locations.apply() self.state:", self.state)
@@ -4183,7 +4196,7 @@ filename.
         self.cmp_top.columnconfigure(0, weight=1)
         self.cmp_top.rowconfigure(0, weight=1)
 
-        ''' self.win_grp class simplifies window management '''
+        ''' self.win_grp class lifts and drags child windows '''
         self.win_grp = toolkit.ChildWindows(self.cmp_top)
 
         # TODO: load/save window geometry. User configuration colors
@@ -4202,10 +4215,16 @@ filename.
         if prefix == "cmp":
             title = "Synchronize:  SOURCE: " + self.open_topdir + \
                     "  <-->  TARGET: " + self.cmp_target_dir
-        elif self.state == "analyze_volume" or self.state == "analyze_volume_new":
-            title = "Analyze Maximum Volume in: " + self.cmp_target_dir
-        else:  # "analyze_loudnorm" and "update_loudnorm" states
-            title = "Analyze 'loudnorm' Filter in: " + self.cmp_target_dir
+        elif self.state == "analyze_volume":
+            title = "Analyze OLD Maximum Volume - " + self.cmp_target_dir
+        elif self.state == "analyze_volume_new":
+            title = "Analyze NEW Maximum Volume - " + self.cmp_target_dir
+        elif self.state == "analyze_loudnorm":
+            title = "Analyze 'loudnorm' Filter Pass 1 - " + self.cmp_target_dir
+        else:
+            title = "Update 'loudnorm' Filter Pass 2 - " + self.cmp_target_dir
+
+        title = title + " - mserve"
         self.cmp_top.title(title)
 
         ''' FileControl() from mserve.py used to parse ffmpeg output '''
@@ -4272,7 +4291,11 @@ filename.
 
         elif self.state == "analyze_volume" or self.state == "analyze_volume_new":
             self.cmp_tree.column("Mean", width=250, anchor="center", stretch=tk.YES)
-            self.cmp_tree.heading("Mean", text="Mean Volume")
+            if self.state == "analyze_volume":
+                self.cmp_tree.heading("Mean", text="Mean Volume")
+            else:
+                # The New
+                self.cmp_tree.heading("Mean", text="Original Max.")
             self.cmp_tree.column("Maximum", width=250, anchor="center", stretch=tk.YES)
             self.cmp_tree.heading("Maximum", text="Max. Volume")
             self.cmp_tree.column("MusicId")  # Hidden MusicId
@@ -4311,8 +4334,17 @@ filename.
         if prefix != "cmp":
             self.cmp_tree.bind('<Motion>', self.highlight_row)
             self.cmp_tree.bind("<Leave>", self.leave_row)
-            self.cmp_tree.tag_configure('highlight', background='LightBlue')
-            self.cmp_tree.tag_configure('menu_sel', background='Yellow')
+            self.cmp_tree.tag_configure(
+                'highlight', background='LightBlue', foreground='Black')
+            self.cmp_tree.tag_configure(
+                'menu_sel', background='Yellow', foreground='Black')
+            self.cmp_tree.tag_configure(
+                'play_sel', background='ForestGreen', foreground='White')
+            self.cmp_tree.tag_configure(
+                'missed_sel', background='LightSalmon', foreground='Black')
+            self.cmp_tree.tag_configure(
+                'worse_sel', background='Red', foreground='White'
+            )
             self.cmp_tree.bind("<Button-3>", lambda event: self.avo_row_menu(event))
 
         style = ttk.Style()
@@ -4381,7 +4413,7 @@ filename.
             return
         end_time = time.time()
 
-        if prefix != 'pre':
+        if prefix != 'cmp':
             ''' Allow treeview scrolling before showing job summary stats '''
             job_summary_btn = tk.Button(
                 self.cmp_btn_frm, width=g.BTN_WID + 12,
@@ -4511,6 +4543,8 @@ filename.
         if self.tt and self.cmp_top:
             if self.tt.check(self.cmp_top):  # Were tooltips created?
                 self.tt.close(self.cmp_top)  # Close tooltips under top level
+
+        self.cmp_top.config(cursor="")  # It may have been a spinning hourglass
         self.cmp_top.destroy()  # Close the treeview window
         self.cmp_top = None
 
@@ -4553,6 +4587,7 @@ filename.
             if not self.avo_parameters():
                 return False
 
+        toolkit.wait_cursor(self.cmp_top)  # Make Cursor a spinning hourglass
         ''' Traverse fake_paths created by mserve.py make_sorted_list() '''
         for i, fake_path in enumerate(self.fake_paths):
             if not self.cmp_top_is_active:
@@ -4620,15 +4655,19 @@ filename.
             if album_count == 0:
                 self.cmp_tree.delete(artist)
 
+        self.cmp_top.config(cursor="")
         ''' Message if files are same (no treeview children) '''
         if self.cmp_tree.get_children():
             return True
         else:
-            """ 
-                For avo, an empty tree means no music files in target location 
-            """
-            title = "Files identical"
-            text = "Files common to both locations are identical."
+            if prefix != "cmp":
+                title = "Files identical"
+                text = "Files common to both locations are identical."
+            else:
+                # For avo, an empty tree means no matching files in target location
+                title = "No files found!"
+                text = "There are no files common to both locations.\n\n"
+                text += "Try opening the target location and running."
             self.out_fact_show(title, text)
             return False
 
@@ -5413,12 +5452,16 @@ filename.
 
         return self.cmp_top_is_active
 
-    def avo_parameters(self):
+    def avo_parameters(self, redo=False):
         """ Parameters for dB levels, skip completed, codecs and bit rates """
-
         self.cmp_tree_frame.grid_remove()  # Swap out treeview frame
 
         colors = self.get_cfg(["avo_treeview", 'style', 'color'])
+
+        ''' Create images for checked and unchecked radio buttons '''
+        box_height = int(g.MON_FONTSIZE * 2.2)
+        self.cmp_radio_boxes = img.make_checkboxes(box_height, 'WhiteSmoke',
+                                                   'LightGray', 'Green')
 
         frame = tk.Frame(self.cmp_frame, relief='solid',
                          highlightcolor=colors['edge_color'],
@@ -5427,7 +5470,7 @@ filename.
         #tk.Grid.rowconfigure(frame, 0, weight=1)
         tk.Grid.columnconfigure(frame, 2, weight=1)
         frame.grid(row=0, column=0, sticky=tk.NSEW)
-        proceed = self.display_avo_parameters(frame)
+        proceed = self.display_avo_parameters(frame, redo)
         if not self.cmp_top:
             return False  # Closing down
         self.cmp_top.update_idletasks()
@@ -5446,19 +5489,27 @@ filename.
         return proceed
 
     # noinspection SpellCheckingInspection
-    def display_avo_parameters(self, frame):
+    def display_avo_parameters(self, frame, redo):
         """ Analyze Volume (avo_) parameters populate frame where treeview
             eventually appears.
 
             Field Reference: http://k.ylo.ph/2016/04/04/loudnorm.html
 
+            if self.state == "analyze_volume":      SourceMaster = "detect_old"
+            if self.state == "analyze_loudnorm":    SourceMaster = "loudnorm_1"
+            if self.state == "update_loudnorm":     SourceMaster = "loudnorm_2"
+            if self.state == "analyze_volume_new":  SourceMaster = "detect_new"
         """
+        detect_old = True if self.state == "analyze_volume" else False
+        loudnorm_1 = True if self.state == "analyze_loudnorm" else False
+        loudnorm_2 = True if self.state == "update_loudnorm" else False
+        detect_new = True if self.state == "analyze_volume_new" else False
 
         text = "Control Setting"
         tk.Label(frame, text=text, anchor=tk.CENTER, font=g.FONT, bg=self.bg).\
-            grid(row=0, column=0, pady=5, sticky=tk.EW)
+            grid(row=0, column=0, padx=5, pady=5, sticky=tk.EW)
         tk.Label(frame, text="Value", anchor=tk.CENTER, font=g.FONT, bg=self.bg).\
-            grid(row=0, column=1, pady=5, sticky=tk.EW)
+            grid(row=0, column=1, padx=5, pady=5, sticky=tk.EW)
 
         def one_avo_var(txt, scr_name, row, col, span=1, width=10):
             """ Create screen field text and value. """
@@ -5471,51 +5522,74 @@ filename.
                      padx=5, pady=5)
             return fld
 
+        def check_button_var(txt, scr_name, row, col):
+            """ Create screen field text and value. """
+            tk.Label(frame, text=txt, anchor=tk.E, font=g.FONT). \
+                grid(row=row, column=col, sticky=tk.EW)
+            fld = tk.Checkbutton(
+                frame, variable=scr_name, anchor=tk.W,
+                image=self.cmp_radio_boxes[0], selectimage=self.cmp_radio_boxes[2]
+            )
+            fld.grid(row=row, column=col+1, sticky=tk.W, padx=5, pady=5)
+            return fld
+
         var_select_max_lower = tk.DoubleVar(value=self.avo_select_max_lower)
         var_select_max_upper = tk.DoubleVar(value=self.avo_select_max_upper)
         var_skip_complete = tk.BooleanVar(value=self.avo_skip_complete)
         var_integrated = tk.DoubleVar(value=float(self.avo_integrated))
         var_true_peak = tk.DoubleVar(value=float(self.avo_true_peak))
         var_lra = tk.DoubleVar(value=float(self.avo_lra))  # Stored as string
-        var_linear = tk.StringVar(value=self.avo_linear)
+        linear = True if self.avo_linear == "true" else False
+        var_linear = tk.BooleanVar(value=linear)
         var_use_inputs = tk.BooleanVar(value=self.avo_use_inputs)
         var_max_m4a_ar = tk.IntVar(value=self.avo_max_m4a_ar)
         var_max_mp3_ar = tk.IntVar(value=self.avo_max_mp3_ar)
         var_comment = tk.StringVar(value=self.avo_comment)
 
+        # lower & upper only used by loudnorm_1
         txt_select_max_lower = "Select Maximum Volume lower"
         txt_select_max_upper = "Select Maximum Volume upper"
+        # Used in all four steps. Skip already analyzed for new files only
         txt_skip_complete = "Skip songs already analyzed?"
-        txt_integrated = "Integrated Loudness Target LUFS"
-        txt_true_peak = "Maximum True Peak dBTP"
-        txt_lra = "Loudness Range Target (LRA) LU"
-        txt_linear = "Linear Normalization?"
-        txt_use_inputs = "Force feed inputs?"
+        # Used by loudnorm_1 and loudnorm_2
+        txt_integrated = "Integrated Loudness LUFS target"
+        txt_true_peak = "Maximum True Peak dBTP target"
+        txt_lra = "Loudness Range Target LU (LRA)"
+        # Used by loudnorm_2 only
+        txt_linear = "Use Linear normalization?"
+        txt_use_inputs = "Reuse Integrated LUFS from Pass 1?"
         txt_max_m4a_ar = "Maximum supported M4A audio rate Hz"
         txt_max_mp3_ar = "Maximum supported MP3 audio rate Hz"
-        txt_comment = "Comment for records"
+        # Used by detect_old and detect_new
+        txt_comment = "History record comment"
 
-        _fld_select_max_lower = one_avo_var(
-            txt_select_max_lower, var_select_max_lower, 10, 0)
-        _fld_select_max_upper = one_avo_var(
-            txt_select_max_upper, var_select_max_upper, 11, 0)
-        _fld_skip_complete = one_avo_var(
-            txt_skip_complete, var_skip_complete, 12, 0)
-        _fld_integrated = one_avo_var(
-            txt_integrated, var_integrated, 14, 0)
-        _fld_true_peak = one_avo_var(
-            txt_true_peak, var_true_peak, 15, 0)
-        _fld_lra = one_avo_var(
-            txt_lra, var_lra, 16, 0)
-        _fld_linear = one_avo_var(
-            txt_linear, var_linear, 17, 0)
-        _fld_use_inputs = one_avo_var(
-            txt_use_inputs, var_use_inputs, 18, 0)
-        _fld_max_m4a_ar = one_avo_var(
-            txt_max_m4a_ar, var_max_m4a_ar, 19, 0)
-        _fld_max_mp3_ar = one_avo_var(
-            txt_max_mp3_ar, var_max_mp3_ar, 20, 0)
-        if self.state.startswith("analyze_"):
+        if redo or loudnorm_1:
+            _fld_select_max_lower = one_avo_var(
+                txt_select_max_lower, var_select_max_lower, 10, 0)
+            _fld_select_max_upper = one_avo_var(
+                txt_select_max_upper, var_select_max_upper, 11, 0)
+        if not redo:
+            # When redoing normalization for single song, skip is off
+            _fld_skip_complete = check_button_var(
+                txt_skip_complete, var_skip_complete, 12, 0)
+        if redo or loudnorm_1 or loudnorm_2:
+            _fld_integrated = one_avo_var(
+                txt_integrated, var_integrated, 14, 0)
+            _fld_true_peak = one_avo_var(
+                txt_true_peak, var_true_peak, 15, 0)
+            _fld_lra = one_avo_var(
+                txt_lra, var_lra, 16, 0)
+        if redo or loudnorm_2:
+            _fld_linear = check_button_var(
+                txt_linear, var_linear, 17, 0)
+            _fld_use_inputs = check_button_var(
+                txt_use_inputs, var_use_inputs, 18, 0)
+            _fld_max_m4a_ar = one_avo_var(
+                txt_max_m4a_ar, var_max_m4a_ar, 19, 0)
+            _fld_max_mp3_ar = one_avo_var(
+                txt_max_mp3_ar, var_max_mp3_ar, 20, 0)
+        if redo or detect_old or detect_new:
+            # For 'loudnorm' filter Pass 1 & 2, comments are command parameters 
             _fld_comment = one_avo_var(
                 txt_comment, var_comment, 21, 0, span=2, width=60)
         frame.update()
@@ -5561,7 +5635,7 @@ filename.
 
             def get_0_or_1(var, name, old):
                 """
-                :param var: tkinter IntVar
+                :param var: tkinter BooleanVar
                 :param name: field name on screen (label text=)
                 :param old: old valid value to restore
                 :return: valid value entered or None
@@ -5596,110 +5670,130 @@ filename.
                     var.set(old)
                     return None
 
-            new_select_max_lower = get_double(
-                var_select_max_lower, txt_select_max_lower, self.avo_select_max_lower)   
-            if new_select_max_lower is None:
-                return
+            ''' new_ variables retrieved from screen. Make pyCharm happy '''
+            new_select_max_lower = 0.0
+            new_select_max_upper = 0.0
+            new_skip_complete = True
+            new_integrated = 0.0
+            new_true_peak = 0.0
+            new_lra = 0.0
+            new_linear = True
+            new_use_inputs = True
+            new_max_m4a_ar = 0
+            new_max_mp3_ar = 0
+            new_comment = ""
 
-            new_select_max_upper = get_double(
-                var_select_max_upper, txt_select_max_upper, self.avo_select_max_upper)   
-            if new_select_max_upper is None:
-                return
+            if redo or loudnorm_1:
+                new_select_max_lower = get_double(
+                    var_select_max_lower, txt_select_max_lower, self.avo_select_max_lower)   
+                if new_select_max_lower is None:
+                    return
+    
+                new_select_max_upper = get_double(
+                    var_select_max_upper, txt_select_max_upper, self.avo_select_max_upper)   
+                if new_select_max_upper is None:
+                    return
+    
+                if not new_select_max_lower < new_select_max_upper <= 0.0:
+                    self.out_fact_show(
+                        title, "The setting '" + txt_select_max_lower + "', must be" +
+                        "\n< '" + txt_select_max_upper + "' and <= 0.0", icon='error'
+                    )
+                    return
 
-            if not new_select_max_lower < new_select_max_upper <= 0.0:
-                self.out_fact_show(
-                    title, "The setting '" + txt_select_max_lower + "', must be" +
-                    "\n< '" + txt_select_max_upper + "' and <= 0.0", icon='error')
-                return
+            if not redo:
+                # When redoing normalization for single song, skip is off
+                new_skip_complete = get_0_or_1(
+                    var_skip_complete, txt_skip_complete, self.avo_skip_complete)
+                if new_skip_complete is None:
+                    return
 
-            new_skip_complete = get_0_or_1(
-                var_skip_complete, txt_skip_complete, self.avo_skip_complete)
-            if new_skip_complete is None:
-                return
+            if redo or loudnorm_1 or loudnorm_2:
+                new_integrated = get_double(
+                    var_integrated, txt_integrated, self.avo_integrated)
+                if new_integrated is None:
+                    return
+                if not -50.0 < new_integrated < -5.0:
+                    self.out_fact_show(
+                        title, "The setting '" + txt_integrated + "'," +
+                        "\nmust be >= -50.0 and <= -5.0", icon='error')
+                    return
+    
+                new_true_peak = get_double(
+                    var_true_peak, txt_true_peak, self.avo_true_peak)
+                if new_true_peak is None:
+                    return
+    
+                if not -9.0 <= new_true_peak <= 0.0:
+                    self.out_fact_show(
+                        title, "The setting '" + txt_true_peak + "'," +
+                        "\nmust be >= -9.0 and <= 0", icon='error')
+                    return
+    
+                new_lra = get_double(var_lra, txt_lra, self.avo_lra)
+                if new_lra is None:
+                    return
+                if not 1.0 <= new_lra <= 50.0:
+                    self.out_fact_show(
+                        title, "The setting '" + txt_lra + "'" +
+                        "\nmust be >= 1.0 and <= 50.0", icon='error')
+                    return
 
-            new_integrated = get_double(
-                var_integrated, txt_integrated, self.avo_integrated)
-            if new_integrated is None:
-                return
-            if not -50.0 < new_integrated < -5.0:
-                self.out_fact_show(
-                    title, "The setting '" + txt_integrated + "'," +
-                    "\nmust be >= -50.0 and <= -5.0", icon='error')
-                return
+            if redo or loudnorm_2:
+                new_linear = var_linear.get()
+                #if not (new_linear == "true" or new_linear == "false"):
+                #    self.out_fact_show(
+                #        title, "The setting 'Linear Normalization?'" +
+                #        "\nmust be 'true' or 'false'", icon='error')
+                #    return
+    
+                new_use_inputs = get_0_or_1(
+                    var_use_inputs, txt_use_inputs, self.avo_use_inputs)
+                if new_use_inputs is None:
+                    return
+    
+                new_max_m4a_ar = get_integer(
+                    var_max_m4a_ar, txt_max_m4a_ar, self.avo_max_m4a_ar)
+                if new_max_m4a_ar is None:
+                    return
+                if not 20000 <= new_max_m4a_ar <= 192000:
+                    self.out_fact_show(
+                        title, "The setting '" + new_max_m4a_ar + "'" +
+                        "\nmust be >= 20000 and <= 192000", icon='error')
+                    return
+    
+                new_max_mp3_ar = get_integer(
+                    var_max_mp3_ar, txt_max_mp3_ar, self.avo_max_mp3_ar)
+                if new_max_mp3_ar is None:
+                    return
+                if not 20000 <= new_max_mp3_ar <= 192000:
+                    self.out_fact_show(
+                        title, "The setting '" + new_max_mp3_ar + "'" +
+                        "\nmust be >= 20000 and <= 192000", icon='error')
+                    return
 
-            new_true_peak = get_double(
-                var_true_peak, txt_true_peak, self.avo_true_peak)
-            if new_true_peak is None:
-                return
+            if redo or detect_old or detect_new:
+                # For 'loudnorm' filter Pass 1 & 2, comments are command parameters 
+                new_comment = var_comment.get()
 
-            if not -9.0 <= new_true_peak <= 0.0:
-                self.out_fact_show(
-                    title, "The setting '" + txt_true_peak + "'," +
-                    "\nmust be >= -9.0 and <= 0", icon='error')
-                return
-
-            new_lra = get_double(var_lra, txt_lra, self.avo_lra)
-            if new_lra is None:
-                return
-            if not 1.0 <= new_lra <= 50.0:
-                self.out_fact_show(
-                    title, "The setting '" + txt_lra + "'" +
-                    "\nmust be >= 1.0 and <= 50.0", icon='error')
-                return
-
-            new_linear = var_linear.get()
-            if not (new_linear == "true" or new_linear == "false"):
-                self.out_fact_show(
-                    title, "The setting 'Linear Normalization?'" +
-                    "\nmust be 'true' or 'false'", icon='error')
-                return
-
-            new_use_inputs = get_0_or_1(
-                var_use_inputs, txt_use_inputs, self.avo_use_inputs)
-            if new_use_inputs is None:
-                return
-
-            new_max_m4a_ar = get_integer(
-                var_max_m4a_ar, txt_max_m4a_ar, self.avo_max_m4a_ar)
-            if new_max_m4a_ar is None:
-                return
-            if not 20000 <= new_max_m4a_ar <= 192000:
-                self.out_fact_show(
-                    title, "The setting '" + new_max_m4a_ar + "'" +
-                    "\nmust be >= 20000 and <= 192000", icon='error')
-                return
-
-            new_max_mp3_ar = get_integer(
-                var_max_mp3_ar, txt_max_mp3_ar, self.avo_max_mp3_ar)
-            if new_max_mp3_ar is None:
-                return
-            if not 20000 <= new_max_mp3_ar <= 192000:
-                self.out_fact_show(
-                    title, "The setting '" + new_max_mp3_ar + "'" +
-                    "\nmust be >= 20000 and <= 192000", icon='error')
-                return
-
-            new_max_mp3_ar = var_max_mp3_ar.get()
-            if not 20000 <= new_max_mp3_ar <= 192000:
-                self.out_fact_show(
-                    title, "The setting 'Maximum supported MP3 audio rate Hz'" +
-                    "\nmust be >= 20000 and <= 192000", icon='error')
-                return
-
-            new_comment = var_comment.get()
-
-            self.avo_select_max_lower = new_select_max_lower
-            self.avo_select_max_upper = new_select_max_upper
-            self.avo_skip_complete = new_skip_complete
-            self.avo_integrated = str(new_integrated)
-            self.avo_true_peak = str(new_true_peak)
-            self.avo_lra = str(new_lra)
-            #print("self.avo_lra:", self.avo_lra)
-            self.avo_linear = new_linear
-            self.avo_use_inputs = new_use_inputs
-            self.avo_max_m4a_ar = new_max_m4a_ar
-            self.avo_max_mp3_ar = new_max_mp3_ar
-            self.avo_comment = new_comment
+            if redo or loudnorm_1:
+                self.avo_select_max_lower = new_select_max_lower
+                self.avo_select_max_upper = new_select_max_upper
+            if not redo:
+                # When redoing normalization for single song, skip is ignored
+                self.avo_skip_complete = new_skip_complete
+            if redo or loudnorm_1 or loudnorm_2:
+                self.avo_integrated = str(new_integrated)
+                self.avo_true_peak = str(new_true_peak)
+                self.avo_lra = str(new_lra)
+            if redo or loudnorm_2:
+                self.avo_linear = "true" if new_linear else "false"
+                self.avo_use_inputs = new_use_inputs
+                self.avo_max_m4a_ar = new_max_m4a_ar
+                self.avo_max_mp3_ar = new_max_mp3_ar
+            if redo or detect_old or detect_new:
+                # For 'loudnorm' filter Pass 1 & 2, comments are command parameters 
+                self.avo_comment = new_comment
 
             retn[0] = True
 
@@ -5713,7 +5807,8 @@ filename.
         
         while retn[0] is None:  # Wait until Proceed or Cancel selected.
             if not self.fast_refresh(tk_after=True):
-                return False  # Closing down
+                retn[0] = False  # Closing down
+                break
 
         return retn[0]
 
@@ -5764,10 +5859,15 @@ filename.
                         insert_tv_row()  # Show progress so far
                         self.avo_skip_count += 1
                         return True  # Skip this song file
-            else:
-                if use_tv:  # Redo normalization would have deleted history
-                    print(_who, "Retrying song with 'N/A' maximum volume:")
+                elif use_tv:  # Redo normalization would have deleted history
+                    print(_who, "Skipping song with 'N/A' maximum volume:")
                     print("\t", OsBase)
+                    return True
+            #else:
+            #    if use_tv:  # Redo normalization would have deleted history
+            #        print(_who, "Retrying song with 'N/A' maximum volume:")
+            #        print("\t", OsBase)
+            # 2024-04-25 - Above needs analysis
 
         '''   B I G   T I C K E T   E V E N T   
 
@@ -5790,7 +5890,7 @@ filename.
                 print(_who, "Not overwriting existing music volume:\n\t",
                       d['Target'], "with 'N/A'.")
                 print("for:", OsBase)
-            music_id = 0  # Don't overwrite previous value with "N/A"
+                music_id = 0  # Don't overwrite previous value with "N/A"
         if not self.cmp_top_is_active:
             return False  # Closing down
 
@@ -6225,6 +6325,8 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=$int
 
         # Parameters shared by loudnorm_1 & loudnorm_2 and comments
         IN = input_i if self.avo_use_inputs else self.avo_integrated
+        print("IN:", IN, "self.avo_use_inputs:", self.avo_use_inputs,
+              "self.avo_integrated:", self.avo_integrated, "input_i:", input_i)
         self.loudnorm_cmd = 'loudnorm=I=' + IN + ':TP=' + self.avo_true_peak
         self.loudnorm_cmd += ':LRA=' + self.avo_lra
 
@@ -6349,7 +6451,8 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
         self.trg_ctl.get_metadata(ffmpeg_results=self.TMP_STDERR, trg_path=trg_path)
         return self.trg_ctl.metadata.get('json_dict', {})
 
-    def avn_insert_tree_row(self, fake_path, CurrAlbumId, iid, Song, use_tv=True):
+    def avn_insert_tree_row(self, fake_path, CurrAlbumId, iid, Song, 
+                            use_tv=True, current_tree=False):
         """ Analyze Mean Volume and Maximum Volume for New (Normalized) Song 
             Calls self.avo_run_ffmpeg() shared with avo_insert_tree_row()
         """
@@ -6369,6 +6472,13 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
             # Most songs would not have 'loudnorm_2' pass 2 values
             return True  # Skip this song file
 
+        ''' History record for original maximum volume? '''
+        d = sql.hist_get_music_var(music_id, "volume", "detect_old", loc)
+        if not d:
+            # Need error message - history record should exist
+            return True  # Skip this song file
+        _old_mean_volume, old_max_volume = json.loads(d['Target'])
+
         if not self.cmp_top_is_active:
             return False  # Closing down
 
@@ -6383,12 +6493,16 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
         def insert_tv_row():
             """ Shared function to add treeview row """
 
-            if not use_tv:
+            if not use_tv:  # Nothing to insert into treeview for single song.
+                if current_tree:  # Update current tree with new maximum vol.
+                    self.cmp_tree.set(iid, "Maximum", max_volume)
+                    self.set_missed_target(iid, old_max_volume, max_volume)
                 return  # Processing single song not in Treeview.
 
             self.cmp_tree.insert(CurrAlbumId, "end", iid=iid, text=Song,
-                                 values=(mean_volume, max_volume, music_id),
+                                 values=(old_max_volume, max_volume, music_id),
                                  tags=("Song",))
+            self.set_missed_target(iid, old_max_volume, max_volume)
             self.cmp_tree.see(iid)
             self.cmp_top.update_idletasks()  # Allow close button to abort
             self.cmp_found += 1
@@ -6441,6 +6555,25 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
         ''' Insert song into treeview '''
         insert_tv_row()
         return self.cmp_top_is_active
+
+    def set_missed_target(self, iid, old_max_volume, max_volume):
+        """ Missed target or volume level worse than before? """
+        # split
+        try:
+            old_max_float = float(old_max_volume.split(" dB")[0])
+            max_float = float(max_volume.split(" dB")[0])
+            tp_float = float(self.avo_true_peak)
+        except ValueError:
+            return
+        missed = abs(tp_float - max_float) >= .2  # allow .2 grace
+        # TODO for those bumping down volume need opposite test above
+        worse = abs(max_float) > abs(old_max_float)
+        toolkit.tv_tag_remove(self.cmp_tree, iid, "missed_sel")
+        toolkit.tv_tag_remove(self.cmp_tree, iid, "worse_sel")
+        if worse:
+            toolkit.tv_tag_add(self.cmp_tree, iid, "worse_sel")
+        elif missed:
+            toolkit.tv_tag_add(self.cmp_tree, iid, "missed_sel")
 
     @staticmethod
     def highlight_row(event):
@@ -6539,8 +6672,9 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
         def view_normalize():
             """ Popup Window with SQL Music Table Row Metadata for song """
             n_data = sql.PrettyNormalize(music_id, self.act_code)
+            win_title = "Normalization History - " + Song + " - mserve"
             self.pretty_window(
-                self.cmp_top, n_data, "Normalization Details", 1300, 700,
+                self.cmp_top, n_data, win_title, 1300, 700,
                 x, y, new=True)  # new = use right align tab stops and uom
 
         def remove_normalize(prompt=True):
@@ -6569,27 +6703,45 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
                 self.rm_file(trg_path_new)
 
         def redo_normalize():
-            """ Redo loudness normalization for song """
+            """ Redo loudness normalization for a single song
+
+                When running analyze old maximum volume, the first time
+                an error is encountered the max volume is set to "N/A".
+                On subsequent runs it is skipped. To recheck use this
+                "Redo" function.
+
+                Some songs get better results with linear="false" and most
+                songs get better results with linear="true". In all cases
+                it appears "force inputs" give best results.
+
+            """
             title = "Confirm begin loudness normalization"
-            text = "The first step will remove all records for this song.\n"
+            text = Song + "\n\n"
+            text += "The first step will remove all records for this song.\n"
             text += "Then all four steps of loudness normalization is performed.\n"
-            text += "Although it is quick, it still takes a few minutes.\n\n"
-            text += "A music file with a '.new' extension is created.\n\n"
-            text += "Perform loudness normalization for this song?"
+            # Add up history record seconds for last run. If any were zero then
+            # say 20 seconds. Otherwise state actual seconds
+            text += "Although it is quick, it still takes about 20 seconds.\n\n"
+            text += "The media file with a '.new' extension is replaced.\n\n"
+            text += "Perform loudness normalization for the above song?"
             answer = message.AskQuestion(self.cmp_top, confirm="No",
                                          thread=self.get_thread_func,
                                          title=title, text=text)
             if answer.result != 'yes':
                 return
 
-            if not self.avo_parameters():
+            if not self.avo_parameters(redo=True):
                 return  # selected Cancel (not Proceed)
+
+            toolkit.wait_cursor(self.cmp_top)  # Make Cursor a spinning hourglass
+            tree.tk.call(tree, "tag", "add", "play_sel", iid)  # ForestGreen
 
             # Activate progress frame
             # self.avo_progress_init(pro_func_dict, pro_song_dict)
             # Step that processes all function will call:
             # self.avo_progress_init(pro_song_dict, pro_func_dict)
 
+            ext.t_init("Normalize one song")
             remove_normalize(prompt=False)  # Remove 4 records w/o confirmation
 
             use_tv = False  # Don't insert new row into treeview
@@ -6599,17 +6751,21 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
             #print("CurrAlbumId:", CurrAlbumId, "iid:", iid, "Song:", Song)
             #print("trg_path:", trg_path)
             self.avo_insert_tree_row(fake_path, CurrAlbumId, iid, Song, use_tv)
-            current_tree = True if self.state == "analyze_loudnorm" else False
+            #current_tree = True if self.state == "analyze_loudnorm" else False
             #print("aln_insert_tree_row(fake_path,...use_tv:", use_tv)
             self.aln_insert_tree_row(fake_path, CurrAlbumId, iid, Song, use_tv)
             #current_tree = True if self.state == "update_loudnorm" else False
             #print("uln_insert_tree_row(fake_path,...use_tv:", use_tv)
             self.uln_insert_tree_row(fake_path, CurrAlbumId, iid, Song, use_tv)
-            #current_tree = True if self.state == "analyze_volume_new" else False
+            current_tree = True if self.state == "analyze_volume_new" else False
             #print("avn_insert_tree_row(fake_path,...use_tv:", use_tv)
-            self.avn_insert_tree_row(fake_path, CurrAlbumId, iid, Song, use_tv)
+            self.avn_insert_tree_row(
+                fake_path, CurrAlbumId, iid, Song, use_tv, current_tree)
+            self.cmp_top.config(cursor="")  # Restore normal cursor (no hourglass)
+            tree.tk.call(tree, "tag", "remove", "play_sel")  # Unhighlight row
             tree.update_idletasks()
             #print("Four steps completed")
+            ext.t_end('print')
 
         # Display popup menu at cursor location
 
@@ -6620,7 +6776,7 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
         menu.add_separator()
 
         if music_id:
-            menu.add_command(label="Normalization Details", font=(None, g.MED_FONT),
+            menu.add_command(label="Normalization History", font=(None, g.MED_FONT),
                              command=view_normalize)
             menu.add_command(label="Remove Normalization", font=(None, g.MED_FONT),
                              command=remove_normalize)
