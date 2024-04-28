@@ -18,6 +18,7 @@ from __future__ import with_statement  # Error handling for file opens
 #
 #       June 21 2023 - 'M' splash screen appears ASAP. Code cleanup.
 #       July 12 2023 - Interface to/from mserve_config.py
+#       Apr. 28 2024 - Change cursor type to "watch" or "clock" during startup.
 #
 # ==============================================================================
 
@@ -46,6 +47,7 @@ if g.USER is None:
     g.init()
 
 import image as img     # Pippim functions for image management
+import toolkit          # Pippim function to change cursor to wait
 import monitor          # Pippim function to center window on monitor
 import mserve           # Pippim Music Server
 size = 300              # Splash Window width and height (300 x 300)
@@ -62,7 +64,8 @@ def main():
     ''' Create splash window centered on active monitor '''
     splash = tk.Tk()  # Tkinter toplevel window
     splash.wm_attributes('-type', 'splash')  # No window decorations
-    monitor.center(splash)
+    monitor.center(splash)  # With Ubuntu Unity compiz will center on active monitor
+    toolkit.wait_cursor(splash)  # Change cursor to spinning hourglass w/falling sand
 
     ''' Create Big "M" Splash Image '''
     m_img = img.m_splash_image(size, 'white', 'lightskyblue', 'black')

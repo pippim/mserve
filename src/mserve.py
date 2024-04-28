@@ -90,6 +90,9 @@ warnings.simplefilter('default')  # in future Python versions.
 #       Mar. 17 2024 - Dropdown menu accelerator keys. SQL color configuration.
 #       Mar. 26 2024 - View SQL Tables - Compact code, rename column headings.
 #       Apr. 06 2024 - lyrics change "{}" to "[]" because it messes up treeview.
+#       Apr. 28 2024 - Loudness Normalization using ffmpeg 'loudnorm' filter.
+#
+#==============================================================================
 
 # noinspection SpellCheckingInspection
 """

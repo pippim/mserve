@@ -406,6 +406,7 @@ def make_m_cfg():
     cfg.append(make_dict(m, None, "os"))
     cfg.append(make_dict(m, "g", "global_variables", "pippim.com"))
     cfg.append(make_dict(m, "img", "image", "pippim.com"))
+    cfg.append(make_dict(m, None, "toolkit", "pippim.com"))
     cfg.append(make_dict(m, "mon", "monitor", "pippim.com"))  # only place as mon
     cfg.append(make_dict(m, None, "mserve", "pippim.com"))
     # Modules not imported. Add here for statistics.

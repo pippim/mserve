@@ -3382,6 +3382,12 @@ class PrettyNormalize:
         input_tp1 = aln_jd['input_tp'] + " dBTP" if aln_jd else "N/A ."  # True Peak
         input_lra1 = aln_jd['input_lra'] + " LU" if aln_jd else "N/A ."
         input_thresh1 = aln_jd['input_thresh'] + " LUFS" if aln_jd else "N/A ."
+        output_i1 = aln_jd['output_i'] + " LUFS" if aln_jd else "N/A ."  # Integrated
+        output_tp1 = aln_jd['output_tp'] + " dBTP" if aln_jd else "N/A ."  # True Peak
+        output_lra1 = aln_jd['output_lra'] + " LU" if aln_jd else "N/A ."
+        output_thresh1 = aln_jd['output_thresh'] + " LUFS" if aln_jd else "N/A ."
+
+        ''' 2024-04-28 
         # 2024-04-01 - Temporary until output_ variables created
         if aln_jd:
             output_i1 = aln_jd.get('output_i', "N/A .")
@@ -3408,8 +3414,11 @@ class PrettyNormalize:
             normalization_type1 = aln_jd.get('normalization_type', "N/A")
         else:
             normalization_type1 = "N/A"
-
-
+        '''
+        target_offset1 = aln_jd['target_offset'] + " LU" if aln_jd else "N/A ."
+        audio_rate1 = aln_jd['ar'] + " Hz" if aln_jd else "N/A ."
+        normalization_type1 = aln_jd['normalization_type'] if aln_jd else "N/A"
+        
         '''  10 pt/ 11 pt Font
                                          Integrated  True Peak   LRA      Threshold 
         Old Mean Volume        -3.4 dB
@@ -3420,7 +3429,9 @@ class PrettyNormalize:
         '''
         # 'loudnorm' Filter Pass 2 (Normalization)
         uln_d = hist_get_music_var(music_id, "volume", "loudnorm_2", loc)
+
         uln_jd = json.loads(uln_d['Target']) if uln_d else {}
+
         input_i2 = uln_jd['input_i'] + " LUFS" if uln_jd else "N/A ."  # Integrated
         input_tp2 = uln_jd['input_tp'] + " dBTP" if uln_jd else "N/A ."  # True Peak
         input_lra2 = uln_jd['input_lra'] + " LU" if uln_jd else "N/A ."
@@ -3429,8 +3440,14 @@ class PrettyNormalize:
         output_tp2 = uln_jd['output_tp'] + " dBTP" if uln_jd else "N/A ."  # True Peak
         output_lra2 = uln_jd['output_lra'] + " LU" if uln_jd else "N/A ."
         output_thresh2 = uln_jd['output_thresh'] + " LUFS" if uln_jd else "N/A ."
-
         target_offset2 = uln_jd['target_offset'] + " LU" if uln_jd else "N/A ."
+        audio_rate2 = uln_jd['ar'] + " Hz" if uln_jd else "N/A ."
+        normalization_type2 = uln_jd['normalization_type'] if uln_jd else "N/A"
+
+        seconds2 = str(uln_d['Seconds']) if uln_d else "N/A"  # NOTE: not 'uln_jd'
+        comments2 = str(uln_d['Comments']) if uln_d else "N/A"
+
+        ''' 2024-04-28 
         # 2024-04-01 - Temporary untio output_ variables created
         if uln_jd:
             audio_rate2 = uln_jd.get('ar', "N/A") + " Hz"
@@ -3438,6 +3455,7 @@ class PrettyNormalize:
         else:
             audio_rate2 = "N/A ."
             normalization_type2 = "N/A"
+        '''
 
         # New volume history record
         avn_d = hist_get_music_var(music_id, "volume", "detect_new", loc)
@@ -3493,8 +3511,8 @@ class PrettyNormalize:
         self.dict['Target Offset 2'] = tab_it(target_offset2)
         self.dict['Audio Rate 2'] = tab_it(audio_rate2)
         self.dict['Normalization Type 2'] = normalization_type2
-        self.dict['Parameters 2'] = "\t" + str(uln_d['Seconds']) + "\t" + \
-            "seconds. Options: " + uln_d['Comments']
+        self.dict['Parameters 2'] = "\t" + seconds2 + "\t" + \
+            "seconds.  Options: " + comments2
         self.part_start.append(len(self.dict))
 
         self.dict['New Mean Volume'] = new_mean
