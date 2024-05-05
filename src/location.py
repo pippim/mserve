@@ -1077,7 +1077,7 @@ def t(float_time):
 class LocationsCommonSelf:
     """ Class Variables used by Locations() class """
     def __init__(self):
-        """ Called on mserve.py startup and for Playlists maintenance """
+        """ Called on mserve.py startup and for Locations maintenance """
 
         ''' Lists of all Locations - Built on program start and each maintenance '''
         self.all_codes = []  # "L001", "L002", etc... can be holes
@@ -1198,7 +1198,7 @@ class LocationsCommonSelf:
         '''
         self.cmp_host_down = False  # If host goes down, have to bail immediately
         self.cmp_host_was_asleep = False  # Assume host wasn't asleep
-        self.cmp_sshfs_used = False  # Assume host wasn't asleep
+        self.cmp_sshfs_used = False  # Using SSHFS (other option is FTP)
 
         ''' Compare locations variables '''
         self.cmp_top = None  # Compare Locations toplevel window
@@ -1228,6 +1228,11 @@ class LocationsCommonSelf:
         ''' Analyze Volume variables embedded inside Compare Window '''
         self.avo_use_open_location = True  # Later make user controlled.
         # Using open location streamlines GUI - no need to pick target location
+        now_str = str(datetime.datetime.fromtimestamp(float(int(time.time()))))
+        self.avo_playlist_prefix = "Loudness Normalization"
+        self.avo_playlist_name = self.avo_playlist_prefix
+        self.avo_playlist_description = self.avo_playlist_prefix + " - " + now_str
+        # Playlist with New Maximum Volumes
         self.avo_ffmpeg = g.PROGRAM_DIR + os.sep + 'ffmpeg'  # in mserve directory
         self.avo_ffmpeg = 'ffmpeg'  # default = find in path
         # Set to "ffmpeg" for regular path. If a special version of ffmpeg needed
@@ -1247,10 +1252,9 @@ class LocationsCommonSelf:
         self.avo_max_mp3_ar = 44100  # ffmpeg default mp3 codec only goes to 44100
         self.loudnorm_cmd = ""  # Common parm. E.G. loudnorm=I=-23.0:TP=0.0:LRA=11.0
         #self.avo_comment = "April 23, 2024"  # SQL History Table "Comments" column
+        self.avo_comment = now_str
 
-        self.avo_comment = datetime.datetime.fromtimestamp(float(int(time.time())))
-
-        ''' Make TMP names unique for multiple OS jobs running at once '''
+        ''' Make TMP names unique for multiple processes running at once '''
         letters = string.ascii_lowercase + string.digits
         self.temp_suffix = (''.join(random.choice(letters) for _i in range(6)))
         self.TMP_STDOUT = TMP_STDOUT + "_" + self.temp_suffix
@@ -1259,7 +1263,7 @@ class LocationsCommonSelf:
 
         ''' self.cfg = sql.Config() class '''
         self.cfg = sql.Config()
-        self.bg = None  # WIP - Background color in Analyze Volume (avo)
+        self.bg = None  # WIP - Background color in Analyze Volume (avo) frames
 
         ''' self.win_grp class lifts and drags child windows '''
         self.win_grp = None  # init with class toolkit.ChildWindows(toplevel)
@@ -1579,7 +1583,6 @@ class Locations(LocationsCommonSelf):
             if self.avo_use_open_location and self.open_code is not None:
                 self.loc_button_click(None, use_open_location=True)
                 self.apply()
-
 
     def make_main_close_button(self):
         """ Added by main window, removed by testing. """
@@ -1945,6 +1948,13 @@ class Locations(LocationsCommonSelf):
         self.loc_view.tree["displaycolumns"] = columns
 
         ''' Treeview select item with button clicks '''
+        def double_click(event):
+            """ double click - 2024-05-05 only works second time??? """
+            #print("double_click")
+            if self.loc_button_click(event):
+                #print("self.loc_button_click(event) SUCCESS")
+                self.apply(event)
+
         # Moving columns needs work and probably isn't even needed
         #toolkit.MoveTreeviewColumn(self.main_top, self.loc_view.tree,
         #                           row_release=self.loc_button_click)
@@ -1952,6 +1962,8 @@ class Locations(LocationsCommonSelf):
         self.loc_view.tree.bind("<Button-3>", self.loc_button_click)
         #self.loc_view.tree.bind("<Double-Button-1>", self.apply)
         # Above too dangerous. Maybe for View locations OK?
+        # 2024-05-05 Retry with new double_click function
+        self.loc_view.tree.bind("<Double-Button-1>", double_click)
         self.loc_view.tree.tag_configure('loc_sel', background='ForestGreen',
                                          foreground="White")
 
@@ -1992,14 +2004,14 @@ class Locations(LocationsCommonSelf):
         else:
             tree_code = self.loc_view.tree.identify_row(event.y)
         if not tree_code:
-            return  # clicked on empty row
+            return False  # clicked on empty row
 
         if self.state == 'new':
             title = "Existing locations for reference only!"
             text = "Cannot pick existing location when a new location name " + \
                    "is required.\n\nEnter a Unique Name for the new Location."
             self.out_fact_show(title, text, 'error')
-            return
+            return False
 
         title = "Location is currently open!"
         text = None  # Dual-purpose flag if delete or open
@@ -2022,7 +2034,7 @@ class Locations(LocationsCommonSelf):
         if not self.read_location(tree_code):
             print("location.py Locations.loc_button_click()",
                   "error reading location:", tree_code)
-            return
+            return False
 
         ''' Display self.scr_xxx variables '''
         self.set_scr_variables(self.main_top)
@@ -2030,6 +2042,7 @@ class Locations(LocationsCommonSelf):
             self.enable_input()  # .new() calls this directly at very start
         self.make_apply_button()  # For everyone except "New Location"
         self.main_top.update_idletasks()
+        return True
 
     def set_scr_variables(self, top_name):
         """ Called from self.loc_button_click() and self.display_test_window()
@@ -2698,14 +2711,12 @@ class Locations(LocationsCommonSelf):
             self.cmp_keep_awake_is_active = False  # Has 10 minute wakeup cycle
         if self.cmp_top_is_active:
             self.cmp_close()  # Close Compare Locations window
-            
 
     # ==============================================================================
     #
     #       Locations() Processing - SQL Database Access
     #
     # ==============================================================================
-
 
     @staticmethod
     def build_fake_locations():
@@ -4646,7 +4657,7 @@ filename.
                 if not self.uln_insert_tree_row(fake_path, CurrAlbumId, str(i), Song):
                     return False  # Closing down
 
-        ext.t_end('print')  # No Refresh: Build compare target: 1.2339029312
+        ext.t_end('no_print')  # No Refresh: Build compare target: 1.2339029312
         # Refresh thread (33ms after)   : Build compare target: 158.4349091053
         # Refresh tk_after=False     : Build compare target: 26.8863759041
         # TOTALLY DIFFERENT STORY NOW WITH self.avo_insert_tree_row()
@@ -4675,6 +4686,8 @@ filename.
                 text = "Files common to both locations are identical."
             else:
                 # For avo, an empty tree means no matching files in target location
+                # If target location same as source location it means previous step
+                # not run yet.
                 title = "No files found!"
                 text = "There are no files common to both locations.\n\n"
                 text += "Try opening the target location and running."
@@ -5643,6 +5656,7 @@ filename.
                     var.set(old)
                     return None
 
+            ''' 2024-04-28 - NO Longer used 
             def get_0_or_1(var, name, old):
                 """
                 :param var: tkinter BooleanVar
@@ -5662,6 +5676,7 @@ filename.
                         "'0' or '1': '" + hold.strip() + "' was entered", icon='error')
                     var.set(old)
                     return None
+            '''
 
             def get_integer(var, name, old):
                 """
@@ -6348,8 +6363,8 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=$int
 
         # Parameters shared by loudnorm_1 & loudnorm_2 and comments
         IN = input_i if self.avo_use_inputs else self.avo_integrated
-        print("IN:", IN, "self.avo_use_inputs:", self.avo_use_inputs,
-              "self.avo_integrated:", self.avo_integrated, "input_i:", input_i)
+        #print("IN:", IN, "self.avo_use_inputs:", self.avo_use_inputs,
+        #      "self.avo_integrated:", self.avo_integrated, "input_i:", input_i)
         self.loudnorm_cmd = 'loudnorm=I=' + IN + ':TP=' + self.avo_true_peak
         self.loudnorm_cmd += ':LRA=' + self.avo_lra
 
@@ -6789,7 +6804,7 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
             tree.tk.call(tree, "tag", "remove", "play_sel")  # Unhighlight row
             tree.update_idletasks()
 
-            ext.t_end('print')  # Analyze volume old 10.9 seconds
+            ext.t_end('no_print')  # Analyze volume old 10.9 to 45 (when spam errors)
 
         # Display popup menu at cursor location
 

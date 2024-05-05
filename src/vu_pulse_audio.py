@@ -18,7 +18,8 @@ from __future__ import with_statement  # Error handling for file opens
 #       July 12 2023 - Interface to/from mserve_config.py
 #       Aug. 23 2023 - get_volume() return 25.0 when sink not found.
 #       Sep. 04 2023 - Fix crash when sink has no 'application.name' key
-#       Dec. 03 2023 - YouTube Playlists was breaking get_volume() info.cast() 
+#       Dec. 03 2023 - YouTube Playlists was breaking get_volume() info.cast()
+#       Apr. 29 2024 - self.poll_callback(self.dict) - parameter was missing.
 #
 # ==============================================================================
 """
@@ -90,7 +91,7 @@ class PulseAudio:
         self.fade_list = []
         self.dict = {}
 
-        # Piggy-back processing
+        # FUTURE Piggy-back processing - WIP
         self.is_piggy = False  # Is piggy-back processing running
         self.piggy_cmd = None  # ffmpeg command line
         self.piggy_pid = None  # Process ID for ffmpeg
@@ -161,8 +162,8 @@ class PulseAudio:
                 #      "to:", new_dict['end_perc'],
                 #      "elapsed:", elapsed,
                 #      "new_duration:", new_duration)
-                #print("\nold_dict:", old_dict)
-                #print("\nnew_dict:", new_dict)
+                #print("\n old_dict:", old_dict)
+                #print("\n new_dict:", new_dict)
                 return True  # Did reverse previous fade
         return False  # Did not reverse previous fade
     
@@ -266,7 +267,7 @@ AttributeError: 'module' object has no attribute 'pulsectl'
                 self.set_volume(self.dict['sink_no_str'],
                                 self.dict['end_perc'])
                 set_vol_time = ext.t_end('no_print')
-                self.poll_callback()
+                self.poll_callback(self.dict)
                 continue  # added on phone
 
             current_duration = now - self.dict['start_time']
@@ -286,7 +287,7 @@ AttributeError: 'module' object has no attribute 'pulsectl'
                 str_history = ' '.join(str(e) for e in self.dict['history'])
                 self.info.fact(str(last_volume) + self.dict['sink_no_str'] +
                                " finished.\n" + str_history)
-                self.poll_callback()
+                self.poll_callback(self.dict)
 
         # Build new list without completed fades
         self.fade_list = \
@@ -334,6 +335,7 @@ AttributeError: 'module' object has no attribute 'pulsectl'
         """ Get current volume of sink.
         :param sink_no_str: Pulse Audio sink number converted to string
         :param refresh: When False, reuse self.sinks_now from last time
+        :returns float
         """
         who = who_am_i + "get_volume(): "
         if refresh:
@@ -351,7 +353,7 @@ AttributeError: 'module' object has no attribute 'pulsectl'
         # 51:24.3509 _close_cb() - tt_dict not found for: 1136
         # 06:51:24.8 Reversing self.youAssumeAd
         print(who + "unable to find sink#: " + sink_no_str)
-        return 25.0  # returning None breaks callers
+        return 24.2424  # returning None breaks callers
 
     def set_volume(self, target_sink, percent):
         """ Set volume and return time required to do it
@@ -366,7 +368,7 @@ AttributeError: 'module' object has no attribute 'pulsectl'
             err = None  # Default to no error
             try:
                 self.last_sink_input_list = self.pulse.sink_input_list()
-            except pulsectl.PulseOperationFailed as err:  # 56
+            except pulsectl.PulseOperationFailed as _err:  # 56
                 # noinspection SpellCheckingInspection
                 '''
 SECOND Exception HAPPENED AFTER `pulseaudio -k` to fix FIRST EXCEPTION
@@ -384,7 +386,11 @@ THIRD Exception after fixing pulsectl.pulsectl. reference to pulsectl.
     *([index, cb, None] if index is not None else [cb, None]) )
   File "/home/rick/python/pulsectl/_pulsectl.py", line 673, in _wrapper
     raise self.CallError(*err)
-pulsectl._pulsectl.CallError: ('pa_context_get_sink_input_info_list', (<pulsectl._pulsectl.LP_PA_CONTEXT object at 0x7f91c772c560>, <CFunctionType object at 0x7f91bd039a10>, None), <pulsectl._pulsectl.LP_PA_OPERATION object at 0x7f91c772cd40>, 'Bad state [pulse errno 15]')
+pulsectl._pulsectl.CallError: ('pa_context_get_sink_input_info_list', 
+    (<pulsectl._pulsectl.LP_PA_CONTEXT object at 0x7f91c772c560>, 
+    <CFunctionType object at 0x7f91bd039a10>, None), 
+    <pulsectl._pulsectl.LP_PA_OPERATION object at 0x7f91c772cd40>, 
+    'Bad state [pulse errno 15]')
 
 
                 '''
@@ -393,7 +399,7 @@ pulsectl._pulsectl.CallError: ('pa_context_get_sink_input_info_list', (<pulsectl
                     self.info.cast("PulseAudio reloaded. Restart mserve",
                                    "error")
                     return  # User can try again or poll_fades will do next step
-                except:
+                except pulsectl.PulseOperationFailed as err:
                     print(who + "pulsectl.PulseOperationFailed:", err)
                     return None, str(err)
 
@@ -401,7 +407,7 @@ pulsectl._pulsectl.CallError: ('pa_context_get_sink_input_info_list', (<pulsectl
                 if str(sink.index) == target_sink:
                     try:
                         self.pulse.volume_set_all_chans(sink, float(percent) / 100.0)
-                    except pulsectl.PulseOperationFailed as err:  # 144
+                    except pulsectl.PulseOperationFailed as _err:  # 144
                         # noinspection SpellCheckingInspection
                         '''
 FIRST Exception HAPPENED AFTER CHANGING SOUND OUTPUT DEVICES
@@ -678,7 +684,7 @@ AttributeError: 'module' object has no attribute 'pulsectl'
         return self.sinks_now
 
     # noinspection SpellCheckingInspection
-    def analyze_file_volume(self, fname, output, callback_func):
+    def analyze_file_volume(self, fname, output, _callback_func):
         """ Analyze mean volume and max volume of file using ffmpeg
 
         $ ffmpeg -i "09 The Storm.m4a" -af "volumedetect"
@@ -816,7 +822,7 @@ AttributeError: 'module' object has no attribute 'pulsectl'
 
 
 class FlashMessage:
-    """ Copied from mmm - Make it work later """
+    """ FUTURE USE: Copied from mmm - Make it work later """
     def __init__(self, widget, var, message, count=5, on=500, off=300):
         """ widget  = label, button or frame to update idle tasks
             var     = text variable somewhere within the widget which will be set

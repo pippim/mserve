@@ -2534,7 +2534,6 @@ def hist_tally_whole(prt=True, tab=True):
     d = hist_cursor.fetchone()
     print("SELECT max(Id) FROM History;", d)
 
-
     tally = {}
     sql = "SELECT * FROM History;"
     hist_cursor.execute(sql)

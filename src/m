@@ -66,6 +66,8 @@ def main():
     splash.wm_attributes('-type', 'splash')  # No window decorations
     monitor.center(splash)  # With Ubuntu Unity compiz will center on active monitor
     toolkit.wait_cursor(splash)  # Change cursor to spinning hourglass w/falling sand
+    splash.event_generate('<Motion>', warp=True, x=150, y=150)  # Center mouse
+    # moving mouse works on Linux only: https://stackoverflow.com/a/16704353/6929343
 
     ''' Create Big "M" Splash Image '''
     m_img = img.m_splash_image(size, 'white', 'lightskyblue', 'black')

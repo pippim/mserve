@@ -23,8 +23,9 @@ from __future__ import with_statement       # Error handling for file opens
 #       Jun. 15 2023 - New Tooltip anchor "sc" South Centered for banner_btn
 #       July 11 2023 - Delete unused methods to simplify mserve_config.py
 #       Aug. 15 2023 - Fix 'menu' tooltips on left monitor with self.menu_tuple
-#       Jan. 01 2024 - computer_bytes(size) converts '4.0K blah' to 4000, etc.
+#       Jan. 01 2024 - computer_bytes(size_str) converts '4.0K blah' to 4000
 #       Mar. 23 2024 - Save custom views in DictTreeview() class
+#       Apr. 30 2024 - New tool_type="splash" manually invoked
 #
 #==============================================================================
 
@@ -4065,7 +4066,7 @@ class CommonTip:
         self.fade_in_span = 0           # milliseconds for fading in        13
         self.fade_out_span = 0          # milliseconds for fading out       14
 
-        # Too much window_ ??
+        # Too much window_ prefix usage??
         #  'tip_window' used to be 'window_object'
         #  'text' used to be 'window_text'
         #  'window_fading_in' could be 'fading_in'
@@ -4128,7 +4129,11 @@ class ToolTips(CommonTip):
 
                 self.tt.add_tip(widget_name, type='piggy_back',
                                 class=class_name)
-                WHERE: the class_name has methods inside.
+                WHERE: the class_name has methods inside. E.G. InfoCentre()
+
+            April 30, 2024 - Support tool_type='splash'
+
+                self.tt.add_tip(widget_name, type='splash', visible_delay=0)
 
         When polling is impractical, fade in and fade out can be disabled by:
 
@@ -4162,7 +4167,6 @@ class ToolTips(CommonTip):
         self.dict = {}                  # Tip dictionary
         self.tips_list = []             # List of Tip dictionaries
         self.tips_index = 0             # Current working Tip dictionary in list
-
 
     def dict_to_fields(self):
         """ Cryptic dictionary fields to easy names """
@@ -4200,7 +4204,6 @@ class ToolTips(CommonTip):
         self.pb_ready = self.dict['pb_ready']                       # 32
         self.pb_close = self.dict['pb_close']                       # 33
 
-
     def fields_to_dict(self):
         """ Easy names to cryptic dictionary fields """
         self.dict['widget'] = self.widget                           # 01
@@ -4236,7 +4239,6 @@ class ToolTips(CommonTip):
         self.dict['pb_leave'] = self.pb_leave                       # 31
         self.dict['pb_ready'] = self.pb_ready                       # 32
         self.dict['pb_close'] = self.pb_close                       # 33
-
 
     def log_event(self, action, widget, x, y):
         """ action is 'enter', 'leave', 'press' or 'release'.
@@ -4469,12 +4471,13 @@ class ToolTips(CommonTip):
         self.fade_out_span = fade_out_span
         self.anchor = anchor
 
-        # All widgets except "piggy_back" are bound to three common functions
-        if self.tool_type is not 'piggy_back':
-            # 'piggy_back' functions will send fake <Enter> and <Leave> events
+        # Bind all widgets except "piggy_back" and "splash" to common functions
+        if self.tool_type is not 'piggy_back' and self.tool_type is not 'splash':
             self.widget.bind('<Enter>', self.enter)
             self.widget.bind('<Leave>', self.leave)
             self.widget.bind('<Motion>', self.motion)
+            # 'piggy_back' callers will send fake <Enter> and <Leave> events
+            # 'splash' callers will send fake <Enter> only
         if self.tool_type is 'button':
             self.widget.bind("<ButtonPress-1>", self.on_press)
             self.widget.bind("<ButtonRelease-1>", self.on_release)
@@ -4569,7 +4572,8 @@ class ToolTips(CommonTip):
             TODO: Leave event is not passed to InfoCentre() unless fading in/out
         """
         #if not self.widget.winfo_exists():  # Oct 18/23 - enhancement
-        if not self.widget.winfo_exists() and self.tool_type is not 'piggy_back':
+        if not self.widget.winfo_exists() and self.tool_type is not 'piggy_back' \
+                and self.tool_type is not 'splash':
             # If parent closed, tool tip is irrelevant. bserve bup_view close
             d_print("Parent closed, tool tip irrelevant. bserve bup_view close",
                     str(self.widget)[-4:])
