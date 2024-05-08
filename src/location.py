@@ -6859,8 +6859,8 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
                   to pass a maximum and reduce size when text box has extra
                   white space.
         """
-        top = self.win_grp.widget_for_key(title)
-        if top:
+        top = self.win_grp.widget_for_key(title) if self.win_grp else None
+        if top:  # Was window previously created and registered as a child?
             top.lift()
             return  # Could make unique key for title to view multiple rows.
 
@@ -6869,6 +6869,7 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
             y = (parent.winfo_y() + g.PANEL_HGT)
 
         top = tk.Toplevel()  # Set geometry ASAP to prevent artifacts
+        top_save = [top]  # Save widget for when win_grp isn't used
         top.geometry('%dx%d+%d+%d' % (width, height, x, y))
         top.minsize(width=g.BTN_WID * 10, height=g.PANEL_HGT * 4)
         top.configure(background=self.bg)
@@ -6884,11 +6885,16 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
         #top.wm_attributes('-type', 'toolbar')  # Looses decoration
         # See: https://tcl.tk/man/tcl/TkCmd/wm.htm#M19
 
-        self.win_grp.register_child(title, top)
+        if self.win_grp:
+            self.win_grp.register_child(title, top)
 
         def close():
             """ Close and unregister child  window """
-            self.win_grp.destroy_by_key(title)
+            if self.win_grp:
+                self.win_grp.destroy_by_key(title)
+            else:
+                top2 = top_save[0]
+                top2.destroy()
 
         ''' Bind <Escape>, <Alt>+F4 & Window's-X to close window '''
         top.bind("<Escape>", close)
@@ -6900,7 +6906,7 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
         fnt = (None, g.MON_FONTSIZE)  # font variable name can't be used
 
         close_btn = tk.Button(
-            frame, width=g.BTN_WID, command=close, text="✘ Close")
+            frame, width=g.BTN_WID, text="✘ Close", command=close)
         close_btn.grid(row=1, column=0, padx=10, pady=5, sticky=tk.E)
 
         ''' Scrollable textbox to show selections / ripping status '''
@@ -6930,5 +6936,6 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
             pretty.scrollbox = scrollbox
             sql.tkinter_display(pretty)  # original version < 2024-04-21
 
+        return top  # Necessary when no child windows group (win_grp)
 
 # End of location.py

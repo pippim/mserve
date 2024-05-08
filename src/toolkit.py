@@ -4463,6 +4463,7 @@ class ToolTips(CommonTip):
         self.pb_leave = pb_leave            # Piggy-back callback when mouse leaves widget
         self.pb_ready = pb_ready            # Piggy-back callback when tip can be displayed
         self.pb_close = pb_close            # Piggy-back callback when tip destroyed
+        # Also used by "splash" tool_type to wrapup
 
         self.visible_delay = visible_delay
         self.visible_span = visible_span
@@ -4629,7 +4630,7 @@ class ToolTips(CommonTip):
                 # d_print self.now: 1697681040.39
                 #  zero_alpha_time: 1697681040.39
                 # We've finished fading out
-                if self.pb_close:
+                if self.pb_close and self.tool_type == "piggy_back":
                     self.reset_tip()  # pb_close will probably destroy tip next...
                     self.pb_close()  # Tell "piggy_back" to destroy it's frame
                     return
@@ -4644,6 +4645,10 @@ class ToolTips(CommonTip):
                     self.tip_window.destroy()
 
                 self.reset_tip()
+
+                if self.pb_close:  # self.pb_close callback not using "piggy_back"
+                    self.pb_close()  # "splash" tool_type callback
+
                 return
 
             # Calculate fade out alpha 1.00 to 0.01
@@ -4716,7 +4721,9 @@ class ToolTips(CommonTip):
 
     def create_tip_window(self):
         """ Create tooltip window with helpful text / usage instructions """
-        # Screen coordinates of parent widget
+        # Screen coordinates of widget  NW -- NE
+        #                               |      |
+        #                               SW -- SE
         widget_nw = (self.widget.winfo_rootx(), self.widget.winfo_rooty())
         widget_ne = (self.widget.winfo_rootx() + self.widget.winfo_width(),
                      widget_nw[1])
@@ -4724,8 +4731,7 @@ class ToolTips(CommonTip):
         widget_se = (widget_ne[0], widget_sw[1])
 
         ''' June 15, 2023 - mserve fake ruler can be 7000 px wide on 1000 frame 
-            Patch code to support new anchor "sc" (South Centered)
-        '''
+            Patch code to support new anchor "sc" (South Center) '''
         parent_name = self.widget.winfo_parent()
         # noinspection PyProtectedMember
         parent = self.widget._nametowidget(parent_name)
@@ -4733,6 +4739,7 @@ class ToolTips(CommonTip):
         parent_ne = (parent.winfo_rootx() + parent.winfo_width(),
                      parent_nw[1])
         if widget_ne[0] > parent_ne[0]:
+            # Override widgets NE with parents NE
             d_print("toolkit.py Tooltips() create_tip_window() Override fake:")
             d_print("     widget_ne:", widget_ne, "with parent_ne:", parent_ne)
             # Above: widget_ne: (9442, 169) parent_ne: (4043, 169)
@@ -4752,7 +4759,8 @@ class ToolTips(CommonTip):
         # Invert tooltip colors from current widget album art colors.
         #if self.tool_type is not 'canvas_button':  # comment June 15/23
         # What about 'label'?
-        if self.tool_type is 'button' or self.tool_type is 'menu':
+        if self.tool_type is 'button' or self.tool_type is 'menu'\
+                or self.tool_type is 'splash':
             self.fg = self.widget["background"]
             self.bg = self.widget["foreground"]
         else:
@@ -4953,6 +4961,9 @@ class ToolTips(CommonTip):
 
     def close(self, widget):
         """ When window closes all tooltips in it must be removed.
+            Can be called externally.  Extra steps required to ensure
+            window isn't visible.  Caller needs top.update() afterwards.
+
         :param widget either button or parent(s) of button. """
         new_list = []
         start = len(self.tips_list)
@@ -4961,6 +4972,10 @@ class ToolTips(CommonTip):
                 new_list.append(self.dict)
                 continue
             d_print("Closing widget:", str(widget)[-4:])
+            tip_window = self.dict['tip_window']
+            if tip_window is not None:
+                tip_window.destroy()
+            # 2024-05-06 was getting left over window self.play_top.update() fixes
 
         #diff = len(self.tips_list) - len(new_list)
         #print(diff, 'Tooltips removed on close')

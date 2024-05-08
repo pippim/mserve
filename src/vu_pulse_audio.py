@@ -56,7 +56,7 @@ import external as ext
 import timefmt as tmf
 import toolkit
 
-who_am_i = "vu_pulse_audio.py PulseAudio."
+who_am_i = "vu_pulse_audio.py PulseAudio()."
 FADE_NO = 0  # Aids in debugging
 
 
@@ -331,20 +331,30 @@ AttributeError: 'module' object has no attribute 'pulsectl'
             else:
                 scan_dict['finish_cb']()  # Call function name without arg.
 
-    def get_volume(self, sink_no_str, refresh=True):
+    def get_volume(self, sink_no_str, refresh=True, is_first=True):
         """ Get current volume of sink.
         :param sink_no_str: Pulse Audio sink number converted to string
         :param refresh: When False, reuse self.sinks_now from last time
+        :param is_first: First time perform recursive second attempt
         :returns float
         """
-        who = who_am_i + "get_volume(): "
+        who = who_am_i + "get_volume():"
         if refresh:
             self.get_all_sinks()  # Populates self.sinks_now[]
         for Sink in self.sinks_now:
             if Sink.sink_no_str == sink_no_str:
                 return Sink.volume
 
-        #self.info.cast(who + "unable to find sink#: " + sink_no_str)
+        # Give second chance perhaps caller got sink before refresh
+        if is_first:
+            # 
+            time.sleep(.05)
+            # Force refresh and signal second time calling
+            result = self.get_volume(sink_no_str, refresh=True, is_first=False)
+            if result != 24.2424:
+                return result  # Found a valid sink. Return it's volume
+
+        #self.info.cast(who, "unable to find sink#: " + sink_no_str)
         # 2023-12-03 - Above breaks from YouTube Playlists
         # 06:51:23.5 Ad visible. Player status: -1
         # _close_cb(): Probably closed wrong widget
@@ -352,7 +362,13 @@ AttributeError: 'module' object has no attribute 'pulsectl'
         # .140205735977040.140205735977256.140205735977472.140205516979664.140205517321136
         # 51:24.3509 _close_cb() - tt_dict not found for: 1136
         # 06:51:24.8 Reversing self.youAssumeAd
-        print(who + "unable to find sink#: " + sink_no_str)
+        print(who, "unable to find sink #: " + sink_no_str,
+              "type:", type(sink_no_str), "refresh:", refresh)
+        print("AVAILABLE SINKS:")
+        for Sink in self.sinks_now:
+            print(Sink)
+        toolkit.print_trace()
+
         return 24.2424  # returning None breaks callers
 
     def set_volume(self, target_sink, percent):

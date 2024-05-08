@@ -902,6 +902,7 @@ class MusicLocTreeCommonSelf:
     def __init__(self):
         #def __init__(self, toplevel, song_list, sbar_width=14, **kwargs):
 
+        self.who = "MusicLocationTree()."
         self.killer = ext.GracefulKiller()  # Class to shut down
         self.calculator = None              # Big Number calculator object
         self.calc_top = None                # Top level for calculator
@@ -1267,7 +1268,9 @@ class MusicLocTreeCommonSelf:
         self.is_loudnorm_sound = None  # Old and new play simultaneously
         # True .new loudness normalized song is heard, False original song heard
         self.play_max_vol = None  # Current old song maximum volume (hist rec 1)
+        self.play_size_str = None  # Old file size string E.G. "8.2 MB"
         self.loud_max_vol = None  # Current .new song maximum volume (hist rec 4)
+        self.loud_size_str = None  # New file size string E.G. "5.4 MB"
         self.title_suffix = None  # Window title_suffix used in two places below
 
         ''' Menu bars: File, Edit, View + space + playlist information '''
@@ -1698,11 +1701,51 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
             self.is_loudnorm_sound = None
 
     def loudness_toggle(self):
-        """ Toggle between old sound and new loudness normalization """
+        """ Toggle between old sound and new loudness normalization
+            Called when song starts to force ".new" song to be heard first.
+            Called when toggle button clicked. """
 
+        # Force sink_no_str
+        def force_sink(sink, pid):
+            """ Compare pid to know pids and return correct sink number """
+            title = self.who + " loudness_toggle(force_sink()): "
+            for Sink in pav.sinks_now:
+                if pid == Sink.pid and sink == Sink.sink_no_str:
+                    return Sink.sink_no_str  # All good
+                if pid == Sink.pid and sink != Sink.sink_no_str:
+                    text = "Override sink: " + sink + " with: " + Sink.sink_no_str
+                    text += " pid: " + str(pid) + " name: " + Sink.name
+                    lcs.out_fact_print(title, text, 'error')
+                    return Sink.sink_no_str  # cast_show
+
+            text = "sink not found: " + sink
+            text += "pid not found: " + str(pid)
+            lcs.out_fact_print(title, text, 'error')
+
+            return sink  # GIGO
+
+        self.play_ctl.sink = force_sink(self.play_ctl.sink, self.play_ctl.pid)
+        self.loud_ctl.sink = force_sink(self.loud_ctl.sink, self.loud_ctl.pid)
         play_curr = pav.get_volume(self.play_ctl.sink)
         loud_curr = pav.get_volume(self.loud_ctl.sink)
+
+        # sql.py increment_last_play() key not found: Joe Walsh/
+        # The Smoker You Drink, The Player You Get/02 Book Ends.m4a.new
+
         if play_curr == 24.2424 or loud_curr == 24.2424:
+            # 2024-05-07 these errors should disappeared with force_sink() patch
+            #   above. However root cause still needs to be found and pruned.
+            
+            # Sink(sink_no_str='1534', volume=0, name='ffplay', pid=1543, user='rick')
+            # Sink(sink_no_str='1536', volume=99, name='ffplay', pid=1585, user='rick')
+
+            # play_curr:	    0 	    loud_curr:	    24.2424
+            # play_ctl.sink:	1534 	loud_ctl.sink:	1535 	pav_ctl.sink:	 1535
+            # play_ctl.pid:	    1543 	loud_ctl.pid:	1585 	pav_ctl.pid:	 1585
+
+            # Sink(sink_no_str='1534', volume=0, name='ffplay', pid=1543, user='rick')
+            # Sink(sink_no_str='1536', volume=99, name='ffplay', pid=1585, user='rick')
+
             print("play_curr:\t", play_curr, 
                   "\tloud_curr:\t", loud_curr)
             print("play_ctl.sink:\t", self.play_ctl.sink,
@@ -1715,33 +1758,159 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
                   "\tloud_ctl.state:\t", self.loud_ctl.state,
                   "\tpav_ctl.state:\t", self.pav_ctl.state, "\n")
 
+        def splash(version, size_str, max_vol):
+            """ Display splash window """
+            size_str = size_str if size_str is not None else "???"
+            max_vol = max_vol if max_vol is not None else "???"
+            text = version + " file size: " + size_str + "\n"
+            text += "Maximum loudness volume: " + max_vol
+
+            # Must destroy previously declared loudness toggle button
+            # tooltip (self.loud_tog_button) to use same widget as anchor
+            self.tt.close(self.loud_tog_button)
+            self.play_top.update()  # tooltip .5 alpha doesn't destroy?
+            # 2024-05-06 .update_idletasks() not powerful enough
+
+            anchor = "nw" if self.chron_is_hidden else "sw"  # shortcut
+            self.tt.add_tip(self.loud_tog_button, text, 'splash', 0,
+                            anchor=anchor, pb_close=splash_callback)
+            # After splash display and fade-out, run splash_callback()
+
+            ''' Force Splash Display in Tooltips(). '''
+            self.tt.log_event('enter', self.loud_tog_button, 10, 5)  # x=10, y=5
+
+        def splash_callback():
+            """ Rebuild hijacked loudness toggle button's "normal" tooltip """
+            self.play_top.update_idletasks()  # splash .5 alpha doesn't destroy?
+            anchor = "nw" if self.chron_is_hidden else "sw"  # shortcut
+            var = "Old" if self.is_loudnorm_sound is True else "New"
+            tip = "Listen to " + var + " song at\nsame spot instantly."
+            self.tt.add_tip(self.loud_tog_button, tip, anchor=anchor)
+            self.loud_tog_button["text"] = "🎵  " + var + " Loudness"
+
         if self.is_loudnorm_sound:
             # cross-fade new to old. If old was <= 25% pretend 100%
             new_curr = 100.0 if loud_curr <= 25.0 else loud_curr
             pav.fade(self.play_ctl.sink, play_curr, new_curr, .25)
             pav.fade(self.loud_ctl.sink, loud_curr, 0, .25)
-
             self.pav_ctl = self.play_ctl  # use self.play_ctl.sink
+
             self.is_loudnorm_sound = False
-            button = "🎵  New Loudness"
-            tip = "Listen to new song at\nsame spot instantly."
+            # Splash window with stats of old file's maximum loudness
+            splash("Old", self.play_size_str, self.play_max_vol)  # no delay/return
+
         else:
             # cross-fade old to new. If new was <= 25% pretend 100%
             new_curr = 100.0 if play_curr <= 25.0 else play_curr
             pav.fade(self.loud_ctl.sink, loud_curr, new_curr, .25)
             pav.fade(self.play_ctl.sink, play_curr, 0, .25)
-
             self.pav_ctl = self.loud_ctl  # use self.loud_ctl.sink
-            self.is_loudnorm_sound = True
-            button = "🎵  Old Loudness"
-            tip = "Listen to old song at\nsame spot instantly."
 
-        self.loud_tog_button["text"] = button
-        self.tt.set_text(self.loud_tog_button, tip)
+            self.is_loudnorm_sound = True
+            # Splash window with stats of new file's maximum loudness
+            splash("New", self.loud_size_str, self.loud_max_vol)  # no delay/return
 
     def loudness_menu(self):
-        """ Options to Keep, Reject and View """
-        pass
+        """ Options to View, Keep, Reject 
+            Filter - Max Volume Worse than before
+                   - Max Volume missed target > .2 dB
+                   - Max Volume reached target
+                   After filter, display splash window with counts
+        """
+
+        # Construct parameters to call loudness normalization methods
+        #music_row = sql.music_get_row(music_id)
+        #if not music_row:
+        #    print(_who, "music_id:", music_id, "is invalid SQL row not found.")
+        #    return
+        #OsBase = music_row['OsFileName']
+        #CurrAlbumId = tree.parent(iid)
+        #Song = OsBase.split(os.sep)[-1]
+        #fake_path = self.open_topdir + os.sep + OsBase
+        #trg_path = self.cmp_target_dir + os.sep + OsBase  # self.cmp_target_dir
+        #trg_path_new = trg_path + ".new"
+
+        # 5 = *4 menu options + separator) * (font size + 8)
+        y_off = 5 * (g.MON_FONT + 18)
+
+        menu = tk.Menu(self.loud_menu_button, tearoff=0)
+        x = self.loud_menu_button.winfo_rootx()
+        y = self.loud_menu_button.winfo_rooty() - y_off
+        # Lift logic from tooltips for button anchor north or south
+        # SQL music_id using song name WITHOUT '.new' extension as it is known
+        music_id = sql.music_id_for_song(self.play_ctl.path[len(PRUNED_DIR):])
+        loc = lcs.open_code  # 2024-05-06  self.loc_open_id is None
+        Song = self.loud_ctl.path.split(os.sep)[-1]
+        trg_path_new = self.loud_ctl.path
+        trg_path_old = self.play_ctl.path + ".old"
+        menu.post(x, y)
+
+        def close():
+            """ Remove popup and treeview row highlight """
+            menu.unpost()
+
+        def view_normalize():
+            """ Popup Window with SQL Music Table Row Metadata for song """
+            n_data = sql.PrettyNormalize(music_id, loc)
+            win_title = "Normalization Summary - " + Song + " - mserve"
+            lcs.pretty_window(
+                self.play_top, n_data, win_title, 1300, 700,
+                x, y, new=True)  # new = use right align tab stops and uom
+
+        def remove_normalize(prompt=True):
+            """ Remove four history records for song """
+            title = "Confirm loudness normalization removal"
+            text = "Removing the records for this song allows the process\n"
+            text += "to be repeated for this song only. The process is\n"
+            text += "very quick for one song. Remove records for this song?"
+            if prompt:
+                answer = message.AskQuestion(self.play_top, confirm="No",
+                                             thread=self.get_refresh_thread,
+                                             title=title, text=text)
+                if answer.result != 'yes':
+                    return
+
+            sql.hist_del_music_var(music_id, 'volume', 'detect_old', loc)
+            sql.hist_del_music_var(music_id, 'volume', 'loudnorm_1', loc)
+            sql.hist_del_music_var(music_id, 'volume', 'loudnorm_2', loc)
+            sql.hist_del_music_var(music_id, 'volume', 'detect_new', loc)
+
+            # Remove ".new" song file (if it exists)
+            if os.path.isfile(trg_path_new):
+                self.rm_file(trg_path_new)
+
+        def keep_normalize():
+            """ Keep loudness normalization for a single song """
+            title = "Keep loudness normalization?"
+            text = Song + "\n\n"
+            text += "The original file will be renamed to '.old'.\n"
+            text += "The '.new' file will be copied over the original.\n"
+            answer = message.AskQuestion(self.play_top, confirm="Yes",
+                                         thread=self.get_refresh_thread,
+                                         title=title, text=text)
+            if answer.result != 'yes':
+                return
+
+            os.renames(self.play_ctl.path, trg_path_old)
+            os.renames(trg_path_new, self.loud_ctl.path)
+            remove_normalize(prompt=False)
+
+            # Update SQL metadata with new file size and times
+
+        # Display popup menu
+
+        menu.add_command(label="Normalization Summary", font=(None, g.MON_FONT),
+                         command=view_normalize)
+        menu.add_command(label="Remove Normalization", font=(None, g.MON_FONT),
+                         command=remove_normalize)
+        menu.add_command(label="Keep Normalization", font=(None, g.MON_FONT),
+                         command=keep_normalize)
+        menu.add_separator()
+
+        menu.add_command(label="Ignore click", font=(None, g.MON_FONT),
+                         command=lambda: close())
+        menu.tk_popup(x, y)
+        menu.bind("<FocusOut>", lambda _: close())
 
     def build_lib_menu(self):
         """
@@ -3294,8 +3463,7 @@ Call search.py when these control keys occur
         return False
 
     def pending_append(self, item, action):
-        """ Add song to pending_additions or pending_deletions lists
-        """
+        """ Add song to pending_additions or pending_deletions lists """
         if action is 'Add':
             self.pending_additions.append(item)
         elif action is 'Del':
@@ -3307,8 +3475,7 @@ Call search.py when these control keys occur
 
         """ If song exists in pending_additions and pending_deletions
             remove the song from both lists. Duplicates occur when a song
-            is checked and then unchecked or vice versa.
-        """
+            is checked and then unchecked or vice versa. """
         duplicates = []
         for song in self.pending_additions:
             if song in self.pending_deletions:  # Addition in Deletions list?
@@ -3353,10 +3520,8 @@ Call search.py when these control keys occur
             self.file_menu.entryconfig("Exit and CANCEL Pending", state=tk.DISABLED)
 
     def get_pending_cnt_total(self):
-        """
-            Used by Playlists to abort if favorites not saved yet.
-        :return: sum of add_cnt + del_cnt + tot_add_cnt + tot_del_cnt
-        """
+        """ Used by Playlists to abort if favorites not saved yet.
+        :return: sum of add_cnt + del_cnt + tot_add_cnt + tot_del_cnt """
         return self.pending_add_cnt  + self.pending_del_cnt + \
             self.pending_tot_add_cnt + self.pending_tot_del_cnt
 
@@ -3372,8 +3537,7 @@ Call search.py when these control keys occur
         self.lib_tree.see(last_child)
 
     def popup(self, event):
-        """ Action in event of button 3 on treeview
-        """
+        """ Action in event of button 3 on treeview """
         # select row under mouse
         Id = self.lib_tree.identify_row(event.y)
         if Id is None:
@@ -3405,8 +3569,7 @@ Call search.py when these control keys occur
     def parent_popup(self, event, Id):
         """ Popup parent menu
             Rename Artist or Album
-            Need to apply 'popup_sel' tag to get visual feedback
-        """
+            Need to apply 'popup_sel' tag to get visual feedback """
         ''' Set level for rename. '''
         if self.lib_tree.tag_has("Artist", Id):
             level = "Artist"
@@ -3451,8 +3614,7 @@ Call search.py when these control keys occur
 
     def song_popup(self, event, Id):
         """ Popup menu for a song
-            LONG TERM TODO: Display large 500x500 image and all metadata
-        """
+            LONG TERM TODO: Display large 500x500 image and all metadata """
         os_filename = self.real_paths[int(Id)]
         menu = tk.Menu(root, tearoff=0)
         menu.post(event.x_root, event.y_root)
@@ -3508,8 +3670,7 @@ Call search.py when these control keys occur
         """ Remove special view popup selection tags to restore normal view
             TODO: Move cursor back to original treeview row and highlight row.
                   Possibly move cursor of 1/2 second and animate in rotating
-                  motion regular - cursor - drag (boat) - menu - regular, etc.
-        """
+                  motion regular - cursor - drag (boat) - menu - regular, etc. """
         tags_selections = self.lib_tree.tag_has("popup_sel")
         for child in tags_selections:
             toolkit.tv_tag_remove(self.lib_tree, child, "popup_sel")
@@ -7470,7 +7631,7 @@ Call search.py when these control keys occur
         if self.pav_ctl.sink:
             curr_vol = pav.get_volume(self.pav_ctl.sink)
         else:
-            curr_vol = 25.0  # Default music paused volume
+            curr_vol = 24.2424  # Indicates no sink
             #print("set_ffplay_sink(): self.pav_ctl.sink is <None>")
 
         #print("self.curr_ffplay_volume:", self.curr_ffplay_volume,
@@ -7905,7 +8066,7 @@ Call search.py when these control keys occur
             elif name == "LoudMenu":
                 # Loudness Menu - Keep, Reject, View
                 button = "Loudness Menu"
-                tip = "Listen to old song at\nsame spot instantly."
+                tip = "Loudness Normalization\ninquiry and updates."
                 self.loud_menu_button = tk.Button(self.play_btn_frm, text=button,
                                                   width=g.BTN_WID2,
                                                   command=self.loudness_menu)
@@ -8778,33 +8939,48 @@ Call search.py when these control keys occur
             self.loud_ctl.close()
             return True
 
-        ''' Start ffplay, get Linux PID and Pulseaudio Input Sink # '''
-        self.play_ctl.start(start_secs, 0, 1, 0, TMP_CURR_SONG, dead_mode)
-        self.loud_ctl.start(start_secs, 0, 1, 0, TMP_CURR_SONG_LOUD, dead_mode)
-        if self.is_loudnorm_playlist:
-            # Can only have one sound and make it the new song
-            self.is_loudnorm_sound = False
-            self.loudness_toggle()  # fade out old, fade in new
-
-        # Limit 0. Fade in over 1 second, Fade out 0.
-        self.current_song_t_start = time.time()  # For pp_toggle, whether resume or not
-
-        def get_hist_max(version):
+        def get_volume_detect(version):
             """ Get SQL History Table record of maximum volume """
             MusicId = sql.music_id_for_song(self.play_make_sql_key())
             d = sql.hist_get_music_var(MusicId, 'volume', version, lcs.open_code)
             if d:
                 mean_volume, max_volume = json.loads(d['Target'])
                 if max_volume != "N/A":
-                    return max_volume
+                    return max_volume, toolkit.human_bytes(d['Size'])
 
-            return "N/A dB"
+            return "N/A dB", "0 Bytes"
+
+        ''' Start ffplay, get Linux PID and Pulseaudio Input Sink # '''
+        self.play_ctl.start(start_secs, 0, 1, 0, TMP_CURR_SONG, dead_mode)
 
         if self.is_loudnorm_playlist:
-            self.play_max_vol = get_hist_max('detect_old')
-            self.loud_max_vol = get_hist_max('detect_new')
-            print("self.play_max_vol:", self.play_max_vol,
-                  "self.loud_max_vol:", self.loud_max_vol)
+            # start filename with ".new" appended to path
+            self.loud_ctl.start(start_secs, 0, 1, 0, TMP_CURR_SONG_LOUD, dead_mode)
+            if not self.loud_ctl.file_exists:
+                print("File doesn't exist:", TMP_CURR_SONG_LOUD)
+                # TODO: Force next song to play on list with 1 '.new' file
+                self.play_ctl.close()  # 2024-05-07 - not sure if ctl.close()
+                self.loud_ctl.close()  # is the right thing to do at this point.
+                self.song_set_ndx('next')  # Force next song like "fast clicking"
+                return True
+
+            #print("\n dead_mode start")
+            #print("self.play_ctl.sink:", self.play_ctl.sink, self.play_ctl.pid)
+            #print("self.loud_ctl.sink:", self.loud_ctl.sink, self.loud_ctl.pid)
+
+            self.play_max_vol, self.play_size_str = get_volume_detect('detect_old')
+            self.loud_max_vol, self.loud_size_str = get_volume_detect('detect_new')
+            #print("self.play_max_vol:", self.play_max_vol,
+            #      "self.loud_max_vol:", self.loud_max_vol)
+            #print("self.play_size_str:", self.play_size_str,
+            #      "self.loud_size_str:", self.loud_size_str)
+
+            # Can only have one sound active at a time, make it the new song
+            self.is_loudnorm_sound = False  # Force new song to always play first
+            self.loudness_toggle()  # fade out old, fade in new
+
+        # Limit 0. Fade in over 1 second, Fade out 0.
+        self.current_song_t_start = time.time()  # For pp_toggle, whether resume or not
 
         if resume:
             ''' Restart Music from last session's save point. '''
@@ -11253,19 +11429,7 @@ mark set markName index"
 
     def play_shuffle(self):
         """ Convert selections to list, shuffle, convert back to tuple
-            Get confirmation because this cannot be undone. 'yes'
-
-            2024-05-01 - After shuffle, Chronology tree has old order so
-                incorrect songs are displayed when newly shuffled songs are
-                played.
-
-            2024-05-04 - Reassign Play No. to lib tree. BUG:
-
-            cron_tree is Play No. # 516
-            lib_tree highlights   # 516
-            play_top shows playlist 516 but song is April Wine/Live/Big City girls
-             playlist # 497 lyrics show are for song # 516
-        """
+            Get confirmation because this cannot be undone. """
 
         _who = "mserve MusicLocationTree().play_shuffle():"
         self.set_playlist_vars()
@@ -11305,9 +11469,10 @@ mark set markName index"
         # See: build_lib_with_playlist()
         # See: def apply_playlists(self, delete_only=False):
 
-        self.playlist_paths = []  # full path names
-        if self.playlists.open_name:
-            self.playlists.open_id_list = []  # Playlist music id's
+        self.playlist_paths = []  # full path names in song playing order
+        if self.playlists.open_name:  # Playlist open (not Favorites)?
+            self.playlists.open_id_list = []  # Playlist music id list in order
+
         for Id in self.saved_selections:
             music_id = self.get_music_id_for_lib_tree_id(Id)
             if music_id == 0:
@@ -11321,52 +11486,30 @@ mark set markName index"
                 print(_who, "sql.music_get_row(music_id)",
                       music_id)
                 continue
-            if self.playlists.open_name:
+            if self.playlists.open_name:  # Playlist open (not Favorites)?
                 self.playlists.open_id_list.append(music_id)
             full_path = PRUNED_DIR + d['OsFileName']
             self.playlist_paths.append(full_path)
 
-        if self.playlists.open_name:
+        if self.playlists.open_name:  # Playlist open (not Favorites)?
             self.playlists.save_playlist()
 
-        '''
+        ''' DEBUG
         # 2025-05-05 new error today:
         # Oops playlist was changed and self.ndx not changed.
         print("AFTER shuffle - self.ndx:", self.ndx, '= Music Id:',
               self.saved_selections[self.ndx])
         print("len(self.saved_selections):", len(self.saved_selections))
         print("len(self.playlist_paths):", len(self.playlist_paths))
-        if self.playlists.open_name:
+        if self.playlists.open_name:  # Playlist open (not Favorites)?
             print("len(self.playlists.open_id_list):", len(self.playlists.open_id_list))
         print("self.saved_selections[self.ndx]:", self.saved_selections[self.ndx])
         print("self.playlist_paths[self.ndx]:", self.playlist_paths[self.ndx])
-        if self.playlists.open_name:
+        if self.playlists.open_name:  # Playlist open (not Favorites)?
             print("self.playlists.open_id_list[self.ndx]:", self.playlists.open_id_list[self.ndx])
         '''
 
         # 2024-05-05 Call self.write_playlist_to_disk(override=selections_only)
-
-        ''' Rebuild playlist when self.playlists.open_name is None '''
-        if not self.playlists.open_name:
-            # TODO: Song being played (No. 26) != song in chron_tree and lib_tree
-            # 2024-05-05 Call self.write_playlist_to_disk(override=selections_only)
-            self.playlist_paths = []  # full path names that need to be pruned
-            for Id in self.saved_selections:
-                music_id = self.get_music_id_for_lib_tree_id(Id)
-                if music_id == 0:
-                    toolkit.print_trace()
-                    print(_who, "self.get_music_id_for_lib_tree_id(Id)", Id)
-                    continue
-
-                d = sql.music_get_row(music_id)
-                if d is None:
-                    toolkit.print_trace()
-                    print(_who, "sql.music_get_row(music_id)",
-                          music_id)
-                    continue
-                full_path = PRUNED_DIR + d['OsFileName']
-                self.playlist_paths.append(full_path)
-
 
         # Rebuild Play No. in lib tree
         for Artist in self.lib_tree.get_children():  # Read all artists
@@ -11387,9 +11530,6 @@ mark set markName index"
 
         # Music starts playing with queue_next_song() tell it not to increment ndx
         self.song_set_ndx_just_run = True  # Song was manually set
-
-        # Build playlist_paths using Music Ids
-        # Lifted from: def apply_playlists(self, delete_only=False):
 
         self.info.cast("Shuffled randomly: '" + self.title_suffix + "' with " +
                        str(len(self.saved_selections)) + " songs.", action='update')
@@ -15106,7 +15246,7 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilatio
         """
 
         if self.loudnorm_ctl and not self.is_loudnorm_playlist:
-            # File control for loudness normalization but not used
+            # File control for loudness normalization but not this playlist
             return True
 
         last_state = self.state
@@ -15335,7 +15475,7 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilatio
         """
 
         if self.loudnorm_ctl and not self.is_loudnorm_playlist:
-            # File control for loudness normalization but not used
+            # File control for loudness normalization but not this playlist
             return True
 
         self.start_sec = start_sec          # Seconds offset to start playing at
@@ -15426,7 +15566,7 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilatio
         """
 
         if self.loudnorm_ctl and not self.is_loudnorm_playlist:
-            # File control for loudness normalization but not used
+            # File control for loudness normalization but not this playlist
             return True
 
         if self.check_pid():
@@ -15500,7 +15640,7 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilatio
         """
 
         if self.loudnorm_ctl and not self.is_loudnorm_playlist:
-            # File control for loudness normalization but not used
+            # File control for loudness normalization but not this playlist
             return True
 
         if self.check_pid():
@@ -15596,6 +15736,8 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilatio
                     self.info.fact("Could not restore last access for: \t" +
                                    str(self.Title) +
                                    "\nLikely caused by fast clicking Next/Prev")
+        elif self.loudnorm_ctl:
+            pass  # No SQL Music Table records exist for ".new" files
         else:
             ''' Song counts as being played > 80% '''
             if not sql.increment_last_play(self.path, self.final_atime):
@@ -15628,7 +15770,7 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilatio
         """
 
         if self.loudnorm_ctl and not self.is_loudnorm_playlist:
-            # File control for loudness normalization but not used
+            # File control for loudness normalization but not this playlist
             return True
 
         ''' Is host down? '''
@@ -15678,7 +15820,7 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilatio
         """Calc self.time_played, self.time_paused & self.percent_played. """
 
         if self.loudnorm_ctl and not self.is_loudnorm_playlist:
-            # File control for loudness normalization but not used
+            # File control for loudness normalization but not this playlist
             return True
 
         self.time_played = self.time_stopped = self.percent_played = 0.0
@@ -15710,7 +15852,7 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilatio
             self.statuses with status and event time. """
 
         if self.loudnorm_ctl and not self.is_loudnorm_playlist:
-            # File control for loudness normalization but not used
+            # File control for loudness normalization but not this playlist
             return True
 
         self.close_WIP = None       # .close() is Work In Progress
