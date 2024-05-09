@@ -1766,9 +1766,9 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
             text += "Maximum loudness volume: " + max_vol
 
             # Must destroy previously declared loudness toggle button
-            # tooltip (self.loud_tog_button) to use same widget as anchor
+            # (self.loud_tog_button) tooltip, to reuse same widget for splash
             self.tt.close(self.loud_tog_button)
-            self.play_top.update()  # tooltip .5 alpha doesn't destroy?
+            self.play_top.update()  # tooltip .5 alpha doesn't destroy
             # 2024-05-06 .update_idletasks() not powerful enough
 
             anchor = "nw" if self.chron_is_hidden else "sw"  # shortcut
@@ -1789,10 +1789,13 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
             self.loud_tog_button["text"] = "🎵  " + var + " Loudness"
 
         if self.is_loudnorm_sound:
-            # cross-fade new to old. If old was <= 25% pretend 100%
+            # cross-fade new to old. If old volume was <= 25% pretend 100%
             new_curr = 100.0 if loud_curr <= 25.0 else loud_curr
+            # When music is paused volume was forced down to 25% first
+            new_curr = new_curr if self.pp_state == "Playing" else 25.0
+
             pav.fade(self.play_ctl.sink, play_curr, new_curr, .25)
-            pav.fade(self.loud_ctl.sink, loud_curr, 0, .25)
+            pav.fade(self.loud_ctl.sink, loud_curr, 0, .25)  # New down to 0
             self.pav_ctl = self.play_ctl  # use self.play_ctl.sink
 
             self.is_loudnorm_sound = False
@@ -1800,10 +1803,13 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
             splash("Old", self.play_size_str, self.play_max_vol)  # no delay/return
 
         else:
-            # cross-fade old to new. If new was <= 25% pretend 100%
+            # cross-fade old to new. If new volume was <= 25% pretend 100%
             new_curr = 100.0 if play_curr <= 25.0 else play_curr
+            # When music is paused volume was forced down to 25% first
+            new_curr = new_curr if self.pp_state == "Playing" else 25.0
+
             pav.fade(self.loud_ctl.sink, loud_curr, new_curr, .25)
-            pav.fade(self.play_ctl.sink, play_curr, 0, .25)
+            pav.fade(self.play_ctl.sink, play_curr, 0, .25)  # Old down to 0
             self.pav_ctl = self.loud_ctl  # use self.loud_ctl.sink
 
             self.is_loudnorm_sound = True
@@ -4882,6 +4888,10 @@ Call search.py when these control keys occur
         self.debug_detail("g.OS_NAME         :", g.OS_NAME)
         self.debug_detail("g.OS_VERSION      :", g.OS_VERSION)
         self.debug_detail("g.OS_RELEASE      :", g.OS_RELEASE)
+        lsb_ver = os.popen("lsb_release -a").read().strip()
+        self.debug_detail(lsb_ver)  # Two lines due to customization
+        xr_ver = os.popen("xrandr --version").read().strip()
+        self.debug_detail(xr_ver)  # Two lines due to customization
 
         self.debug_detail("g.USER            :", g.USER)
         self.debug_detail("g.USER_ID         :", g.USER_ID)
@@ -4900,6 +4910,37 @@ Call search.py when these control keys occur
             self.debug_detail('PIL Version       :', Image.VERSION)
         except NameError:
             self.debug_detail('Pillow Version    :', PIL.__version__)
+
+        pa_ver = os.popen("pulseaudio --version").read().strip()
+        self.debug_detail('PulseAudio Version:', pa_ver)
+        xdo_ver = os.popen("xdotool --version").read().strip()
+        self.debug_detail('xdotool Version   :', xdo_ver)
+        xdo_ver = os.popen("wmctrl --version").read().strip()
+        self.debug_detail('wmctrl Version    :', xdo_ver)
+        pqiv_ver = os.popen("pqiv --help | grep version").read().strip()
+        self.debug_detail('pqiv Version      :', pqiv_ver.split()[2])
+
+        # Optional programs checked before usage
+        kid3_ver = os.popen("kid3 --version").read().strip()
+        self.debug_detail('kid3 Version      :', kid3_ver)
+        nautilus_ver = os.popen("nautilus --version").read().strip()
+        self.debug_detail('nautilus Version  :', nautilus_ver)
+        nmap_ver = os.popen("nmap --help | grep Nmap | grep nmap.org").\
+            read().strip()
+        self.debug_detail('nmap Version      :', nmap_ver)
+        ssh_ver = os.popen("ssh -V 2>&1").read().strip()
+        self.debug_detail('SSH Version       :', ssh_ver)
+        sshfs_ver = os.popen("sshfs --version | grep 'SSHFS version'").\
+            read().strip()
+        self.debug_detail('sshfs Version     :', sshfs_ver)
+        fusermount_ver = os.popen("fusermount --version").read().strip()
+        self.debug_detail('fusermount Version:', fusermount_ver)
+        wakeonlan_ver = os.popen("wakeonlan --version 2>&1 | grep 'wakeonlan version'").\
+            read().strip()[:60] + " ..."
+        self.debug_detail('wakeonlan Version :', wakeonlan_ver)
+
+
+        # def debug_detail - add refresh if last call > 16 ms
 
         def ff_version(ff_name):
             """ loud norm filter in ffmpeg version 3.1 or higher.
@@ -5010,7 +5051,6 @@ Call search.py when these control keys occur
         self.debug_detail("lcs.open_comments   :", lcs.open_comments)
         self.debug_detail("lcs.open_row_id     :", lcs.open_row_id)
         self.debug_output()
-
 
         self.debug_header("\nInformation Centre - self.info.dict[]")
         self.debug_detail("--- KEY ---   --- VALUE ---------------------\n")
@@ -5126,7 +5166,6 @@ Call search.py when these control keys occur
         self.debug_detail("self.get_pending_cnt_total():", self.get_pending_cnt_total())
         self.debug_detail("pending_apply() debug print flag DPRINT_ON:", DPRINT_ON)
         self.debug_output()
-
 
         self.debug_header("\nSQL - Sqlite3 Information")
         self.debug_detail("SQL Sqlite3 Tables and Indices")
@@ -5306,7 +5345,7 @@ Call search.py when these control keys occur
     def debug_header(self, *args, **kwargs):
         """ Receive print statement parameters and print to file.
             Read back print file and add to title list.
-            If underline is True, add 80 * "=" to title list and "\n". """
+            If underline is True, add 90 * "=" to title list and "\n". """
         self.debug_print(*args)  # Write to print_file
         result = self.debug_read_print()  # Read print file (or error messages)
         if result:  # Should always be a result
