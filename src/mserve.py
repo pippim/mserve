@@ -4889,7 +4889,7 @@ Call search.py when these control keys occur
         self.debug_detail("g.OS_VERSION      :", g.OS_VERSION)
         self.debug_detail("g.OS_RELEASE      :", g.OS_RELEASE)
         lsb_ver = os.popen("lsb_release -a").read().strip()
-        self.debug_detail(lsb_ver)  # Two lines due to customization
+        self.debug_detail(lsb_ver)  # lsb_release has 4 lines
         xr_ver = os.popen("xrandr --version").read().strip()
         self.debug_detail(xr_ver)  # Two lines due to customization
 
@@ -4992,34 +4992,44 @@ Call search.py when these control keys occur
 
         self.debug_header("\nOpen Windows (Wnck) - mon.get_all_windows():")
         for i, window in enumerate(mon.get_all_windows()):
-            ''' Testing desktop - should check each monitor individually '''
-            if window.x > mon.screen_width or window.y > mon.screen_height:
-                ''' When second monitor loses power '''
-                self.debug_detail("\nERROR: Window is off screen at x+y:",
-                                  window.x, "+", window.y)
+            ''' window = namedtuple('Window', 'number, name, x, y, width, height') '''
+            # The monitor the window is mostly on or closed too
+            x = window.x
+            y = window.y
+            home_mon = mon.get_home_monitor(window, force_visible=False)
+            # TODO 2024-05-11 move code below into force_visible=True
+            #print("home_mon:", home_mon, "\n window:", window)
+            # home_mon_dict: Monitor(number=2, name='eDP-1-1', x=3870, y=2160,
+            #                        width=1920, height=1080, primary=True)
+            # window: Window(number=102760464L, name='BackupLog (~/) - gedit',
+            #                x=3870, y=2184, width=1669, height=913)
+            # At least 50 pixels should be visible else nothing for mouse grab
+            x_cutoff = home_mon.x + home_mon.width - 50
+            y_cutoff = home_mon.y + home_mon.height - 50
+            if x < 0 or y < 0:
+                # system windows / panels are hidden with negative x and y:
+                self.debug_detail(window)
+            elif x < home_mon.x or y < home_mon.y or x > x_cutoff or y > y_cutoff:
+                ''' When monitor loses power, windows can move off screen '''
+                self.debug_detail("\nhome_mon:", home_mon, "\nwindow:", window)
+                self.debug_detail("ERROR: Window is off screen at x + y:", x, "+",
+                                  y, "x_cutoff:", x_cutoff, "y_cutoff:", y_cutoff)
                 self.debug_detail("  ", window)
-                if window.x > mon.screen_width:
-                    adj_x = mon.screen_width - window.x - 500
-                else:
-                    adj_x = 0
-                if window.y > mon.screen_height:
-                    adj_y = mon.screen_height - window.y - 500
-                else:
-                    adj_y = 0
-                self.debug_detail("     Adjust to edge -500 amount:", adj_x, "+", adj_y)
-                new_x = window.x + adj_x
-                new_y = window.y + adj_y
-                self.debug_detail("        New coordinates:", new_x, "+", new_y, "\n")
+
+                new_x = x_cutoff - 500 if x > x_cutoff else x
+                new_y = y_cutoff - 500 if y > y_cutoff else y
+                new_x = home_mon.x + 50 if x < home_mon.x else new_x
+                new_y = home_mon.y + 50 if y < home_mon.y else new_y
+
+                self.debug_detail("     Adjust to coordinates:", new_x, "+", new_y, "\n")
                 str_win = str(window.number)  # should remove L in python 2.7.5+
                 int_win = int(str_win)  # https://stackoverflow.com/questions
                 hex_win = hex(int_win)  # /5917203/python-trailing-l-problem
-                # Move window to lower right - 500x500
+                # Move window into closest monitor viewable area
                 os.popen('xdotool windowmove ' + hex_win + ' ' +
                          str(new_x) + ' ' + str(new_y))
-                # TODO: Use shark_move to more accurate original coordinates.
-                #       Currently instantly appears at lower right -500x-500
             else:
-                self.debug_detail(window)
+                self.debug_detail(window)  # normally displayed application window
         self.debug_output()  # self.info.fact() + print()
 
         self.debug_header("\nDefault Geometry for Windows - ",

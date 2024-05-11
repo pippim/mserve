@@ -17,9 +17,10 @@ from __future__ import with_statement  # Error handling for file opens
 #       Check out: https://www.pythoncheatsheet.org/
 #             and: https://python-future.org/compatible_idioms.html
 #
-#       Jun. 14 2023 - Build list of all windows. To find those off-screen
+#       June 14 2023 - Build list of all windows. To find those off-screen
 #       July 12 2023 - Interface to/from mserve_config.py
 #       July 29 2023 - Fix Monitor.get_active_monitor()
+#       May. 11 2024 - mon.get_home_monitor(window) exact or closest monitor
 #
 # ==============================================================================
 
@@ -180,6 +181,7 @@ class Monitors:
     """ Build list of all monitors connected to computer """
     def __init__(self):
         """ Build list of monitors forming desktop (aka X11 screen) """
+        self.who = "monitors.py Monitors()."
         self.desk_width = 0
         self.desk_height = 0
 
@@ -435,6 +437,103 @@ class Monitors:
         window.geometry('+{}+{}'.format(x, y))
 
         return mon  # Should win namedtuple be returned instead?
+
+    def get_home_monitor(self, window, force_visible=False):
+        """ Return the monitor passed window is mostly on, or closest to.
+            window = namedtuple('Window', 'number, name, x, y, width, height')
+            screen = all monitors' width & height combined together
+            monitor = namedtuple('Monitor', mon.keys())(*mon.values())
+            monitor = (mon.name, mon.x, mon.y, mon.width, mon.height)
+
+        """
+        _who = self.who + "get_home_monitor():"
+
+        x = window.x  # All GUI windows geometry - not just tkinter windows
+        y = window.y  # x = horizontal / x-offset - y = vertical / y-offset
+        w = window.width
+        h = window.height
+
+        # If window offset(s) negative force to +100
+        x = 100 if x < 0 else x  # Override corrupt horizontal / x-offset
+        y = 100 if y < 0 else y  # Override corrupt vertical / y-offset
+
+        first_monitor = last_x = last_y = None  # local vars
+
+        # easy-peasy test first. Window is mostly on a known monitor
+        for index in range(self.monitor_count):
+            # Get monitor dictionary from monitors list
+            monitor = self.monitors_list[index]
+            if first_monitor is None:
+                first_monitor = monitor  # Save first monitor if needed later
+                last_x = monitor
+                last_y = monitor
+
+            # find the right most and bottom most monitor
+            last_x = monitor if monitor.x > last_x.x else last_x
+            last_y = monitor if monitor.y > last_y.y else last_y
+
+            # Most of window must be on monitor to qualify
+            if x < monitor.x:
+                continue
+            if x >= monitor.x + monitor.width // 2 and \
+                    x + w > monitor.x + monitor.width:
+                continue  # window 50% into monitor x and window end past monitor end
+            if y < monitor.y:
+                continue
+            if y >= monitor.y + monitor.height // 2 and \
+                    y + h > monitor.y + monitor.height:
+                continue  # window 50% into monitor y and window end past monitor end
+
+            # Window is mostly on this monitor.
+            return monitor
+
+
+        closest_x = closest_y = bad_x = bad_y = None  # local vars
+
+        # Window top left or bottom right may be off screen
+        bad_x = True if x > self.screen_width else False
+        bad_y = True if y > self.screen_height else False
+
+        # return last_y first and last_x second
+        if bad_y:
+            return last_y
+        elif bad_x:
+            return last_x
+
+        print("\n" + _who, "x:", x, "y:", y, "w:", w, "h:", h,
+              "x2:", x + w, "y2:", y + h, "\n\tname:", window.name)
+        # difficult test. Window's closest monitor
+        for index in range(self.monitor_count):
+            # Get monitor dictionary from monitors list
+            monitor = self.monitors_list[index]
+            print("monitor.name:", monitor.name, "monitor.x:", monitor.x,
+                  "+y:", monitor.y, " height:", monitor.height, " width:",
+                  monitor.width, "x2:", monitor.x + monitor.width,
+                  "y2:", monitor.y + monitor.height)
+            if closest_x is None:
+                closest_x = monitor
+                closest_y = monitor
+
+            # find the right most and bottom most monitor
+            closest_x = monitor if monitor.x > closest_x.x else closest_x
+            closest_y = monitor if monitor.y > closest_y.y else closest_y
+
+        if force_visible:
+            # 2024-05-11 TODO port code from mserve.py lines 5000-5030
+            print("Code not completed. Port code from mserve.py lines 5000-5030")
+            print("home_mon = mon.get_home_monitor(window, force_visible=True)")
+
+        print("closest_x:", closest_x.name, "closest_y:", closest_y.name)
+        if closest_x == closest_y:
+            return closest_x  # closest x & y same monitor
+
+        # Which is better match the closest x or the closest y?
+        dist_x = x - closest_x.x
+        dist_y = y - closest_y.y
+        if dist_x < dist_y:
+            return closest_x
+        else:
+            return closest_y
 
 
 # OLDER CODE: Eventually yanked out.
