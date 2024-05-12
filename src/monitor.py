@@ -445,6 +445,19 @@ class Monitors:
             monitor = namedtuple('Monitor', mon.keys())(*mon.values())
             monitor = (mon.name, mon.x, mon.y, mon.width, mon.height)
 
+            2024-05-12 Use xdotool to move window into dead-zone for testing:
+                str_win = str(window.number)  # should remove L in python 2.7.5+
+                int_win = int(str_win)  # https://stackoverflow.com/questions
+                hex_win = hex(int_win)  # /5917203/python-trailing-l-problem
+                # Move window into closest monitor viewable area
+                if ext.check_command('xdotool'):
+                    os.popen('xdotool windowmove ' + hex_win + ' ' +
+                             str(new_x) + ' ' + str(new_y))
+
+            command line:
+
+                xdotool windowmove 0x580000a 2261 2740
+
         """
         _who = self.who + "get_home_monitor():"
 
@@ -487,14 +500,11 @@ class Monitors:
             # Window is mostly on this monitor.
             return monitor
 
-
-        closest_x = closest_y = bad_x = bad_y = None  # local vars
-
         # Window top left or bottom right may be off screen
         bad_x = True if x > self.screen_width else False
         bad_y = True if y > self.screen_height else False
 
-        # return last_y first and last_x second
+        # Window outside of screen region? - return last_y first and last_x second
         if bad_y:
             return last_y
         elif bad_x:
@@ -502,7 +512,9 @@ class Monitors:
 
         print("\n" + _who, "x:", x, "y:", y, "w:", w, "h:", h,
               "x2:", x + w, "y2:", y + h, "\n\tname:", window.name)
-        # difficult test. Window's closest monitor
+
+        # Window is inside screen region "dead-zone". Return closest monitor.
+        closest_x = closest_y = None  # local vars
         for index in range(self.monitor_count):
             # Get monitor dictionary from monitors list
             monitor = self.monitors_list[index]
@@ -514,13 +526,15 @@ class Monitors:
                 closest_x = monitor
                 closest_y = monitor
 
-            # find the right most and bottom most monitor
-            closest_x = monitor if monitor.x > closest_x.x else closest_x
-            closest_y = monitor if monitor.y > closest_y.y else closest_y
+            # find the closest horizontal and vertical monitors
+            closest_x2 = closest_x.x + closest_x.width
+            closest_y2 = closest_y.y + closest_y.height
+            closest_x = monitor if closest_x.x < x < closest_x2 else closest_x
+            closest_y = monitor if closest_y.y < y < closest_y2 else closest_y
 
         if force_visible:
             # 2024-05-11 TODO port code from mserve.py lines 5000-5030
-            print("Code not completed. Port code from mserve.py lines 5000-5030")
+            print("Code not completed. Port code from mserve.py lines 5000-5030:")
             print("home_mon = mon.get_home_monitor(window, force_visible=True)")
 
         print("closest_x:", closest_x.name, "closest_y:", closest_y.name)

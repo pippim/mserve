@@ -4959,6 +4959,7 @@ Call search.py when these control keys occur
 
         self.debug_output()  # self.info.fact() + print()
 
+        # Monitors ------------------------------------------
         self.debug_header("\nmon = monitor.Monitors()")
         mon = monitor.Monitors()            # Monitors class list of dicts
 
@@ -4990,6 +4991,7 @@ Call search.py when these control keys occur
                           sys.getfilesystemencoding())
         self.debug_output()  # self.info.fact() + print()
 
+        # Windows ------------------------------------------
         self.debug_header("\nOpen Windows (Wnck) - mon.get_all_windows():")
         for i, window in enumerate(mon.get_all_windows()):
             ''' window = namedtuple('Window', 'number, name, x, y, width, height') '''
@@ -5026,17 +5028,31 @@ Call search.py when these control keys occur
                 int_win = int(str_win)  # https://stackoverflow.com/questions
                 hex_win = hex(int_win)  # /5917203/python-trailing-l-problem
                 # Move window into closest monitor viewable area
-                os.popen('xdotool windowmove ' + hex_win + ' ' +
-                         str(new_x) + ' ' + str(new_y))
+                if ext.check_command('xdotool'):
+                    os.popen('xdotool windowmove ' + hex_win + ' ' +
+                             str(new_x) + ' ' + str(new_y))
+                else:
+                    self.debug_detail("ext.check_command('xdotool') is not installed!")
+                    self.debug_detail("Above window must be moved with another method.")
             else:
-                self.debug_detail(window)  # normally displayed application window
+                self.debug_detail(window)  # normal application window and visible
+                # 2024-05-12 special debugging to get hex window numbers
+                #str_win = str(window.number)  # should remove L in python 2.7.5+
+                #int_win = int(str_win)  # https://stackoverflow.com/questions
+                #hex_win = hex(int_win)  # /5917203/python-trailing-l-problem
+                #self.debug_detail(hex_win)
+
         self.debug_output()  # self.info.fact() + print()
 
-        self.debug_header("\nDefault Geometry for Windows - ",
-                          "sql.Config.print_windows():")
-        lines = cfg.print_windows(line_dump=True)
-        self.debug_list("Windows - sql.Config.print_windows():", lines)
 
+        # Saved window geometries ------------------------------------------
+        #self.debug_header("\nDefault Geometry for Windows - ",
+        #                  "sql.Config.print_windows():")
+        lines = cfg.print_windows(line_dump=True)
+        self.debug_list("Saved Geometry for Windows - " +
+                        "sql.Config.print_windows():", lines)
+
+        # Tooltips ------------------------------------------
         #self.debug_header("\nTOOLTIPS - tt.line_dump()")
         lines = self.tt.line_dump()         # Show Tooltips in memory
         #for line in lines:
@@ -5044,24 +5060,48 @@ Call search.py when these control keys occur
         #self.debug_output()
         self.debug_list("TOOLTIPS - tt.line_dump()", lines)
 
+        # Opened Location ------------------------------------------
         self.debug_header("\nOpened Location")
-        self.debug_detail("lcs.open_code       :", lcs.open_code)
-        self.debug_detail("lcs.open_name       :", lcs.open_name)
-        self.debug_detail("lcs.open_modify_time:", lcs.open_modify_time)
-        self.debug_detail("lcs.open_image_path :", lcs.open_image_path)
-        self.debug_detail("lcs.open_mount_point:", lcs.open_mount_point) 
-        self.debug_detail("lcs.open_topdir     :", lcs.open_topdir)
-        self.debug_detail("lcs.open_host       :", lcs.open_host)
-        self.debug_detail("lcs.open_wakecmd    :", lcs.open_wakecmd)
-        self.debug_detail("lcs.open_testcmd    :", lcs.open_testcmd)
-        self.debug_detail("lcs.open_testrep    :", lcs.open_testrep)
-        self.debug_detail("lcs.open_mountcmd   :", lcs.open_mountcmd)
-        self.debug_detail("lcs.open_touchcmd   :", lcs.open_touchcmd)
-        self.debug_detail("lcs.open_touchmin   :", lcs.open_touchmin)
-        self.debug_detail("lcs.open_comments   :", lcs.open_comments)
-        self.debug_detail("lcs.open_row_id     :", lcs.open_row_id)
+        if lcs.NEW_LOCATION:
+            self.debug_detail("No locations on file")
+        else:
+            self.debug_detail("lcs.open_code       :", lcs.open_code)
+            self.debug_detail("lcs.open_name       :", lcs.open_name)
+            self.debug_detail("lcs.open_modify_time:", lcs.open_modify_time)
+            self.debug_detail("lcs.open_image_path :", lcs.open_image_path)
+            self.debug_detail("lcs.open_mount_point:", lcs.open_mount_point) 
+            self.debug_detail("lcs.open_topdir     :", lcs.open_topdir)
+            self.debug_detail("lcs.open_host       :", lcs.open_host)
+            self.debug_detail("lcs.open_wakecmd    :", lcs.open_wakecmd)
+            self.debug_detail("lcs.open_testcmd    :", lcs.open_testcmd)
+            self.debug_detail("lcs.open_testrep    :", lcs.open_testrep)
+            self.debug_detail("lcs.open_mountcmd   :", lcs.open_mountcmd)
+            self.debug_detail("lcs.open_touchcmd   :", lcs.open_touchcmd)
+            self.debug_detail("lcs.open_touchmin   :", lcs.open_touchmin)
+            self.debug_detail("lcs.open_comments   :", lcs.open_comments)
+            self.debug_detail("lcs.open_row_id     :", lcs.open_row_id)
         self.debug_output()
 
+        # Opened Playlist ------------------------------------------
+        self.debug_header("\nOpened Playlist")
+        if self.playlists.open_name:  # self.open_name =
+            self.debug_detail("playlists.open_name :", self.playlists.open_name)
+            self.debug_detail("open_row_id         :", self.playlists.open_row_id)
+            self.debug_detail("open_code           :", self.playlists.open_code)
+            self.debug_detail("open_loc_id         :", self.playlists.open_loc_id)
+            self.debug_detail("self.open_name      :", self.playlists.open_name)
+            self.debug_detail("#(self.open_id_list):", len(self.playlists.open_id_list))
+            self.debug_detail("open_size           :", self.playlists.open_size)
+            self.debug_detail("open_count          :", self.playlists.open_count)
+            self.debug_detail("open_seconds        :", self.playlists.open_seconds)
+            self.debug_detail("open_description    :", self.playlists.open_description)
+            self.debug_detail("name (maintenance)  :", self.playlists.name)
+        else:
+            self.debug_detail("No Playlist opened")
+
+        self.debug_output()
+
+        # Information Centre ------------------------------------------
         self.debug_header("\nInformation Centre - self.info.dict[]")
         self.debug_detail("--- KEY ---   --- VALUE ---------------------\n")
         for key in self.info.dict:
@@ -5079,7 +5119,7 @@ Call search.py when these control keys occur
             self.debug_detail(pre, self.info.dict[key])  # regular field type
         self.debug_output()
 
-
+        # Most used variables ------------------------------------------
         self.debug_header("\nCURRENT SONG and COMMON VARIABLES")
         try:
             song_iid = self.saved_selections[self.ndx]
@@ -5136,7 +5176,7 @@ Call search.py when these control keys occur
                           len(self.lib_tree.tag_has("Song")))
         self.debug_output()
 
-
+        # File Control class instances -------------------------------------------
         self.debug_header("\nself.Xxx_ctl = FileControl() instances opened")
         if self.play_ctl.metadata is not None:  # FileControl() always here
             self.debug_detail("Last file accessed - 'ffprobe' (self.play_ctl.metadata):")
@@ -5164,7 +5204,7 @@ Call search.py when these control keys occur
                 self.debug_detail(i, ":", self.mus_ctl.metadata[i])
         self.debug_output()
 
-
+        # Global variables ------------------------------------------
         self.debug_header("\nGLOBAL VARIABLES")
         self.debug_detail("START_DIR  :", START_DIR, " | START_DIR.count(os.sep):",
                           START_DIR.count(os.sep))
@@ -5177,6 +5217,7 @@ Call search.py when these control keys occur
         self.debug_detail("pending_apply() debug print flag DPRINT_ON:", DPRINT_ON)
         self.debug_output()
 
+        # SQL - Sqlite3 Tables ------------------------------------------
         self.debug_header("\nSQL - Sqlite3 Information")
         self.debug_detail("SQL Sqlite3 Tables and Indices")
         self.debug_detail("-" * 75, "\n")
@@ -5199,6 +5240,7 @@ Call search.py when these control keys occur
         # Cannot run vacuum - need SQL version 3.22 for INTO option, current is 3.11
         #sql.con.execute("VACUUM INTO '/run/user/1000/mserve library.db'")
 
+        # SQL Blacklisted Music files ------------------------------------------
         if sql.ofb.blacks is not None:
             self.debug_detail("\nSQL Blacklisted songs")
             self.debug_detail("-" * 51, "\n")
@@ -5234,6 +5276,7 @@ Call search.py when these control keys occur
         '''
         self.debug_output()
 
+        # PulseAudio ------------------------------------------
         if pav.pulse_is_working:
             ''' Fast method using pulse audio direct interface '''
             self.debug_header("\nPulse Audio - vu_pulse_audio.py PulseControl()")
@@ -5267,7 +5310,7 @@ Call search.py when these control keys occur
                 self.debug_detail(err)
             self.debug_output()
 
-
+        # Wrapup ------------------------------------------
         title = "show_debug() - mserve"
         text = "DEBUG information written to stdout (Standard Output)\n"
         text += "and to Information Centre (use 'View' dropdown menu)"
@@ -5360,8 +5403,10 @@ Call search.py when these control keys occur
         result = self.debug_read_print()  # Read print file (or error messages)
         if result:  # Should always be a result
             self.debug_title.append(result)
+        else:
+            print("debug_header() no result found!")
 
-        ''' Add underlines after heading? '''
+        ''' Add underline below heading? '''
         underline = True  # Default as normally only one header + underline
         for key, value in kwargs. iteritems():
             if key == 'underline':
@@ -11495,13 +11540,28 @@ mark set markName index"
         #print("BEFORE shuffle - self.ndx:", self.ndx, '= Music Id:',
         #      self.saved_selections[self.ndx])
 
+        dialog = message.AskQuestion(
+            self.play_top, thread=self.get_refresh_thread,
+            title="Shuffle options", confirm='no',
+            text="\nRandom shuffle?:\n\n" +
+                 "Yes = Random shuffle\nNo = Artist/Album/Song\n"
+        )
+
         sql.hist_add_shuffle('remove', 'shuffle', self.saved_selections)
         Id = self.saved_selections[self.ndx]  # Save current playing
         L = list(self.saved_selections)  # convert possible tuple to list
-        shuffle(L)  # randomize list
+        if dialog.result == 'yes':
+            shuffle(L)  # randomize list
+        else:
+            # https://stackoverflow.com/a/71095851/6929343
+            results = [int(i) for i in L]
+            results.sort()  # restore alphabetical (order of appearance in lib_tree)
+            L = [str(i) for i in results]
+            #print("L [  0 : 10]:", L[0:10])
+            #print("L [-10 : -1]:", L[-10:-1])
         self.ndx = L.index(Id)  # restore old index
         self.saved_selections = L  # Reset iid list from lib_top.tree
-        
+
         # Reverse filters so proper song index is saved
         if self.chron_has_filter:
             # 2024-05-02 TODO make all encompassing function with new detach
