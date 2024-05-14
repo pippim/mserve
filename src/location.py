@@ -2814,6 +2814,11 @@ class Locations(LocationsCommonSelf):
         """ Delete Location  when 'Delete' button applied. """
         sql.loc_cursor.execute("DELETE FROM Location WHERE Id=?", [self.act_row_id])
         sql.con.commit()  # con.commit() must follow cursor.execute()
+        # same as mserve.py Playlists().delete_playlist()
+        sql.delete_config("resume", self.act_code)
+        sql.delete_config("chron_state", self.act_code)
+        sql.delete_config("hockey_state", self.act_code)
+        sql.delete_config("open_states", self.act_code)
 
     def make_act_from_empty_dict(self):
         """ July 27, 2023 - Currently only used when mserve calls lcs.new(). """
@@ -2852,7 +2857,7 @@ class Locations(LocationsCommonSelf):
 
     def make_open_from_sql_dict(self, d):
         """ Make 'Open' location fields from SQL Location Table Row """
-        self.open_code = d['Code']  # Replacement for 'iid'
+        self.open_code = d['Code']  # Replaces LOC version 1 'iid'
         self.open_name = d['Name']
         self.open_modify_time = d['ModifyTime']
         self.open_image_path = d['ImagePath']

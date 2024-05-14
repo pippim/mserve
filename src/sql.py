@@ -2403,6 +2403,24 @@ def save_config(Type, Action="", SourceMaster="", SourceDetail="", Target="",
     con.commit()
 
 
+def delete_config(Type, Action):
+    """ Delete system configuration recorded in SQL history table in the
+        'Type' + 'Action' columns. Protection from "glitches" of deleting too
+        many records.
+    """
+    # Check if only 1 record exists
+    count = hist_count_type_action(Type, Action, prt=False)
+    if count != 1:
+        print("sql.py delete_config(): NOTE: Count for Type: '" +
+              Type + "', Action: '" + Action + "', is: '" + str(count) + "'.")
+        return
+
+    hist_cursor.execute("DELETE FROM History INDEXED BY TypeActionIndex " +
+                        "WHERE Type = ? AND Action = ?", (Type, Action))
+
+    con.commit()
+
+
 def hist_last_time(check_type, check_action):
     """ Get the last time the type + action occurred
 

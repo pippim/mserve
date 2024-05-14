@@ -91,6 +91,8 @@ warnings.simplefilter('default')  # in future Python versions.
 #       Mar. 26 2024 - View SQL Tables - Compact code, rename column headings.
 #       Apr. 06 2024 - lyrics change "{}" to "[]" because it messes up treeview.
 #       Apr. 28 2024 - Loudness Normalization using ffmpeg 'loudnorm' filter.
+#       May. 12 2024 - New shuffle - Artist/Album/Song (order of appearance).
+#       May. 13 2024 - Major bug fix, delete playlist replaces favorites.
 #
 #==============================================================================
 
@@ -1165,7 +1167,20 @@ class MusicLocTreeCommonSelf:
         self.chron_last_row = None          # Last row highlighted with cursor
         self.chron_last_tag_removed = None  # 'normal' or 'chron_sel' was removed for highlight
         self.chron_has_filter = None        # 'time_index', 'over_5', [ARTIST NAME]
-        self.chron_iid_dict = {}            # treeview iid of True/False attached
+
+        self.chron_iid_dict = OrderedDict()  # chron tree iid True/False attached
+        ''' From toolkit.py
+        i_r = -1  # https://stackoverflow.com/a/47055786/6929343
+        for iid in self.chron_iid_dict.keys():
+
+            # If not attached then reattach it
+            i_r += 1  # Get back attached in same position!
+            if self.chron_iid_dict[iid] is False:
+                #i_r += 1  # Causing attached to go near bottom!
+                self.tree.reattach(iid, '', i_r)
+                self.chron_iid_dict[iid] = True        
+        '''
+
         self.chron_attached = []            # list of attached chronology tree id's
         self.chron_detached = []            # list of detached id's to restore
         self.chron_saved_ndx = None         # original song index 'self.ndx'
@@ -2200,9 +2215,10 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
             with their method self.playlists.apply_callback()
             Also called when deleting playlist currently playing. """
         if delete_only:  # Deleted Playlist that was open
-            self.pending_reset(ShowInfo=False)  # Just in case it was open.
-            self.enable_lib_menu()
-            self.load_last_selections()
+            self.pending_reset(ShowInfo=False)  # Cancel any playlist changes
+            self.enable_lib_menu()  # save_last_selections
+            self.load_last_selections()  # search def load_last_selections
+            print(self.who + "apply_playlists(delete_only=True)")
             return  # Called by Playlists.delete() function
 
         self.save_last_selections(new_playlist=True)  # special save situation
@@ -2420,7 +2436,8 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
         """ After applying pending checkboxes in lib_tree remove popup frame. """
         if not self.pending_grid_visible:
             # July 6, 2023 - happens when closing playlist when changes not saved
-            print("mserve.py pending_remove_grid() called but already invisible.")
+            #print("mserve.py pending_remove_grid() called but already invisible.")
+            # 2024-05-13 - also happens when deleting playlist. So remove message.
             return
         self.pending_grid_visible = False
         if GRID_REMOVE_SUPPORTED:
@@ -2779,7 +2796,7 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
         self.pending_add_cnt = 0            # June 17, 2023 - needed to make new
         self.pending_del_cnt = 0            # self.playlists.open() happy.
         self.enable_lib_menu()  # Not enabling Open, New, etc. Changes to Default Favorites?
-        self.pending_remove_grid()
+        self.pending_remove_grid()  # remove grid only if visible
 
     def populate_lib_tree(self, delayed_textbox):
         """ Add Artist, Album and Song to treeview listbox.
@@ -4938,8 +4955,6 @@ Call search.py when these control keys occur
         wakeonlan_ver = os.popen("wakeonlan --version 2>&1 | grep 'wakeonlan version'").\
             read().strip()[:60] + " ..."
         self.debug_detail('wakeonlan Version :', wakeonlan_ver)
-
-
         # def debug_detail - add refresh if last call > 16 ms
 
         def ff_version(ff_name):
@@ -8569,6 +8584,10 @@ Call search.py when these control keys occur
         ''' Tell queue_next_song() not to increment self.ndx '''
         self.song_set_ndx_just_run = True  # self.ndx set, don't use 'Next'
 
+        ''' 2024-05-13 getting tooltip error on close. set_pp_button_text() '''
+        if not self.play_top_is_active:
+            return  # Play window closed?
+
         ''' If music currently paused, set state as if playing '''
         if self.pp_state is "Paused":
             # Mimic what pp_toggle() does when un-pausing music
@@ -11548,9 +11567,15 @@ mark set markName index"
         )
 
         sql.hist_add_shuffle('remove', 'shuffle', self.saved_selections)
-        Id = self.saved_selections[self.ndx]  # Save current playing
+
+        # Remove any chronology (song queue) filters for fresh start
+        if self.chron_has_filter:
+            Id = self.saved_selections[self.chron_saved_ndx]  # Restore playing
+            self.chron_reverse_filter()
+        else:
+            Id = self.saved_selections[self.ndx]  # Save current playing
         L = list(self.saved_selections)  # convert possible tuple to list
-        if dialog.result == 'yes':
+        if dialog.result == 'yes':  # 'yes' = random, 'no' = alphabetical.
             shuffle(L)  # randomize list
         else:
             # https://stackoverflow.com/a/71095851/6929343
@@ -11562,12 +11587,7 @@ mark set markName index"
         self.ndx = L.index(Id)  # restore old index
         self.saved_selections = L  # Reset iid list from lib_top.tree
 
-        # Reverse filters so proper song index is saved
-        if self.chron_has_filter:
-            # 2024-05-02 TODO make all encompassing function with new detach
-            self.chron_reverse_filter()  # Also calls populate_chron_tree()
-        else:
-            self.populate_chron_tree()  # Rebuild with new sort order
+        self.populate_chron_tree()  # Rebuild with new sort order
 
         # June 18, 2023 - Review history audit record. Probably overkill?
         sql.hist_add_shuffle('edit', 'shuffle', self.saved_selections)
@@ -11773,20 +11793,21 @@ mark set markName index"
         self.play_ctl.close()  # If playing song update last access time
         self.loud_ctl.close()  # Simply closes and doesn't update metadata
 
-        # Reverse filters so proper song index is saved
+        # chron filters changed song index but saved it first
         if self.chron_has_filter:
-            self.chron_reverse_filter()
+            self.ndx = self.chron_saved_ndx
+            self.chron_has_filter = None  # prevent further updates
 
         self.save_resume()  # playing/paused and seconds progress into song.
         self.save_chron_state()  # chronology tree state = "Show"/"Hide"
         self.save_hockey_state()  # Hockey buttons OR FF/Rewind buttons?
-        self.save_open_states()  # This is saving for favorites & playlists?
+        self.save_open_states()  # This is saving for favorites & playlists
 
         if self.play_hockey_active:
             set_tv_sound_levels(25, 100)
             # Restore TV sound
 
-        self.play_top_is_active = False
+        self.play_top_is_active = False  # 2024-05-13 document why now not later...
         ext.kill_pid_running(self.vu_meter_pid)
 
         # Last known window position for playlist, saved to SQL
@@ -11827,7 +11848,7 @@ mark set markName index"
         return True
 
     def save_resume(self):
-        """
+        """ Favorites ONLY.
             Save state of playing / paused and seconds progress into song.
         """
         Comments = "Last song playing/paused when play closed"
@@ -12217,14 +12238,15 @@ mark set markName index"
         self.populate_chron_tree()
 
     def populate_chron_tree(self):
-        """ Populate playlist chronology treeview listbox
-        """
+        """ Populate playlist chronology treeview listbox """
 
         if not self.play_top_is_active:
             return  # Closing down
 
         ''' Delete all attached entries in current treeview '''
         self.chron_tree.delete(*self.chron_tree.get_children())
+
+        self.chron_iid_dict = OrderedDict()  # True/False for each iid attached/detached
 
         for i, lib_tree_iid in enumerate(self.saved_selections):
             if not self.play_top_is_active:
@@ -12241,6 +12263,7 @@ mark set markName index"
                 self.chron_tree.insert('', 'end', iid=song_iid, text=line, values=values,
                                        tags=("normal",))
                 self.chron_tree.tag_bind(song_iid, '<Motion>', self.chron_highlight_row)
+                self.chron_iid_dict[int(song_iid)] = True  # iid is attached
             except tk.TclError:
                 bad_msg = "mserve.py populate_chron_tree() bad line:"
                 print(bad_msg, line)
@@ -12329,11 +12352,13 @@ mark set markName index"
                 Kid3 to edit metadata / artwork
                 Notes about song stored in SQL History Table
                 Filter songs by artist, with time index, over 5 minutes
+                    - OR (if loudness normalization playlist) -
+                Filter songs by worse volume, missed target, reached target
         """
         item = self.chron_tree.identify_row(event.y)
         lib_iid = self.saved_selections[int(item) - 1]  # Music lib tree IID
         os_filename = self.make_variable_path(lib_iid)  # full path to song
-        print("item:", item, "lib_iid:", lib_iid, "os_filename:", os_filename)
+        #print("item:", item, "lib_iid:", lib_iid, "os_filename:", os_filename)
 
         if item is None:
             # self.info.cast("Cannot click on an empty row.")
@@ -12357,7 +12382,16 @@ mark set markName index"
             menu.add_command(label="Play Song № " + item, font=g.FONT,
                              command=lambda: self.chron_tree_play_now(item))
         menu.add_separator()
-        if self.chron_has_filter is None:
+
+        if self.chron_has_filter is None and self.is_loudnorm_playlist:
+            # Give three filter options
+            menu.add_command(label="Filter volume worse", font=g.FONT,
+                             command=lambda: self.chron_apply_filter('volume_worse', item))
+            menu.add_command(label="Filter volume missed target", font=g.FONT,
+                             command=lambda: self.chron_apply_filter('volume_missed', item))
+            menu.add_command(label="Filter volume met target", font=g.FONT,
+                             command=lambda: self.chron_apply_filter('volume_met', item))
+        elif self.chron_has_filter is None:
             # Give three filter options
             menu.add_command(label="Filter Synchronized songs", font=g.FONT,
                              command=lambda: self.chron_apply_filter('time_index', item))
@@ -12431,20 +12465,25 @@ mark set markName index"
                     1) Songs with time index (synchronized lyrics)
                     2) Songs for specific artist
                     3) Songs over 5 minutes long
+                    4) Volume worse
+                    5) Volume missed target
+                    6) Volume met target
                 When filtered other songs are detached from treeview.
                 In self.song_set_ndx(item - 1) when hitting detached song,
                     preform recursive call with same operation.
 
-            :param option 'time_index', 'no_time_index', 'artist_name', 'over_5'
+            :param option 'time_index', 'no_time_index', 'artist_name', etc.
             :param item: item (iid) in chronology playlist
         """
+        _who = self.who + "chron_apply_filter():"
         # Save song index we are about to change so we can restore later
         self.chron_saved_ndx = self.ndx  # current playlist index number
-        self.chron_attached = []
-        self.chron_detached = []
+        # self.chron_attached + self.chron_detached = self.chron_iid_dict
+        self.chron_iid_dict = dict.fromkeys(self.chron_iid_dict, False)
 
         # Build list of filtered indices
         if option is "artist_name":
+            # Need to read entire tree branch for compilations
             iid = self.saved_selections[int(item) - 1]  # lib treeview ID
             # Get artist in music library and build list of all checked songs
             album = self.lib_tree.parent(iid)
@@ -12460,26 +12499,21 @@ mark set markName index"
                         for c in pretty_no:
                             if c.isdigit():
                                 num = num + c  # E.G. Get "21"
-                        # print("values:", values, "num:", num)
-                        self.chron_attached.append(num)  # list of playlist number strings
+                        self.chron_iid_dict[int(num)] = True
 
         if option is "time_index":
             for i, iid in enumerate(self.chron_tree.get_children()):
                 if iid.startswith("I"):
                     continue  # empty row
                 time_index_flag = self.chron_tree.item(iid)['values'][0]
-                #print("time_index_flag:", time_index_flag, "iid:", iid)
                 if time_index_flag == 'yes':  # "is 'yes':" doesn't work !!!
-                    self.chron_attached.append(iid)  # Playlist number strings
-                    # print("synchronized:", time_index_flag, "iid:", iid)
+                    self.chron_iid_dict[int(iid)] = True
 
         if option is "no_time_index":
             for i, iid in enumerate(self.chron_tree.get_children()):
                 time_index_flag = self.chron_tree.item(iid)['values'][0]
-                #print("time_index_flag:", time_index_flag, "iid:", iid)
                 if time_index_flag == 'no':
-                    self.chron_attached.append(iid)  # Playlist number strings
-                    # print("synchronized:", time_index_flag, "iid:", iid)
+                    self.chron_iid_dict[int(iid)] = True
 
         if option is "over_5":
             for i, iid in enumerate(self.chron_tree.get_children()):
@@ -12488,23 +12522,86 @@ mark set markName index"
                 if ":" in duration:
                     minutes = duration.split(":")[0].strip()
                     if minutes.isdigit() and int(minutes) >= 5:
-                        self.chron_attached.append(iid)  # Playlist number strings
-                        # print("duration:", duration, "iid:", iid)
+                        self.chron_iid_dict[int(iid)] = True
 
-        kept_count = 0
-        for i, iid in enumerate(self.chron_tree.get_children()):
-            try:
-                self.chron_attached.index(iid)
-                # print("keep iid:", iid)
-                kept_count += 1
-            except ValueError:  # ValueError: '1' is not in list
-                self.chron_tree.detach(iid)
-                self.chron_detached.append(iid)
 
-        #print("chron_apply_filter(self, option):", option)
-        #print("kept_count:", kept_count)
+        # Filter options for ffmpeg loudness normalization
+        trg_max_vol = float(lcs.avo_true_peak)
 
-        if kept_count < 2:
+        def get_volume_detect(version, itm):
+            """ Get SQL History Table records of maximum volume
+                If record not found or N/A, return -99.9
+            """
+            lib_iid = self.saved_selections[int(itm) - 1]  # Music lib tree IID
+            #os_filename = self.make_variable_path(lib_iid)  # full path to song
+            MusicId = self.get_music_id_for_lib_tree_id(lib_iid)
+            max_volume = None
+            if not MusicId:
+                print(_who, "Could not get MusicId for lib_iid:", lib_iid)
+                return -99.9
+            d = sql.hist_get_music_var(MusicId, 'volume', version, lcs.open_code)
+            if d:
+                mean_volume, max_volume = json.loads(d['Target'])
+                if max_volume != "N/A":
+                    try:
+                        ret = float(max_volume.split()[0])
+                        return ret
+                    except (ValueError, IndexError, AttributeError) as err:
+                        print(_who, "Could not convert to float:", max_volume)
+                        print(err)
+
+            print(_who, "MusicId:", MusicId, "lib_iid:", lib_iid, "itm:", itm,
+                  "max_volume:", max_volume)
+            return -99.9
+
+        def check_volume_detect(chron_iid):
+            """ Get SQL History Table records of maximum volume.
+
+                Object is to raise volume of songs < 0.0 dB maximum volume.
+
+                0.0 is highest volume. -0.1 is softer. -0.2 is even softer.
+                Initial project is to make all songs louder to 0.0 dB which
+                goes against industry standards of -1.0 or -1.5 dB so most
+                people wish to bump volume down. However too many songs would
+                have to be changed.
+            """
+            old_max = get_volume_detect("detect_old", chron_iid)
+            new_max = get_volume_detect("detect_new", chron_iid)
+
+            if old_max == trg_max_vol:
+                # Check for bugs in def create_loudnorm()
+                print(_who, "\n\tRecord shouldn't exist when old_max =", old_max,
+                      "and new_max = ", new_max, "iid:", iid)
+                return False
+
+            if old_max == -99.9 or new_max == -99.9:
+                #print(_who, "Invalid maximum volume")
+                # error message already displayed
+                return False
+
+            if option is "volume_worse" and new_max < old_max:
+                return True
+            elif option is "volume_missed" and new_max < trg_max_vol:
+                return True
+            elif option is "volume_met" and new_max >= trg_max_vol:
+                return True
+            else:
+                return False
+
+        # Three filers: "volume_worse", "volume_missed" and "volume_met"
+        if option.startswith("volume_"):
+            for iid in self.chron_tree.get_children():
+                if check_volume_detect(iid):
+                    self.chron_iid_dict[int(iid)] = True
+
+        # chron_attached & chron_detached lists for easier checking
+        self.chron_attached = [str(x) for x in self.chron_iid_dict.keys()
+                               if self.chron_iid_dict[x] is True]
+        self.chron_detached = [str(x) for x in self.chron_iid_dict.keys()
+                               if self.chron_iid_dict[x] is False]
+
+        # Must have at least two songs for a playlist to work
+        if len(self.chron_attached) < 2:
             #print("reattaching all items")
             self.chron_reverse_filter()
             quote = ("\n" +
@@ -12517,25 +12614,24 @@ mark set markName index"
             self.info.fact(quote)
             return  # TODO: Has this been tested? Use small playlist
 
-        ''' Fix Synchronized sorted out of order. Artist is random order '''
-        self.chron_attached.sort(key=int)
-        #for i, attached in enumerate(self.chron_attached):
-        #    print(i, attached)
+        # Remove songs from chronology treeview so only filtered remain
+        for iid in self.chron_tree.get_children():
+            if self.chron_iid_dict[int(iid)] is False:
+                self.chron_tree.detach(iid)
 
         # Stop current song and remove highlighting in lib_tree
         if self.pp_state == "Playing":
             self.pp_toggle()  # Pause current song because it will be changing.
         self.wrapup_song()
 
-        # Position to first song on filtered playlist and highlight
-        self.ndx = int(self.chron_attached[0]) - 1
+        self.ndx = int(self.chron_attached[0]) - 1  # Play first song in filter
         self.play_chron_highlight(self.ndx, True)  # True = use short line
-        self.chron_tree.see(self.chron_attached[0])
-        self.song_set_ndx(self.ndx)  # Force play and screen update
+        self.chron_tree.see(self.chron_attached[0])  # Highlight first chron row
+        self.song_set_ndx(self.ndx)  # Start song play and screen updating
+        self.chron_has_filter = option  # Let other functions know filter active
 
-        #self.chron_tree.update_idletasks()
-
-        self.chron_has_filter = option
+        # TODO: Splash message chron_tree widget south center with number
+        #       of songs attached.
 
     def chron_reverse_filter(self):
         """ Remove Playlist filter and restore playlist song indices
@@ -12543,31 +12639,41 @@ mark set markName index"
             when playlist is shuffled.
         """
 
-        ''' From toolkit.py
+        ''' From toolkit.py '''
         i_r = -1  # https://stackoverflow.com/a/47055786/6929343
         for iid in self.chron_iid_dict.keys():
 
+            #print("iid:", iid, type(iid), self.chron_iid_dict[iid])
+
             # If not attached then reattach it
             i_r += 1  # Get back attached in same position!
-            if self.chron_iid_dict[iid] is False:
+            if self.chron_iid_dict[int(iid)] is False:
                 #i_r += 1  # Causing attached to go near bottom!
-                self.tree.reattach(iid, '', i_r)
-                self.self.chron_iid_dict[iid] = True        
-        '''
+                try:
+                    self.chron_tree.reattach(iid, '', i_r)
+                except tk.TclError as err:
+                    print("tk.TclError:", err)
+                    print("iid:", iid, type(iid))
+                self.chron_iid_dict[int(iid)] = True
 
+        '''
         for iid in self.chron_detached:
             # Order is messed up but reattach so they can be deleted
             self.chron_tree.reattach(iid, "", 0)
         self.chron_detached = []
         self.chron_attached = []
+        self.chron_iid_dict = dict.fromkeys(self.chron_iid_dict, True)
+        '''
         self.wrapup_song()
         # Resume playing last song before filter applied
         self.ndx = self.chron_saved_ndx
         self.chron_saved_ndx = None  # Check not "None" when closing to restore
         self.chron_has_filter = None
         # List is built numbered backwards with kept items at bottom numbered forwards
-        self.populate_chron_tree()  # Now totally rebuild from scratch
-        self.song_set_ndx(self.ndx)  # Force play and screen update
+        #self.populate_chron_tree()  # Now totally rebuild from scratch
+        if self.play_top_is_active:
+            # 2024-05-13 add play_top test to fix tooltip not found errors
+            self.song_set_ndx(self.ndx)  # Force play and screen update
 
     def build_chron_line(self, playlist_no, lib_tree_iid, short_line):
         """ № (U+2116)  🎵  (1f3b5)  🎨  (1f3a8)  🖌  (1f58c)  🖸 (1f5b8)
@@ -16162,10 +16268,12 @@ class PlaylistsCommonSelf:
 class Playlists(PlaylistsCommonSelf):
     """ Usage:
 
-        self.playlists = Playlists(parent, name, title, text, tooltips=self.tt,
-                                   thread=self.get_refresh_thread,
-                                   get_pending=self.get_pending_cnt_total,
-                                   display_lib_title=self.display_lib_title)
+        self.playlists = Playlists(
+            self.lib_top, apply_callback=self.apply_playlists, tooltips=self.tt,
+            pending=self.get_pending_cnt_total, enable_lib_menu=self.enable_lib_menu,
+            thread=self.get_refresh_thread, play_close=self.play_close,
+            display_lib_title=self.display_lib_title, info=self.info)
+
               - Geometry in Type-'window', action-'playlists'.
               - build_lib_menu will look at self.playlists.status
 
@@ -16702,6 +16810,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         self.open_count = None
         self.open_seconds = None
         self.open_description = None
+        # what about self.playlists.name? (self.name)
 
     def check_pending(self):
         """ When lib_top_tree has check boxes for adding/deleting songs that
@@ -16874,7 +16983,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             # self.top window hasn't been created so use self.parent instead
             text = "\nThere are " + '{:n}'.format(self.act_count) + \
                    " songs in the playlist.\n"
-            if self.open_code == self.act_code:
+            if self.open_code and self.open_code == self.act_code:
                 text += "\nThe playlist is currently playing and will be stopped.\n"
             dialog = message.AskQuestion(
                 self.top, "Confirm playlist deletion", text, icon='warning',
@@ -16930,6 +17039,11 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         """ Delete Playlist using History Row ID """
         sql.hist_cursor.execute("DELETE FROM History WHERE Id = ?",
                                 [self.act_row_id])
+        # Same as location.py Locations().delete_location()
+        sql.delete_config("resume", self.act_code)
+        sql.delete_config("chron_state", self.act_code)
+        sql.delete_config("hockey_state", self.act_code)
+        sql.delete_config("open_states", self.act_code)
         sql.con.commit()
 
     def reset(self, shutdown=False):
@@ -16965,18 +17079,17 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             return
 
         if self.state == 'delete':
-            # TODO: Delete resume, chron_state, hockey_state and open_states
-            #       Or just set a deleted flag and not physically delete.
             self.info.cast("Deleted playlist: " + self.act_name, action="delete")
             self.delete_playlist()  # Doesn't use self.open_code
-            if self.open_code == self.act_code:
+            if self.open_code and self.open_code == self.act_code:
                 # Just deleted opened playlist
                 print("After Playlists.delete_playlist() Calling def play_close()")
-                self.play_close()  # must be called before name is set
+                # Close Playlist (use Favorites) mimics self.close() above
+                self.play_close()  # must be called before name is reset
                 self.reset_open_vars()  # Set all self.open_xxx to None
                 self.reset()  # Close everything down, E.G. destroy window
                 self.display_lib_title()
-                self.apply_callback(delete_only=True)
+                self.apply_callback(delete_only=True)  # def apply_playlists
 
         elif self.state == 'open' and self.act_description.startswith("http"):
             self.info.cast("Opening Web Browser for: " + self.act_name + " at " +
