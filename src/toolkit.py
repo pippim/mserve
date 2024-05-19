@@ -26,6 +26,7 @@ from __future__ import with_statement       # Error handling for file opens
 #       Jan. 01 2024 - computer_bytes(size_str) converts '4.0K blah' to 4000
 #       Mar. 23 2024 - Save custom views in DictTreeview() class
 #       Apr. 30 2024 - New tool_type="splash" manually invoked
+#       May. 15 2024 - User configurable Tooltip colors and timings
 #
 #==============================================================================
 
@@ -4030,17 +4031,19 @@ def gnome_screenshot(geom):
 
 D_PRINT = False         # Print debug events
 
+# Five timing variables are user configurable and stored in SQL History Table
+# Type, Action, Master, Detail = ['cfg_tooltips', 'default', 'time', 'ms']
 VISIBLE_DELAY = 750     # ms pause before balloon tip appears (3/4 sec)
 VISIBLE_SPAN = 5000     # ms balloon tip remains on screen (5 sec/line)
 EXTRA_WORD_SPAN = 500   # 1/2 second per word if > VISIBLE_SPAN
 FADE_IN_SPAN = 500      # 1/4 second to fade in
 FADE_OUT_SPAN = 400     # 1/5 second to fade out
 
-''' NOTE: Because a new tip fades in after 3/4 second we have time to
-          make old tool tip fade out assuming VISIBLE_DELAY > FADE_TIME '''
-if VISIBLE_DELAY < FADE_OUT_SPAN:
-    print('VISIBLE_DELAY < FADE_OUT_SPAN')
-    exit()
+VISIBLE_DELAY = None    # ms pause before balloon tip appears (3/4 sec)
+VISIBLE_SPAN = None     # ms balloon tip remains on screen (5 sec/line)
+EXTRA_WORD_SPAN = None  # 1/2 second per word if > VISIBLE_SPAN
+FADE_IN_SPAN = None     # 1/4 second to fade in
+FADE_OUT_SPAN = None    # 1/5 second to fade out
 
 
 class CommonTip:
@@ -4060,6 +4063,7 @@ class CommonTip:
         self.motion_time = 0.0          # time button was released          7
         self.press_time = 0.0           # time button was pressed           8
         self.release_time = 0.0         # time button was released          9
+        # User configurable timings ('cfg_tooltips', 'default', 'time', 'ms')
         self.visible_delay = 0          # milliseconds before visible       10
         self.visible_span = 0           # milliseconds to keep visible      11
         self.extra_word_span = 0        # milliseconds for extra lines      12
@@ -4167,6 +4171,29 @@ class ToolTips(CommonTip):
         self.dict = {}                  # Tip dictionary
         self.tips_list = []             # List of Tip dictionaries
         self.tips_index = 0             # Current working Tip dictionary in list
+
+        self.cfg = sql.Config()
+        sql_key = ['cfg_tooltips', 'default', 'style', 'color']
+        dft = self.cfg.get_cfg(sql_key)
+        self.dft_fg = dft['foreground']
+        self.dft_bg = dft['background']
+
+        sql_key = ['cfg_tooltips', 'default', 'time', 'ms']
+        dft = self.cfg.get_cfg(sql_key)
+        #print("dft:", dft)
+        global VISIBLE_DELAY, VISIBLE_SPAN, EXTRA_WORD_SPAN
+        global FADE_IN_SPAN, FADE_OUT_SPAN
+        VISIBLE_DELAY = dft['VISIBLE_DELAY']
+        VISIBLE_SPAN = dft['VISIBLE_SPAN']
+        EXTRA_WORD_SPAN = dft['EXTRA_WORD_SPAN']
+        FADE_IN_SPAN = dft['FADE_IN_SPAN']
+        FADE_OUT_SPAN = dft['FADE_OUT_SPAN']
+
+        ''' NOTE: Because a new tip fades in after 3/4 second we have time to
+                  make old tool tip fade out assuming VISIBLE_DELAY > FADE_TIME '''
+        if VISIBLE_DELAY < FADE_OUT_SPAN:
+            print('toolkit.py Tooltips(): VISIBLE_DELAY < FADE_OUT_SPAN')
+            exit()
 
     def dict_to_fields(self):
         """ Cryptic dictionary fields to easy names """
@@ -4448,9 +4475,12 @@ class ToolTips(CommonTip):
         return fade_in_time, fade_out_time
 
     def add_tip(self, widget, text='Pass text here', tool_type='button',
-                visible_delay=VISIBLE_DELAY, visible_span=VISIBLE_SPAN,
-                extra_word_span=EXTRA_WORD_SPAN, fade_in_span=FADE_IN_SPAN,
-                fade_out_span=FADE_OUT_SPAN, anchor="sw", menu_tuple=None,
+                #visible_delay=VISIBLE_DELAY, visible_span=VISIBLE_SPAN,
+                #extra_word_span=EXTRA_WORD_SPAN, fade_in_span=FADE_IN_SPAN,
+                #fade_out_span=FADE_OUT_SPAN, anchor="sw", menu_tuple=None,
+                visible_delay=None, visible_span=None,
+                extra_word_span=None, fade_in_span=None,
+                fade_out_span=None, anchor="sw", menu_tuple=None,
                 pb_alpha=None, pb_leave=None, pb_ready=None, pb_close=None):
         """ Declare Tooltip """
         CommonTip.__init__(self)            # Initialize all tip instances
@@ -4465,11 +4495,11 @@ class ToolTips(CommonTip):
         self.pb_close = pb_close            # Piggy-back callback when tip destroyed
         # Also used by "splash" tool_type to wrapup
 
-        self.visible_delay = visible_delay
-        self.visible_span = visible_span
-        self.extra_word_span = extra_word_span
-        self.fade_in_span = fade_in_span
-        self.fade_out_span = fade_out_span
+        self.visible_delay = visible_delay if visible_delay else VISIBLE_DELAY
+        self.visible_span = visible_span if visible_span else VISIBLE_SPAN
+        self.extra_word_span = extra_word_span if extra_word_span else EXTRA_WORD_SPAN
+        self.fade_in_span = fade_in_span if fade_in_span else FADE_IN_SPAN
+        self.fade_out_span = fade_out_span if fade_out_span else FADE_OUT_SPAN
         self.anchor = anchor
 
         # Bind all widgets except "piggy_back" and "splash" to common functions
@@ -4759,13 +4789,15 @@ class ToolTips(CommonTip):
         # Invert tooltip colors from current widget album art colors.
         #if self.tool_type is not 'canvas_button':  # comment June 15/23
         # What about 'label'?
-        if self.tool_type is 'button' or self.tool_type is 'menu'\
-                or self.tool_type is 'splash':
+        if self.tool_type is 'button' or self.tool_type is 'menu':
+            #or self.tool_type is 'splash':
+            # splash over a button object
             self.fg = self.widget["background"]
             self.bg = self.widget["foreground"]
         else:
-            self.fg = None  # 'canvas_button' has no coloring.  'label' and
-            self.bg = None  # 'piggy-back' will also come here
+            # splash over a treeview object
+            self.fg = self.dft_fg  # 'canvas_button' has no coloring.  'label' and
+            self.bg = self.dft_bg  # 'piggy-back' will also come here
 
         #self.tip_window = tw = tk.Toplevel(self.widget)  # Original weird code...
         if self.menu_tuple:
@@ -4867,9 +4899,20 @@ class ToolTips(CommonTip):
         self.tip_window.wm_geometry("+%d+%d" % (x, y))
         self.window_geom = self.tip_window.wm_geometry()
 
-    def set_text(self, widget, text, visible_delay=VISIBLE_DELAY,
-                 visible_span=VISIBLE_SPAN, extra_word_span=EXTRA_WORD_SPAN,
-                 fade_in_span=FADE_IN_SPAN, fade_out_span=FADE_OUT_SPAN):
+    def set_text(self, widget, text,
+                 #visible_delay=VISIBLE_DELAY,
+                 #visible_span=VISIBLE_SPAN, extra_word_span=EXTRA_WORD_SPAN,
+                 #fade_in_span=FADE_IN_SPAN, fade_out_span=FADE_OUT_SPAN):
+                 visible_delay=None,
+                 visible_span=None, extra_word_span=None,
+                 fade_in_span=None, fade_out_span=None):
+
+        visible_delay = visible_delay if visible_delay else VISIBLE_DELAY
+        visible_span = visible_span if visible_span else VISIBLE_SPAN
+        extra_word_span = extra_word_span if extra_word_span else EXTRA_WORD_SPAN
+        fade_in_span = fade_in_span if fade_in_span else FADE_IN_SPAN
+        fade_out_span = fade_out_span if fade_out_span else FADE_OUT_SPAN
+
         """ Text and fade variables changed by caller """
         for i, s in enumerate(self.tips_list):
             if s['widget'] == widget:

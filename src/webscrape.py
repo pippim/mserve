@@ -16,7 +16,8 @@ from __future__ import with_statement  # Error handling for file opens
 #       June 25 2023 - Use toolkit.uni_str(line).
 #       July 13 2023 - Interface to/from mserve_config.py.
 #       Aug. 22 2023 - Temporary files removed on mserve.py close.
-#       Apr. 06 2024 - lyrics change "{}" to "[]" because it messes up treeview.
+#       Apr. 06 2024 - lyrics change "{}" to "[]" for View SQL Music treeview.
+#       May. 18 2024 - Print 3 mserve_scrape* file contents for debugging.
 #
 # ==============================================================================
 
@@ -89,7 +90,9 @@ import toolkit
 import message
 
 # Web scraping song lyrics IPC file names
+# List of websites to scrape
 SCRAPE_CTL_FNAME = g.TEMP_DIR + 'mserve_scrape_ctl.json'
+# List of websites to scrape
 SCRAPE_LIST_FNAME = g.TEMP_DIR + 'mserve_scrape_list.txt'
 SCRAPE_LYRICS_FNAME = g.TEMP_DIR + 'mserve_scrape_lyrics.txt'
 
@@ -161,9 +164,11 @@ class Results:
         self.result = namedtuple('Result', 'order, type, link')
 
     def add_blacklist(self):
+        """ Work in progress """
         self.black_list_count += 1
 
     def add_whitelist(self):
+        """ Work in progress """
         self.white_list_count += 1
 
 
@@ -226,6 +231,23 @@ def delete_files(select='all'):
             pass
 
 
+def print_files():
+    """ ONLY CALLED by mserve for debugging purposes.
+        Print is NOT supported in webscrape.py which runs in background
+    """
+    print("\nwebscrape.py print_files(): SCRAPE_LIST_FNAME\n")
+    with open(SCRAPE_LIST_FNAME, "r") as ws_file:
+        lines = ws_file.readlines()
+        for line in lines:
+            print(line)
+
+    print("\nwebscrape.py print_files(): SCRAPE_CTL_FNAME\n")
+    with open(SCRAPE_CTL_FNAME, "r") as ws_file:
+        lines = ws_file.readlines()
+        for line in lines:
+            print(line)
+
+
 # TODO: Create SQL History with website and last time scraped. This way we can
 #       cycle through names and not bombard a single site with quick requests.
 #       At two seconds per site it will be ~15 seconds between requests, which
@@ -233,7 +255,7 @@ def delete_files(select='all'):
 
 
 MEGALOBIZ = METROLYRICS = AZLYRICS = LYRICS = LYRICSMODE = None
-LETSSINGIT = GENIUS = MUSIXMATCH = LYRICSPLANET = None
+LETSSINGIT = GENIUS = MUSIXMATCH = LYRICFIND = None
 
 
 def google_search(search):
@@ -250,7 +272,7 @@ def google_search(search):
     """
     global WS_DICT, CTL_LIST
     global MEGALOBIZ, METROLYRICS, AZLYRICS, LYRICS, LYRICSMODE, LETSSINGIT
-    global GENIUS, MUSIXMATCH, LYRICSPLANET, list_output
+    global GENIUS, MUSIXMATCH, LYRICFIND, list_output
 
     # If we try to print normally an error occurs when launched in background
     # print("CTL_LIST start search:", CTL_LIST, file=sys.stderr)
@@ -298,24 +320,32 @@ def google_search(search):
                 add_whitelist(t)
 
             # TODO: look up in list and get ranking
-            if 'www.metalobiz.com' in t:
+            if 'www.megalobiz.com' in t and MEGALOBIZ is None:
                 MEGALOBIZ = t
-            if 'www.metrolyrics.com' in t:
+            if 'www.metrolyrics.com' in t and METROLYRICS is None:
                 METROLYRICS = t
-            if 'www.azlyrics.com' in t:
+            if 'www.azlyrics.com' in t and AZLYRICS is None:
                 AZLYRICS = t
-            if 'www.lyrics.com' in t:
+            if 'www.lyrics.com' in t and LYRICS is None:
+                # 2024-05-18 Note two results with same content:
+                # https://www.lyrics.com/lyric/27755223/10cc/Channel%2BSwimmer
+                # https://www.lyrics.com/lyric/5138481/Channel%2BSwimmer%2B%255B%252A%255D
                 LYRICS = t
-            if 'www.lyricsmode.com' in t:
+            if 'www.lyricsmode.com' in t and LYRICSMODE is None:
                 LYRICSMODE = t
-            if 'www.letssingit.com' in t:
+            if 'www.letssingit.com' in t and LETSSINGIT is None:
                 LETSSINGIT = t
-            if '//genius.com' in t:  # Trap out //dekgenius.com
+            if '//genius.com' in t and GENIUS is None:
+                # Trap out //dek genius.com
+                # 2024-05-18 first result with good content:
+                # https://genius.com/10cc-channel-swimmer-lyrics
+                # Then a little later bad content:
+                # https://genius.com/10cc-channel-swimmer-lyrics/q/producer
                 GENIUS = t
-            if 'www.musixmatch.com' in t:
+            if 'www.musixmatch.com' in t and MUSIXMATCH is None:
                 MUSIXMATCH = t
-            if 'www.lyricsplanet.com' in t:  # Not sure if '//' or 'www.' prefix
-                LYRICSPLANET = t
+            if 'https://lyrics.lyricfind.com' in t and LYRICFIND is None:
+                LYRICFIND = t
 
             #if 'www.lyricfind.com' in t:  # Try substitute
 
@@ -345,16 +375,19 @@ def google_search(search):
 
 
 def add_blacklist(text):
+    """ Work in progress """
     global BLACK_LIST_FOUND
     BLACK_LIST_FOUND.append(text)
 
 
 def add_whitelist(text):
+    """ Work in progress """
     global WHITE_LIST_FOUND
     WHITE_LIST_FOUND.append(text)
 
 
 def scrape(search):
+    """ Scrape website """
     global lyrics_output
     if GENIUS:
         get_from_genius()  # TODO: June 25, 2023 now it is lyricfind.com
@@ -393,8 +426,8 @@ def scrape(search):
             lyrics_output.append(GENIUS)
         if MUSIXMATCH:
             lyrics_output.append(MUSIXMATCH)
-        if LYRICSPLANET:
-            lyrics_output.append(LYRICSPLANET)
+        if LYRICFIND:
+            lyrics_output.append(LYRICFIND)
 
         lyrics_output.append('Or consider scraping following sites for lyrics:')
         for line in list_output:
@@ -409,8 +442,27 @@ def scrape(search):
             outfile.write(toolkit.uni_str(line) + "\n")
 
 
+
 def get_from_genius():
-    """ Glitch Chis de Burgh Spaceman splits one line into three:
+    # noinspection SpellCheckingInspection
+    """
+        2024-05-18 Lyrics__Container split into two sections with ad between:
+
+        <div data-lyrics-container="true" class="Lyrics__Container-sc-1ynbvzw-1 kUgSbL">
+            [Chorus]<br>Well, it's cold down here in the water<br>
+            It's cold down here in the sea<br>Who'd be a channel swimmer?<br>
+            Only a fool like me<br><br>[Verse 1]<br>
+            ...
+            On back to you, no way<br></div>
+
+        <div data-lyrics-container="true" class="Lyrics__Container-sc-1ynbvzw-1 kUgSbL">
+            [Guitar Solo]<br><br>[Verse 2]<br>I see your face in every breaker<br>
+            I see your smile across the reef<br>
+            I came across the sea to take you<br>
+            ...
+            Would forget he can't swim</div>
+
+    Glitch Chis de Burgh Spaceman splits one line into three:
 
             And over
             a village
@@ -424,7 +476,8 @@ def get_from_genius():
 A spaceman came travelling on his ship from afar
 <br>
 <a href="/2172507/Chris-de-burgh-a-spaceman-came-travelling/Twas-light-years-of-time-since-his-mission-did-start"
-class="ReferentFragmentdesktop__ClickTarget-sc-110r0d9-0 cehZkS"><span class="ReferentFragmentdesktop__Highlight-sc-110r0d9-1 jAzSMw">
+class="ReferentFragmentdesktop__ClickTarget-sc-110r0d9-0 cehZkS">
+    <span class="ReferentFragmentdesktop__Highlight-sc-110r0d9-1 jAzSMw">
 'Twas light years of time since his mission did start</span></a>
 <span tabindex="0" style="position:absolute;opacity:0;width:0;height:0;pointer-events:none;z-index:-1"></span>
 <span><span tabindex="0" style="position:absolute;opacity:0;width:0;height:0;pointer-events:none;z-index:-1"></span>
@@ -432,7 +485,8 @@ class="ReferentFragmentdesktop__ClickTarget-sc-110r0d9-0 cehZkS"><span class="Re
 <br>
 
 And over <a href="/2172512/Chris-de-burgh-a-spaceman-came-travelling/A-village"
-class="ReferentFragmentdesktop__ClickTarget-sc-110r0d9-0 cehZkS"><span class="ReferentFragmentdesktop__Highlight-sc-110r0d9-1 jAzSMw">
+class="ReferentFragmentdesktop__ClickTarget-sc-110r0d9-0 cehZkS">
+    <span class="ReferentFragmentdesktop__Highlight-sc-110r0d9-1 jAzSMw">
 a village</span></a>
 <span tabindex="0" style="position:absolute;opacity:0;width:0;height:0;pointer-events:none;z-index:-1"></span>
 <span><span tabindex="0" style="position:absolute;opacity:0;width:0;height:0;pointer-events:none;z-index:-1"></span>
@@ -441,7 +495,8 @@ he halted his craft
 <br>
 
 <a href="/2172509/Chris-de-burgh-a-spaceman-came-travelling/And-it-hung-in-the-sky-like-a-star-just-like-a-star"
-class="ReferentFragmentdesktop__ClickTarget-sc-110r0d9-0 cehZkS"><span class="ReferentFragmentdesktop__Highlight-sc-110r0d9-1 jAzSMw">
+class="ReferentFragmentdesktop__ClickTarget-sc-110r0d9-0 cehZkS">
+    <span class="ReferentFragmentdesktop__Highlight-sc-110r0d9-1 jAzSMw">
 And it hung in the sky like a star, just like a star</span></a>
 <span tabindex="0" style="position:absolute;opacity:0;width:0;height:0;pointer-events:none;z-index:-1"></span>
 <span><span tabindex="0" style="position:absolute;opacity:0;width:0;height:0;pointer-events:none;z-index:-1"></span>
@@ -454,9 +509,11 @@ And it hung in the sky like a star, just like a star</span></a>
     url = GENIUS
     # noinspection PyBroadException
     try:
+        # noinspection PyTypeChecker
         soup = BeautifulSoup(requests.get(url).content, 'lxml')
         for tag in soup.select('div[class^="Lyrics__Container"], \
                                .song_body-lyrics p'):
+            # https://stackoverflow.com/a/63436536/6929343
             t = tag.get_text(strip=True, separator='\n')
             if t:
                 lyrics_output.append(t)
@@ -476,12 +533,14 @@ And it hung in the sky like a star, just like a star</span></a>
 
 
 def get_from_azlyrics():
+    """ Get lyrics from AZLYRICS url """
     global lyrics_output
 
     url = AZLYRICS
 
     # noinspection PyBroadException
     try:
+        # noinspection PyTypeChecker
         html_page = urllib.request.urlopen(url)
         soup = BeautifulSoup(html_page, 'html.parser')
         html_pointer = soup.find('div', attrs={'class': 'ringtone'})
@@ -500,6 +559,7 @@ def get_from_metrolyrics():
     global lyrics_output
 
     url = METROLYRICS
+    # noinspection PyTypeChecker
     page = requests.get(url)
 
     if page.status_code > 200:
@@ -524,6 +584,7 @@ def get_from_metrolyrics():
     return verses
 
 
+# noinspection SpellCheckingInspection
 """
 <div id="lrc_54479852_member_box" class="lyrics_member_box">
     <div class="lyrics_title">
@@ -621,6 +682,7 @@ def get_from_megalobiz():
 
     url = MEGALOBIZ
     """Load the lyrics from MetroLyrics."""
+    # noinspection PyTypeChecker
     page = requests.get(url)
 
     if page.status_code > 200:
@@ -684,7 +746,9 @@ def no_parameters():
 
 
 class HistoryTree:
-    """ Create self.his_tree = tk.Treeview() via CheckboxTreeview()
+    """ FUTURE USE copied from bserve.py
+    
+        Create self.his_tree = tk.Treeview() via CheckboxTreeview()
 
         Resizeable, Scroll Bars, select songs, play songs.
 
@@ -1188,6 +1252,7 @@ class HistoryTree:
 
     # noinspection PyUnusedLocal
     def pretty_close(self, *args):
+        """ Work in Progress """
         if self.hdr_top is None:
             return
         self.tt.close(self.hdr_top)  # Close tooltips under top level
@@ -1258,10 +1323,12 @@ class HistoryTree:
         pretty_dict['already_trashed'] = unicode(already_trashed)
 
     def lib_popup(self, *args):
+        """ Work in Progress """
         pass
 
     # noinspection PyUnusedLocal
     def quit(self, *args):
+        """ Work in Progress """
 
         # Last known window position for message library, saved to SQL
         last_history_geom = monitor.get_window_geom_string(
@@ -1281,22 +1348,28 @@ class HistoryTree:
 
     # noinspection PyUnusedLocal
     def restart(self, *args):
+        """ Work in Progress """
         self.quit()
         os.execl(sys.executable, sys.executable, *sys.argv)
 
     def save_items(self):
+        """ Work in Progress """
         pass
 
     def load_items(self):
+        """ Work in Progress """
         pass
 
     def refresh_items(self):
+        """ Work in Progress """
         pass
 
     def new_items(self):
+        """ Work in Progress """
         pass
 
     def append_items(self):
+        """ Work in Progress """
         pass
 
     def refresh_his_tree(self):
@@ -1371,6 +1444,7 @@ class HistoryTree:
         message.ShowInfo(self.bup_view.toplevel, "Backups trashed", text)
 
     def load_last_selections(self):
+        """ Work in Progress """
         pass
 
     '''
@@ -1383,6 +1457,7 @@ class HistoryTree:
 
 
 def main():
+    """ Work in Progress """
     global SEARCH, MUSIC_ID, CTL_LIST
 
     delete_files()

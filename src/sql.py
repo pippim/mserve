@@ -2060,11 +2060,20 @@ class Config:
                  "text": 'Black', "font_family": 'DejaVuSans.ttf',
                  "char": 'V'},
 
+            # Tooltips default color when parent widget has no background color
+            # TODO: Add default fade in, delay, etc.
+            ('cfg_tooltips', 'default', 'style', 'color'):
+                {"foreground": "FireBrick", "background": "LemonChiffon"},
+
+            ('cfg_tooltips', 'default', 'time', 'ms'):
+                {"VISIBLE_DELAY": 750, "VISIBLE_SPAN": 5000, "EXTRA_WORD_SPAN": 500,
+                 "FADE_IN_SPAN": 500, "FADE_OUT_SPAN": 400},
+
             ('cfg_end', 'sql_treeview', 'end', 'end'):
                 {"nothing": 1, "here": 2}  # To make inserting before end easier
         }
         # All column variables in history row, except primary ID auto assigned.
-        # Variables are used to insert new history table row
+        # Variables used to insert new Row into History Table.
         self.Time = time.time()
         self.MusicId = 0
         self.User = g.USER
@@ -2403,14 +2412,15 @@ def save_config(Type, Action="", SourceMaster="", SourceDetail="", Target="",
     con.commit()
 
 
-def delete_config(Type, Action):
+def delete_config(Type, Action, valid_count=1):
     """ Delete system configuration recorded in SQL history table in the
         'Type' + 'Action' columns. Protection from "glitches" of deleting too
-        many records.
+        many records. If wanting to deleted all records, pass that record count
+        first.
     """
     # Check if only 1 record exists
     count = hist_count_type_action(Type, Action, prt=False)
-    if count != 1:
+    if count != valid_count:
         print("sql.py delete_config(): NOTE: Count for Type: '" +
               Type + "', Action: '" + Action + "', is: '" + str(count) + "'.")
         return

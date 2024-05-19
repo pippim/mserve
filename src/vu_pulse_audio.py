@@ -362,8 +362,8 @@ AttributeError: 'module' object has no attribute 'pulsectl'
         # .140205735977040.140205735977256.140205735977472.140205516979664.140205517321136
         # 51:24.3509 _close_cb() - tt_dict not found for: 1136
         # 06:51:24.8 Reversing self.youAssumeAd
-        print(who, "unable to find sink #: " + sink_no_str,
-              "type:", type(sink_no_str), "refresh:", refresh)
+        print(who, "\n\tUnable to find 'sink_no_str': " + sink_no_str,
+              "Type:", type(sink_no_str), "'refresh':", refresh)
         print("AVAILABLE SINKS:")
         for Sink in self.sinks_now:
             print(Sink)

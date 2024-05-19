@@ -177,6 +177,11 @@ LONGER TERM TODO'S:
         having history records for now. Only if a website other than
         genius is scraped should there be a history record. 'file'-'init'
         history might be irrelevant except for new songs added to location.
+        
+        2024-05-17 - Consider having a single history record for each Music Id
+        where the Target is list of dictionaries. Each dictionary is a former
+        history record: file-init, file-edit, scrape-genius, scrape-megoblitz,
+        volume-old, volume-new, loudnorm-1, loudnorm-2, finetune, etc.
 
     VU Meter peak line indicator that drops down to current level and changes
         color as it passes through zone. How long to hold peak and how fast
@@ -1715,37 +1720,41 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
             set_menu(tk.NORMAL)
             self.is_loudnorm_sound = None
 
-    def loudness_toggle(self):
+    def force_sink(self, sink, pid, trace=None):
+        """ Compare pid to know pids and return correct sink number """
+        title = self.who + "force_sink(): "
+        for Sink in pav.sinks_now:
+            if pid == Sink.pid and sink == Sink.sink_no_str:
+                return Sink.sink_no_str  # All good
+            if pid == Sink.pid and sink != Sink.sink_no_str:
+                text = "Override sink: " + sink + " with: " + Sink.sink_no_str
+                text += " pid: " + str(pid) + " name: " + Sink.name
+                lcs.out_fact_print(title, text, 'error')
+                return Sink.sink_no_str  # cast_show
+
+        text = "\tsink not found: " + sink
+        text += "  | pid not found: " + str(pid)
+        if trace:
+            text += "\n\tCaller: " + trace
+        lcs.out_fact_print(title, text, 'error')
+
+        return sink  # GIGO
+
+    def loudness_toggle(self, splash_msg=True):
         """ Toggle between old sound and new loudness normalization
             Called when song starts to force ".new" song to be heard first.
-            Called when toggle button clicked. """
+            Called when toggle button clicked.
+            :param splash_msg: do not want to splash if another splash is up.
+                    E.G. filtering will splash message then start song play.
+        """
 
-        # Force sink_no_str
-        def force_sink(sink, pid):
-            """ Compare pid to know pids and return correct sink number """
-            title = self.who + " loudness_toggle(force_sink()): "
-            for Sink in pav.sinks_now:
-                if pid == Sink.pid and sink == Sink.sink_no_str:
-                    return Sink.sink_no_str  # All good
-                if pid == Sink.pid and sink != Sink.sink_no_str:
-                    text = "Override sink: " + sink + " with: " + Sink.sink_no_str
-                    text += " pid: " + str(pid) + " name: " + Sink.name
-                    lcs.out_fact_print(title, text, 'error')
-                    return Sink.sink_no_str  # cast_show
-
-            text = "sink not found: " + sink
-            text += "pid not found: " + str(pid)
-            lcs.out_fact_print(title, text, 'error')
-
-            return sink  # GIGO
-
-        self.play_ctl.sink = force_sink(self.play_ctl.sink, self.play_ctl.pid)
-        self.loud_ctl.sink = force_sink(self.loud_ctl.sink, self.loud_ctl.pid)
+        self.play_ctl.sink = self.force_sink(self.play_ctl.sink, self.play_ctl.pid,
+                                             trace="loudness_toggle() play_ctl")
         play_curr = pav.get_volume(self.play_ctl.sink)
+        # 2024-05-18 sometimes getting play_curr volume changes loud_curr sink#?
+        self.loud_ctl.sink = self.force_sink(self.loud_ctl.sink, self.loud_ctl.pid,
+                                             trace="loudness_toggle() loud_ctl")
         loud_curr = pav.get_volume(self.loud_ctl.sink)
-
-        # sql.py increment_last_play() key not found: Joe Walsh/
-        # The Smoker You Drink, The Player You Get/02 Book Ends.m4a.new
 
         if play_curr == 24.2424 or loud_curr == 24.2424:
             # 2024-05-07 these errors should disappeared with force_sink() patch
@@ -1773,12 +1782,12 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
                   "\tloud_ctl.state:\t", self.loud_ctl.state,
                   "\tpav_ctl.state:\t", self.pav_ctl.state, "\n")
 
-        def splash(version, size_str, max_vol):
+        def splash(version, size_str, detect_vol):
             """ Display splash window """
             size_str = size_str if size_str is not None else "???"
-            max_vol = max_vol if max_vol is not None else "???"
+            detect_vol = detect_vol if detect_vol is not None else "???"
             text = version + " file size: " + size_str + "\n"
-            text += "Maximum loudness volume: " + max_vol
+            text += "Maximum loudness volume: " + detect_vol
 
             # Must destroy previously declared loudness toggle button
             # (self.loud_tog_button) tooltip, to reuse same widget for splash
@@ -1791,7 +1800,7 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
                             anchor=anchor, pb_close=splash_callback)
             # After splash display and fade-out, run splash_callback()
 
-            ''' Force Splash Display in Tooltips(). '''
+            ''' Force Splash Display in toolkit.py Tooltips(). '''
             self.tt.log_event('enter', self.loud_tog_button, 10, 5)  # x=10, y=5
 
         def splash_callback():
@@ -1805,31 +1814,34 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
 
         if self.is_loudnorm_sound:
             # cross-fade new to old. If old volume was <= 25% pretend 100%
-            new_curr = 100.0 if loud_curr <= 25.0 else loud_curr
+            max_vol = 100.0 if loud_curr <= 25.0 else loud_curr
             # When music is paused volume was forced down to 25% first
-            new_curr = new_curr if self.pp_state == "Playing" else 25.0
+            max_vol = 25.0 if self.pp_state == "Paused" else max_vol
 
-            pav.fade(self.play_ctl.sink, play_curr, new_curr, .25)
+            pav.fade(self.play_ctl.sink, play_curr, max_vol, .25)
             pav.fade(self.loud_ctl.sink, loud_curr, 0, .25)  # New down to 0
             self.pav_ctl = self.play_ctl  # use self.play_ctl.sink
 
             self.is_loudnorm_sound = False
             # Splash window with stats of old file's maximum loudness
-            splash("Old", self.play_size_str, self.play_max_vol)  # no delay/return
-
+            if splash_msg:  # no message when filtering playlist
+                # no delay/return
+                splash("Old", self.play_size_str, self.play_max_vol)  
         else:
             # cross-fade old to new. If new volume was <= 25% pretend 100%
-            new_curr = 100.0 if play_curr <= 25.0 else play_curr
+            max_vol = 100.0 if play_curr <= 25.0 else play_curr
             # When music is paused volume was forced down to 25% first
-            new_curr = new_curr if self.pp_state == "Playing" else 25.0
+            max_vol = 25.0 if self.pp_state == "Paused" else max_vol
 
-            pav.fade(self.loud_ctl.sink, loud_curr, new_curr, .25)
+            pav.fade(self.loud_ctl.sink, loud_curr, max_vol, .25)
             pav.fade(self.play_ctl.sink, play_curr, 0, .25)  # Old down to 0
             self.pav_ctl = self.loud_ctl  # use self.loud_ctl.sink
 
             self.is_loudnorm_sound = True
             # Splash window with stats of new file's maximum loudness
-            splash("New", self.loud_size_str, self.loud_max_vol)  # no delay/return
+            if splash_msg:  # no message when filtering playlist
+                # no delay/return
+                splash("New", self.loud_size_str, self.loud_max_vol)
 
     def loudness_menu(self):
         """ Options to View, Keep, Reject 
@@ -1867,11 +1879,15 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
         menu.post(x, y)
 
         def close():
-            """ Remove popup and treeview row highlight """
+            """ Remove Loudness Menu button's popup menu  """
             menu.unpost()
 
         def view_normalize():
-            """ Popup Window with SQL Music Table Row Metadata for song """
+            """ Popup Window with SQL Music Table Row Metadata for song
+                TODO: 1) Taskbar icon
+                      2) play_win_grp.register()
+                      3) rename 'new=True' to 'tabs=True'
+            """
             n_data = sql.PrettyNormalize(music_id, loc)
             win_title = "Normalization Summary - " + Song + " - mserve"
             lcs.pretty_window(
@@ -1879,7 +1895,12 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
                 x, y, new=True)  # new = use right align tab stops and uom
 
         def remove_normalize(prompt=True):
-            """ Remove four history records for song """
+            """ Remove four history records for song
+                TODO: 1) Review new history record:
+                         music_id, 'volume', 'accept_new'
+                      2) Review new history record:
+                         music_id, 'volume', 'revert_old'
+            """
             title = "Confirm loudness normalization removal"
             text = "Removing the records for this song allows the process\n"
             text += "to be repeated for this song only. The process is\n"
@@ -1901,7 +1922,10 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
                 self.rm_file(trg_path_new)
 
         def keep_normalize():
-            """ Keep loudness normalization for a single song """
+            """ Keep loudness normalization for a single song
+                TODO: 1) Create new history record:
+                         music_id, 'volume', 'rename_new'
+            """
             title = "Keep loudness normalization?"
             text = Song + "\n\n"
             text += "The original file will be renamed to '.old'.\n"
@@ -2932,7 +2956,9 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
 
     @staticmethod
     def key_press(event):
-        """ Return / Enter = \r
+        """ NEVER IMPLEMENTED. Not used.
+
+            Return / Enter = \r
             Backspace = \x08
             Tab = \t
             Delete = \x7f
@@ -5752,10 +5778,6 @@ Call search.py when these control keys occur
         if self.mus_search:
             self.mus_search.close()  # Close old search
 
-        #   File "/home/rick/python/toolkit.py", line 2443, in column_value
-        #     i = self.columns.index(search)
-        # ValueError: 'os_file_size' is not in list
-
         answer = message.AskQuestion(
             self.mus_top, thread=self.get_refresh_thread, confirm='no',
             title='Update Metadata and Report "missing" confirmation - mserve',
@@ -5766,19 +5788,6 @@ Call search.py when these control keys occur
                  "Do you want to perform this lengthy process?")
         if answer.result != 'yes':
             return
-
-        ''' Pause music if playing '''
-        forced_pause = False
-        ''' Aug 9/23 - experiment 2 
-        if self.play_top_is_active:
-            if self.pp_state == "Playing":
-                self.pp_toggle()
-                forced_pause = True
-                # Need 1 second to fade out music and pause
-                for _i in range(10):
-                    self.refresh_play_top()  # Gently fade volume to 25%
-                    self.play_top.after(33)
-        '''
 
         ext.t_init("mus_artwork()")
         ''' TODO: Clear title when new button clicked '''
@@ -5807,12 +5816,8 @@ Call search.py when these control keys occur
             find_str='callback', thread=self.get_refresh_thread)
 
         ''' Perform search for missing artwork & update metadata at same time '''
-        self.mus_search.find_callback()  # attach desired to treeview
+        self.mus_search.find_callback()  # 2024-05-19 - verify if needed & explain
         self.end_long_running_process()
-
-        ''' Unpause music '''
-        if forced_pause:
-            self.pp_toggle()  # Restore playing song that was paused
         
         ''' Close delayed text window '''
         if self.mus_artwork_dtb:
@@ -8325,12 +8330,13 @@ Call search.py when these control keys occur
         self.play_current_song_art = ImageTk.PhotoImage(paused_resized_art)
         self.art_label.configure(image=self.play_current_song_art)
 
-    # noinspection PyUnusedLocal
-    def pp_toggle(self, fade_then_stop=False, *args):
-        """ Pause/Play button pressed. Signal ffplay and set button text
-            When called from button click play/pause fade_the_stop,
-            chron_apply_filter(), chron_reverse_filter and play_close()
-            When called from self.song_set_ndx, fade_then_kill = True
+    def pp_toggle(self, *_args):
+        """ Pause/Play button pressed. Signal ffplay and set button text.
+            Also called from self.song_set_ndx(), chron_apply_filter(),
+            chron_reverse_filter, start_hockey(), song_ff_rew_common(),
+            refresh_play_top(), play_lyrics_left_click(), start_fine_tune(),
+            fine_tune_closed_callback(), lib_tree_play() <- sample song,
+            lib_tree_play_close(), and play_close()
         """
         if not self.play_top_is_active:
             return  # Play window closed?
@@ -8345,6 +8351,9 @@ Call search.py when these control keys occur
             self.set_pp_button_text()
             self.pp_toggle_fading_out = True  # Signal pause music fade out
             self.pp_toggle_fading_in = False  # cancel any play fade in signal
+            # 2024-05-18 Fix error when original sink is '50' but actual is '51'
+            self.pav_ctl.sink = self.force_sink(
+                self.pav_ctl.sink, self.pav_ctl.pid, trace="pp_toggle() pav_ctl")
             cur_vol = pav.get_volume(self.pav_ctl.sink)
             pav.fade(self.pav_ctl.sink, cur_vol, 25, .5,
                      step_cb=self.init_ffplay_slider,
@@ -8360,7 +8369,7 @@ Call search.py when these control keys occur
             if self.play_hockey_active:
                 set_tv_sound_levels(100, 25)  # Soften volume on tv to 25%
             self.current_song_t_start = time.time()
-            elapsed = self.play_ctl.elapsed()  # Must call after .cont()
+            _elapsed = self.play_ctl.elapsed()  # Must call after .cont()
 
             ''' Can be reversing fade out from Pause click. '''
             self.pp_toggle_fading_in = True  # Playing music fade in signal
@@ -8499,7 +8508,7 @@ Call search.py when these control keys occur
         self.info.fact(quote, 'error', 'open')
 
     def validate_pa_sink(self, sink, path):
-        """ Validate Pulse Audio Sink. Must not be blank.
+        """ NO LONGER USED. Validate Pulse Audio Sink is not be blank.
 
             NOTE: July 3, 2023 discovery song start calculation was
                   past end of file. This test is probably no longer
@@ -8642,7 +8651,7 @@ Call search.py when these control keys occur
 
     def wrapup_song(self, fade_then_kill=False):
         """ Called from pending_apply(), song_set_ndx(),
-            chron_apply_filter(), chron_reverse_filter and play_close()
+            chron_apply_filter(), chron_reverse_filter() and play_close()
             When called from self.song_set_ndx, fade_then_kill = True
         """
         if self.pav_ctl.sink is not "":
@@ -8656,6 +8665,9 @@ Call search.py when these control keys occur
                     '''
                     ''' a little debugging. each song start vol 25, 20, 8, 2, 1, 0... 
                         July 12, 2023 - Next song on '''
+                    self.pav_ctl.sink = self.force_sink(
+                        self.pav_ctl.sink, self.pav_ctl.pid,
+                        trace="wrapup_song() pav_ctl")
                     hold_sink = (self.pav_ctl.sink + '.')[:-1]  # break link
                     #print("\n fade_then_kill - hold_sink:",
                     #      hold_sink, id(hold_sink), id(self.play_ctl.sink))
@@ -8683,6 +8695,9 @@ Call search.py when these control keys occur
 
             ''' July 9, 2023 - Doesn't matter anymore if volume down. '''
             #pav.set_volume(self.play_ctl.sink, 100)
+
+            ''' 2024-05-19 - Some songs starting low volume, reverse 2023-07-09 '''
+            pav.set_volume(self.pav_ctl.sink, 100)
 
         '''   K I L L   L Y R I C S   S C A P E   '''
         if self.lyrics_scrape_pid:
@@ -9090,7 +9105,8 @@ Call search.py when these control keys occur
 
             # Can only have one sound active at a time, make it the new song
             self.is_loudnorm_sound = False  # Force new song to always play first
-            self.loudness_toggle()  # fade out old, fade in new
+            self.loudness_toggle(splash_msg=False)  # fade out old, fade in new
+            # A splash message will be displayed when chronology filter applied
 
         # Limit 0. Fade in over 1 second, Fade out 0.
         self.current_song_t_start = time.time()  # For pp_toggle, whether resume or not
@@ -9301,7 +9317,7 @@ Call search.py when these control keys occur
             play_one_song() to start a new song
             Indirectly called by refresh_play_top() when it calls play_one_song()
                 when song ends during long running process like update metadata
-            pp_toggle() to resume song after pausing """
+        """
 
         while True:
             ''' Call:
@@ -10229,6 +10245,7 @@ Call search.py when these control keys occur
 
             sql.con.commit()
             # Aug 25 fudge parameter list to skip no_parameters()
+            # 2024-05-17 Note MusicId is passed but not used in webscrape.py yet?
             parm = '"' + artist + ' ' + title + '" ' + str(MusicId)
             ext_name = 'python webscrape.py ' + parm
             self.lyrics_scrape_pid = ext.launch_command(
@@ -10303,7 +10320,9 @@ Call search.py when these control keys occur
 
         self.lyrics_score_box.update()  # Is this necessary? CONFIRMED YES
         self.lyrics_score_box.configure(state="disabled")
-        webscrape.delete_files()
+        if True is False:
+            webscrape.print_files()  # Print 3 mserve_scrape* file contents
+        webscrape.delete_files()  # Delete 3 mserve_scrape* files
 
         end = self.lyrics_score_box.index('end')  # returns line.column
         self.lyrics_line_count = int(end.split('.')[0]) - 1
@@ -10722,8 +10741,9 @@ mark set markName index"
             prefix = self.lyrics_panel_text[:self.lyrics_panel_text.index('Line: ')]
             suffix = self.lyrics_panel_text[self.lyrics_panel_text.index('Line: '):]
         except ValueError:
-            toolkit.print_trace()
-            print('lyrics_update_title_line_number() string not found')
+            #toolkit.print_trace()
+            print(self.who + 'lyrics_update_title_line_number(): line_no:', line_no)
+            print("The string 'Line: ' doesn't exit in lyrics_panel_text (title bar)")
             # After deleting all lyrics get error:
 
             # File "/home/rick/python/mserve.py", line 7489, in play_to_end
@@ -10737,6 +10757,59 @@ mark set markName index"
             # File "/home/rick/python/mserve.py", line 8893, in lyrics_update_title_line_number
             #     toolkit.print_trace()
             # File "/home/rick/python/toolkit.py", line 87, in print_trace
+            #     for line in traceback.format_stack():
+            # lyrics_update_title_line_number() string not found
+
+            # 2024-05-18 trace more complex now:
+            # File "/home/rick/python/mserve.py", line 9352, in play_to_end
+            #     self.refresh_play_top()  # Rotate art, update vu meter after(.033)
+            # File "/home/rick/python/mserve.py", line 9439, in refresh_play_top
+            #     self.play_top.update()           # Sept 20 2020 - Need for lib_top too
+            # File "/usr/lib/python2.7/lib-tk/Tkinter.py", line 1022, in update
+            #     self.tk.call('update')
+            # File "/usr/lib/python2.7/lib-tk/Tkinter.py", line 1540, in __call__
+            #     return self.func(*args)
+            # File "/home/rick/python/mserve.py", line 16681, in double_click
+            #     self.apply(event)
+            # File "/home/rick/python/mserve.py", line 17140, in apply
+            #     self.apply_callback()  # Parent will start playing (if > 1 song in list)
+            # File "/home/rick/python/mserve.py", line 2282, in apply_playlists
+            #     self.play_selected_list()
+            # File "/home/rick/python/mserve.py", line 7733, in play_selected_list
+            #     if not self.play_one_song(resume=resume, chron_state=chron_state):
+            # File "/home/rick/python/mserve.py", line 9166, in play_one_song
+            #     if not self.play_to_end():  # Play entire song unless next/prev, etc.
+            # File "/home/rick/python/mserve.py", line 9352, in play_to_end
+            #     self.refresh_play_top()  # Rotate art, update vu meter after(.033)
+            # File "/home/rick/python/mserve.py", line 9495, in refresh_play_top
+            #     self.play_paint_lyrics()                # Uses the lyrics time index
+            # File "/home/rick/python/mserve.py", line 10293, in play_paint_lyrics
+            #     self.lyrics_update_title_percentage()
+            # File "/home/rick/python/mserve.py", line 10735, in lyrics_update_title_percentage
+            #     self.lyrics_frm.update()
+            # File "/usr/lib/python2.7/lib-tk/Tkinter.py", line 1022, in update
+            #     self.tk.call('update')
+            # File "/usr/lib/python2.7/lib-tk/Tkinter.py", line 1540, in __call__
+            #     return self.func(*args)
+            # File "/home/rick/python/mserve.py", line 11099, in <lambda>
+            #     self.play_edit_lyrics_done('save'),
+            # File "/home/rick/python/mserve.py", line 11386, in play_edit_lyrics_done
+            #     "TIP: Deleting all text will web scrape lyrics again.")
+            # File "/home/rick/python/message.py", line 627, in __init__
+            #     simpledialog.Dialog.__init__(self, parent, title=title)
+            # File "/usr/lib/python2.7/lib-tk/tkSimpleDialog.py", line 86, in __init__
+            #     self.wait_window(self)
+            # File "/home/rick/python/message.py", line 529, in wait_window_func
+            #     result()  # Aug 4/23 Call result of get_thread_func that changes
+            # File "/home/rick/python/mserve.py", line 9495, in refresh_play_top
+            #     self.play_paint_lyrics()                # Uses the lyrics time index
+            # File "/home/rick/python/mserve.py", line 10300, in play_paint_lyrics
+            #     self.play_lyrics_auto_scroll()
+            # File "/home/rick/python/mserve.py", line 10399, in play_lyrics_auto_scroll
+            #     self.lyrics_update_title_line_number(line_no)
+            # File "/home/rick/python/mserve.py", line 10752, in lyrics_update_title_line_number
+            #     toolkit.print_trace()
+            # File "/home/rick/python/toolkit.py", line 104, in print_trace
             #     for line in traceback.format_stack():
             # lyrics_update_title_line_number() string not found
 
@@ -12459,7 +12532,7 @@ mark set markName index"
 
     def chron_apply_filter(self, option, item):
         """ Detach songs not matching filter from chron_tree. If less than two
-            songs give message and reattach all songs.
+            songs give message and don't apply filter.
 
             filtering playlist with:
                     1) Songs with time index (synchronized lyrics)
@@ -12528,11 +12601,11 @@ mark set markName index"
         # Filter options for ffmpeg loudness normalization
         trg_max_vol = float(lcs.avo_true_peak)
 
-        def get_volume_detect(version, itm):
+        def get_volume_detect(version, chron_iid):
             """ Get SQL History Table records of maximum volume
                 If record not found or N/A, return -99.9
             """
-            lib_iid = self.saved_selections[int(itm) - 1]  # Music lib tree IID
+            lib_iid = self.saved_selections[int(chron_iid) - 1]  # lib tree IID
             #os_filename = self.make_variable_path(lib_iid)  # full path to song
             MusicId = self.get_music_id_for_lib_tree_id(lib_iid)
             max_volume = None
@@ -12615,23 +12688,30 @@ mark set markName index"
             return  # TODO: Has this been tested? Use small playlist
 
         # Remove songs from chronology treeview so only filtered remain
-        for iid in self.chron_tree.get_children():
-            if self.chron_iid_dict[int(iid)] is False:
-                self.chron_tree.detach(iid)
+        for iid in self.chron_detached:
+            self.chron_tree.detach(iid)
 
         # Stop current song and remove highlighting in lib_tree
         if self.pp_state == "Playing":
             self.pp_toggle()  # Pause current song because it will be changing.
         self.wrapup_song()
 
+        # Set chron_tree highlighting
         self.ndx = int(self.chron_attached[0]) - 1  # Play first song in filter
         self.play_chron_highlight(self.ndx, True)  # True = use short line
         self.chron_tree.see(self.chron_attached[0])  # Highlight first chron row
         self.song_set_ndx(self.ndx)  # Start song play and screen updating
         self.chron_has_filter = option  # Let other functions know filter active
 
-        # TODO: Splash message chron_tree widget south center with number
-        #       of songs attached.
+        # Splash message over chron_tree widget with number of songs attached.
+        text = "Chronology (Song Queue) is filtered.\n\n"
+        text += str(len(self.chron_attached)) + " songs displayed out of: "
+        text += str(len(self.chron_iid_dict))
+        text += "\n\nTo restore all songs, right-click and select\n"
+        text += "the menu option 'Full playlist unfiltered'."
+        self.tt.add_tip(self.chron_tree, text, 'splash', 0, anchor='ne')
+        self.tt.log_event('enter', self.chron_tree, 10, 5)  # Activate tooltip
+        self.info.cast(text, action='update')
 
     def chron_reverse_filter(self):
         """ Remove Playlist filter and restore playlist song indices
