@@ -4031,14 +4031,14 @@ def gnome_screenshot(geom):
 
 D_PRINT = False         # Print debug events
 
+#VISIBLE_DELAY = 750     # ms pause before balloon tip appears (3/4 sec)
+#VISIBLE_SPAN = 5000     # ms balloon tip remains on screen (5 sec/line)
+#EXTRA_WORD_SPAN = 500   # 1/2 second per word if > VISIBLE_SPAN
+#FADE_IN_SPAN = 500      # 1/4 second to fade in
+#FADE_OUT_SPAN = 400     # 1/5 second to fade out
+
 # Five timing variables are user configurable and stored in SQL History Table
 # Type, Action, Master, Detail = ['cfg_tooltips', 'default', 'time', 'ms']
-VISIBLE_DELAY = 750     # ms pause before balloon tip appears (3/4 sec)
-VISIBLE_SPAN = 5000     # ms balloon tip remains on screen (5 sec/line)
-EXTRA_WORD_SPAN = 500   # 1/2 second per word if > VISIBLE_SPAN
-FADE_IN_SPAN = 500      # 1/4 second to fade in
-FADE_OUT_SPAN = 400     # 1/5 second to fade out
-
 VISIBLE_DELAY = None    # ms pause before balloon tip appears (3/4 sec)
 VISIBLE_SPAN = None     # ms balloon tip remains on screen (5 sec/line)
 EXTRA_WORD_SPAN = None  # 1/2 second per word if > VISIBLE_SPAN
@@ -4167,6 +4167,7 @@ class ToolTips(CommonTip):
         self.log_list = []              # list of log dictionaries
         self.deleted_str = "0.0.0"      # flag log entry as deleted (zero time)
         self.now = time.time()          # Current time
+        self.who = "toolkit.py ToolTips()."
 
         self.dict = {}                  # Tip dictionary
         self.tips_list = []             # List of Tip dictionaries
@@ -4332,7 +4333,7 @@ class ToolTips(CommonTip):
             if self.dict['widget'] == search_widget:
                 break
         else:
-            print('Tooltips.set_tip_plan() self.log_nt widget NOT FOUND!:',
+            print(self.who + 'set_tip_plan() self.log_nt widget NOT FOUND!:',
                   self.log_nt)
             print('search_widget for above:', search_widget)
             try:
@@ -4340,8 +4341,7 @@ class ToolTips(CommonTip):
             except tk.TclError:
                 print("Probably shutting down...")
             return
-            # Could exit now and save second test
-        
+
         self.dict_to_fields()  # Dictionary to easy names
         self.current_mouse_xy = (self.log_nt.x, self.log_nt.y)  # pos in widget
 
@@ -4403,7 +4403,7 @@ class ToolTips(CommonTip):
             self.release_time = self.log_nt.time
 
         else:
-            print('toolkit.py ToolTips.process_tip(): Invalid action:',
+            print(self.who + 'process_tip(): Invalid action:',
                   self.log_nt.action)
 
         self.fields_to_dict()
@@ -4475,12 +4475,8 @@ class ToolTips(CommonTip):
         return fade_in_time, fade_out_time
 
     def add_tip(self, widget, text='Pass text here', tool_type='button',
-                #visible_delay=VISIBLE_DELAY, visible_span=VISIBLE_SPAN,
-                #extra_word_span=EXTRA_WORD_SPAN, fade_in_span=FADE_IN_SPAN,
-                #fade_out_span=FADE_OUT_SPAN, anchor="sw", menu_tuple=None,
-                visible_delay=None, visible_span=None,
-                extra_word_span=None, fade_in_span=None,
-                fade_out_span=None, anchor="sw", menu_tuple=None,
+                visible_delay=None, visible_span=None, extra_word_span=None, 
+                fade_in_span=None, fade_out_span=None, anchor="sw", menu_tuple=None,
                 pb_alpha=None, pb_leave=None, pb_ready=None, pb_close=None):
         """ Declare Tooltip """
         CommonTip.__init__(self)            # Initialize all tip instances
@@ -4516,9 +4512,14 @@ class ToolTips(CommonTip):
         if self.name is None or self.name.strip() == "":
             self.name = self.tool_type  # Not a Button or no text in button
 
-        # Add tip dictionary to tips list
         self.fields_to_dict()
-        self.tips_list.append(self.dict)
+        i = self.check(self.widget)
+        if i is not None:
+            # Probably splash message being recycled.
+            self.tips_list[i] = self.dict
+        else:
+            # Add tip dictionary to tips list
+            self.tips_list.append(self.dict)
 
     def reset_tip(self):
         """ After cycle is finished reset selected widget values """
@@ -4661,6 +4662,7 @@ class ToolTips(CommonTip):
                 #  zero_alpha_time: 1697681040.39
                 # We've finished fading out
                 if self.pb_close and self.tool_type == "piggy_back":
+                    # "splash" tool_type will be reset further down
                     self.reset_tip()  # pb_close will probably destroy tip next...
                     self.pb_close()  # Tell "piggy_back" to destroy it's frame
                     return
@@ -4899,13 +4901,9 @@ class ToolTips(CommonTip):
         self.tip_window.wm_geometry("+%d+%d" % (x, y))
         self.window_geom = self.tip_window.wm_geometry()
 
-    def set_text(self, widget, text,
-                 #visible_delay=VISIBLE_DELAY,
-                 #visible_span=VISIBLE_SPAN, extra_word_span=EXTRA_WORD_SPAN,
-                 #fade_in_span=FADE_IN_SPAN, fade_out_span=FADE_OUT_SPAN):
-                 visible_delay=None,
-                 visible_span=None, extra_word_span=None,
-                 fade_in_span=None, fade_out_span=None):
+    def set_text(self, widget, text, visible_delay=None, visible_span=None, 
+                 extra_word_span=None, fade_in_span=None, fade_out_span=None):
+        """ Change Tooltip text and duration timings """
 
         visible_delay = visible_delay if visible_delay else VISIBLE_DELAY
         visible_span = visible_span if visible_span else VISIBLE_SPAN
@@ -4928,7 +4926,7 @@ class ToolTips(CommonTip):
                 return
   
         print_trace()          
-        print('toolkit.py ToolTips.set_text(): tip not found')
+        print(self.who + 'set_text(): tip not found')
 
     def get_dict(self, widget):
         """ Debugging tool for external caller to get a widget's dictionary """
@@ -4937,7 +4935,6 @@ class ToolTips(CommonTip):
                 return s
         print('toolkit.py ToolTips.get_dict(): self.dict for "widget" not found',
               widget)
-
 
     def toggle_position(self, widget):
         """ Flip anchor from North->South or from South->North
@@ -5002,20 +4999,27 @@ class ToolTips(CommonTip):
         d_print('REL_S:', str(event.widget)[-4:], event.x, event.y)
         self.log_event('release', event.widget, event.x, event.y)
 
-    def close(self, widget):
-        """ When window closes all tooltips in it must be removed.
+    def close(self, widget, flush_log=True):
+        """ When a window closes, all tooltips in it must be removed.
             Can be called externally.  Extra steps required to ensure
             window isn't visible.  Caller needs top.update() afterwards.
 
-        :param widget either button or parent(s) of button. """
+        :param widget: either button or parent / grandparent of button. 
+        :param flush_log: empty self.log_list for all events.
+        """
         new_list = []
-        start = len(self.tips_list)
-        for self.dict in self.tips_list:
-            if not str(self.dict['widget']).startswith(str(widget)):
-                new_list.append(self.dict)
+        start = len(self.tips_list)  # Compare length at end to ensure found
+
+        # Losing last dictionary?
+        old_last = self.tips_list[-1]
+
+        for old_dict in self.tips_list:
+            if not str(old_dict['widget']).startswith(str(widget)):
+                new_list.append(old_dict)
                 continue
             d_print("Closing widget:", str(widget)[-4:])
-            tip_window = self.dict['tip_window']
+            #print("Closing widget:", widget)
+            tip_window = old_dict['tip_window']
             if tip_window is not None:
                 tip_window.destroy()
             # 2024-05-06 was getting left over window self.play_top.update() fixes
@@ -5024,23 +5028,32 @@ class ToolTips(CommonTip):
         #print(diff, 'Tooltips removed on close')
         self.tips_list = []
         self.tips_list = new_list
+
+        # Losing last dictionary?
+        new_last = self.tips_list[-1]
+        if old_last != new_last:
+            #print("last dictionary changed:")
+            #print(old_last)
+            #print(new_last)
+            pass
         end = len(self.tips_list)
         if start == end:
-            print("\ntoolkit.py ToolTips.close() called with no effect: ", start)
+            print("\n" + self.who + "close() called with no effect:", start)
             print_trace()
-            print("Widget(s):", widget)
-        self.log_list = []      # Flush out log list for new events
+            print("Widget:", widget)
+        if flush_log:
+            self.log_list = []  # Flush out log list for new events
 
     def check(self, widget, prefix_only=True):
         """ Check if widget in ToolTips()
-        :param widget: Parent button or parent frame and prefix check.
-        :param prefix_only: Check for members of window group
+        :param widget: Button (or another widget type) to check.
+        :param prefix_only: Check for members of window or button frame group.
         :returns: Tooltip dictionary if found, else type 'None' """
-        for s in self.tips_list:
+        for i, s in enumerate(self.tips_list):
             if str(s['widget']) == str(widget):
-                return s  # Full match passes
+                return i  # Full match passes
             elif prefix_only and str(s['widget']).startswith(str(widget)):
-                return s  # Test prefix and it matches
+                return i  # Test prefix and it matches
         return None
 
     def line_dump(self):
@@ -5057,6 +5070,7 @@ class ToolTips(CommonTip):
                      str(len(self.tips_list)) + ' Tip Dictionaries')
         lines.append('Tip#  Suf.  Name - Text')
         lines.append('====  ====  ' + '=' * 78)
+        s = "            "
 
         for i, tips_dict in enumerate(self.tips_list):
             line  = "#" + '{:3d}'.format(i + 1)
@@ -5064,12 +5078,12 @@ class ToolTips(CommonTip):
             line += "  " + tips_dict['name']
             line += "  -  " + tips_dict['text'].splitlines()[0]  # First line only
             lines.append(line)
-            line = "            " + str(tips_dict['widget'])
+            line = s + str(tips_dict['widget'])
             lines.append(line)
             # Following stuff is all Null so check before including
             if tips_dict['tip_window'] is not None:
-                line  = "  tip_window: " + str(tips_dict['tip_window'])[-4:]
-                line += "  window_geom: " + str(tips_dict['window_geom'])[-4:]
+                line  = s + "tip_window: " + str(tips_dict['tip_window'])[-4:]
+                line += "  window_geom: " + str(tips_dict['window_geom'])
                 line += "  current_state: " + str(tips_dict['current_state'])
                 lines.append(line)  # almost always null
 
@@ -5077,7 +5091,7 @@ class ToolTips(CommonTip):
 
 
 def d_print(*args):
-    """ Only print debugging lines when D_PRINT is true
+    """ Print debugging lines when D_PRINT is true
         Prepend current time with four decimal places (chop 2 places off)
     """
     if D_PRINT is True:

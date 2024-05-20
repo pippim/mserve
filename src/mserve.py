@@ -1465,7 +1465,9 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
             self.lib_top, apply_callback=self.apply_playlists, tooltips=self.tt,
             pending=self.get_pending_cnt_total, enable_lib_menu=self.enable_lib_menu,
             thread=self.get_refresh_thread, play_close=self.play_close,
-            display_lib_title=self.display_lib_title, info=self.info)
+            # 2024-05-20 - display_lib_title being called multiple times
+            #display_lib_title=self.display_lib_title, info=self.info)
+            info=self.info)
 
         ''' Last File Access Time overrides. E.G. Look but do not touch. '''
         self.play_ctl = FileControl(self.lib_top, self.info,
@@ -1593,7 +1595,7 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
         lib_rip_cd_btn = tk.Button(frame3, text="🖸  Rip CD", width=g.BTN_WID2 - 4,
                                    font=g.FONT, command=self.rip_cd)
         lib_rip_cd_btn.grid(row=0, column=2, padx=10, pady=5, sticky=tk.E)
-        self.tt.add_tip(lib_rip_cd_btn, anchor="nw",
+        self.tt.add_tip(lib_rip_cd_btn, anchor="ne",
                         text="Encode songs from Audio CD to music files.")
 
         ''' Help Button - 
@@ -2245,6 +2247,9 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
             print(self.who + "apply_playlists(delete_only=True)")
             return  # Called by Playlists.delete() function
 
+
+        # 2024-05-20 - TODO: Wiping out Favorites with Playlist after an error.
+
         self.save_last_selections(new_playlist=True)  # special save situation
         self.ndx = 0  # resume will set to last playing song
         self.saved_selections = []  # lib_tree id's in sorted play order
@@ -2320,8 +2325,14 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
 
         if self.playlists.top:
             # 2024-03-20 Should only do this if lib_top covers playlists_top?
-            self.playlists.top.focus_force()  # Get focus
-            self.playlists.top.lift()  # Raise in stacking order
+            try:
+                self.playlists.top.focus_force()  # Get focus
+                self.playlists.top.lift()  # Raise in stacking order
+            except tk.TclError:
+                # 2024-05-20 - Error when .top was X closed
+                print(self.who + "handle_lib_top_focus():",
+                      "self.playlists.top NOT found!")
+                pass
 
         elif lcs.main_top:  # Locations Maintenance Window
             # 2024-03-20 Should only do this if lib_top covers lcs.main_top?
@@ -2952,7 +2963,11 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
             self.tree_col_range_replace(str(i), 6, [1, 0, 0, 0, 0])
             self.lib_tree.tag_bind(str(i), '<Motion>', self.lib_highlight_row)
 
-        self.display_lib_title()  # Was called thousands of times above.
+        self.display_lib_title(splash_msg=False)  # Up-to-date splash message later.
+        # 2024-05-20 - When commenting out above get new error:
+        # launch_ext_command() ERROR: A new PID could not be found
+        # continue_pid_running() ERROR: argument is '0'
+        # stop_pid_running() ERROR: argument is '0'
 
     @staticmethod
     def key_press(event):
@@ -3170,10 +3185,9 @@ Call search.py when these control keys occur
             # self.lib_top_totals[ndx] = self.lib_top_totals[ndx] + add_list[i]
             self.lib_top_totals[ndx] += add_list[i]
 
-    def display_lib_title(self):
+    def display_lib_title(self, splash_msg=False):
         """ Format sizes, selected and playlist name in title bar.
             Called after lib_top_totals are built and when playlist changes
-            In case playlist was renamed, update play_top.title
         """
         if not self.lib_top_is_active:
             return  # June 19, 2023 - throw in the towel debugging errors below
@@ -3214,14 +3228,33 @@ Call search.py when these control keys occur
         self.lib_top_totals[3] = "   🖸 " + human_all_sizes + " used."
 
         if selected_count > 0:
-            # Extend format for at least one song selected
-            self.lib_top_totals[2] += " "+'{:n}'.format(selected_count) + ' selected.'
-            self.lib_top_totals[3] += " " + human_selected + ' selected.'
+            # Expand title when song(s) selected
+            s = " selected."
+            self.lib_top_totals[2] += " " + '{:n}'.format(selected_count) + s
+            self.lib_top_totals[3] += " " + human_selected + s
 
         self.build_lib_top_playlist_name()  # More verbose than self.title_suffix
         s = "   ☰ " + self.lib_top_playlist_name + " - mserve"
         self.lib_top.title(self.lib_top_totals[0] + self.lib_top_totals[1] +
                            self.lib_top_totals[2] + self.lib_top_totals[3] + s)
+
+        if splash_msg:
+            """ Display splash window """
+            #if self.play_top_is_active:
+            #    self.play_top.update_idletasks()  # 2024-05-20 loosing buttons
+            text = "Playlist: " + self.lib_top_playlist_name
+            text += "\n\nStorage device: " + self.lib_top_totals[0]
+            #text += "\n\n self.lib_top_totals[1]: " + self.lib_top_totals[1]
+            text += "\n\nSong counts:" + self.lib_top_totals[2]
+            text += "\n\nSong sizes:" + self.lib_top_totals[3]
+
+            # If self.lib_tree tooltip exists it will be updated with new text
+            self.tt.add_tip(self.lib_tree, text, 'splash', 0, anchor="sc",
+                            visible_span=2500, extra_word_span=250)  
+            # Visible 1/2 as long as normal
+
+            ''' Force Splash Display in toolkit.py Tooltips(). '''
+            self.tt.log_event('enter', self.lib_tree, 10, 5)  # x=10, y=5
 
     def loc_keep_awake(self):
         """ Every x minutes issue keep awake command for server. For example:
@@ -7339,7 +7372,7 @@ Call search.py when these control keys occur
         adj_list = bs.get_totals('lib_top_totals')
         self.tree_title_zero_selected()
         self.tree_title_range_add(8, adj_list)  # Pass start index
-        self.display_lib_title()  # Title formatting with song counts & sizes
+        self.display_lib_title(splash_msg=True)  # Title formatting with song counts & sizes
         ext.t_end('no_print')  # Jun 13, 2023 - Artists & Albums + set checkbox: 0.1274099350
 
     # ==============================================================================
@@ -7485,19 +7518,32 @@ Call search.py when these control keys occur
             self.slider_frm, borderwidth=0, highlightthickness=0,
             text="    🔉", justify=tk.CENTER, font=g.FONT)  # justify not working
         self.ffplay_mute.grid(row=0, column=0, sticky=tk.W)
-        self.ffplay_mute.bind("<Button-1>", lambda _: pav.fade(
-            # 2024-04-29 change play_ctl to pav_ctl
-            self.pav_ctl.sink, float(pav.get_volume(self.pav_ctl.sink)),
-            25, .5, step_cb=self.init_ffplay_slider))
+
+        def volume_mute():
+            """ Click on volume mute icon (speaker with one wave on left) """
+            self.pav_ctl.sink = self.force_sink(
+                self.pav_ctl.sink, self.pav_ctl.pid, trace="ffplay_mute button")
+            pav.fade(self.pav_ctl.sink,
+                     float(pav.get_volume(self.pav_ctl.sink)),
+                     0, .5, step_cb=self.init_ffplay_slider)
+            self.init_ffplay_slider(0)  # Final step to 0 display
+
+        self.ffplay_mute.bind("<Button-1>", lambda _: volume_mute())
+
+        #self.ffplay_mute.bind("<Button-1>", lambda _: pav.fade(
+        #    # 2024-04-29 change play_ctl to pav_ctl
+        #    self.pav_ctl.sink, float(pav.get_volume(self.pav_ctl.sink)),
+        #    25, .5, step_cb=self.init_ffplay_slider))
+
         # focus in/out aren't working :(
         self.ffplay_mute.bind("<FocusIn>", lambda _: print("focus in"))
         self.ffplay_mute.bind("<FocusOut>", lambda _: print("focus out"))
 
         text = "Speaker with one wave.\n"
-        text += "Click to reduce the volume to 25%.\n"
+        text += "Click to mute volume.\n"
         text += "Music keeps play with no sound.\n"
         text += "You can also click on album art to\n"
-        text += "pause music and reduce the volume."
+        text += "toggle pausing and playing music."
         self.tt.add_tip(self.ffplay_mute, tool_type='label',
                         text=text, anchor="sw")
 
@@ -7506,10 +7552,23 @@ Call search.py when these control keys occur
             self.slider_frm, borderwidth=0, highlightthickness=0,
             text="    🔉", font=g.FONT)  # justify not working
         self.ffplay_full.grid(row=0, column=2)
-        self.ffplay_full.bind("<Button-1>", lambda _: pav.fade(
-            # 2024-04-29 change play_ctl to pav_ctl
-            self.pav_ctl.sink, float(pav.get_volume(self.pav_ctl.sink)),
-            100, .5, step_cb=self.init_ffplay_slider))
+
+        def volume_full():
+            """ Click on full volume icon (speaker with three waves on right) """
+            self.pav_ctl.sink = self.force_sink(
+                self.pav_ctl.sink, self.pav_ctl.pid, trace="ffplay_full button")
+            max_vol = self.get_max_volume()
+            pav.fade(self.pav_ctl.sink,
+                     float(pav.get_volume(self.pav_ctl.sink)),
+                     max_vol, .5, step_cb=self.init_ffplay_slider)
+            self.init_ffplay_slider(max_vol)  # Final step to 100 display
+
+        self.ffplay_full.bind("<Button-1>", lambda _: volume_full())
+
+        #self.ffplay_full.bind("<Button-1>", lambda _: pav.fade(
+        # 2024-04-29 change play_ctl to pav_ctl
+        #self.pav_ctl.sink, float(pav.get_volume(self.pav_ctl.sink)),
+        #100, .5, step_cb=self.init_ffplay_slider))
 
         text = "Speaker with three waves.\n"
         text += "Click to restore the volume to 100%."
@@ -7740,9 +7799,11 @@ Call search.py when these control keys occur
             return  # Slider can send dozens of values before message responds
         self.set_ffplay_sink_WIP = True  # function running, block future spam
 
-        # 2024-04-29 upgrade to support more than one file control sink
+        # 2024-04-29 - Upgrade to support old/new file control sinks
         #curr_vol, curr_sink = self.get_volume("ffplay")
         if self.pav_ctl.sink:
+            self.pav_ctl.sink = self.force_sink(
+                self.pav_ctl.sink, self.pav_ctl.pid, trace="set_ffplay_sink()")
             curr_vol = pav.get_volume(self.pav_ctl.sink)
         else:
             curr_vol = 24.2424  # Indicates no sink
@@ -7773,12 +7834,12 @@ Call search.py when these control keys occur
 
     def init_ffplay_slider(self, value):
         """ Called above and from pav.poll_fades callback. """
-        value = int(value)  # Might be float from pav.poll_fades() callback?
-        self.set_ffplay_sink_WIP = True  # Not sure why we have to do this?
+        value = int(value)  # Might be float from pav.poll_fades() callback
+        self.set_ffplay_sink_WIP = True  # Prevent repetitive calls
         self.curr_ffplay_volume = value
         self.ffplay_slider.set(self.curr_ffplay_volume)
         self.play_top.update_idletasks()
-        self.set_ffplay_sink_WIP = False  # Not sure why we have to do this?
+        self.set_ffplay_sink_WIP = False  # Allow calling again
 
     # 2024-04-29 switch to more direct method: pav.get_volume(sink_no_str)
     #@staticmethod
@@ -8123,7 +8184,7 @@ Call search.py when these control keys occur
                               command=lambda s=self: s.song_set_ndx('next'))
                 self.next_button.grid(row=0, column=col, padx=2, sticky=tk.W)
                 self.tt.add_tip(self.next_button, "Play next song in playlist.",
-                                anchor="sw")
+                                anchor="se")
             elif name == "Com":
                 ''' Hockey Commercial Button '''
                 if self.tt.check(self.com_button):
@@ -16351,8 +16412,7 @@ class Playlists(PlaylistsCommonSelf):
         self.playlists = Playlists(
             self.lib_top, apply_callback=self.apply_playlists, tooltips=self.tt,
             pending=self.get_pending_cnt_total, enable_lib_menu=self.enable_lib_menu,
-            thread=self.get_refresh_thread, play_close=self.play_close,
-            display_lib_title=self.display_lib_title, info=self.info)
+            thread=self.get_refresh_thread, play_close=self.play_close, info=self.info)
 
               - Geometry in Type-'window', action-'playlists'.
               - build_lib_menu will look at self.playlists.status
@@ -16462,15 +16522,16 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
 
     def __init__(self, tk_top=None, text=None, pending=None, info=None,
                  apply_callback=None, enable_lib_menu=None, play_close=None,
-                 tooltips=None, thread=None, display_lib_title=None):
+                 # 2024-05-20 - display_lib_title() overused
+                 #tooltips=None, thread=None, display_lib_title=None):
+                 tooltips=None, thread=None):
         """
         Usage:
 
         self.playlists = Playlists(
             self.lib_top, apply_callback=self.apply_playlists, tooltips=self.tt,
             pending=self.get_pending_cnt_total, enable_lib_menu=self.enable_lib_menu,
-            thread=self.get_refresh_thread, play_close=self.play_close,
-            display_lib_title=self.display_lib_title, info=self.info)
+            thread=self.get_refresh_thread, play_close=self.play_close, info=self.info)
 
         """
         PlaylistsCommonSelf.__init__(self)  # Define self. variables
@@ -16485,7 +16546,8 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         self.enable_lib_menu = enable_lib_menu
         self.tt = tooltips  # Tooltips pool for buttons
         self.get_thread_func = thread  # E.G. self.get_refresh_thread
-        self.display_lib_title = display_lib_title  # Rebuild lib_top menubar
+
+        self.who = "mserve.py Playlists()."
 
         ''' Open Playlist variables (Now Playing) - SQL History = "variable" '''
         self.open_row_id = None  # History Table record number = "RowId"
@@ -16629,7 +16691,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
 
     def create_top(self, name):
         """ Shared with self.create_window(), self.displayMusicIds()
-            and self.buildYouTubePlaylist() """
+            self.displayPlaylistCommonTop() and self.buildYouTubePlaylist() """
 
         self.top = tk.Toplevel()  # Playlists top level
         ''' Save geometry for Playlists() '''
@@ -16838,9 +16900,8 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         self.state = 'close'
         if not self.edit_playlist():  # Check if changes pending & confirm
             return False
-        self.play_close()  # must be called before name is none
-        self.reset_open_vars()
-        self.display_lib_title()
+        self.play_close()  # must be called before self.open_name is None
+        self.reset_open_vars()  # Set self.open_name to None
         return True
 
     # Playlists Class Data Processing
@@ -17168,7 +17229,6 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                 self.play_close()  # must be called before name is reset
                 self.reset_open_vars()  # Set all self.open_xxx to None
                 self.reset()  # Close everything down, E.G. destroy window
-                self.display_lib_title()
                 self.apply_callback(delete_only=True)  # def apply_playlists
 
         elif self.state == 'open' and self.act_description.startswith("http"):
@@ -17237,8 +17297,8 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                     print("buildYouTubePlaylist() FAILED")
                     # Drops down to destroy window (reset).
             else:
-                self.displayMusicIds()
-                self.top.config(cursor="")  # Reset mouse pointer/cursor to default
+                if self.displayMusicIds():
+                    self.top.config(cursor="")  # Reset mouse pointer/cursor to default
                 return  # Can't destroy window below
 
         elif self.state == 'rename':
@@ -17248,7 +17308,6 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                 self.open_name = self.act_name  # 'rename' title
                 self.open_description = self.act_description
                 # Not sure about saving config & wiping out any WIP
-                self.display_lib_title()
             else:
                 self.save_act()  # sql.save_config() self.act_code, etc.
 
@@ -17260,11 +17319,6 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         else:
             self.info.cast("Playlists.apply() bad state: " + self.state,
                            action="update", severity='error')  # NOT icon='error' !
-
-        if self.parent:
-            # During shutdown we somehow get to this point and below gets error
-            # because lib_top no longer exists.
-            self.display_lib_title()  # Important that self.open_name is ACCURATE
 
         self.reset()  # Close everything down, E.G. destroy window
 
@@ -17641,6 +17695,9 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         self.you_tree.tag_configure('play_sel', background='ForestGreen',
                                     foreground="White")
 
+        self.top.bind("<Escape>", self.youClosePlayLrc)
+        self.top.protocol("WM_DELETE_WINDOW", self.youClosePlayLrc)
+
     def displayPlaylistCommonDuration(self, im, duration):
         """ Text Draw duration over image
             Shared by: displayYouTubePlaylist and displayMusicIds
@@ -17688,12 +17745,12 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         self.close_button = tk.Button(self.you_btn_frm, text="✘ Close",
                                       width=g.BTN_WID2 - 4, 
                                       command=self.youClosePlayLrc)
-        self.close_button.grid(row=0, column=4, padx=(10, 5), pady=5,
-                               sticky=tk.E)
+        self.close_button.grid(row=0, column=4, padx=(10, 5), pady=5, sticky=tk.E)
         self.tt.add_tip(self.close_button, "Close YouTube Playlist", anchor="ne")
 
-        self.top.bind("<Escape>", self.youClosePlayLrc)
-        self.top.protocol("WM_DELETE_WINDOW", self.youClosePlayLrc)
+        # Move close higher to CommonTop
+        #self.top.bind("<Escape>", self.youClosePlayLrc)
+        #self.top.protocol("WM_DELETE_WINDOW", self.youClosePlayLrc)
 
         ''' Snapshot Pulse Audio '''
         #pav.get_all_sinks  # 2024-01-20 - missing (), not sure of intent...
@@ -20823,8 +20880,11 @@ AttributeError: 'NoneType' object has no attribute 'execute_script'
         # file control class
         view_ctl = FileControl(self.top, self.info)
         self.photosYouTube = []
+        toolkit.wait_cursor(self.top)  # 16.04 "watch" / 18.04 "clock" cursor
 
         for i, music_id in enumerate(self.act_id_list):
+            if not self.top:
+                return False  # top window closed
             d = sql.music_get_row(music_id)
             if not d:
                 print("Invalid SQL music ID:", music_id)
@@ -20837,6 +20897,9 @@ AttributeError: 'NoneType' object has no attribute 'execute_script'
             #       get_artwork should pad edges when rectangle
             #       im = resized_art (rectangle), image = original art (square)
             photo, im, original = view_ctl.get_artwork(320, 180)
+            if not self.top:
+                return False  # top window closed
+
             if im is None:
                 original = img.make_image(NO_ART_STR,
                                           image_w=1200, image_h=1200)
@@ -20852,9 +20915,16 @@ AttributeError: 'NoneType' object has no attribute 'execute_script'
 
             # Text Draw duration over image & place into self.photosYouTube[]
             self.displayPlaylistCommonDuration(im, duration)
-            self.you_tree.insert('', 'end', iid=str(i), text="№ " + str(i + 1),
-                                 image=self.photosYouTube[-1],
-                                 value=(song_name,))
+            try:
+                self.you_tree.insert('', 'end', iid=str(i), text="№ " + str(i + 1),
+                                     image=self.photosYouTube[-1],
+                                     value=(song_name,))
+            except tk.TclError:
+                # 2024-05-20 - Error when .top was X closed
+                print(self.who + "displayMusicIds():",
+                      "self.playlists.top NOT found!")
+                self.reset()  # Too late to save geometry
+                return False  # playlists.top destroyed
             self.you_tree.see(str(i))
             self.top.update_idletasks()
             thread = self.get_thread_func()  # repeated 3 times...
@@ -20866,6 +20936,7 @@ AttributeError: 'NoneType' object has no attribute 'execute_script'
         view_ctl.close()
 
         # Below is identical to displayYouTubePlaylist()
+        self.top.config(cursor="")  # Reset mouse pointer/cursor to default
         self.displayPlaylistCommonBottom()
 
 
