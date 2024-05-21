@@ -4792,14 +4792,11 @@ class ToolTips(CommonTip):
         #if self.tool_type is not 'canvas_button':  # comment June 15/23
         # What about 'label'?
         if self.tool_type is 'button' or self.tool_type is 'menu':
-            #or self.tool_type is 'splash':
-            # splash over a button object
             self.fg = self.widget["background"]
             self.bg = self.widget["foreground"]
         else:
-            # splash over a treeview object
-            self.fg = self.dft_fg  # 'canvas_button' has no coloring.  'label' and
-            self.bg = self.dft_bg  # 'piggy-back' will also come here
+            self.fg = self.dft_fg  # 'canvas_button', 'label', 'splash',
+            self.bg = self.dft_bg  # and 'piggy-back' have no fg/bg colors.
 
         #self.tip_window = tw = tk.Toplevel(self.widget)  # Original weird code...
         if self.menu_tuple:

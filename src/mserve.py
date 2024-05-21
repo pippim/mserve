@@ -1304,6 +1304,9 @@ class MusicLocTreeCommonSelf:
         ''' last_sleep_time for mor accurate 30 frames per second (fps) '''
         self.last_sleep_time = time.time()
 
+        ''' self.lib_btn_frm needed for splash_msg '''
+        self.lib_btn_frm = None
+
 
 class MusicLocationTree(MusicLocTreeCommonSelf):
     """ Create self.lib_tree = tk.Treeview() via CheckboxTreeview()
@@ -1567,15 +1570,15 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
         self.create_pending_frame(master_frame)  # Hides after creation
 
         ''' Treeview Buttons '''
-        frame3 = tk.Frame(master_frame)
-        frame3.grid_rowconfigure(0, weight=1)
-        frame3.grid_columnconfigure(0, weight=0)
-        frame3.grid(row=3, column=0, sticky=tk.E)  # May 28, 2023 was row=2
+        self.lib_btn_frm = tk.Frame(master_frame)
+        self.lib_btn_frm.grid_rowconfigure(0, weight=1)
+        self.lib_btn_frm.grid_columnconfigure(0, weight=0)
+        self.lib_btn_frm.grid(row=3, column=0, sticky=tk.E)  # May 28, 2023 was row=2
 
         ''' ▶  Play Button '''
         self.play_text = "▶  Play"  # Appears when play_top is closed
         self.lib_tree_play_btn = tk.Button(
-            frame3, text=self.play_text, width=g.BTN_WID2 + 1,
+            self.lib_btn_frm, text=self.play_text, width=g.BTN_WID2 + 1,
             font=g.FONT, command=self.play_selected_list)
         self.lib_tree_play_btn.grid(row=0, column=0, padx=10, pady=5,
                                     sticky=tk.E)
@@ -1584,7 +1587,7 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
 
         ''' Refresh Treeview Button u  1f5c0 🗀 '''
         ''' 🗘  Update differences Button u1f5d8 🗘'''
-        lib_refresh_btn = tk.Button(frame3, text="🗘 Refresh library", 
+        lib_refresh_btn = tk.Button(self.lib_btn_frm, text="🗘 Refresh library", 
                                     width=g.BTN_WID2 + 2, font=g.FONT, 
                                     command=self.rebuild_lib_tree)
         lib_refresh_btn.grid(row=0, column=1, padx=10, pady=5, sticky=tk.E)
@@ -1592,7 +1595,7 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
                         text="Scan disk for songs added and removed.")
 
         ''' Rip CD Button 🖸 (1f5b8) '''
-        lib_rip_cd_btn = tk.Button(frame3, text="🖸  Rip CD", width=g.BTN_WID2 - 4,
+        lib_rip_cd_btn = tk.Button(self.lib_btn_frm, text="🖸  Rip CD", width=g.BTN_WID2 - 4,
                                    font=g.FONT, command=self.rip_cd)
         lib_rip_cd_btn.grid(row=0, column=2, padx=10, pady=5, sticky=tk.E)
         self.tt.add_tip(lib_rip_cd_btn, anchor="ne",
@@ -1607,7 +1610,7 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
         help_text += "https://www.pippim.com/programs/mserve.html#\n"
 
         lib_help_btn = tk.Button(
-            frame3, text="⧉ Help", font=g.FONT, width=g.BTN_WID2 - 4,
+            self.lib_btn_frm, text="⧉ Help", font=g.FONT, width=g.BTN_WID2 - 4,
             command=lambda: g.web_help("HelpMusicLocationTree"))
         lib_help_btn.grid(row=0, column=3, padx=10, pady=5, sticky=tk.E)
         if self.tt:
@@ -1616,7 +1619,7 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
         ''' ✘ Close Button '''
         self.lib_top.bind("<Escape>", self.close)
         self.lib_top.protocol("WM_DELETE_WINDOW", self.close)
-        lib_close_btn = tk.Button(frame3, text="✘ Close", width=g.BTN_WID2 - 4,
+        lib_close_btn = tk.Button(self.lib_btn_frm, text="✘ Close", width=g.BTN_WID2 - 4,
                                   font=g.FONT, command=self.close)
         lib_close_btn.grid(row=0, column=4, padx=(10, 2), pady=5, sticky=tk.E)
         self.tt.add_tip(lib_close_btn, anchor="ne",
@@ -1703,6 +1706,8 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
             self.title_suffix = "Playlist: " + self.playlists.open_name
             if self.playlists.open_description.startswith(lcs.avo_playlist_prefix):
                 self.is_loudnorm_playlist = True
+                #self.play_hockey_allowed = False  # Not sure if wanted...
+                # 2024-05-21 - What happens to Tools/Enable FF or Hockey buttons? 
         else:
             self.title_suffix = "Favorites"  # Used in play_top window title
 
@@ -2016,8 +2021,9 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
         # The facts are apparent when you restart. To save time, just exit and type 'm'.
 
         self.file_menu.add_command(label="Save Favorites", font=g.FONT,
-                                   underline=1, command=self.write_playlist_to_disk,
-                                   state=tk.DISABLED)
+                                   underline=1, state=tk.DISABLED,
+                                   command=lambda _: self.write_playlist_to_disk(
+                                       save_favorites=True))
         self.file_menu.add_command(label="Exit and CANCEL Pending", font=g.FONT,
                                    underline=9, command=self.exit_without_save,
                                    state=tk.DISABLED)
@@ -3248,13 +3254,14 @@ Call search.py when these control keys occur
             text += "\n\nSong counts:" + self.lib_top_totals[2]
             text += "\n\nSong sizes:" + self.lib_top_totals[3]
 
-            # If self.lib_tree tooltip exists it will be updated with new text
-            self.tt.add_tip(self.lib_tree, text, 'splash', 0, anchor="sc",
-                            visible_span=2500, extra_word_span=250)  
-            # Visible 1/2 as long as normal
+            # If self.lib_tree tooltip already exists, it's updated with new text
+            if self.lib_tree is not None:
+                self.tt.add_tip(self.lib_tree, text, 'splash', 0, anchor="sc",
+                                visible_span=2500, extra_word_span=250)
+                # Visible 1/2 as long as normal
 
-            ''' Force Splash Display in toolkit.py Tooltips(). '''
-            self.tt.log_event('enter', self.lib_tree, 10, 5)  # x=10, y=5
+                ''' Force Splash Display in toolkit.py Tooltips(). '''
+                self.tt.log_event('enter', self.lib_tree, 10, 5)  # x=10, y=5
 
     def loc_keep_awake(self):
         """ Every x minutes issue keep awake command for server. For example:
@@ -4573,7 +4580,7 @@ Call search.py when these control keys occur
         if save:
             if self.playlists.open_name:
                 # Saving requires reading stats from lib_tree
-                self.write_playlist_to_disk(ShowInfo=False)
+                self.write_playlist_to_disk(show_info=False)
             else:
                 self.save_last_selections()  # Last selections for next open
         self.close_sleepers()  # Shut down running functions
@@ -6920,11 +6927,12 @@ Call search.py when these control keys occur
             caller_disc=last_disc, thread=self.get_refresh_thread)
         return
 
-    def write_playlist_to_disk(self, ShowInfo=True):
+    def write_playlist_to_disk(self, show_info=True, save_favorites=False):
         """ Save Favorites using save_last_selections. Also saves current song ndx.
             if self.playlists.open_name used, then write to SQL Playlist Record instead.
 
-        :param ShowInfo: Set to False when system is shutting down.
+        :param show_info: Set to False when system is shutting down.
+        :param save_favorites: Explicit overwriting of last_playlist.
         """
         # Playlist options disabled in other functions
         self.file_menu.entryconfig("Save Favorites", state=tk.DISABLED)
@@ -6942,7 +6950,9 @@ Call search.py when these control keys occur
         if self.playlists.open_name:
             self.playlists.save_playlist()  # act_id_list already up to date
         else:
-            self.save_last_selections()  # Write location's favorites to disk
+            # def save_last_selections
+            # Write location's favorites to disk
+            self.save_last_selections(save_favorites=save_favorites)
 
         self.pending_tot_add_cnt = 0        # Total changes made without being
         self.pending_tot_del_cnt = 0        # written to disk with "Save Favorites"
@@ -6957,12 +6967,12 @@ Call search.py when these control keys occur
             "'Exit and CANCEL Pending' instead of 'Save Play and Exit'." + \
             "\n\nThen all changes since the last save are discarded."
         title = self.title_suffix + " saved."
-        if ShowInfo:
+        if show_info:
             message.ShowInfo(self.lib_top, title, text, 'left',
                              thread=self.get_refresh_thread)
             self.info.cast(title + "\n\n" + text)
 
-    def save_last_selections(self, new_playlist=False):
+    def save_last_selections(self, new_playlist=False, save_favorites=False):
 
         """ Save to ~/.../mserve:
                 last_location    = 'iid' in location master
@@ -6972,8 +6982,10 @@ Call search.py when these control keys occur
                 last_playlist    = songs selected for playing in user order
                 last_song_ndx    = pointer into playlist to continue playing
 
-        :param new_playlist: When True a new playlist is being opened so
-            just saving current position for returning to favorites
+            :param new_playlist: When True a new playlist is being opened so
+                just saving current position for returning to favorites
+            :param save_favorites: When True write checked songs to disk. Only
+                done when "Save Favorites" explicitly picked from menu.
         """
 
         global LODICT, START_DIR
@@ -7016,26 +7028,27 @@ Call search.py when these control keys occur
             return
 
         ''' Save full path of selected songs in current play order '''
-        save_songs = []
-        for s_ndx in self.saved_selections:
-            try:
-                if s_ndx.startswith("I"):
-                    print("mserve.py save_last_selections() 's_ndx' not song:",
-                          s_ndx, self.lib_tree.item(s_ndx, 'text'))
+        if save_favorites:
+            save_songs = []
+            for s_ndx in self.saved_selections:
+                try:
+                    if s_ndx.startswith("I"):
+                        print("mserve.py save_last_selections() 's_ndx' not song:",
+                              s_ndx, self.lib_tree.item(s_ndx, 'text'))
+                        continue
+                except AttributeError:
+                    print("mserve.py save_last_selections() 's_ndx' not string:",
+                          type(s_ndx), s_ndx)
                     continue
-            except AttributeError:
-                print("mserve.py save_last_selections() 's_ndx' not string:",
-                      type(s_ndx), s_ndx)
-                continue
 
-            ndx = int(s_ndx)  # string to integer
-            save_songs.append(self.real_paths[ndx])  # Get full path
+                ndx = int(s_ndx)  # string to integer
+                save_songs.append(self.real_paths[ndx])  # Get full path
 
-        with open(lc.FNAME_LAST_PLAYLIST, "wb") as f:
-            pickle.dump(save_songs, f)  # Save song list
+            with open(lc.FNAME_LAST_PLAYLIST, "wb") as f:
+                pickle.dump(save_songs, f)  # Save song list
 
         ''' Save last playing song  '''
-        if self.ndx > (len(save_songs) - 1):
+        if self.ndx > (len(self.saved_selections) - 1):
             self.ndx = 0
         with open(lc.FNAME_LAST_SONG_NDX, "wb") as f:
             pickle.dump(self.ndx, f)  # Save song index
@@ -7749,7 +7762,9 @@ Call search.py when these control keys occur
         """ build_play_btn_frm() replaces Hockey Commercial button with Rewind 
             button and replaces Intermission button with Fast Forward button.
             grid row is 20 allowing 19 rows for Artwork, Metadata, Lyrics """
+        self.chron_is_hidden = None  # 2024-05-21 - Set to False in build_play_btn
         self.build_play_btn_frm()  # Placement varies if Hockey enabled
+        # def build_play_btn_frm(
 
         ''' Frame for Playlist (Chronology can be hidden) '''
         self.chron_frm = tk.Frame(self.play_top, borderwidth=g.FRM_BRD_WID,
@@ -7760,6 +7775,7 @@ Call search.py when these control keys occur
         self.chron_frm.grid_rowconfigure(0, weight=1)
         self.chron_frm.grid_columnconfigure(0, weight=1)  # Note weight to stretch
         self.build_chronology()  # Treeview in play order
+        # self.chron_is_hidden =
 
         ''' Start at first playlist entry? '''
         if self.play_from_start:  # Caller can set starting index
@@ -7771,6 +7787,7 @@ Call search.py when these control keys occur
         ''' Retrieve location's last playing/paused status, song progress seconds '''
         resume = self.get_resume()
         chron_state = self.get_chron_state()
+        # def get_chron_state
 
         ''' Start songs in a loop until signal to close '''
         while self.play_top_is_active:  # Loop whilst play window is open
@@ -8187,7 +8204,7 @@ Call search.py when these control keys occur
                                 anchor="se")
             elif name == "Com":
                 ''' Hockey Commercial Button '''
-                if self.tt.check(self.com_button):
+                if self.tt.check(self.com_button) is not None:
                     self.tt.close(self.com_button)  # Remove old tooltip from list
                 # 📺 | television (U+1F4FA)
                 #self.play_hockey_active = False  # U+1f3d2 🏒
@@ -11754,25 +11771,12 @@ mark set markName index"
             full_path = PRUNED_DIR + d['OsFileName']
             self.playlist_paths.append(full_path)
 
-        if self.playlists.open_name:  # Playlist open (not Favorites)?
+        if self.playlists.open_name:  # Playlist open (not Favorites)
             self.playlists.save_playlist()
-
-        ''' DEBUG
-        # 2025-05-05 new error today:
-        # Oops playlist was changed and self.ndx not changed.
-        print("AFTER shuffle - self.ndx:", self.ndx, '= Music Id:',
-              self.saved_selections[self.ndx])
-        print("len(self.saved_selections):", len(self.saved_selections))
-        print("len(self.playlist_paths):", len(self.playlist_paths))
-        if self.playlists.open_name:  # Playlist open (not Favorites)?
-            print("len(self.playlists.open_id_list):", len(self.playlists.open_id_list))
-        print("self.saved_selections[self.ndx]:", self.saved_selections[self.ndx])
-        print("self.playlist_paths[self.ndx]:", self.playlist_paths[self.ndx])
-        if self.playlists.open_name:  # Playlist open (not Favorites)?
-            print("self.playlists.open_id_list[self.ndx]:", self.playlists.open_id_list[self.ndx])
-        '''
-
-        # 2024-05-05 Call self.write_playlist_to_disk(override=selections_only)
+        else:
+            # Write last_playlist (favorites) to disk. Alternative would be to
+            # enable the menu option "Save Favorites".
+            self.write_playlist_to_disk(save_favorites=True)
 
         # Rebuild Play No. in lib tree
         for Artist in self.lib_tree.get_children():  # Read all artists
@@ -13003,13 +13007,13 @@ mark set markName index"
         self.tt.toggle_position(self.pp_button)
         self.tt.toggle_position(self.prev_button)
         self.tt.toggle_position(self.next_button)
-        if self.play_hockey_allowed:
-            self.tt.toggle_position(self.com_button)
-            self.tt.toggle_position(self.int_button)
-        elif self.is_loudnorm_playlist:
+        if self.is_loudnorm_playlist:
             # 2024-04-30 - Test for long running process
             self.tt.toggle_position(self.loud_tog_button)
             self.tt.toggle_position(self.loud_menu_button)
+        elif self.play_hockey_allowed:
+            self.tt.toggle_position(self.com_button)
+            self.tt.toggle_position(self.int_button)
         else:
             self.tt.toggle_position(self.rew_button)
             self.tt.toggle_position(self.ff_button)
@@ -17196,7 +17200,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         :param shutdown: True = shutdown so don't update lib_top """
 
         self.youLrcDestroyFrame()  # Lyrics window if open will close
-        if self.tt and self.tt.check(self.top):
+        if self.tt and self.tt.check(self.top) is not None:
             self.tt.close(self.top)
         if self.top:
             geom = monitor.get_window_geom_string(self.top, leave_visible=False)
@@ -17603,7 +17607,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
     def displayPlaylistCommonTop(self, name):
         """ Shared by: displayYouTubePlaylist and displayMusicIds """
 
-        if self.tt and self.tt.check(self.top):
+        if self.tt and self.tt.check(self.top) is not None:
             self.tt.close(self.top)
         if self.top:
             geom = monitor.get_window_geom_string(self.top, leave_visible=False)
@@ -21525,7 +21529,7 @@ FADE_OUT_SPAN = 400     # 1/5 second to fade out
             # calling a Python object
 
             #print("Checking self.widget")
-            if self.tt.check(self.widget, prefix_only=False):
+            if self.tt.check(self.widget, prefix_only=False) is not None:
                 #print("Closing self.widget")
                 self.tt.close(self.widget)  # Remove 'piggy_back' tooltip
 

@@ -3719,9 +3719,9 @@ filename.
             ''' Remove test window overrides and restore original main window '''
             if self.tt:
                 # Buttons can disappear when synchronize location cancelled
-                if self.tt.check(self.test_close_button):
+                if self.tt.check(self.test_close_button) is not None:
                     self.tt.close(self.test_close_button)
-                if self.tt.check(self.test_help_button):
+                if self.tt.check(self.test_help_button) is not None:
                     self.tt.close(self.test_help_button)
             self.test_close_button.destroy()
             self.test_help_button.destroy()
@@ -4567,7 +4567,7 @@ filename.
             return  # Already closed
         self.cmp_top_is_active = False
         if self.tt and self.cmp_top:
-            if self.tt.check(self.cmp_top):  # Were tooltips created?
+            if self.tt.check(self.cmp_top) is not None:  # Were tooltips created?
                 self.tt.close(self.cmp_top)  # Close tooltips under top level
 
         self.cmp_top.config(cursor="")  # It may have been a spinning hourglass
