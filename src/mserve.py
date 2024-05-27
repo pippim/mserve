@@ -1128,13 +1128,6 @@ class MusicLocTreeCommonSelf:
         self.play_hockey_t_start = 0.0      # time.time()
         self.gone_fishing = None            # Class: Shark eating man
 
-        ''' Show/Hide Playlist Chronology button (Frame 4) '''
-        self.chron_is_hidden = None         # True/False=Frame .grid_remove()/.grid()
-        self.chron_button = None            # tk.Button(..."🖸 Hide Chronology"
-
-        ''' Frame for Playlist Chronology '''
-        self.chron_frm = None               # tk.Frame(self.play_top, bg="Black
-
         ''' File Control instances w/file metadata and methods for song play '''
         self.play_ctl = None  # instance of FileControl() class for playing songs
         self.loud_ctl = None  # Loudness Normalization - side by side w/play_ctl
@@ -1167,25 +1160,19 @@ class MusicLocTreeCommonSelf:
         self.ltp_top = None                 # tk.Toplevel()
         self.ltp_paused_music = None        # We will resume play later
 
+        ''' Show/Hide Playlist Chronology button (Frame 4) '''
+        self.chron_is_hidden = None         # True/False=Frame .grid_remove()/.grid()
+        self.chron_button = None            # tk.Button(..."🖸 Hide Chronology"
+
+        ''' Frame for Playlist Chronology '''
+        self.chron_frm = None               # tk.Frame(self.play_top, bg="Black
+
         ''' Play Chronology '''
         self.chron_tree = None              # ttk.Treeview Playlist Chronology
         self.chron_last_row = None          # Last row highlighted with cursor
         self.chron_last_tag_removed = None  # 'normal' or 'chron_sel' was removed for highlight
         self.chron_has_filter = None        # 'time_index', 'over_5', [ARTIST NAME]
-
         self.chron_iid_dict = OrderedDict()  # chron tree iid True/False attached
-        ''' From toolkit.py
-        i_r = -1  # https://stackoverflow.com/a/47055786/6929343
-        for iid in self.chron_iid_dict.keys():
-
-            # If not attached then reattach it
-            i_r += 1  # Get back attached in same position!
-            if self.chron_iid_dict[iid] is False:
-                #i_r += 1  # Causing attached to go near bottom!
-                self.tree.reattach(iid, '', i_r)
-                self.chron_iid_dict[iid] = True        
-        '''
-
         self.chron_attached = []            # list of attached chronology tree id's
         self.chron_detached = []            # list of detached id's to restore
         self.chron_saved_ndx = None         # original song index 'self.ndx'
@@ -1228,7 +1215,7 @@ class MusicLocTreeCommonSelf:
 
         ''' SQL miscellaneous variables '''
         self.meta_scan = None               # Class for song metadata searching
-        self.mus_artwork_dtb = None           # metadata searching delayed textbox
+        self.mus_artwork_dtb = None         # metadata searching delayed textbox
         # NOTE: self.view used for both SQL Music and SQL History.
         #       self.view is the left-click and right-click menu for single row
         self.view = None                    # Shared view for SQL Music and SQL History
@@ -1293,19 +1280,19 @@ class MusicLocTreeCommonSelf:
         self.loud_size_str = None  # New file size string E.G. "5.4 MB"
         self.title_suffix = None  # Window title_suffix used in two places below
 
-        ''' Menu bars: File, Edit, View + space + playlist information '''
+        ''' Menu bars: File, Edit, View, Tools & Volume (normalization) '''
         self.file_menu = None
         self.edit_menu = None
         self.view_menu = None
         self.tools_menu = None
         self.volume_menu = None
-        self.playlist_bar = None
+        self.playlist_bar = None  # Not used
 
         ''' last_sleep_time for mor accurate 30 frames per second (fps) '''
         self.last_sleep_time = time.time()
 
         ''' self.lib_btn_frm needed for splash_msg '''
-        self.lib_btn_frm = None
+        self.lib_btn_frm = None  # Button Frame: Play, Refresh, Rip, Help & Close
 
 
 class MusicLocationTree(MusicLocTreeCommonSelf):
@@ -1728,14 +1715,20 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
             self.is_loudnorm_sound = None
 
     def force_sink(self, sink, pid, trace=None):
-        """ Compare pid to know pids and return correct sink number """
+        """ Compare pid to know pids and return correct sink number
+            2024-05-22 - check_sinks() replaces need for force_sink()
+        """
         title = self.who + "force_sink(): "
+        pav.get_all_sinks()  # Populate pav.sinks_now
         for Sink in pav.sinks_now:
             if pid == Sink.pid and sink == Sink.sink_no_str:
                 return Sink.sink_no_str  # All good
             if pid == Sink.pid and sink != Sink.sink_no_str:
-                text = "Override sink: " + sink + " with: " + Sink.sink_no_str
-                text += " pid: " + str(pid) + " name: " + Sink.name
+                text = "Override sink: '" + sink + "' with: '" + Sink.sink_no_str
+                text += "' pid: '" + str(pid) + "' name: '" + Sink.name
+                if trace:
+                    text += "' Caller: '" + trace
+                text += "'."
                 lcs.out_fact_print(title, text, 'error')
                 return Sink.sink_no_str  # cast_show
 
@@ -1746,6 +1739,33 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
         lcs.out_fact_print(title, text, 'error')
 
         return sink  # GIGO
+    
+    def check_sinks(self):
+        """ Compare pid to know PulseAudio pids and return correct sink number """
+        title = self.who + "check_sinks(): "
+        pav.get_all_sinks()  # Populate pav.sinks_now
+
+        def print_debug(name, ctl, sink):
+            """ Error found. Print out debug lines. """
+            text = "Matching PID: '" + str(ctl.pid) + "'. Bad '" + name
+            text += "' sink: '" + ctl.sink + "' replaced with: '" + sink + "'\n\n"
+            ctl.sink = sink
+            # Get last 6 lines of trace prior to check_sinks() & print_debug()
+            for bit in toolkit.get_trace()[-9:-3]:
+                text += bit  # + "\n"
+            lcs.out_fact_print(title, text, 'error')
+
+        for Sink in pav.sinks_now:
+            if Sink.pid == self.play_ctl.pid \
+                    and Sink.sink_no_str != self.play_ctl.sink:
+                print_debug("play_ctl", self.play_ctl, Sink.sink_no_str)
+            if Sink.pid == self.loud_ctl.pid \
+                    and Sink.sink_no_str != self.loud_ctl.sink:
+                print_debug("loud_ctl", self.loud_ctl, Sink.sink_no_str)
+            # pav_ctl wouldn't show up if pointing to play_ctl or loud_ctl
+            if Sink.pid == self.pav_ctl.pid \
+                    and Sink.sink_no_str != self.pav_ctl.sink:
+                print_debug("pav_ctl", self.pav_ctl, Sink.sink_no_str)
 
     def loudness_toggle(self, splash_msg=True):
         """ Toggle between old sound and new loudness normalization
@@ -1754,6 +1774,8 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
             :param splash_msg: do not want to splash if another splash is up.
                     E.G. filtering will splash message then start song play.
         """
+
+        self.check_sinks()
 
         self.play_ctl.sink = self.force_sink(self.play_ctl.sink, self.play_ctl.pid,
                                              trace="loudness_toggle() play_ctl")
@@ -2132,23 +2154,23 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
         self.volume_menu.add_command(
             label="Analyze Maximum Volume", font=g.FONT, underline=8,
             state=tk.DISABLED,
-            command=lambda: lcs.analyze_volume(self.start_long_running_process,
-                                               self.end_long_running_process))
+            command=lambda: lcs.detect_old(self.start_long_running_process,
+                                          self.end_long_running_process))
         self.volume_menu.add_command(
             label="Analyze 'loudnorm' Filter", font=g.FONT, underline=9,
             state=tk.DISABLED,
-            command=lambda: lcs.analyze_loudnorm(self.start_long_running_process,
-                                                 self.end_long_running_process))
+            command=lambda: lcs.loudnorm_1(self.start_long_running_process,
+                                           self.end_long_running_process))
         self.volume_menu.add_command(
             label="Update 'loudnorm' Filter", font=g.FONT, underline=0,
             state=tk.DISABLED,
-            command=lambda: lcs.update_loudnorm(self.start_long_running_process,
-                                                self.end_long_running_process))
+            command=lambda: lcs.loudnorm_2(self.start_long_running_process,
+                                           self.end_long_running_process))
         self.volume_menu.add_command(
             label="Analyze New Maximum Volume", font=g.FONT, underline=8,
             state=tk.DISABLED,
-            command=lambda: lcs.analyze_volume_new(self.start_long_running_process,
-                                                   self.end_long_running_process))
+            command=lambda: lcs.detect_new(self.start_long_running_process,
+                                           self.end_long_running_process))
         self.volume_menu.add_command(
             label="Create New Volume Playlist", font=g.FONT, underline=0,
             command=self.playlists.create_loudnorm, state=tk.DISABLED)
@@ -2252,9 +2274,6 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
             self.load_last_selections()  # search def load_last_selections
             print(self.who + "apply_playlists(delete_only=True)")
             return  # Called by Playlists.delete() function
-
-
-        # 2024-05-20 - TODO: Wiping out Favorites with Playlist after an error.
 
         self.save_last_selections(new_playlist=True)  # special save situation
         self.ndx = 0  # resume will set to last playing song
@@ -2880,7 +2899,9 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
 
                 # Treeview bug inserts integer 0 as string 0, must overwrite
                 self.tree_col_range_replace(CurrArtistId, 5, [0, 0, 0, 0, 0, 0])
-                self.lib_tree.tag_bind(CurrArtistId, '<Motion>', self.lib_highlight_row)
+                self.lib_tree.tag_bind(
+                    CurrArtistId, '<Motion>', self.lib_highlight_row
+                )
                 LastArtist = Artist
                 LastAlbum = ""  # Force subtotal break for Album
 
@@ -2893,13 +2914,12 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
                 # 0=PlayTime, 1=Size MB, 2=Selected Str, 3=Time, 4=StatSize,
                 # 5=Count, 6=Seconds, 7=SelSize, 8=SelCount, 9=SelSeconds
                 # May 24, 2023 - open state wasn't specified before today
-                # Treeview bug inserts integer 0 as string 0, must overwrite
-                self.tree_col_range_replace(CurrAlbumId, 5, [0, 0, 0, 0, 0, 0])
 
                 # Treeview bug inserts integer 0 as string 0, must overwrite
                 self.tree_col_range_replace(CurrAlbumId, 5, [0, 0, 0, 0, 0, 0])
-
-                self.lib_tree.tag_bind(CurrAlbumId, '<Motion>', self.lib_highlight_row)
+                self.lib_tree.tag_bind(
+                    CurrAlbumId, '<Motion>', self.lib_highlight_row
+                )
                 LastAlbum = Album
 
             ''' Build full song path from song_list[] '''
@@ -2924,9 +2944,11 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
 
             ''' When using FTP, get size from size_dict, else os.stat() '''
             play_time = 0.0
+            seconds = 0
             d = sql.ofb.Select(full_path[len(PRUNED_DIR):])
             if d:
                 play_time = d['LastPlayTime']
+                seconds = int(d['Seconds'])
             if lcs.open_ftp:
                 size = self.size_dict.get(full_path, 0)
                 if not play_time and d:
@@ -2950,9 +2972,9 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
                     print(" " + full_path)
                 continue  # Causes error because in sorted_list
 
-            self.tree_col_range_add(CurrAlbumId, 5, [size, 1])
-            self.tree_col_range_add(CurrArtistId, 5, [size, 1])
-            self.tree_title_range_add(5, [size, 1])  # update title bar
+            self.tree_col_range_add(CurrAlbumId, 5, [size, 1, seconds])
+            self.tree_col_range_add(CurrArtistId, 5, [size, 1, seconds])
+            self.tree_title_range_add(5, [size, 1, seconds])  # update title bar
             converted = float(size) / float(g.CFG_DIVISOR_AMT)
             fsize = '{:n}'.format(round(converted, g.CFG_DECIMAL_PLACES))
 
@@ -2962,18 +2984,11 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
             ''' Add the song '''
             self.lib_tree.insert(
                 CurrAlbumId, "end", iid=str(i), text=Song, tags=("Song", "unchecked"),
-                values=(ftime, fsize, '', float(play_time), size, 1, 0, 0, 0, 0))
-            # Dec 28 2020 - Selected Size is now Song Sequence Number
-            # 0=PlayTime, 1=Size MB, 2=Selected Str, 3=Time, 4=StatSize,
-            # 5=Count, 6=Seconds, 7=SelSize, 8=SelCount, 9=SelSeconds
-            self.tree_col_range_replace(str(i), 6, [1, 0, 0, 0, 0])
+                values=(ftime, fsize, '', play_time, size, 1, seconds, 0, 0, 0))
             self.lib_tree.tag_bind(str(i), '<Motion>', self.lib_highlight_row)
 
-        self.display_lib_title(splash_msg=False)  # Up-to-date splash message later.
-        # 2024-05-20 - When commenting out above get new error:
-        # launch_ext_command() ERROR: A new PID could not be found
-        # continue_pid_running() ERROR: argument is '0'
-        # stop_pid_running() ERROR: argument is '0'
+        self.display_lib_title(splash_msg=False)
+        # Splash message displayed when set_all_checks_and_opened() is called.
 
     @staticmethod
     def key_press(event):
@@ -3043,7 +3058,7 @@ Call search.py when these control keys occur
 
         tags = self.lib_tree.item(song)['tags']
         if "song_sel" in tags:
-            # We will toggle off and subtract from selected parent totals
+            # Toggle off and subtract from selected parent totals
             old = self.lib_tree.item(song)['values'][2]  # "Selected" column ndx 2
             if old == "Adding":
                 self.lib_tree.set(song, "Selected", "")  # Reset to nothing
@@ -3196,7 +3211,7 @@ Call search.py when these control keys occur
             Called after lib_top_totals are built and when playlist changes
         """
         if not self.lib_top_is_active:
-            return  # June 19, 2023 - throw in the towel debugging errors below
+            return  # music library closing down.
 
         if self.play_top_is_active:  # These three lines repeated when play_top
             self.set_playlist_vars()  # is created. Consider shared function.
@@ -3204,40 +3219,35 @@ Call search.py when these control keys occur
             self.play_top.title(self.play_top_title)
 
         if self.lib_top is None:
-            toolkit.print_trace()  # Can't figure out - causes error lib_top.title()
-            # File "/home/rick/python/mserve.py", line 7830, in refresh_play_top
-            #     self.play_top.update()           # Sept 20 2020 - Need for lib_top
-            # File "/usr/lib/python2.7/lib-tk/Tkinter.py", line 1022, in update
-            #     self.tk.call('update')
-            # File "/usr/lib/python2.7/lib-tk/Tkinter.py", line 1540, in __call__
-            #     return self.func(*args)
-            # File "/home/rick/python/mserve.py", line 13455, in apply
-            #     self.display_lib_title()  # Important that self.name is ACCURATE
-            # File "/home/rick/python/mserve.py", line 2422, in display_lib_title
-            #     toolkit.print_trace()
-            # File "/home/rick/python/toolkit.py", line 60, in print_trace
-            #     for line in traceback.format_stack():
-            # self.lib_top is None
+            toolkit.print_trace()
             print("self.lib_top is None")
             return
 
-        # Put counts into title bar
-        song_count = self.lib_top_totals[6]
-        selected_count = self.lib_top_totals[9]
+        # Copy and paste legend into code for guidance
+        #                       Loc     Songs   Time    Count sSize sSeconds
+        #                       0       2       4       6     8     10
+        # self.lib_top_totals=[ "", "", "", "", "",  0, 0, 0, 0, 0, 0 ]
+        #                           1       3        5     7     9
+        #                           Play    Space    Size  Secs  sCount
 
-        # Human-readable size 12345678 becomes 12.3 MB
+        # Counts, sizes and duration for title bar and splash messages
+        # Human-readable size '12345678' bytes becomes '12.3 MB'
         human_all_sizes = toolkit.human_bytes(self.lib_top_totals[5])
+        song_count = self.lib_top_totals[6]
+        duration_total = tmf.days(self.lib_top_totals[7])
         human_selected = toolkit.human_bytes(self.lib_top_totals[8])
+        selected_count = self.lib_top_totals[9]
+        duration_selected = tmf.days(self.lib_top_totals[10])
+
         # Default format for NO songs selected
         self.lib_top_totals[2] = \
-            "   🎵 " + '{:n}'.format(song_count) + ' songs.'
+            "   🎵 " + '{:n}'.format(song_count) + ' songs.'
         self.lib_top_totals[3] = "   🖸 " + human_all_sizes + " used."
 
         if selected_count > 0:
-            # Expand title when song(s) selected
-            s = " selected."
-            self.lib_top_totals[2] += " " + '{:n}'.format(selected_count) + s
-            self.lib_top_totals[3] += " " + human_selected + s
+            s = " selected."  # Expand title when song(s) selected
+            self.lib_top_totals[2] += " " + '{:n}'.format(selected_count) + s
+            self.lib_top_totals[3] += " " + human_selected + s
 
         self.build_lib_top_playlist_name()  # More verbose than self.title_suffix
         s = "   ☰ " + self.lib_top_playlist_name + " - mserve"
@@ -3245,22 +3255,20 @@ Call search.py when these control keys occur
                            self.lib_top_totals[2] + self.lib_top_totals[3] + s)
 
         if splash_msg:
-            """ Display splash window """
-            #if self.play_top_is_active:
-            #    self.play_top.update_idletasks()  # 2024-05-20 loosing buttons
+            """ Display splash window with favorites or playlist details. """
             text = "Playlist: " + self.lib_top_playlist_name
             text += "\n\nStorage device: " + self.lib_top_totals[0]
             #text += "\n\n self.lib_top_totals[1]: " + self.lib_top_totals[1]
             text += "\n\nSong counts:" + self.lib_top_totals[2]
             text += "\n\nSong sizes:" + self.lib_top_totals[3]
+            text += "\n\nAvailable duration:  🕑 " + duration_total
+            text += "\n\nSelected duration:  🕑 " + duration_selected
 
             # If self.lib_tree tooltip already exists, it's updated with new text
             if self.lib_tree is not None:
-                self.tt.add_tip(self.lib_tree, text, 'splash', 0, anchor="sc",
+                self.tt.add_tip(self.lib_tree, text, 'splash', 0, anchor="bottom",
                                 visible_span=2500, extra_word_span=250)
-                # Visible 1/2 as long as normal
-
-                ''' Force Splash Display in toolkit.py Tooltips(). '''
+                # Visible 1/2 as long as normal. 5000->2500 and 500->250
                 self.tt.log_event('enter', self.lib_tree, 10, 5)  # x=10, y=5
 
     def loc_keep_awake(self):
@@ -4458,8 +4466,7 @@ Call search.py when these control keys occur
             lcs.run_one_command(command_str, lrc_src_size)  # size ~2 KB
 
     def checked_process(self, action):
-        """ Process all checked items 
-            Copied from clear_all_checks
+        """ Process all checked items for Copy or Make LRC.
         """
         who = "mserve.py checked_process() - "
         ext.t_init('check_process()')
@@ -6950,27 +6957,30 @@ Call search.py when these control keys occur
         if self.playlists.open_name:
             self.playlists.save_playlist()  # act_id_list already up to date
         else:
-            # def save_last_selections
             # Write location's favorites to disk
             self.save_last_selections(save_favorites=save_favorites)
 
-        self.pending_tot_add_cnt = 0        # Total changes made without being
-        self.pending_tot_del_cnt = 0        # written to disk with "Save Favorites"
-        self.enable_lib_menu()              # Reset dropdown menu choices for Playlists
+        self.pending_tot_add_cnt = 0  # Total changes made without being
+        self.pending_tot_del_cnt = 0  # written to disk with "Save Favorites"
+        self.enable_lib_menu()        # Reset dropdown menu choices for Playlists
 
-        # TODO: broadcast message through Information Centre
+        # Show and broadcast message through Information Centre
         text = str(len(self.saved_selections)) + " songs in " + \
             self.title_suffix + " have been saved.\n\n" + \
-            "Note the Playlist is automatically saved whenever you\n" + \
-            "exit mserve, log out or the system shuts down normally.\n\n" + \
-            "If you accidentally make drastic changes, use the option\n" + \
-            "'Exit and CANCEL Pending' instead of 'Save Play and Exit'." + \
-            "\n\nThen all changes since the last save are discarded."
+            "Unlike Favorites, Playlists are saved whenever you exit\n" + \
+            "mserve, log out, reboot the system or close the Playlist.\n\n" + \
+            "If you don't want to save Playlist changes, use the option\n" + \
+            "'Exit and CANCEL Pending' instead of 'Save Play and Exit'\n" + \
+            "from the 'File' menu.\n\n" + \
+            "Favorites are only saved when you explicitly select the\n" + \
+            "'Save Favorites' option on the 'File' Menu. Favorites are\n" + \
+            "NOT automatically saved when mserve ends."
         title = self.title_suffix + " saved."
         if show_info:
-            message.ShowInfo(self.lib_top, title, text, 'left',
-                             thread=self.get_refresh_thread)
-            self.info.cast(title + "\n\n" + text)
+            lcs.out_cast_show(title, text, align='left')
+            #message.ShowInfo(self.lib_top, title, text, 'left',
+            #                 thread=self.get_refresh_thread)
+            #self.info.cast(title + "\n\n" + text)
 
     def save_last_selections(self, new_playlist=False, save_favorites=False):
 
@@ -7386,7 +7396,8 @@ Call search.py when these control keys occur
         self.tree_title_zero_selected()
         self.tree_title_range_add(8, adj_list)  # Pass start index
         self.display_lib_title(splash_msg=True)  # Title formatting with song counts & sizes
-        ext.t_end('no_print')  # Jun 13, 2023 - Artists & Albums + set checkbox: 0.1274099350
+        ext.t_end('no_print')  # Jun 13, 2023 - Apply + set checkbox: 0.1274099350
+        # 2024-05-22 - 1500 selections - 'Apply totals ... checkbox:' 0.1243259907
 
     # ==============================================================================
     #
@@ -7534,6 +7545,7 @@ Call search.py when these control keys occur
 
         def volume_mute():
             """ Click on volume mute icon (speaker with one wave on left) """
+            self.check_sinks()
             self.pav_ctl.sink = self.force_sink(
                 self.pav_ctl.sink, self.pav_ctl.pid, trace="ffplay_mute button")
             pav.fade(self.pav_ctl.sink,
@@ -7568,6 +7580,7 @@ Call search.py when these control keys occur
 
         def volume_full():
             """ Click on full volume icon (speaker with three waves on right) """
+            self.check_sinks()
             self.pav_ctl.sink = self.force_sink(
                 self.pav_ctl.sink, self.pav_ctl.pid, trace="ffplay_full button")
             max_vol = self.get_max_volume()
@@ -7803,6 +7816,8 @@ Call search.py when these control keys occur
     def set_ffplay_sink(self, value=None):
         """ Only called by volume slider.
 
+            2024-05-22 - volume can still be changed with mute & full volume icons
+
             NOTE: Automatically called when declared on button binding
 
             TODO: Check cross-fading songs there should be two "ffplay" running.
@@ -7818,6 +7833,7 @@ Call search.py when these control keys occur
 
         # 2024-04-29 - Upgrade to support old/new file control sinks
         #curr_vol, curr_sink = self.get_volume("ffplay")
+        self.check_sinks()
         if self.pav_ctl.sink:
             self.pav_ctl.sink = self.force_sink(
                 self.pav_ctl.sink, self.pav_ctl.pid, trace="set_ffplay_sink()")
@@ -7839,9 +7855,9 @@ Call search.py when these control keys occur
             print("\n" + title)
             print(text)  # 2024-04-30 spam print rather than screen with msg
             # 2024-04-30 You can click speaker icons to change volume !
-            print("loud_ctl.sink: '", self.loud_ctl.sink,
-                  "' play_ctl.sink: '", self.play_ctl.sink,
-                  "' pav_ctl.sink: '", self.pav_ctl.sink, "'")
+            print("loud_ctl.sink: '" + self.loud_ctl.sink +
+                  "' play_ctl.sink: '" + self.play_ctl.sink +
+                  "' pav_ctl.sink: '" + self.pav_ctl.sink + "'")
             self.set_ffplay_sink_WIP = False
             return
 
@@ -8430,6 +8446,7 @@ Call search.py when these control keys occur
             self.pp_toggle_fading_out = True  # Signal pause music fade out
             self.pp_toggle_fading_in = False  # cancel any play fade in signal
             # 2024-05-18 Fix error when original sink is '50' but actual is '51'
+            self.check_sinks()
             self.pav_ctl.sink = self.force_sink(
                 self.pav_ctl.sink, self.pav_ctl.pid, trace="pp_toggle() pav_ctl")
             cur_vol = pav.get_volume(self.pav_ctl.sink)
@@ -8732,6 +8749,7 @@ Call search.py when these control keys occur
             chron_apply_filter(), chron_reverse_filter() and play_close()
             When called from self.song_set_ndx, fade_then_kill = True
         """
+        self.check_sinks()
         if self.pav_ctl.sink is not "":
             if self.pav_ctl.state == "start":
                 if fade_then_kill:
@@ -12688,8 +12706,8 @@ mark set markName index"
                         print(_who, "Could not convert to float:", max_volume)
                         print(err)
 
-            print(_who, "MusicId:", MusicId, "lib_iid:", lib_iid, "itm:", itm,
-                  "max_volume:", max_volume)
+            print(_who, "MusicId:", MusicId, "lib_iid:", lib_iid, "chron_iid:",
+                  chron_iid, "max_volume:", max_volume)
             return -99.9
 
         def check_volume_detect(chron_iid):
@@ -12774,8 +12792,9 @@ mark set markName index"
         text += str(len(self.chron_iid_dict))
         text += "\n\nTo restore all songs, right-click and select\n"
         text += "the menu option 'Full playlist unfiltered'."
-        self.tt.add_tip(self.chron_tree, text, 'splash', 0, anchor='ne')
-        self.tt.log_event('enter', self.chron_tree, 10, 5)  # Activate tooltip
+        # art_label has spinning artwork and no tooltips of its own
+        self.tt.add_tip(self.art_label, text, 'splash', 0, anchor='top')
+        self.tt.log_event('enter', self.art_label, 10, 5)  # Activate tooltip
         self.info.cast(text, action='update')
 
     def chron_reverse_filter(self):
@@ -14424,7 +14443,10 @@ class FineTune:
 #
 # ==============================================================================
 class BatchSelect:
-    """ Usage:
+    """ Speeds up processing by storing selected (checked) song totals.
+        After batching, totals are updated into artist, albums and grand totals.
+
+    Usage:
 
     bs = BatchSelect(self.lib_tree)
     for all songs:
@@ -14459,7 +14481,6 @@ class BatchSelect:
             Artist (I4)
 
         :param treeview: self.lib_tree
-        :param lib_top_totals: self.lib_top_totals returned to caller
         """
         # root window is the parent window
         self.tree = treeview  # self.lib_tree
@@ -14473,7 +14494,7 @@ class BatchSelect:
         """
         # 0=PlayTime, 1=Size MB, 2=Selected Str, 3=Time, 4=StatSize,
         # 5=Count, 6=Seconds, 7=SelSize, 8=SelCount, 9=SelSeconds
-        total_values = slice(4, 7)  # parm = start index, stop before index
+        #total_values = slice(4, 7)  # parm = start index, stop before index
         # slice(4, 7) = Set slice to grab StatSize, Count, Seconds
 
         tags = self.tree.item(song)['tags']
@@ -14494,7 +14515,8 @@ class BatchSelect:
         #self.tree._check_ancestor(song)  # in CheckboxTreeview()
 
         # Get StatSize, Count and Seconds
-        adj_list = self.tree.item(song)['values'][total_values]
+        #adj_list = self.tree.item(song)['values'][total_values]
+        adj_list = self.tree.item(song)['values'][4:7]
         self.totals_add(album, adj_list)
         self.totals_add(artist, adj_list)
         self.totals_add("lib_top_totals", adj_list)
@@ -14511,12 +14533,13 @@ class BatchSelect:
         self.totals[iid] = curr_values
 
     def get_totals(self, iid):
-        """ Get list of 3 values in dictionary, key = iid
+        """ Get list of 3 total values in dictionary, key = iid
+            :param iid: When 'lib_top_totals' used for self.lib_top_totals
         """
         if iid in self.totals:
-            curr_values = self.totals[iid]  # iid already in totals
+            curr_values = self.totals[iid]  # iid found in totals dictionary
         else:
-            curr_values = [0, 0, 0]  # Size, Count, Seconds
+            curr_values = [0, 0, 0]  # Size, Count, Seconds not selected
         return curr_values
 
 

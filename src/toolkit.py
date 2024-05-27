@@ -584,26 +584,50 @@ def tv_tag_remove_all(tv, old):
 
 # ==============================================================================
 #
-#       ProgressBars class - Managed Frame with two progress bars.
+#       ProgressBars class - Managed Frame with ACCURATE progress bar(s).
 #
 # ==============================================================================
-class ProgressBars:
-    """ Called from mserve.py for delayed textbox (dtb) or DictTreeview class
-        below.
-
-        Set focus in for self.toplevel to lift the child window(s)
-        When self.toplevel is dragged, so are the child window.
-
-        window.winfo_xxx see: https://wiki.tcl-lang.org/page/winfo%28%29
-
+class CommonBar:
+    """ Variables common to ProgressBars__init__() and new_bar()
+        Must appear before first reference (otherwise message.ShowInfo crashes)
     """
-    def __init__(self, toplevel):
+    def __init__(self, size=None):
+
+        self.dict = {}
+
+        self.widget = None
+        self.current_state = None
+
+        # Bar number 1 totals
+        self.b1_size = size  # Total bytes / characters
+        self.b1_it = None  # initial start time
+        self.b1_pst = None  # Pause start time
+        self.b1_tpt = None  # Total pause time
+
+
+class ProgressBars(CommonBar):
+    """ Called from 'Tools' / 'Volume' / 'Analyze Xxx' where 'Analyze Xxx' is
+        inside locations.py which is imported into mserve.py as instance 'lcs'.
+    """
+    def __init__(self, toplevel, item_count, item_size):
+
+        """ Duplicate entry_init() """
+        CommonBar.__init__(self)  # Recycled class like CommonTip
 
         self.toplevel = toplevel  # Parent window
+        self.item_count = item_count
+        self.item_size = item_size
         self.window = {}  # Child Window {key, widget, x, y, w, h
         self.window_list = []  # list of window dictionaries
 
         self.who = "toolkit.py ProgressBars()."  # For debug messages
+
+        # All bars totals
+        self.ab_count = item_count  # Total item count. Backup when size is 'None'
+        self.ab_size = item_size  # Total bytes / characters. Preferred progress
+        self.ab_it = None  # initial start time
+        self.ab_pst = None  # Pause start time
+        self.ab_tpt = None  # Total pause time
 
         ''' Controls to drag child window of toplevel '''
         # list of [width, height, x, y] returned by self.geometry(window)
@@ -4875,22 +4899,32 @@ class ToolTips(CommonTip):
         x = y = 0  # Bogus defaults to make pycharm error checker happy.
 
         if self.anchor == "nw":
-            x = nw[0]
-            y = nw[1] - h - 20  # 20 px gives distance from edge
-        elif self.anchor == "ne":
-            x = ne[0] - w
-            y = nw[1] - h - 20  # 20 px gives distance from edge
+            x = nw[0]  # Northwest of parent x, y
+            y = nw[1] - h - 20  # 20 px above parent's top
+        elif self.anchor == "ne": 
+            x = ne[0] - w  # Northeast of parent x2, y
+            y = nw[1] - h - 20  # 20 px below parent's top
         elif self.anchor == "se":
-            x = se[0] - w
-            y = se[1] + 20   # 20 px gives distance from edge
+            x = se[0] - w  # Southeast of x2, y2
+            y = se[1] + 20   # 20 px below parent's bottom
         elif self.anchor == "sw":
-            x = sw[0]
-            y = sw[1] + 20   # 20 px gives distance from edge 20
-        elif self.anchor == "sc":  # South Centered
-            off = (wid_w - w) / 2
+            x = sw[0]  # Southwest of parent x, y2
+            y = sw[1] + 20   # 20 px below parent's bottom
+        elif self.anchor == "sc":
+            off = (wid_w - w) / 2  # calculate center
             off = off if off > 0 else 0
-            x = sw[0] + off
-            y = sw[1] + 20  # 20 px gives distance from edge 20
+            x = sw[0] + off  # South Centered below parent
+            y = sw[1] + 20  # 20 px below parent's bottom
+        elif self.anchor == "top":
+            off = (wid_w - w) / 2  # calculate center
+            off = off if off > 0 else 0
+            x = nw[0] + off  # bottom centered inside parent
+            y = nw[1] + 20  # 20 px below parent's top
+        elif self.anchor == "bottom":
+            off = (wid_w - w) / 2  # calculate center
+            off = off if off > 0 else 0
+            x = sw[0] + off  # bottom centered inside parent
+            y = sw[1] - h - 20  # 20 px above parent's bottom
         else:
             print_trace()
             print('Bad self.anchor value:', self.anchor)

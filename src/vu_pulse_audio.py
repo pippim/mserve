@@ -142,22 +142,23 @@ class PulseAudio:
             self.dict contains current new fade fields.
 
         """
-        who = who_am_i + "reverse_fade(): "
+        _who = who_am_i + "reverse_fade(): "
         for i, scan_dict in enumerate(self.fade_list):
             if scan_dict['sink_no_str'] == new_dict['sink_no_str']:
                 old_dict = dict(scan_dict)  # Shallow copy of old fade
                 elapsed = now - old_dict['start_time']  # Calculate new
                 new_duration = old_dict['duration'] - elapsed  # duration
                 if new_dict['duration'] != old_dict['duration']:
-                    print(who, "new_dict['duration']:", new_dict['duration'],
-                          "old_dict['duration']:", old_dict['duration'])
+                    #print(_who, "new_dict['duration']:", new_dict['duration'],
+                    #      "old_dict['duration']:", old_dict['duration'])
+                    pass
                 new_dict['duration'] = new_duration
                 new_dict['begin_perc'] = old_dict['curr_perc']  # Reverse volume
                 new_dict['end_perc'] = old_dict['begin_perc']  # to old beginning
                 new_dict['curr_perc'] = old_dict['curr_perc']
                 new_dict['history'].extend(old_dict['history'])
                 self.fade_list[i] = new_dict
-                #print("\n" + who + "started for sink:", new_dict['sink_no_str'],
+                #print("\n" + _who + "started for sink:", new_dict['sink_no_str'],
                 #      "from:", new_dict['begin_perc'],
                 #      "to:", new_dict['end_perc'],
                 #      "elapsed:", elapsed,
@@ -336,7 +337,7 @@ AttributeError: 'module' object has no attribute 'pulsectl'
         :param sink_no_str: Pulse Audio sink number converted to string
         :param refresh: When False, reuse self.sinks_now from last time
         :param is_first: First time perform recursive second attempt
-        :returns float
+        :returns float: volume found or 24.2424 for invalid sink no.
         """
         who = who_am_i + "get_volume():"
         if refresh:

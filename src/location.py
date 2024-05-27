@@ -1239,14 +1239,14 @@ class LocationsCommonSelf:
         # (E.G. for 'loudnorm' filter) then specify location. Needed when special
         # version breaks other mserve features.
         self.avo_select_max_lower = -10.0  # Select songs >= maximum volume
-        self.avo_select_max_upper = -0.20  # Select songs <= maximum volume
+        self.avo_select_max_upper = -0.2  # Select songs <= maximum volume
         # E.G. self.avo_select_max_lower <= song_max <= self.avo_select_max_upper
         self.avo_skip_complete = True  # Skip if step completed for file (new only).
-        self.avo_skip_count = True  # How many existing records were skipped
+        self.avo_skip_count = 0  # How many existing records were skipped
         self.avo_integrated = "-23.0"  # AKA input_i. ffmpeg 'loudnorm' defaults
-        self.avo_true_peak = "0.0"  # AKA input_tp  TODO: Setup in user sql.Config()
+        self.avo_true_peak = "-0.0"  # AKA input_tp  TODO: Setup in user sql.Config()
         self.avo_lra = "11.0"  # AKA input_lra and "LRA"
-        self.avo_linear = "true"  # Not using dynamic normalization
+        self.avo_linear = "false"  # False = dynamic normalization (better results)
         self.avo_use_inputs = True  # Override defaults using pass 1 values
         self.avo_max_m4a_ar = 96000  # ffmpeg default aac codec only goes to 96000
         self.avo_max_mp3_ar = 44100  # ffmpeg default mp3 codec only goes to 44100
@@ -1508,9 +1508,9 @@ class Locations(LocationsCommonSelf):
             text += "created with 'cp -a' or 'cp -p'\nto preserve timestamps.\n\n"
             text += "Music will keep playing but some buttons will be disabled. "
 
-        if self.state.startswith('analyze_volume'):
-            # analyze_volume (detect_old) and analyze_volume_new (detect_new)
-            new = True if self.state == 'analyze_volume_new' else False
+        if self.state.startswith("detect_"):
+            # detect_old and detect_new
+            new = True if self.state == "detect_new" else False
             title = "About the Analyze Original Maximum Volume function"
             if new:
                 title = "About the Analyze NEW Maximum Volume function"
@@ -1535,7 +1535,7 @@ class Locations(LocationsCommonSelf):
             text += "kept awake until all files are analyzed.\n\n"
             text += "Music will keep playing but some buttons will be disabled. "
 
-        if self.state == 'analyze_loudnorm':
+        if self.state == "loudnorm_1":
             title = "About the Analyze 'loudnorm' Filter function"
             text = "This function does NOT update any music files. It takes 5 "
             text += "HOURS to analyze 1,000 files.\n\n"
@@ -1555,7 +1555,7 @@ class Locations(LocationsCommonSelf):
             text += "medium-fast SD Card.\n\n"
             text += "Music will keep playing but some buttons will be disabled. "
 
-        if self.state == 'update_loudnorm':
+        if self.state == "loudnorm_2":
             # 2024-04-14 - 3 hours For 716 songs. Friends of Mr. Cairo song is
             #   15 minutes long and time out in 60 seconds hard stop. So wait
             #   should be readjusted to song duration.
@@ -1579,7 +1579,7 @@ class Locations(LocationsCommonSelf):
         if title is not None:  # If title defined, display & cast the message
             self.out_fact_show(title, text, align='left')
 
-        if self.state.startswith('analyze_') or self.state == 'update_loudnorm':
+        if self.state.startswith("detect_") or self.state.startswith("loudnorm_"):
             if self.avo_use_open_location and self.open_code is not None:
                 self.loc_button_click(None, use_open_location=True)
                 self.apply()
@@ -1607,7 +1607,7 @@ class Locations(LocationsCommonSelf):
 
         if self.state == 'synchronize':
             help_id = "HelpSynchronizeLocation"
-        elif self.state.startswith('analyze_'):
+        elif self.state.startswith("detect_") or self.state.startswith("loudnorm_"):
             help_id = "HelpAnalyzeVolume"
         else:
             help_id = "HelpLocations"
@@ -2183,9 +2183,9 @@ class Locations(LocationsCommonSelf):
             text = "Delete"
         elif self.state == 'synchronize':
             text = "Synchronize"
-        elif self.state.startswith('analyze_'):
-            text = "Analyze"  # analyze_volume, analyze_loudnorm, analyze_volume_new
-        elif self.state == 'update_loudnorm':
+        elif self.state.startswith("detect_") or self.state == "loudnorm_1":
+            text = "Analyze"
+        elif self.state == "loudnorm_2":
             text = "Update"
         elif self.state == 'open':
             text = "Open"
@@ -2621,7 +2621,7 @@ class Locations(LocationsCommonSelf):
         self.end_long_running = end_long_running
         self.display_main_window("Synchronize Location")
 
-    def analyze_volume(self, start_long_running, end_long_running):
+    def detect_old(self, start_long_running, end_long_running):
         """ lib_top Tools Menubar, Volume Submenu - 'Analyze Maximum Volume'
         Click Analyze Button:
             Warning message appears that it is remote host, but nothing happens
@@ -2631,12 +2631,12 @@ class Locations(LocationsCommonSelf):
             Now locks up. See synchronize notes above.
         """
         LocationsCommonSelf.__init__(self)  # Define self. variables
-        self.state = 'analyze_volume'
+        self.state = "detect_old"
         self.start_long_running = start_long_running
         self.end_long_running = end_long_running
         self.display_main_window("Analyze Volume")
 
-    def analyze_loudnorm(self, start_long_running, end_long_running):
+    def loudnorm_1(self, start_long_running, end_long_running):
         """ lib_top Tools Menubar, Volume Submenu - Analyze 'loudnorm' Filter
 
         ''' Analyze Volume variables embedded inside Compare Window '''
@@ -2652,24 +2652,24 @@ class Locations(LocationsCommonSelf):
 
         """
         LocationsCommonSelf.__init__(self)  # Define self. variables
-        self.state = 'analyze_loudnorm'
+        self.state = "loudnorm_1"
         self.start_long_running = start_long_running
         self.end_long_running = end_long_running
         self.display_main_window("Analyze 'loudnorm' Filter")
 
-    def update_loudnorm(self, start_long_running, end_long_running):
+    def loudnorm_2(self, start_long_running, end_long_running):
         """ lib_top Tools Menubar, Volume Submenu - Update 'loudnorm' Filter
 
         ''' Normalize loudness levels with ffmpeg 2nd pass  '''
 
         """
         LocationsCommonSelf.__init__(self)  # Define self. variables
-        self.state = 'update_loudnorm'
+        self.state = "loudnorm_2"
         self.start_long_running = start_long_running
         self.end_long_running = end_long_running
         self.display_main_window("Update 'loudnorm' Filter")
 
-    def analyze_volume_new(self, start_long_running, end_long_running):
+    def detect_new(self, start_long_running, end_long_running):
         """ lib_top Tools Menubar, Volume Submenu - 'Analyze Maximum Volume'
         Click Analyze Button:
             Warning message appears that it is remote host, but nothing happens
@@ -2679,7 +2679,7 @@ class Locations(LocationsCommonSelf):
             Now locks up. See synchronize notes above.
         """
         LocationsCommonSelf.__init__(self)  # Define self. variables
-        self.state = 'analyze_volume_new'
+        self.state = "detect_new"
         self.start_long_running = start_long_running
         self.end_long_running = end_long_running
         self.display_main_window("Analyze New Volume")
@@ -4105,8 +4105,7 @@ filename.
             self.cmp_build_toplevel()
             # Problem: We don't want to do reset below, cmp must close itself
             return  # cmp_close closes cmp_window and main_top stays open for next
-        elif self.state == 'analyze_volume' or self.state == 'analyze_volume_new' or \
-                self.state == 'analyze_loudnorm' or self.state == 'update_loudnorm':
+        elif self.state.startswith("detect_") or self.state.startswith("loudnorm_"):
             self.cmp_build_toplevel(prefix="avo")
             return  # Don't want to do reset below, cmp will close itself
         else:
@@ -4128,10 +4127,10 @@ filename.
             "avX" = Analyze Volume. Results in treeview and stored in history.
             When "avX" self.state needs to be checked for
 
-                avo - "analyze_volume" - ffmpeg 'volumedetect' filter old/original
-                aln - "analyze_loudnorm" - ffmpeg 'loudnorm' filter
-                uln - "update_loudnorm" - ffmpeg 'loudnorm' filter pass 2
-                avn - "analyze_volume_new" - 'volumedetect' filter after normalizing
+                avo - "detect_old" - ffmpeg 'volumedetect' filter old/original
+                aln - "loudnorm_1" - ffmpeg 'loudnorm' filter
+                uln - "loudnorm_2" - ffmpeg 'loudnorm' filter pass 2
+                avn - "detect_new" - 'volumedetect' filter after normalizing
 
             The notes below are for "cmp" prefix.
 
@@ -4241,11 +4240,11 @@ filename.
         if prefix == "cmp":
             title = "Synchronize:  SOURCE: " + self.open_topdir + \
                     "  <-->  TARGET: " + self.cmp_target_dir
-        elif self.state == "analyze_volume":
+        elif self.state == "detect_old":
             title = "Analyze OLD Maximum Volume - " + self.cmp_target_dir
-        elif self.state == "analyze_volume_new":
+        elif self.state == "detect_new":
             title = "Analyze NEW Maximum Volume - " + self.cmp_target_dir
-        elif self.state == "analyze_loudnorm":
+        elif self.state == "loudnorm_1":
             title = "Analyze 'loudnorm' Filter Pass 1 - " + self.cmp_target_dir
         else:
             title = "Update 'loudnorm' Filter Pass 2 - " + self.cmp_target_dir
@@ -4286,10 +4285,10 @@ filename.
         if prefix == "cmp":
             columns = ("SrcModified", "TrgModified", "SrcSize",
                        "TrgSize", "Action", "src_time", "trg_time")
-        elif self.state == "analyze_volume" or self.state == "analyze_volume_new":
+        elif self.state == "detect_old" or self.state == "detect_new":
             columns = ("Mean", "Maximum", "MusicId")
             # MusicId (music_id) is hidden (not in displaycolumns tuple)
-        else:  # "analyze_loudnorm" and "update_loudnorm" states
+        else:  # "loudnorm_1" and "loudnorm_2" states
             columns = ("Integrated", "TruePeak", "LRA", "Threshold", "MusicId")
 
         ''' Treeview List Box, Columns and Headings '''
@@ -4315,9 +4314,9 @@ filename.
             self.cmp_tree.column("src_time")  # Hidden modification time
             self.cmp_tree.column("trg_time")  # Hidden modification time
 
-        elif self.state == "analyze_volume" or self.state == "analyze_volume_new":
+        elif self.state == "detect_old" or self.state == "detect_new":
             self.cmp_tree.column("Mean", width=250, anchor="center", stretch=tk.YES)
-            if self.state == "analyze_volume":
+            if self.state == "detect_old":
                 self.cmp_tree.heading("Mean", text="Mean Volume")
             else:
                 # The New
@@ -4326,7 +4325,7 @@ filename.
             self.cmp_tree.heading("Maximum", text="Max. Volume")
             self.cmp_tree.column("MusicId")  # Hidden MusicId
 
-        else:  # "analyze_loudnorm" and "update_loudnorm" states
+        else:  # "loudnorm_1" and "loudnorm_2" states
             self.cmp_tree.column("Integrated", width=125, anchor="center", stretch=tk.YES)
             self.cmp_tree.heading("Integrated", text="Integrated")
             self.cmp_tree.column("TruePeak", width=125, anchor="center", stretch=tk.YES)
@@ -4342,9 +4341,9 @@ filename.
         if prefix == "cmp":
             self.cmp_tree["displaycolumns"] = ("SrcModified", "TrgModified",
                                                "SrcSize", "TrgSize", "Action")
-        elif self.state == "analyze_volume" or self.state == "analyze_volume_new":
+        elif self.state == "detect_old" or self.state == "detect_new":
             self.cmp_tree["displaycolumns"] = ("Mean", "Maximum")
-        else:  # "analyze_loudnorm" and "update_loudnorm" states
+        else:  # "loudnorm_1" and "loudnorm_2" states
             self.cmp_tree["displaycolumns"] = ("Integrated", "TruePeak",
                                                "LRA", "Threshold")
             # Could rename Mean & Maximum to Integrated & Threshold for 'loudnorm'
@@ -4649,18 +4648,21 @@ filename.
                 # str(i) will be iid if and when Song inserted.
                 if not self.cmp_insert_tree_row(fake_path, CurrAlbumId, str(i), Song):
                     return False  # Closing down
-            elif self.state == "analyze_volume":
+            elif self.state == "detect_old":
                 if not self.avo_insert_tree_row(fake_path, CurrAlbumId, str(i), Song):
                     return False  # Closing down
-            elif self.state == "analyze_volume_new":
+            elif self.state == "detect_new":
                 if not self.avn_insert_tree_row(fake_path, CurrAlbumId, str(i), Song):
                     return False  # Closing down
-            elif self.state == "analyze_loudnorm":
+            elif self.state == "loudnorm_1":
                 if not self.aln_insert_tree_row(fake_path, CurrAlbumId, str(i), Song):
                     return False  # Closing down
-            else:
+            elif self.state == "loudnorm_2":
                 if not self.uln_insert_tree_row(fake_path, CurrAlbumId, str(i), Song):
                     return False  # Closing down
+            else:
+                print("locations.py cmp_populate_tree() invalid state:", self.state)
+                exit()
 
         ext.t_end('no_print')  # No Refresh: Build compare target: 1.2339029312
         # Refresh thread (33ms after)   : Build compare target: 158.4349091053
@@ -5175,10 +5177,7 @@ filename.
                       "\tSpeed (MB/s):", '{:n}'.format(round(speed, 3)))
 
             ''' Analyze Volume used STDERR for "normal" output so no errors '''
-            if self.state == 'analyze_volume' \
-                    or self.state == 'analyze_loudnorm' \
-                    or self.state == 'update_loudnorm' \
-                    or self.state == 'analyze_volume_new':
+            if self.state.startswith("detect_") or self.state.startswith("loudnorm_"):
                 return True
 
             ''' stdout or stderr have been populated by cp command '''
@@ -5347,65 +5346,69 @@ filename.
         #print()
 
         self.cmp_top.update_idletasks()  # ShowInfo appearing on monitor 0, 0
-        if self.state == "analyze_volume" and detect_old_count > 0:
+        # 2024-05-22 - TODO: rename self.state:
+        #   "detect_old"      ->  "detect_old"
+        #   "loudnorm_1"    ->  "loudnorm_1"
+        #   "loudnorm_2"     ->  "loudnorm_2"
+        #   "detect_new"  ->  "detect_new"
+        if self.state == "detect_old" and detect_old_count > 0:
             title = "Analyze Maximum Volume has already been run."
             text = "Results from previous run: "
             text += '{:,}'.format(detect_old_count) + " records."
-            # Why is self.out_fact_show going to monitor 0 instead of 1???
             self.out_fact_show(title, text)
 
-        if self.state == "analyze_loudnorm" and loudnorm_1_count > 0:
+        if self.state == "loudnorm_1" and loudnorm_1_count > 0:
             title = "Analyze 'loudnorm' Filter has already been run."
             text = "Results from previous run: "
             text += '{:,}'.format(loudnorm_1_count) + " records."
             self.out_fact_show(title, text)
 
-        if self.state == "analyze_loudnorm" and detect_old_count > 0:
+        if self.state == "loudnorm_1" and detect_old_count > 0:
             title = "OK to proceed with Analyze 'loudnorm' Filter"
             text = "Results from last Analyze Maximum Volume run: "
             text += '{:,}'.format(detect_old_count) + " records."
             self.out_fact_show(title, text)
 
-        if self.state == "analyze_loudnorm" and detect_old_count <= 0:
+        if self.state == "loudnorm_1" and detect_old_count <= 0:
             title = "Analyze Maximum Volume needs to be Run!"
             text = "Analyze Maximum Volume results not found. Run it first."
             text += "Was the correct location selected?"
             self.out_fact_show(title, text)
             return False
 
-        if self.state == "update_loudnorm" and loudnorm_2_count > 0:
+        if self.state == "loudnorm_2" and loudnorm_2_count > 0:
             title = "Update 'loudnorm' Filter has already been run."
             text = "Results from previous run: "
             text += '{:,}'.format(loudnorm_2_count) + " records."
             self.out_fact_show(title, text)
 
-        if self.state == "update_loudnorm" and loudnorm_1_count > 0:
+        if self.state == "loudnorm_2" and loudnorm_1_count > 0:
             title = "OK to proceed with Update 'loudnorm' Filter"
             text = "Results from last Analyze 'loudnorm' Filter run: "
             text += '{:,}'.format(loudnorm_1_count) + " records."
             self.out_fact_show(title, text)
 
-        if self.state == "update_loudnorm" and loudnorm_1_count <= 0:
+        if self.state == "loudnorm_2" and loudnorm_1_count <= 0:
             title = "Analyze 'loudnorm' Filter needs to be Run"
             text = "Analyze 'loudnorm' Filter results not found. Run it first."
             text += "Was the correct location selected?"
             self.out_fact_show(title, text)
             return False
 
-        if self.state == "analyze_volume_new" and detect_new_count > 0:
+        if self.state == "detect_new" and detect_new_count > 0:
             title = "Analyze New Maximum Volume has already been run."
             text = "Results from previous run: "
             text += '{:,}'.format(detect_new_count) + " records."
             # Why is self.out_fact_show going to monitor 0 instead of 1???
             self.out_fact_show(title, text)
 
-        if self.state == "analyze_volume_new" and loudnorm_2_count > 0:
+        if self.state == "detect_new" and loudnorm_2_count > 0:
             title = "OK to proceed with Analyze New Maximum Volume"
             text = "Results from last Update 'loudnorm' Filter run: "
             text += '{:,}'.format(loudnorm_2_count) + " records."
             self.out_fact_show(title, text)
 
-        if self.state == "analyze_volume_new" and loudnorm_2_count <= 0:
+        if self.state == "detect_new" and loudnorm_2_count <= 0:
             title = "Update 'loudnorm' Filter needs to be Run"
             text = "Update 'loudnorm' Filter results not found. Run it first."
             text += "Was the correct location selected?"
@@ -5456,22 +5459,22 @@ filename.
         text += "Records processed (created this time):\t"
         text += '{:,}'.format(self.cmp_found - self.avo_skip_count) + "\n\n"
 
-        if self.state == "analyze_volume":
+        if self.state == "detect_old":
             title = "Analyze Maximum Volume Job Summary"
             text += "Analyze Maximum Volume run: "
             text += '{:,}'.format(detect_old_count) + " records.\n\n"
 
-        if self.state == "analyze_loudnorm":
+        if self.state == "loudnorm_1":
             title = "Analyze 'loudnorm' Filter Job Summary"
             text += "Analyze 'loudnorm' Filter run: "
             text += '{:,}'.format(loudnorm_1_count) + " records.\n\n"
 
-        if self.state == "update_loudnorm":
+        if self.state == "loudnorm_2":
             title = "Update 'loudnorm' Filter Job Summary"
             text += "Update 'loudnorm' Filter run: "
             text += '{:,}'.format(loudnorm_2_count) + " records.\n\n"
 
-        if self.state == "analyze_volume_new":
+        if self.state == "detect_new":
             title = "Analyze New Maximum Volume Job Summary"
             text += "Analyze New Maximum Volume run: "
             text += '{:,}'.format(detect_new_count) + " records.\n\n"
@@ -5523,15 +5526,15 @@ filename.
 
             Field Reference: http://k.ylo.ph/2016/04/04/loudnorm.html
 
-            if self.state == "analyze_volume":      SourceMaster = "detect_old"
-            if self.state == "analyze_loudnorm":    SourceMaster = "loudnorm_1"
-            if self.state == "update_loudnorm":     SourceMaster = "loudnorm_2"
-            if self.state == "analyze_volume_new":  SourceMaster = "detect_new"
+            if self.state == "detect_old":      SourceMaster = "detect_old"
+            if self.state == "loudnorm_1":    SourceMaster = "loudnorm_1"
+            if self.state == "loudnorm_2":     SourceMaster = "loudnorm_2"
+            if self.state == "detect_new":  SourceMaster = "detect_new"
         """
-        detect_old = True if self.state == "analyze_volume" else False
-        loudnorm_1 = True if self.state == "analyze_loudnorm" else False
-        loudnorm_2 = True if self.state == "update_loudnorm" else False
-        detect_new = True if self.state == "analyze_volume_new" else False
+        detect_old = True if self.state == "detect_old" else False
+        loudnorm_1 = True if self.state == "loudnorm_1" else False
+        loudnorm_2 = True if self.state == "loudnorm_2" else False
+        detect_new = True if self.state == "detect_new" else False
 
         text = "Control Setting"
         tk.Label(frame, text=text, anchor=tk.CENTER, font=g.FONT, bg=self.bg).\
@@ -6632,10 +6635,6 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
         tree = event.widget
         tree.tk.call(tree, "tag", "remove", "highlight")
 
-    def avo_add_music_id(self):
-        """ Add Music ID (music_id) to treeview row """
-        pass
-
     def avo_row_menu(self, event):
         """ Right-clicked (button-3) in one of the analyze volume windows.
             Popup menu on current treeview row.
@@ -6674,16 +6673,21 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
         music_id = values[len(values) - 1] if len(values) else None
 
         # Construct parameters to call loudness normalization methods
-        music_row = sql.music_get_row(music_id)
-        if not music_row:
-            print(_who, "music_id:", music_id, "is invalid SQL row not found.")
-            return
-        OsBase = music_row['OsFileName']
-        CurrAlbumId = tree.parent(iid)
-        Song = OsBase.split(os.sep)[-1]
-        fake_path = self.open_topdir + os.sep + OsBase
-        trg_path = self.cmp_target_dir + os.sep + OsBase  # self.cmp_target_dir
-        trg_path_new = trg_path + ".new"
+        if not iid.startswith("I"):
+            music_row = sql.music_get_row(music_id)
+            if not music_row:
+                print(_who, "music_id:", music_id, "Invalid SQL row not found.")
+                return
+        else:
+            music_row = OsBase = fake_path = trg_path = trg_path_new = None
+
+        if music_row:
+            OsBase = music_row['OsFileName']
+            CurrAlbumId = tree.parent(iid)
+            Song = OsBase.split(os.sep)[-1]
+            fake_path = self.open_topdir + os.sep + OsBase
+            trg_path = self.cmp_target_dir + os.sep + OsBase  # self.cmp_target_dir
+            trg_path_new = trg_path + ".new"
 
         # Highlight treeview row and display Popup menu at row
         toolkit.tv_tag_add(tree, iid, "menu_sel")
@@ -6722,7 +6726,7 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
 
         def remove_normalize(prompt=True):
             """ Remove four history records for song """
-            title = "Confirm loudness normalization removal"
+            title = "Confirm loudness normalization REMOVAL"
             text = "Removing the records for this song allows the process\n"
             text += "to be repeated for this song only. The process is\n"
             text += "very quick for one song. Remove records for this song?"
@@ -6758,20 +6762,20 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
                 it appears "force inputs" give best results.
 
             """
-            title = "Confirm begin loudness normalization"
+            title = "REDO loudness normalization"
             text = Song + "\n\n"
-            text += "The first step will remove all records for this song.\n"
-            text += "Then all four steps of loudness normalization is performed.\n"
+            text += "All four steps of loudness normalization will be performed.\n"
             # Add up history record seconds for last run. If any were zero then
             # say 20 seconds. Otherwise state actual seconds
             text += "Although it is quick, it still takes about 20 seconds.\n\n"
             text += "The media file with a '.new' extension is replaced.\n\n"
             text += "Perform loudness normalization for the above song?"
-            answer = message.AskQuestion(self.cmp_top, confirm="No",
-                                         thread=self.get_thread_func,
-                                         title=title, text=text)
-            if answer.result != 'yes':
-                return
+            # 2024-05-26 - Can simply click Cancel. No need for prompt.
+            #answer = message.AskQuestion(self.cmp_top, confirm="No",
+            #                             thread=self.get_thread_func,
+            #                             title=title, text=text)
+            #if answer.result != 'yes':
+            #    return
 
             if not self.avo_parameters(redo=True):
                 return  # selected Cancel (not Proceed)
@@ -6789,19 +6793,19 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
 
             use_tv = False  # Don't insert new row into treeview
 
-            current_tree = True if self.state == "analyze_volume" else False
+            current_tree = True if self.state == "detect_old" else False
             self.avo_insert_tree_row(fake_path, CurrAlbumId, iid, Song,
                                      use_tv, current_tree)
 
-            current_tree = True if self.state == "analyze_loudnorm" else False
+            current_tree = True if self.state == "loudnorm_1" else False
             self.aln_insert_tree_row(fake_path, CurrAlbumId, iid, Song, 
                                      use_tv, current_tree)
 
-            current_tree = True if self.state == "update_loudnorm" else False
+            current_tree = True if self.state == "loudnorm_2" else False
             self.uln_insert_tree_row(fake_path, CurrAlbumId, iid, Song, 
                                      use_tv, current_tree)
 
-            current_tree = True if self.state == "analyze_volume_new" else False
+            current_tree = True if self.state == "detect_new" else False
             self.avn_insert_tree_row(fake_path, CurrAlbumId, iid, Song, 
                                      use_tv, current_tree)
 
@@ -6819,7 +6823,7 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
                          command=expand_all)
         menu.add_separator()
 
-        if music_id:
+        if music_row:
             menu.add_command(label="Normalization Summary", font=(None, g.MED_FONT),
                              command=view_normalize)
             menu.add_command(label="Remove Normalization", font=(None, g.MED_FONT),
