@@ -39,6 +39,7 @@ warnings.simplefilter('default')  # in future Python versions.
 #       Aug. 20 2023 - Get Composer/Writer/Producer lists from MusicBrainz.
 #       Aug. 22 2023 - Don't download images over 4 mb.
 #       Dec. 10 2023 - Code review and typo corrections.
+#       May. 31 2024 - Make "No Audio Disc" error message appear correctly.
 #
 # ==============================================================================
 # noinspection SpellCheckingInspection
@@ -551,7 +552,7 @@ class RipCD:
         if d:  # dictionary found?
             last_fmt = d['Target']
         else:
-            last_fmt = "m4a"  # Likely most popular
+            last_fmt = "mp3"  # Most popular
         self.fmt_var.set(last_fmt)
         fmt_bar.add_radiobutton(
             label=".wav (Original CD format)", command=self.show_selections,
@@ -689,28 +690,14 @@ class RipCD:
         self.cd_top.title("Reading CD - mserve")
         self.cd_top.update()
 
-        ''' EVENT DRIVEN PROCESSING - Call programs in background with shell.
+        ''' BACKGROUND PROCESSING - Call programs in background with shell.
             This allows Treeview mainloop to keep running. When background
-            tasks complete (monitored with 'ps aux' our own cd_tree buttons
-            are activated. The following background programs are launched:
+            tasks complete (monitored with 'ps aux') cd_tree buttons are
+            activated. The following background programs are launched:
 
                 disc_get.py - Read CD for Musicbrainz Id and track TOC
                 mbz_get1.py - Get Musicbrainz release-list
                 mbz_get2.py - Get Musicbrainz recordings
-                caa_get1.py - Get Cover Art
-
-                Build Treeview which can call:
-                    disc_get.py above followed by cohorts
-
-                    TODO: loc_copy.py copy encoded files to location (or many)
-                          Part of larger project that keeps track of deleted
-                          duplicate songs and reapplies them to locations.
-                          Also tracks renamed directories / songs and applies
-                          them to other locations.
-                          
-                          Scroll text box as songs encoded.
-                          Set default disc id from musicbrainz when disc not
-                          found and it was manually entered previously.
         '''
 
         self.get_discid_active = True  # First step
@@ -1109,7 +1096,7 @@ class RipCD:
             self.mbz_get2_active = True
             self.mbz_get1_time = time.time()
 
-            # Our last program has just finished. Get dictionary results
+            # "python disc_get.py " just finished. Get dictionary results
             self.disc = {}
             self.mbz_release_id = ""
             with open(IPC_PICKLE_FNAME, 'rb') as f:
@@ -1120,19 +1107,11 @@ class RipCD:
 
             ''' ENCODE_DEV - Save disc ID'''
             with open(lc.ENCODE_DEV_FNAME, "wb") as f:
-                #print("Saving", str(self.disc.id), "to:", lc.ENCODE_DEV_FNAME)
+                print("Saving", str(self.disc), "to:", lc.ENCODE_DEV_FNAME)
                 pickle.dump(self.disc, f)  # Save dictionary as pickle file
 
-            text = "Begin Step 2. Search MusicBrainz for Disc ID: "
-            text += str(self.disc.id)
-            text += "\n\nFinished Step 1. Getting CDDB Free Disc ID: '"
-            text += self.disc.freedb_id
-            text += "'. Time: "
-            text += str(self.get_discid_time)
-            self.info.cast(text)
-
             try:
-                # If valid disc object, checking dictionary causes error
+                # If valid disc object, exception checking dictionary for 'error'
                 error = self.disc.get('error')
                 self.mbz_get2_active = False  # Turn off next step
                 #messagebox.showinfo(title="Rip CD Error", icon="error",
@@ -1152,12 +1131,28 @@ class RipCD:
                     length, tracks, self.get_discid_time,
                                                 "Get disc ID: " + time.asctime(time.localtime(time.time())))
 
+            text = "Begin Step 2. Search MusicBrainz for Disc ID: "
+            text += str(self.disc.id)
+            text += "\n\nFinished Step 1. Getting CDDB Free Disc ID: '"
+            text += self.disc.freedb_id
+            text += "'. Time: "
+            text += str(self.get_discid_time)
+            self.info.cast(text)
+
             # Note this can change in error 3 override from mbz_get1.py
             self.mbz_release_id = self.disc.id
             # self.disc
 
             if self.caller_disc and os.path.isfile(SAVED_MBZ1_PICKLE):
-                ''' MBZ1 Pickle reused to save time during development '''
+                ''' MBZ1 Pickle reused to save time during development 
+                    EMAIL_ADDRESS = "pippim.com@gmail.com"
+                    IPC_PICKLE_FNAME = g.TEMP_DIR + "mserve_encoding_pickle"
+                    RIP_CD_IS_ACTIVE = False  # Read by mserve.py
+                    SAVED_MBZ1_PICKLE = ext.join(g.TEMP_DIR, "mserve_mbz_get1_pickle")
+                    SAVED_MBZ2_PICKLE = ext.join(g.TEMP_DIR, "mserve_mbz_get2_pickle")
+                    RIP_ARTWORK = ext.join(g.TEMP_DIR, "mserve_encoding_artwork")
+
+                '''
                 self.active_pid = 0
                 text = "ENCODE_DEV - Override with saved mbz_get1.py results:"
                 text += "\n\t" + SAVED_MBZ1_PICKLE
@@ -3961,7 +3956,8 @@ class MetaScan:
 
             STREAM #0:1: Video: png, rgba(pc), 225x225, 90k tbr, 90k tbn, 90k tbc
 
-        NOTE: Only used by mserve.py. May want to relocate there???
+        NOTE: Only used by mserve.py View SQL Music Table artwork processing.
+              May want to relocate MetaScan class to mserve.py.
 
     """
 

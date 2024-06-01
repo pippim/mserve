@@ -6826,12 +6826,13 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
         if music_row:
             menu.add_command(label="Normalization Summary", font=(None, g.MED_FONT),
                              command=view_normalize)
-            menu.add_command(label="Remove Normalization", font=(None, g.MED_FONT),
-                             command=remove_normalize)
             menu.add_command(label="Redo Normalization", font=(None, g.MED_FONT),
                              command=redo_normalize)
+            menu.add_separator()
             menu.add_command(label="View SQL Metadata", font=(None, g.MED_FONT),
                              command=view_sql_metadata)
+            menu.add_command(label="Remove Normalization", font=(None, g.MED_FONT),
+                             command=remove_normalize)
             menu.add_separator()
 
         menu.add_command(label="Ignore click", font=(None, g.MED_FONT),

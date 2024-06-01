@@ -6905,13 +6905,23 @@ Call search.py when these control keys occur
                              icon='error', thread=self.get_refresh_thread)
             return
 
+        last_disc_contents = None
         try:
             with open(lc.ENCODE_DEV_FNAME, 'rb') as f:
                 last_disc_contents = pickle.load(f)
         except Exception as err:
             print("Exception err:", err)  # If reboot [errno 2] file not found
             last_disc_contents = None
+
         last_disc = None  # For testing save 63 seconds reading discid
+        if last_disc_contents:
+            try:
+                # If valid disc object, exception checking dictionary for 'error'
+                _error = last_disc_contents.get('error')
+                last_disc_contents = None  # There was an error getting disc ID
+            except KeyError:
+                pass  # have a valid last disc
+
         if ENCODE_DEV and last_disc_contents:
             answer = message.AskQuestion(
                 self.lib_top, thread=self.get_refresh_thread,
@@ -12768,7 +12778,7 @@ mark set markName index"
                              thread=self.get_refresh_thread,
                              title="Filter Playlist Failed - mserve")
             self.info.fact(quote)
-            return  # TODO: Has this been tested? Use small playlist
+            return
 
         # Remove songs from chronology treeview so only filtered remain
         for iid in self.chron_detached:

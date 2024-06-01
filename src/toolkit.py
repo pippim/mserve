@@ -3255,7 +3255,6 @@ class SearchText:
 
         self.rip = False  # Reattach completed
 
-
     def check_refresh(self):
         """ check if refresh function used and call it periodically. """
         if not self.get_thread_func:
@@ -3338,7 +3337,7 @@ class SearchText:
         #    self.sip = False
         #    return
 
-        ext.t_end('print')   # For 1200 messages 0.00529 seconds
+        ext.t_end('no_print')   # For 4000 songs 0.0000178814 seconds
         # For 28k history records 0.038 seconds
         # For 28k history records with whole bunch of typing 11.26 seconds
         self.old_str = self.new_str
