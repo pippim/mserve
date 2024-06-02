@@ -40,6 +40,7 @@ warnings.simplefilter('default')  # in future Python versions.
 #       Aug. 22 2023 - Don't download images over 4 mb.
 #       Dec. 10 2023 - Code review and typo corrections.
 #       May. 31 2024 - Make "No Audio Disc" error message appear correctly.
+#       Jun. 02 2024 - User configurable colors, bug fixes and debug printing.
 #
 # ==============================================================================
 # noinspection SpellCheckingInspection
@@ -286,7 +287,12 @@ class RipCD:
         self.cd_top.bind("<FocusIn>", self.handle_cd_top_focus)
 
         ''' Set program icon in taskbar '''
-        img.taskbar_icon(self.cd_top, 64, 'white', 'lightskyblue', 'black')
+        cfg = sql.Config()  # 2024-03-13 Use SQL for Configuration colors
+        sql_key = ['cfg_encode', 'toplevel', 'taskbar_icon', 'height & colors']
+        ti = cfg.get_cfg(sql_key)
+        img.taskbar_icon(self.cd_top, ti['height'], ti['outline'],
+                         ti['fill'], ti['text'], char=ti['char'])
+        #img.taskbar_icon(self.cd_top, 64, 'white', 'lightskyblue', 'black')
 
         ''' Create master frame '''
         self.master_frame = ttk.Frame(self.cd_top, padding=(3, 3, 12, 12))
@@ -367,7 +373,7 @@ class RipCD:
         self.scrollbox.tag_config('green', foreground='Green')
         self.scrollbox.tag_config('yellow', foreground='Yellow')
         self.scrollbox.tag_config('orange', foreground='Orange')
-        self.scrollbox.config(tabs=("22m", "50m", "100m"))  # Aug 16/23 grew wider?
+        self.scrollbox.config(tabs=("33m", "60m", "110m"))  # 2024-06-01 margins
 
         # https://hexcolor.co/hex/1b851b
         #        green_shades = [ "#93fd93", "#7fe97f", "#7fe97f", "#75df75", "#6bd56b",
@@ -403,13 +409,25 @@ class RipCD:
                              "Composer", "Comment", "Duration", "Track №"),
             height=20, selectmode="none", show=('tree', 'headings'))
 
+        ''' Treeview (cd_tree) style DarkRed on LemonChiffon '''
+        #style = ttk.Style(self.chron_frm)  # 2024-03-18 frame not needed?
+        style = ttk.Style()
+        colors = cfg.get_cfg(['cfg_encode', 'treeview', 'style', 'color'])
+        style_name = colors['name']  # 2024-03-18
+        row_height = int(colors['font_size'] * 2.2)
+        style.configure(style_name, font=(None, colors['font_size']),
+                        rowheight=row_height, foreground=colors['foreground'],
+                        background=colors['background'],
+                        fieldbackground=colors['fieldbackground'])
+        self.cd_tree.configure(style=style_name)
+
         self.cd_tree["displaycolumns"] = ("Duration", "First Date")
         self.cd_tree.column("#0", width=900, stretch=tk.YES)
         self.cd_tree.heading("#0", text="MusicBrainz Listings (Right click on " +
                              "song to change First Date, Composer, etc.)")
-        self.cd_tree.column("Duration", width=160, anchor=tk.CENTER, stretch=tk.NO)
+        self.cd_tree.column("Duration", width=190, anchor=tk.CENTER, stretch=tk.NO)
         self.cd_tree.heading("Duration", text="Duration / Size")  # wide enough for 10 mil
-        self.cd_tree.column("First Date", width=120, anchor=tk.CENTER, stretch=tk.NO)
+        self.cd_tree.column("First Date", width=130, anchor=tk.CENTER, stretch=tk.NO)
         self.cd_tree.heading("First Date", text="First Date")
         self.cd_tree.bind("<Button-3>", self.button_3_click)
         self.cd_tree.bind('<Motion>', self.cd_highlight_row)
@@ -687,10 +705,11 @@ class RipCD:
 
         # About Menu - Need author name?
         self.cd_top.config(menu=mb)
-        self.cd_top.title("Reading CD - mserve")
+        self.cd_top.title("Selecting Release - mserve")
+        toolkit.wait_cursor(self.cd_top)
         self.cd_top.update()
 
-        ''' BACKGROUND PROCESSING - Call programs in background with shell.
+        ''' BACKGROUND PROCESSING - Call programs in background with os.popen.
             This allows Treeview mainloop to keep running. When background
             tasks complete (monitored with 'ps aux') cd_tree buttons are
             activated. The following background programs are launched:
@@ -1035,7 +1054,7 @@ class RipCD:
                 self.disc_enc_active = False
                 self.active_pid = 0             # 0 = no process ID is running
 
-        TODO: Calculate running time of background programs and kill stalls.
+        TODO: Calculate running time of background programs and kill stalled PIDs.
 
         """
         # If quiting kill spawned programs and return
@@ -1107,7 +1126,7 @@ class RipCD:
 
             ''' ENCODE_DEV - Save disc ID'''
             with open(lc.ENCODE_DEV_FNAME, "wb") as f:
-                print("Saving", str(self.disc), "to:", lc.ENCODE_DEV_FNAME)
+                #print("Saving", str(self.disc), "to:\n\t", lc.ENCODE_DEV_FNAME)
                 pickle.dump(self.disc, f)  # Save dictionary as pickle file
 
             try:
@@ -1151,7 +1170,6 @@ class RipCD:
                     SAVED_MBZ1_PICKLE = ext.join(g.TEMP_DIR, "mserve_mbz_get1_pickle")
                     SAVED_MBZ2_PICKLE = ext.join(g.TEMP_DIR, "mserve_mbz_get2_pickle")
                     RIP_ARTWORK = ext.join(g.TEMP_DIR, "mserve_encoding_artwork")
-
                 '''
                 self.active_pid = 0
                 text = "ENCODE_DEV - Override with saved mbz_get1.py results:"
@@ -1279,6 +1297,7 @@ class RipCD:
         elif self.treeview_active:
             # Fourth step Populate Treeview and enter idle loop
             self.treeview_active = False
+            self.cd_top.config(cursor="")  # Change hourglass to normal cursor
             # TODO: .grid() not working - button is always visible.
             # These buttons should be turned on after Medium selected
             #self.cd_tree_btn2.grid()  # Rip Disc button
@@ -1296,24 +1315,27 @@ class RipCD:
             #print("Created mbz_get2.py reload results in:", SAVED_MBZ2_PICKLE)
 
             # Did mbz_get2.py report an error?
-            if self.image_dict.get('error'):
-                # Errors getting Cover Art Archive images
-                self.treeview_active = False  # Turn off next step
-                err_no = self.image_dict['error']
-                if err_no == "7":
-                    msg = 'mbz_get2: Invalid dictionary passed. Check terminal output'
-                    pprint(self.image.get['message'])
-                elif err_no == "99":
-                    msg = 'mbz_get2: No internet access. Check your connections'
-                else:
-                    msg = "Unknown error code: " + err_no
+            try:  # 2024-06-01 - image_dict is now a list?
+                if self.image_dict.get('error'):
+                    # Errors getting Cover Art Archive images
+                    self.treeview_active = False  # Turn off next step
+                    err_no = self.image_dict['error']
+                    if err_no == "7":
+                        msg = 'mbz_get2: Invalid dictionary passed. Check terminal output'
+                        pprint(self.image.get['message'])
+                    elif err_no == "99":
+                        msg = 'mbz_get2: No internet access. Check your connections'
+                    else:
+                        msg = "Unknown error code: " + err_no
 
-                message.ShowInfo(title="mbz_get2.py: Cover Art Error",
-                                 thread=self.update_display,
-                                 text=msg, icon="error", parent=self.cd_top)
-                #thread=self.get_refresh_thread,
-                self.cd_close()
-                return  # Empty dictionary = CD error
+                    message.ShowInfo(title="mbz_get2.py: Cover Art Error",
+                                     thread=self.update_display,
+                                     text=msg, icon="error", parent=self.cd_top)
+                    #thread=self.get_refresh_thread,
+                    self.cd_close()
+                    return  # Empty dictionary = CD error
+            except AttributeError:
+                pass
 
             # Have musicbrainz cover art. Log this step
             releases = len(self.image_dict)
@@ -1331,7 +1353,8 @@ class RipCD:
                 time.time(), 0, g.USER, 'encode', 'mbz_get2',
                 self.selected_album_artist, self.selected_album_name, None,
                 size, releases, self.mbz_get2_time,
-                "Get cover art: " + time.asctime(time.localtime(time.time())))
+                "Get cover art: " + time.asctime(time.localtime(time.time()))
+            )
             self.update_display()  # Give some time to lib_top()
             self.populate_cd_tree()
             self.cd_tree.update_idletasks()  # Refresh treeview display
@@ -2500,13 +2523,21 @@ tvsh – show name
     def get_next_rip_name(self):
         """ Get next song in selected list and convert to UTF-8.
             Set the song name, OS song name and full OS path song name """
-        self.os_song_title = None
         #self.track_song_title = ""  # Aug 16/23 - no longer used
+        # Set track just ripped to darkest color
+        if self.os_song_title is not None and self.last_shade is not None:
+            # Remove last shade before applying next shade
+            self.scrollbox.unhighlight_pattern(self.os_song_title,
+                                               str(self.last_shade))
+            self.scrollbox.highlight_pattern(self.os_song_title, "7")
+
+        self.os_song_title = None
         i = 0  # To make pycharm charming :)
         for i, track_id in enumerate(self.cd_tree.get_children(
                 self.selected_medium)):
             if i < self.rip_current_track:
                 continue  # Skip ahead to next track to rip
+            self.cd_tree.see(track_id)
             tags = self.cd_tree.item(track_id, 'tags')
             if 'checked' in tags:  # Was this song selected?
                 self.get_track_from_tree(track_id)  # Grab values from treeview
@@ -2595,7 +2626,7 @@ SQL Whitelist substitutes
         text += new
         ''' TODO: ShowInfo with anti-spam subsequent illegal directory names '''
         self.info.fact(title + "\n\n" + text)
-        print(title + "\n" + text)
+        #print(title + "\n" + text)
         return False  # Do not pass Go. Pay $200 to get out of jail.
 
     def abort_no_dir(self, title, prefix):
@@ -2927,22 +2958,22 @@ if r['title'] != r['release-group']['title']
 
             self.update_display()  # Give some time to lib_top()
 
-            ''' Our third parent line has online cover art '''
+            ''' In theory third release ID could have the online cover art '''
             if not d['id'] in self.image_dict:
                 continue
             entry = self.image_dict[d['id']]
+            first_time = True  # First image gets parent iid inserted
 
-            # print("\n\n=================== entry: ======================\n")
-            first_time = True
+            print("\n\n=================== entry: ======================\n")
             try:
                 # Insert Image detail lines into CD treeview
                 image_list = entry['images']
                 self.cd_tree_insert_image(rel_id, d['id'], opened, image_list,
                                           first_time)
-                # first_time = False
+                first_time = False
             except Exception as _err:
-                #print("encoding.py Error on 'image_list = entry['images']'")
-                #print(_err)  # 'image-data'
+                print("encoding.py Error on 'image_list = entry['images']'")
+                print(_err)  # 'image-data'
                 continue  # Remove this line to see following error:
                 # No JSON object could be decoded
                 # print(entry)   # Can't do, image-data too large for screen
@@ -3151,12 +3182,69 @@ L O O K   A T   M E   ! !   "type": "composer",
                   when song is played.
             NOTE: Original design was to be reentrant with first_time and
                   self.our_parent variables. But not used for now....
+
+CONTENTS http://coverartarchive.org/release/f450fb53-41ad-4cd1-9f18-10b90cd7ab0f:
+
+images
+0
+approved	true
+back	false
+comment	""
+edit	45232218
+front	true
+id	16641740903
+image	"http://coverartarchive.org/release/f450fb53-41ad-4cd1-9f18-10b90cd7ab0f/16641740903.jpg"
+thumbnails
+250	"http://coverartarchive.org/release/f450fb53-41ad-4cd1-9f18-10b90cd7ab0f/16641740903-250.jpg"
+500	"http://coverartarchive.org/release/f450fb53-41ad-4cd1-9f18-10b90cd7ab0f/16641740903-500.jpg"
+1200	"http://coverartarchive.org/release/f450fb53-41ad-4cd1-9f18-10b90cd7ab0f/16641740903-1200.jpg"
+large	"http://coverartarchive.org/release/f450fb53-41ad-4cd1-9f18-10b90cd7ab0f/16641740903-500.jpg"
+small	"http://coverartarchive.org/release/f450fb53-41ad-4cd1-9f18-10b90cd7ab0f/16641740903-250.jpg"
+types
+0	"Front"
+1
+approved	true
+back	true
+comment	""
+edit	45232219
+front	false
+id	16641742521
+image	"http://coverartarchive.org/release/f450fb53-41ad-4cd1-9f18-10b90cd7ab0f/16641742521.jpg"
+thumbnails
+250	"http://coverartarchive.org/release/f450fb53-41ad-4cd1-9f18-10b90cd7ab0f/16641742521-250.jpg"
+500	"http://coverartarchive.org/release/f450fb53-41ad-4cd1-9f18-10b90cd7ab0f/16641742521-500.jpg"
+1200	"http://coverartarchive.org/release/f450fb53-41ad-4cd1-9f18-10b90cd7ab0f/16641742521-1200.jpg"
+large	"http://coverartarchive.org/release/f450fb53-41ad-4cd1-9f18-10b90cd7ab0f/16641742521-500.jpg"
+small	"http://coverartarchive.org/release/f450fb53-41ad-4cd1-9f18-10b90cd7ab0f/16641742521-250.jpg"
+types
+0	"Back"
+2
+approved	true
+back	false
+comment	""
+edit	87650546
+front	false
+id	31875182808
+image	"http://coverartarchive.org/release/f450fb53-41ad-4cd1-9f18-10b90cd7ab0f/31875182808.jpg"
+thumbnails
+250	"http://coverartarchive.org/release/f450fb53-41ad-4cd1-9f18-10b90cd7ab0f/31875182808-250.jpg"
+500	"http://coverartarchive.org/release/f450fb53-41ad-4cd1-9f18-10b90cd7ab0f/31875182808-500.jpg"
+1200	"http://coverartarchive.org/release/f450fb53-41ad-4cd1-9f18-10b90cd7ab0f/31875182808-1200.jpg"
+large	"http://coverartarchive.org/release/f450fb53-41ad-4cd1-9f18-10b90cd7ab0f/31875182808-500.jpg"
+small	"http://coverartarchive.org/release/f450fb53-41ad-4cd1-9f18-10b90cd7ab0f/31875182808-250.jpg"
+types
+0	"Front"
+1	"Booklet"
+3
         """
         if first_time:
             # First time we insert collapsable/expandable parent line
             self.our_parent = self.cd_tree.insert(
                 rel_id, "end", tags=("images_id", "unchecked"), open=opened,
                 text="Artwork from: http://coverartarchive.org/release/" + mbz_id)
+
+        print("cd_tree_insert_image(): Artwork from:")
+        print("\thttp://coverartarchive.org/release/" + mbz_id)
 
         for d in image_list:
             # There are only dictionaries at list index 0
@@ -3210,14 +3298,14 @@ L O O K   A T   M E   ! !   "type": "composer",
     #
     # ==============================================================================
     def image_from_clipboard(self):
-        """ Doesn't work. Use xclip instead
+        """ Use `xclip` because Initial attempt below didn't work:
         try:
             # image grab works for Windows and OSX only :(
             from PIL import ImageGrab
-            im= ImageGrab.grab clipboard()
+            im = ImageGrab.grab clipboard()
         except:
             clipboard = gtk.clipboard_get()
-            im= clipboard.wait_for_image()
+            im = clipboard.wait_for_image()
         if isinstance(im, Image.Image):
             print('clipboard contains image')
         else:
@@ -3226,10 +3314,6 @@ L O O K   A T   M E   ! !   "type": "composer",
         # Cannot insert until cd_tree has children
         children = self.cd_tree.get_children()
         if len(children) == 0:
-            #messagebox.showinfo(
-            #    "Paste from clipboard error.",
-            #    "Cannot paste image until Musicbrainz listing obtained.",
-            #    icon='warning', parent=self.cd_top)
             message.ShowInfo(self.cd_top, "Paste from clipboard error.",
                              "Cannot paste image until Musicbrainz listing obtained.",
                              icon='warning', thread=self.update_display)
@@ -3266,26 +3350,15 @@ L O O K   A T   M E   ! !   "type": "composer",
 
         if err:
             if "Error: target image/png not available" in err:
-                #messagebox.showinfo(
-                #    "Paste from clipboard error.",
-                #    "You must copy an image to the clipboard first.",
-                #    icon='error', parent=self.cd_top)
                 message.ShowInfo(self.cd_top, "Paste from clipboard error.",
                                  "You must copy an image to the clipboard first.",
                                  icon='error', thread=self.update_display)
             else:
-                #messagebox.showinfo(
-                #    "Paste from clipboard error.",
-                #    err, icon='error', parent=self.cd_top)
                 message.ShowInfo(self.cd_top, "Paste from clipboard error.", err,
                                  icon='error', thread=self.update_display)
             return
 
         if not pipe.returncode == 0:
-            #messagebox.showinfo(
-            #    "Paste from clipboard error.",
-            #    "An error occurred trying to grab image from clipboard.",
-            #    icon='error', parent=self.cd_top)
             message.ShowInfo(self.cd_top, "Paste from clipboard error.",
                              "An error occurred reading from clipboard.",
                              icon='error', thread=self.update_display)
@@ -3295,9 +3368,6 @@ L O O K   A T   M E   ! !   "type": "composer",
             # Image is going direct to stdout instead of filename passed?
             self.image_data_to_frame(text)
         else:
-            #messagebox.showinfo("Paste from clipboard error.",
-            #                    "Image should have been in clipboard but not found?",
-            #                    icon='error', parent=self.cd_top)
             message.ShowInfo(self.cd_top, "Paste from clipboard error.",
                              "Image should have been in clipboard but not found?",
                              icon='error', thread=self.update_display)
@@ -3316,8 +3386,14 @@ L O O K   A T   M E   ! !   "type": "composer",
         self.image_from_clipboard_count += 1
 
         size = str(len(text))
+        # 2024-06-01 - Debug why later size is expected to be index [6] not [0]
+        size = len(text)
+        size_str = "{:,}".format(size)
+        values = ("", "", "", "", "", "", size_str, "")
+
         self.cd_tree.insert(
-            self.clip_parent, "end", values=(size,), tags=("image_id", "unchecked"),
+            #self.clip_parent, "end", values=(size,), tags=("image_id", "unchecked"),
+            self.clip_parent, "end", values=values, tags=("image_id", "unchecked"),
             text="Clipboard Image " + str(self.image_from_clipboard_count))
 
     # ==============================================================================
@@ -3503,15 +3579,24 @@ L O O K   A T   M E   ! !   "type": "composer",
                   when song is played. """
         # Get our image entry
         image_name = self.cd_tree.item(Id, 'text')
-        image_size = self.cd_tree.item(Id, 'values')[6]  # Duration
-        int_size = image_size.replace(",", "")  # American integer display
-        int_size = int_size.replace('.', '')  # European integer display
+        values = self.cd_tree.item(Id, 'values')
+        #print("display_image(): image_name:", image_name)
+        try:
+            image_size = values[6]  # Duration
+        except:
+            print("display_image(): INVALID image_size no values:\n\t", values)
+            # ('109817',)
+            image_size = "999,999"  # Give something to work with below
+
+        int_size = image_size.replace(",", "")  # North American integer format
+        int_size = int_size.replace('.', '')  # International integer format
         int_size = int(int_size)  # String to int
-        ''' TODO: Make 2 MB a global variable. Option to put image in dir. '''
-        if select and int_size > 2 * 1000 * 1000:  # If selecting image
-            title = "Image file over 2 MB (" + image_size + ")"
-            text = "You probably don't want to include this image:\n\n"
-            text += image_name
+        ''' TODO: Make 3 MB a global variable. Option to put image in dir. '''
+        if select and int_size > 3 * 1000 * 1000:  # If selecting image
+            title = "Very large image file over 3 MB (" + image_size + ")"
+            text = "You probably don't want to include this very large image:\n\n"
+            text += image_name + "\n\n"
+            text += "Image file size: " + image_size + " Bytes."
             message.ShowInfo(self.cd_top, title, text, thread=self.update_display)
             #print(title + "\n\n" + text)
         clip_test = image_name.split(' ', 1)[0]
@@ -3525,9 +3610,21 @@ L O O K   A T   M E   ! !   "type": "composer",
     def extract_image_from_dict(self, Id):
         """ Key is 4 or 5 segments long comprised of dictionary keys
 
+            BUG:  Have 4 release ID's with images:
+                  1) 70551aa1-2e8e-4ba2-85c4-9914efd49f1a
+                  2) 1ab8aec6-c855-43c9-94cf-b62f6259a6d6
+                  3) 9ec43973-6008-41c4-accf-42ecb7712706
+                  4) 5e13ab8c-6d20-43a1-8985-f0d90ff2c0fe
+
+                  The 3rd release ID has 12 images but only 5 appear.
+
+                  2024-06-02 - This isn't a bug. See '~/python' filename:
+                  'mbz_get2.py Missing 12 images only get 5 illusion.txt'
+
             TODO: Set reasonable limit of 2 MB for images added to songs.
                   Over 2 MB put into Album directory as real time image
-                  when song is played. """
+                  when song is played.
+        """
 
         image_name = self.cd_tree.item(Id, 'text')
         medium_id = self.cd_tree.parent(Id)
@@ -3621,7 +3718,7 @@ L O O K   A T   M E   ! !   "type": "composer",
         return None
 
     def select_image(self, Id):
-        """ Select image. We can be called when image already selected. """
+        """ Select image. Can be called when image already selected. """
         self.current_image_key = self.display_image(Id, select=True)
         if self.current_image_key in self.selected_image_keys:
             return  # Already in key list, can't remove
@@ -3850,7 +3947,7 @@ L O O K   A T   M E   ! !   "type": "composer",
                 shortened_string = medium
             # print('shortened_string:', shortened_string)
             self.scrollbox.insert("end", "Medium:\t" + shortened_string + "\n")
-            self.scrollbox.insert("end", "Files:")
+            self.scrollbox.insert("end", "Selected:")
             for track_id in self.cd_tree.get_children(self.selected_medium):
                 tags = self.cd_tree.item(track_id, 'tags')
                 self.get_track_from_tree(track_id)  # May need to reformat all
@@ -3893,7 +3990,7 @@ L O O K   A T   M E   ! !   "type": "composer",
 
         # apply the tag "red" to following word patterns
         pattern_list = ["Format:", "Quality:", "Naming:", "Artist:", "Album:",
-                        "Musicbrainz ID:", "Medium:", "Files:", "Image 1:",
+                        "Musicbrainz ID:", "Medium:", "Selected:", "Image 1:",
                         "Image 2:", "Image 3:", "Image 4:", "Image 5", "Date:",
                         "Genre:", "Composer:", "CD Tracks:", "Tracks selected:",
                         "CD Musicbrainz ID:", "Target:", "Clipboard Image 1:",
@@ -3901,7 +3998,8 @@ L O O K   A T   M E   ! !   "type": "composer",
                         "Clipboard Image 4:", "Clipboard Image 5:"]
 
         for pattern in pattern_list:
-            self.scrollbox.highlight_pattern(pattern, "red")
+            # Turn each pattern in scrollbox red using letter-case rules
+            self.scrollbox.highlight_pattern(pattern, "red", upper_and_lower=False)
 
         # Don't allow changes to displayed selections, must be done in tree
         self.scrollbox.configure(state="disabled")

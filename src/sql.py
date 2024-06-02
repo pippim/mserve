@@ -1994,6 +1994,18 @@ class Config:
             ('cfg_playlists', 'sql_treeview', 'style', 'scroll'):
                 {"name": 'playlists.Treeview', "width": 14},
 
+            # Rip CD taskbar icon
+            ('cfg_encode', 'toplevel', 'taskbar_icon', 'height & colors'):
+                {"height": 64, "outline": 'White', "fill": 'Black',
+                 "text": 'Red', "font_family": 'DejaVuSans.ttf',
+                 "char": 'R'},  # VALUE dictionary or list
+            # chron.Treeview frame is always the same height with no edge
+            ('cfg_encode', 'treeview', 'style', 'color'):
+                {"name": 'encode.Treeview', "foreground": "DarkRed",
+                 "background": "LemonChiffon", "fieldbackground": "LemonChiffon",
+                 "font_size": g.MON_FONTSIZE,
+                 "edge_color": "NavajoWhite", "edge_px": 0},
+
             # View SQL Music Table taskbar icon
             ('cfg_sql_music', 'toplevel', 'taskbar_icon', 'height & colors'):
                 {"height": 64, "outline": 'White', "fill": 'LemonChiffon',

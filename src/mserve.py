@@ -6918,9 +6918,13 @@ Call search.py when these control keys occur
             try:
                 # If valid disc object, exception checking dictionary for 'error'
                 _error = last_disc_contents.get('error')
+                print("There was an error getting disc ID")
                 last_disc_contents = None  # There was an error getting disc ID
-            except KeyError:
+            except (KeyError, AttributeError):
                 pass  # have a valid last disc
+            except AttributeError:
+                last_disc_contents = None  # The "DiscId" object is not a dictionary
+                print('The "DiscId" object is not a dictionary')
 
         if ENCODE_DEV and last_disc_contents:
             answer = message.AskQuestion(

@@ -3962,7 +3962,9 @@ class MoveTreeviewColumn:
 
 
 def wait_cursor(toplevel):
-    """ Turn mouse pointer (cursor) into hour glass """
+    """ Turn mouse pointer (cursor) into hour glass 
+        Caller reverses with toplevel.config(cursor="")
+    """
     try:
         toplevel.config(cursor="watch")  # Ubuntu 16.04
         #print('toplevel.config(cursor="watch")')

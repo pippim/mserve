@@ -18,6 +18,7 @@ from __future__ import with_statement  # Error handling for file opens
 #       Aug. 18 2023 - Fix newish function - get_running_apps()
 #       Aug. 22 2023 - remove_group() - remove file groups ending in * (splat)
 #       Sep. 29 2023 - t(short=False) - Set to True for MM:SS printed only
+#       Jun. 02 2024 - Reactivate '?' as illegal filename character
 #
 #==============================================================================
 
@@ -36,9 +37,7 @@ import glob  # For globbing files in /tmp/mserve_ffprobe*
 import time
 import datetime
 import pickle  # For reading/writing files in pickle format, supports images
-
-# Common Tkinter routines
-import toolkit
+import toolkit  # Common Tkinter routines
 
 # Program timings for OS calls and functions or loops
 TIME_LIST = []  # list of tuples name, start time
@@ -526,7 +525,7 @@ def legalize_filename(name):
         Credit: https://stackoverflow.com/a/31976060/6929343
     """
     name = name.replace('/', '_')  # Only character that Linux forbids
-    #name = name.replace('?', '_')  # Seems to be legal in Windows & Linux
+    name = name.replace('?', '_')  # 2024-06-02 - Was commented out
     name = name.replace(':', '_')
     name = name.replace('<', '_')
     name = name.replace('>', '_')

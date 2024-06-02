@@ -23,6 +23,7 @@ from __future__ import with_statement  # Error handling for file opens
 #       July 14 2023 - Save original mbz dictionary in JSON format
 #       July 17 2023 - Get MBZ FirstDate from all releases.
 #       Aug. 21 2023 - Major Scrub and support Composer ['work-relation-list']
+#       Jun. 01 2024 - Fix when there aren't multiple releases (add <=1 test)
 #
 # ==============================================================================
 
@@ -62,20 +63,7 @@ TMP_MBZ_GET1D = g.TEMP_DIR + "mserve_mbz_get1_releases_with_work_json"
 TMP_MBZ_GET1E = g.TEMP_DIR + "mserve_mbz_get1_releases_with_dates_json"
 TMP_MBZ_GET1F = g.TEMP_DIR + "mserve_mbz_get1_release_by_id_error_json"
 TMP_MBZ_DEBUG = g.TEMP_DIR + "mserve_mbz_get1_dates_list"
-if os.path.isfile(TMP_MBZ_GET1A):
-    os.remove(TMP_MBZ_GET1A)
-if os.path.isfile(TMP_MBZ_GET1B):
-    os.remove(TMP_MBZ_GET1B)
-if os.path.isfile(TMP_MBZ_GET1C):
-    os.remove(TMP_MBZ_GET1C)
-if os.path.isfile(TMP_MBZ_GET1D):
-    os.remove(TMP_MBZ_GET1D)
-if os.path.isfile(TMP_MBZ_GET1E):
-    os.remove(TMP_MBZ_GET1E)
-if os.path.isfile(TMP_MBZ_GET1F):
-    os.remove(TMP_MBZ_GET1F)
-if os.path.isfile(TMP_MBZ_DEBUG):
-    os.remove(TMP_MBZ_DEBUG)
+
 
 # Preferred method to view Debug files gedit  "Format JSON" plugin
 # See website: https://connorgarvey.com/blog/?p=264
@@ -89,6 +77,12 @@ SEARCH_LIMIT = sys.argv[2]          # Number of search results to return when
                                     # then vinyl (which may have artwork!) are
                                     # included. EG Jim Steinem Bad for Good
 EMAIL_ADDRESS = sys.argv[3]         # May 5, 2023 - Not tested yet
+
+
+def rm_file(fname):
+    """ remove file if it exists"""
+    if os.path.isfile(fname):
+        os.remove(fname)
 
 
 def get_releases_then_work_rels():
@@ -376,8 +370,7 @@ def get_releases_by_recording_id(mbz_id):
     """ Get all releases of a recording to find oldest date """
     try:
         recording = mbz.get_recording_by_id(
-            mbz_id,
-            includes=['releases', 'release-rels', 'work-rels']
+            mbz_id, includes=['releases', 'release-rels', 'work-rels']
         )
     except Exception as err:
         print("Exception:", err)
@@ -391,15 +384,58 @@ def filter_releases(passed):
     for ndx, d in enumerate(passed):
         if d['title'] != d['release-group']['title']:
             # The first release group for disc #3 is invalid.
-            # d['title'] = "Greatest Hits of the Eighties, Volume 1"
-            # d['release-group']['title'] = "Greatest Hits of the 80's"
+            #   d['title'] = "Greatest Hits of the Eighties, Volume 1"
+            #   d['release-group']['title'] = "Greatest Hits of the 80's"
+            # 2024-06-01 - Add d['title'].encode('utf-8') for:
+            #   ガーディアンズ・オブ・ギャラクシー:VOLUME 3 オーサム・ミックス VOL.3
+            print("mbz_get1.py filter_releases(): 'ndx' to pop:", ndx)
+            print("d['title']:", d['title'].encode('utf-8'))
+            print("d['release-group']['title']:", d['release-group']['title'].encode('utf-8'))
             del_list.append(ndx)
-    for i in reversed(del_list):
-        pass_back.pop(del_list[i])
+
+    if len(del_list) == 0:
+        return  # Nothing to remove. Don't want to print what would be random below
+
+    # Traceback (most recent call last):
+    #   File "mbz_get1.py", line 409, in <module>
+    #     filter_releases(pass_back)  # No return, modified in place
+    #   File "mbz_get1.py", line 391, in filter_releases
+    #     pass_back.pop(del_list[i])
+    # IndexError: list index out of range
+    # 2024-06-01 - Change to catch error but get 4 releases instead of 3
+    print("len(passed):", len(passed))  # 4
+    print("len(del_list):", len(del_list))  # 1
+    try:
+        print("del_list[0]:", del_list[0])  # 3
+    except IndexError:
+        pass
+
+    for i in reversed(del_list):  # Pop indexes off backwards to prevent shifting
+        try:
+            passed.pop(del_list[i])
+            print("Success: passed.pop(del_list[i]):", i)
+        except IndexError:
+            print("Failed: passed.pop(del_list[i]):", i)  # 3
+
+    # 2024-06-03 Contents of '/run/user/1000/mserve_mbz_get1_stdout':
+    # mbz_get1.py filter_releases(): 'ndx' to pop: 3
+    # d['title']: ガーディアンズ・オブ・ギャラクシー:VOLUME 3 オーサム・ミックス VOL.3
+    # d['release-group']['title']: Guardians of the Galaxy, Vol. 3: Awesome Mix, Vol. 3
+    # len(passed): 4
+    # len(del_list): 1
+    # del_list[0]: 3
+    # Failed: passed.pop(del_list[i]): 3
 
 
 if __name__ == "__main__":
 
+    rm_file(TMP_MBZ_GET1A)
+    rm_file(TMP_MBZ_GET1B)
+    rm_file(TMP_MBZ_GET1C)
+    rm_file(TMP_MBZ_GET1D)
+    rm_file(TMP_MBZ_GET1E)
+    rm_file(TMP_MBZ_GET1F)
+    rm_file(TMP_MBZ_DEBUG)
     pass_back = get_releases_then_work_rels()
 
     ''' An error dictionary MAY have been passed back '''

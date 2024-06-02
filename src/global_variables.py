@@ -17,6 +17,7 @@ from __future__ import with_statement  # Error handling for file opens
 #       July 10 2023 - Begin mserve_config.py development (check dependencies)
 #       Aug. 04 2023 - Add FONT, NO_ARTIST_STR and NO_ALBUM_STR constants
 #       Sep. 04 2023 - Add MUSIC_FILE_TYPES list, MSERVE_VERSION = u"3.5.0"
+#       Jun. 02 2024 - MSG_WIDTH_ADJUST + .02 for message.py data_w_l() function
 #
 # ==============================================================================
 
@@ -72,7 +73,8 @@ BTN_WID = 17            # Width for buttons on main window
 BTN_WID2 = 15           # Width for buttons on play window
 BTN_BRD_WID = 3         # Width for button border
 FRM_BRD_WID = 2         # Width for frame border
-MSG_WIDTH_ADJUST = .88  # message.py data_w_l() override width (a bit too long)
+MSG_WIDTH_ADJUST = .90  # message.py data_w_l() override width (a bit too long)
+# 2024-06-02 Change .88 to .90 because last character wrapping.
 # TODO: Calculate PANEL_HGT (height)
 PANEL_HGT = 24          # Height of Unity panel
 

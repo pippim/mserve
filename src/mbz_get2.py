@@ -55,6 +55,7 @@ def get_image_info():
         # read the data as binary data stream
         release_list = pickle.load(rel_info)
 
+    print("mbz_get2.py get_image_info() filename:", DICT_FNAME)
     image_dict = {}
 
     for d in release_list:
@@ -64,12 +65,13 @@ def get_image_info():
 
         rel_id = d['id']  # release_list, release entry, release Id
         url = 'http://coverartarchive.org/release/' + rel_id
+        print("\nmbz_get2.py get_image_info() release_list entry:", rel_id)
 
         try:
             art = json.loads(requests.get(url, allow_redirects=True).content)
         except Exception as x:
             print("Exception:", x)
-            # Some images simply don't exist and there really is a connection.
+            # Some images simply don't exist and internet really is connected.
             # return { 'error': '99' }    # No internet connection
             continue
 
@@ -129,7 +131,11 @@ def verify_download(name, d):
 
 def download_art(name):
     """ Download single art file if less than 4 MB """
-    return requests.get(name, allow_redirects=True).content
+    try:
+        art = requests.get(name, allow_redirects=True).content
+        return art
+    except requests.exceptions.ConnectionError as err:
+        print("mbz_get2.py download_art(): Exception:\n", err)
 
 
 if __name__ == "__main__":
