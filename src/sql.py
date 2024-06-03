@@ -1905,7 +1905,8 @@ class Config:
                 {"name": 'mserve.Treeview', "foreground": "Black",
                  "background": "WhiteSmoke", "fieldbackground": "WhiteSmoke",
                  "edge_color": None, "edge_px": 0},
-
+            ('cfg_lib_top', 'treeview', 'style', 'scroll'):
+                {"name": 'mserve.Treeview', "width": 14},
             # Playlist taskbar icon  # KEY is a tuple of 4 strings
             ('cfg_play_top', 'toplevel', 'taskbar_icon', 'height & colors'): 
                 {"height": 64, "outline": 'Black', "fill": 'ForestGreen',
@@ -1917,6 +1918,8 @@ class Config:
                  "background": "Black", "fieldbackground": "Black",
                  "font_size": g.MON_FONTSIZE,
                  "edge_color": "White", "edge_px": 0},
+            ('cfg_play_top', 'treeview', 'style', 'scroll'):
+                {"name": 'chron.Treeview', "width": 14},
             # self.chron_tree.tag_configure('chron_sel', background=t['background'],
             #                               foreground=t['foreground'])
             ('cfg_play_top', 'treeview', 'style', 'chron_sel'):
@@ -2005,6 +2008,8 @@ class Config:
                  "background": "LemonChiffon", "fieldbackground": "LemonChiffon",
                  "font_size": g.MON_FONTSIZE,
                  "edge_color": "NavajoWhite", "edge_px": 0},
+            ('cfg_encode', 'treeview', 'style', 'scroll'):
+                {"name": 'encode.Treeview', "width": 14},
 
             # View SQL Music Table taskbar icon
             ('cfg_sql_music', 'toplevel', 'taskbar_icon', 'height & colors'):
@@ -2551,10 +2556,10 @@ def hist_tally_type_action_master(Type, Action, SourceMaster, prt=True, tab=True
           "WHERE Type = ? AND Action = ? AND SourceMaster = ?"
     hist_cursor.execute(sql, (Type, Action, SourceMaster))
     rows = hist_cursor.fetchall()
-    tot_size = 0
-    for i, row in enumerate(rows):
+    row_count = tot_size = 0
+    for row in rows:
+        row_count += 1
         tot_size += row['Size']
-    row_count = i + 1
 
     tabs = "\t\t" if tab else ""  # show_debug() needs tabs to align
     prt_type = " | Type='" + Type + "' | Action='" + Action + "' | " +\

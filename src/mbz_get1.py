@@ -185,8 +185,8 @@ def get_releases_then_work_rels():
 
             try:
                 test = release2['id']
-                text = "\nrelease2['id'] IS: " + test
-                #print(text, "\n")
+                _text = "\nrelease2['id'] IS: " + test
+                #print(_text, "\n")
             except KeyError:
                 text = "\nrelease2['id'] NOT FOUND !!!"
                 text += "NEW release['id'] works though !!" + release['id']
@@ -280,7 +280,7 @@ def get_releases_then_work_rels():
     return releases  # Releases dumped to GET1D ok, but not used in pass_back?
 
 
-# noinspection PyBroadException
+# noinspection PyBroadException,PyTypeChecker
 def get_date_info(passed):
     """ Find first year date by parsing all releases for recording """
 
@@ -414,7 +414,8 @@ def filter_releases(passed):
         try:
             passed.pop(del_list[i])
             print("Success: passed.pop(del_list[i]):", i)
-        except IndexError:
+        except IndexError as _err:
+            print("IndexError:", _err)
             print("Failed: passed.pop(del_list[i]):", i)  # 3
 
     # 2024-06-03 Contents of '/run/user/1000/mserve_mbz_get1_stdout':
@@ -424,6 +425,7 @@ def filter_releases(passed):
     # len(passed): 4
     # len(del_list): 1
     # del_list[0]: 3
+    # IndexError: list index out of range
     # Failed: passed.pop(del_list[i]): 3
 
 

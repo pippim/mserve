@@ -30,7 +30,7 @@ warnings.simplefilter('default')  # in future Python versions.
 #       July 12 2023 - Interface to/from mserve_config.py
 #       July 13 2023 - Upgrade to new SQL database.
 #       July 16 2023 - Prompt to override Artist, Album Artist, Album, AlbumDate,
-#           Genre & Compilations. FirstDate overriden in table cell.
+#           Genre & Compilations. FirstDate overridden in table cell.
 #       Aug. 15 2023 - Support M4A gstreamer and mutagen.
 #       Aug. 16 2023 - Album level overrides & track level metadata editing.
 #       Aug. 17 2023 - Large radio buttons easier to see.
@@ -174,7 +174,7 @@ class RipCD:
         Resizeable, Scroll Bars, select songs, play songs.
     """
     def __init__(self, toplevel, tooltips, info, rip_ctl, lcs,
-                 caller_disc=None, thread=None, sbar_width=14):
+                 caller_disc=None, thread=None):
 
         global RIP_CD_IS_ACTIVE
 
@@ -403,17 +403,25 @@ class RipCD:
                            relief=tk.RIDGE)
         frame2.grid(row=1, column=0, columnspan=2, sticky=tk.NSEW)
 
+        ''' Treeview Vertical Scrollbar '''
+        sql_key = ['cfg_encode', 'treeview', 'style', 'scroll']
+        d = cfg.get_cfg(sql_key)  # 2024-06-02
+        v_sbar = tk.Scrollbar(frame2, width=d['width'])
+        v_sbar.pack(side=tk.RIGHT, fill=tk.Y)
+
         ''' Treeview List Box, Columns and Headings '''
         self.cd_tree = CheckboxTreeview(  # Duration & First Date columns displayed
             frame2, columns=("Meta Title", "Genre", "Artist", "First Date",
                              "Composer", "Comment", "Duration", "Track №"),
-            height=20, selectmode="none", show=('tree', 'headings'))
+            height=20, selectmode="none", show=('tree', 'headings'),
+            yscrollcommand=v_sbar.set,)
+
+        v_sbar.config(command=self.cd_tree.yview)
 
         ''' Treeview (cd_tree) style DarkRed on LemonChiffon '''
-        #style = ttk.Style(self.chron_frm)  # 2024-03-18 frame not needed?
         style = ttk.Style()
         colors = cfg.get_cfg(['cfg_encode', 'treeview', 'style', 'color'])
-        style_name = colors['name']  # 2024-03-18
+        style_name = colors['name']  # 2024-06-02 'encode.Treeview'
         row_height = int(colors['font_size'] * 2.2)
         style.configure(style_name, font=(None, colors['font_size']),
                         rowheight=row_height, foreground=colors['foreground'],
@@ -480,10 +488,6 @@ class RipCD:
         self.cd_tree.tag_configure("unchecked", image=self.checkboxes[0])
         self.cd_tree.tag_configure("tristate", image=self.checkboxes[1])
         self.cd_tree.tag_configure("checked", image=self.checkboxes[2])
-
-        ''' Treeview Scrollbars '''
-        v_sbar = tk.Scrollbar(frame2, width=sbar_width)
-        v_sbar.pack(side=tk.RIGHT, fill=tk.Y)
 
         ''' Treeview Buttons '''
         frame3 = ttk.Frame(self.master_frame)
@@ -2152,13 +2156,13 @@ class RipCD:
             "finished: " + time.asctime(time.localtime(time.time())))
 
     def add_sql_metadata(self):
-        """ July 13, 2023 - Need DiscNumber, FirstDate, CreationTime, Composer,
-            GaplessPlayback, AlbumDate, Compilation, """
+        """ Add SQL Music Table song record. May already be up-to-date. """
 
         if self.rip_ctl.new(self.os_full_path):  # Read metadat from music file
-            success = sql.update_metadata(self.rip_ctl)
-            if not success:
-                print("encoding.py add_sql_metadata() without changes. ")
+            changes = sql.update_metadata(self.rip_ctl)
+            if not changes:
+                #print("encoding.py add_sql_metadata() without changes. ")
+                pass  # Not an error. Ripping an existing song.
 
     # noinspection PyPep8Naming, SpellCheckingInspection
     def add_metadata_to_song(self):
@@ -2523,13 +2527,17 @@ tvsh – show name
     def get_next_rip_name(self):
         """ Get next song in selected list and convert to UTF-8.
             Set the song name, OS song name and full OS path song name """
-        #self.track_song_title = ""  # Aug 16/23 - no longer used
-        # Set track just ripped to darkest color
+
+        # Set track just ripped to uniform darker color
         if self.os_song_title is not None and self.last_shade is not None:
             # Remove last shade before applying next shade
             self.scrollbox.unhighlight_pattern(self.os_song_title,
                                                str(self.last_shade))
-            self.scrollbox.highlight_pattern(self.os_song_title, "7")
+            last_index = self.scrollbox.highlight_pattern(self.os_song_title, "7")
+            # 2024-06-02 - Ensure next song to rip is visible in text scrollbox.
+            whole = int(last_index.split(".")[0])
+            see = str(whole + 1) + ".1"
+            self.scrollbox.see(see)
 
         self.os_song_title = None
         i = 0  # To make pycharm charming :)
@@ -2964,19 +2972,21 @@ if r['title'] != r['release-group']['title']
             entry = self.image_dict[d['id']]
             first_time = True  # First image gets parent iid inserted
 
-            print("\n\n=================== entry: ======================\n")
+            #print("\n\n=================== entry: ======================\n")
             try:
                 # Insert Image detail lines into CD treeview
                 image_list = entry['images']
                 self.cd_tree_insert_image(rel_id, d['id'], opened, image_list,
                                           first_time)
-                first_time = False
-            except Exception as _err:
-                print("encoding.py Error on 'image_list = entry['images']'")
-                print(_err)  # 'image-data'
-                continue  # Remove this line to see following error:
-                # No JSON object could be decoded
-                # print(entry)   # Can't do, image-data too large for screen
+                # first_time = False  # 2024-06-02 No longer used, remove parm.
+            except KeyError as _err:
+                #print("encoding.py Error with 'image_list = entry['images']'")
+                #print("KeyError:", _err)  # 'image-data'
+                # 2024-06-02 - Not an error if release has no coverart
+                #   File "/home/rick/python/encoding.py", line 3278, in cd_tree_insert_image
+                #     size = "{:,}".format(len(d['image-data']))
+                # KeyError: 'image-data'
+                continue
 
             self.update_display()  # Give some time to lib_top()
 
@@ -3037,8 +3047,9 @@ if r['title'] != r['release-group']['title']
                   len(work_relations))
 
         if len(work_relations) > 1:
-            print("work_relation-list > 1:", len(work_relations),
-                  self.track_meta_title)
+            #print("work_relation-list > 1:", len(work_relations),
+            #      self.track_meta_title)
+            pass  # 2024-06-02 - print finally appearing but nothing to do yet
 
         for i, works in enumerate(work_relations):
 
@@ -3072,6 +3083,8 @@ if r['title'] != r['release-group']['title']
                     producers.append(artist_name)
                 elif rels_type.lower() == 'lyricist':
                     pass
+                elif rels_type.lower() == 'publishing':
+                    pass  # 2024-06-02 - Discovered today
                 else:
                     # Add unknowns above like 'assistant', 'engineer', etc.
                     print("unknown rels_type:", rels_type)
@@ -3243,8 +3256,8 @@ types
                 rel_id, "end", tags=("images_id", "unchecked"), open=opened,
                 text="Artwork from: http://coverartarchive.org/release/" + mbz_id)
 
-        print("cd_tree_insert_image(): Artwork from:")
-        print("\thttp://coverartarchive.org/release/" + mbz_id)
+        #print("cd_tree_insert_image(): Artwork from:")
+        #print("\thttp://coverart archive.org/release/" + mbz_id)
 
         for d in image_list:
             # There are only dictionaries at list index 0
@@ -3271,7 +3284,6 @@ types
                                     text=d['image'], 
                                     tags=("image_id", "unchecked"))
 
-    # noinspection
     def cd_close(self, *_args):
         """ Wrapup """
         global RIP_CD_IS_ACTIVE
@@ -3382,14 +3394,11 @@ types
                 rel_id, "end", text="Cover Art from clipboard",
                 tags=("clips_id", "unchecked"), open=True)
 
-        self.clipboard_images.append(text)  # Add our image next in list
+        self.clipboard_images.append(text)  # Append image next in list
         self.image_from_clipboard_count += 1
 
-        size = str(len(text))
-        # 2024-06-01 - Debug why later size is expected to be index [6] not [0]
-        size = len(text)
-        size_str = "{:,}".format(size)
-        values = ("", "", "", "", "", "", size_str, "")
+        size = "{:,}".format(len(text))  # Size of image for treeview display
+        values = ("", "", "", "", "", "", size, "")
 
         self.cd_tree.insert(
             #self.clip_parent, "end", values=(size,), tags=("image_id", "unchecked"),
@@ -3580,7 +3589,7 @@ types
         # Get our image entry
         image_name = self.cd_tree.item(Id, 'text')
         values = self.cd_tree.item(Id, 'values')
-        #print("display_image(): image_name:", image_name)
+        #print("encoding.py display_image(): image_name:\n", image_name)
         try:
             image_size = values[6]  # Duration
         except:
@@ -3610,20 +3619,19 @@ types
     def extract_image_from_dict(self, Id):
         """ Key is 4 or 5 segments long comprised of dictionary keys
 
-            BUG:  Have 4 release ID's with images:
+            NOTE: Have 4 release ID's with images:
                   1) 70551aa1-2e8e-4ba2-85c4-9914efd49f1a
                   2) 1ab8aec6-c855-43c9-94cf-b62f6259a6d6
                   3) 9ec43973-6008-41c4-accf-42ecb7712706
                   4) 5e13ab8c-6d20-43a1-8985-f0d90ff2c0fe
 
-                  The 3rd release ID has 12 images but only 5 appear.
-
-                  2024-06-02 - This isn't a bug. See '~/python' filename:
-                  'mbz_get2.py Missing 12 images only get 5 illusion.txt'
+                  2024-06-02 - 3rd release has 12 images but only 5 appear.
+                  This isn't a bug. Documented in '~/python' directory file:
+                      'mbz_get2.py Missing 12 images only get 5 illusion.txt'
 
             TODO: Set reasonable limit of 2 MB for images added to songs.
                   Over 2 MB put into Album directory as real time image
-                  when song is played.
+                  displayed as song is played.
         """
 
         image_name = self.cd_tree.item(Id, 'text')

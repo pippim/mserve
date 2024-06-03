@@ -907,7 +907,7 @@ class MusicLocTreeCommonSelf:
     """
 
     def __init__(self):
-        #def __init__(self, toplevel, song_list, sbar_width=14, **kwargs):
+        #def __init__(self, toplevel, song_list, **kwargs):
 
         self.who = "MusicLocationTree()."
         self.killer = ext.GracefulKiller()  # Class to shut down
@@ -1304,10 +1304,10 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
 
     """
 
-    def __init__(self, toplevel, song_list, sbar_width=14):
+    def __init__(self, toplevel, song_list):
 
         MusicLocTreeCommonSelf.__init__(self)  # Define self. variables
-        ext.t_init('MusicLocationTree() __init__(toplevel, song_list, sbar_width=14)')
+        ext.t_init('MusicLocationTree() __init__(toplevel, song_list')
 
         # If we are started by splash screen get object, else it will be None
         self.splash_toplevel = toplevel
@@ -1538,7 +1538,9 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
 
         ''' Treeview Scrollbars '''
         # Create a vertical scrollbar linked to the frame.
-        v_scroll = tk.Scrollbar(frame2, orient=tk.VERTICAL, width=sbar_width,
+        sql_key = ['cfg_lib_top', 'treeview', 'style', 'scroll']
+        d = cfg.get_cfg(sql_key)  # 2024-06-02
+        v_scroll = tk.Scrollbar(frame2, orient=tk.VERTICAL, width=d['width'],
                                 command=self.lib_tree.yview)
         v_scroll.grid(row=0, column=1, sticky=tk.NS)
         self.lib_tree.configure(yscrollcommand=v_scroll.set)
@@ -1547,7 +1549,7 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
         # noinspection SpellCheckingInspection
         ''' June 19, 2023 - Disable horizontal scroll for lib_top.tree 
             It might be needed for debugging hidden columns though. 
-        h_scroll = tk.Scrollbar(frame2, orient=tk.HORIZONTAL, width=sbar_width,
+        h_scroll = tk.Scrollbar(frame2, orient=tk.HORIZONTAL, width=d['width'],
                                 command=self.lib_tree.xview)
         h_scroll.grid(row=1, column=0, sticky=tk.EW)
         self.lib_tree.configure(xscrollcommand=h_scroll.set)
@@ -12334,14 +12336,14 @@ mark set markName index"
     #       Playlist chronology
     #
     # ==============================================================================
-    def build_chronology(self, _sbar_width=14):
+    def build_chronology(self):
         """ Chronology treeview List Box, Columns and Headings """
 
         ''' Create Chronology Treeview (chron_tree) and style Gold on Black '''
         #style = ttk.Style(self.chron_frm)  # 2024-03-18 frame not needed?
         style = ttk.Style()
         colors = cfg.get_cfg(['cfg_play_top', 'treeview', 'style', 'color'])
-        style_name = colors['name']  # 2024-03-18
+        style_name = colors['name']  # 2024-03-18 'chron.Treeview'
         row_height = int(colors['font_size'] * 2.2)
         #style.configure(style_name, font=(None, g.MON_FONTSIZE),
         style.configure(style_name, font=(None, colors['font_size']),
@@ -12361,8 +12363,10 @@ mark set markName index"
         self.chron_tree.grid(row=0, column=0, sticky=tk.NSEW)
 
         ''' Chronology Treeview Vertical Scrollbar '''
+        sql_key = ['cfg_play_top', 'treeview', 'style', 'scroll']
+        d = cfg.get_cfg(sql_key)  # 2024-06-02
         v_scroll = tk.Scrollbar(self.chron_frm, orient=tk.VERTICAL,
-                                width=SCROLL_WIDTH,
+                                width=d['width'],
                                 command=self.chron_tree.yview)
         v_scroll.grid(row=0, column=1, sticky=tk.NS)
         self.chron_tree.configure(yscrollcommand=v_scroll.set)

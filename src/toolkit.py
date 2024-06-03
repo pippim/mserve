@@ -1459,6 +1459,7 @@ class CustomScrolledText(scrolledtext.ScrolledText):
 
         start = self.index(start)
         end = self.index(end)
+        last_index = None
         self.mark_set("matchStart", start)
         self.mark_set("matchEnd", start)
         self.mark_set("searchLimit", end)
@@ -1469,12 +1470,15 @@ class CustomScrolledText(scrolledtext.ScrolledText):
                                 regexp=regexp, nocase=upper_and_lower)
             if index == "":
                 break
+            last_index = index
             # degenerate pattern which matches zero-length strings
             if count.get() == 0:
                 break
             self.mark_set("matchStart", index)
             self.mark_set("matchEnd", "%s+%sc" % (index, count.get()))
             self.tag_add(tag, "matchStart", "matchEnd")
+
+        return last_index
 
     def unhighlight_pattern(self, pattern, tag, start="1.0", end="end",
                             regexp=False):
@@ -4218,7 +4222,7 @@ class ToolTips(CommonTip):
         ''' NOTE: Because a new tip fades in after 3/4 second we have time to
                   make old tool tip fade out assuming VISIBLE_DELAY > FADE_TIME '''
         if VISIBLE_DELAY < FADE_OUT_SPAN:
-            print('toolkit.py Tooltips(): VISIBLE_DELAY < FADE_OUT_SPAN')
+            print(self.who + '__init__(): VISIBLE_DELAY < FADE_OUT_SPAN')
             exit()
 
     def dict_to_fields(self):
@@ -4342,7 +4346,7 @@ class ToolTips(CommonTip):
                 return  # Don't want to delete the last one
             if nt.widget == search_widget:
                 # Widget matches so flag as deleted
-                print('toolkit.py delete_older_for_widget():', self.log_nt)
+                print(self.who + 'delete_older_for_widget():', self.log_nt)
                 # TODO: What if entering canvas is deleted and colors not changed?
                 Event = namedtuple('Event', 'time, action, widget, x, y')
                 # noinspection PyArgumentList
@@ -4428,7 +4432,7 @@ class ToolTips(CommonTip):
             self.release_time = self.log_nt.time
 
         else:
-            print(self.who + 'process_tip(): Invalid action:',
+            print(self.who + 'set_tip_plan(): Invalid action:',
                   self.log_nt.action)
 
         self.fields_to_dict()
@@ -4585,11 +4589,11 @@ class ToolTips(CommonTip):
         """ Reset colors for canvas object losing focus """
         if self.tool_type is 'button':
             if self.widget['state'] != tk.NORMAL:
-                #print('CreateToolTip.leave(): reset button state to tk.NORMAL')
+                #print(self.who + 'reset_widget_colors(): reset button state to tk.NORMAL')
                 self.widget['state'] = tk.NORMAL
 
         if self.tool_type is 'canvas_button' and self.widget.state is 'active':
-            #print('CreateToolTip.leave(): reset canvas button state to normal')
+            #print('reset_widget_colors(): reset canvas button state to normal')
             self.widget.state = 'normal'
             self.widget.itemconfig("button_color", fill=self.normal_button_color,
                                    outline=self.normal_button_color)
@@ -4615,7 +4619,7 @@ class ToolTips(CommonTip):
             except IndexError:  # list assignment index out of range
                 ''' Aug 18/23 - Normal behavior for InfoCentre() tt.close() '''
                 # Caused by fast clicking 'Next' song. likely tt.close() run
-                #print("toolkit.py Tooltips.poll_tips() - " +
+                #print(self.who + "poll_tips() - " +
                 #      "Tip disappeared in loop!")
                 now_len = len(self.tips_list)
                 #print("len(self.tips_list) change 4. size at start:", start_len,
@@ -4644,7 +4648,7 @@ class ToolTips(CommonTip):
                 self.window_visible = False
                 self.window_fading_in = False
                 self.window_fading_out = False
-                print("toolkit.py ToolTips.process_tip():",
+                print(self.who + ".process_tip():",
                       "self.tip.window doesn't exist")
                 return
 
@@ -4654,7 +4658,7 @@ class ToolTips(CommonTip):
             if self.tip_window:
                 self.tip_window.destroy()
                 # Happens when leaving widget while tip window displayed
-                print('TEMPORARY: forced tip window close')
+                print(self.who + 'process_tip(): TEMPORARY forced tip window close')
                 self.tip_window = None
                 self.window_visible = False
                 self.window_fading_in = False
@@ -4663,7 +4667,8 @@ class ToolTips(CommonTip):
 
         fade_in_time, fade_out_time = self.calc_fade_in_out()
         if fade_in_time > self.now + 8:
-            print("fade_in_time starts in:", fade_in_time - self.now)
+            # 2024-06-02 - Not sure why here. Perhaps testing delayed fade_in?
+            print(self.who + ".process_tip(): fade_in_time starts in:", fade_in_time - self.now)
 
         # Tooltip fading out?
         if self.now > fade_out_time:
@@ -4693,7 +4698,7 @@ class ToolTips(CommonTip):
                     return
 
                 if self.tip_window is None:
-                    print('toolkit.py ToolTips.process_tip(): ' +
+                    print(self.who + 'process_tip(): ' +
                           'self.tip_window does not exist')
                     print('self.now:', self.now, 'zero_alpha_time:', zero_alpha_time)
                     diff = self.now - zero_alpha_time
@@ -4928,6 +4933,7 @@ class ToolTips(CommonTip):
             y = sw[1] - h - 20  # 20 px above parent's bottom
         else:
             print_trace()
+            print(self.who + 'override_window_geom(): ')
             print('Bad self.anchor value:', self.anchor)
             exit()
         self.tip_window.wm_geometry("+%d+%d" % (x, y))
@@ -4965,7 +4971,7 @@ class ToolTips(CommonTip):
         for s in self.tips_list:
             if s['widget'] == widget:
                 return s
-        print('toolkit.py ToolTips.get_dict(): self.dict for "widget" not found',
+        print(self.who + 'get_dict(): self.dict for "widget" not found',
               widget)
 
     def toggle_position(self, widget):
@@ -4988,7 +4994,7 @@ class ToolTips(CommonTip):
                 return
 
         print_trace()
-        print('toolkit.py ToolTips.toggle_position(): widget not found', widget)
+        print(self.who + 'toggle_position(): widget not found', widget)
         exit()
 
     def enter(self, event):

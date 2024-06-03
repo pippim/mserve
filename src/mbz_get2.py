@@ -35,8 +35,9 @@ import pickle
 
 # Dist-packages
 from PIL import Image, ImageTk, ImageDraw, ImageFont
-# Reference: https://buildmedia.readthedocs.org/media/pdf/
-# python-musicbrainz-ngs-jonnyjd/latest/python-musicbrainz-ngs-jonnyjd.pdf
+# noinspection SpellCheckingInspection
+''' Reference: https://buildmedia.readthedocs.org/media/pdf/
+    python-musicbrainz-ngs-jonnyjd/latest/python-musicbrainz-ngs-jonnyjd.pdf '''
 import musicbrainzngs as mbz
 import requests
 
