@@ -756,7 +756,7 @@ class HistoryTree:
 
     """
 
-    def __init__(self, sbar_width=12):
+    def __init__(self):
 
         # Define self. variables in backups() where play_top frame is used.
         self.bup_top = None  # Toplevel for Backups
@@ -851,7 +851,7 @@ class HistoryTree:
 
         self.his_view = toolkit.DictTreeview(
             history_dict, self.his_top, master_frame, columns=columns,
-            sbar_width=sbar_width)
+            sbar_width=14)
 
         # toolkit.print_dict_columns(history_dict)
 

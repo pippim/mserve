@@ -1907,6 +1907,7 @@ class Config:
                  "edge_color": None, "edge_px": 0},
             ('cfg_lib_top', 'treeview', 'style', 'scroll'):
                 {"name": 'mserve.Treeview', "width": 14},
+
             # Playlist taskbar icon  # KEY is a tuple of 4 strings
             ('cfg_play_top', 'toplevel', 'taskbar_icon', 'height & colors'): 
                 {"height": 64, "outline": 'Black', "fill": 'ForestGreen',
@@ -1919,7 +1920,8 @@ class Config:
                  "font_size": g.MON_FONTSIZE,
                  "edge_color": "White", "edge_px": 0},
             ('cfg_play_top', 'treeview', 'style', 'scroll'):
-                {"name": 'chron.Treeview', "width": 14},
+                {"name": 'chron.Treeview', "width": 16,
+                 "troughcolor": 'black', "bg": 'gold'},
             # self.chron_tree.tag_configure('chron_sel', background=t['background'],
             #                               foreground=t['foreground'])
             ('cfg_play_top', 'treeview', 'style', 'chron_sel'):
@@ -1933,9 +1935,8 @@ class Config:
             ('cfg_locations', 'toplevel', 'taskbar_icon', 'config'):
                 {"height": 64, "outline": 'White', "fill": 'AliceBlue',
                  "text": 'Black', "font_family": 'DejaVuSans.ttf',
-                 "char": 'lo'},  # VALUE dictionary or list
-            # View SQL Music Table treeview displaycolumns (in order of appearance)
-            # Must be sql_treeview for toolkit.py DictTreeview().__init__
+                 "char": 'lo'},
+            # SQL Location Table treeview displaycolumns
             ('cfg_locations', 'sql_treeview', 'column', 'order'):
                 ["detail", "comments", "count", "size", "seconds"],
             ('cfg_locations', 'sql_treeview', 'style', 'color'):
@@ -1944,11 +1945,6 @@ class Config:
                  "edge_color": "White", "edge_px": 5},
             ('cfg_locations', 'sql_treeview', 'style', 'scroll'):
                 {"name": 'location.Treeview', "width": 14},
-            # 2024-04-07 Older "treeview" Action key replaced by "sql_treeview" key
-            #('cfg_locations', 'treeview', 'style', 'color'):
-            #    {"name": 'location.Treeview', "foreground": "Black",
-            #     "background": "AliceBlue", "fieldbackground": "AliceBlue",
-            #     "edge_color": "White", "edge_px": 5},
             ('cfg_locations', 'frame', 'style', 'color'):
                 {"background": "WhiteSmoke"},
             # Location image border (use edge_px=0 to turn off border)
@@ -1986,8 +1982,7 @@ class Config:
                 {"height": 64, "outline": 'White', "fill": 'LemonChiffon',
                  "text": 'Black', "font_family": 'DejaVuSans.ttf',
                  "char": 'pl'},  # VALUE dictionary or list
-            # View SQL Music Table treeview displaycolumns (in order of appearance)
-            # Must be sql_treeview for toolkit.py DictTreeview().__init__
+            # SQL History Table treeview displaycolumns
             ('cfg_playlists', 'sql_treeview', 'column', 'order'):
                 ["detail", "comments", "count", "size", "seconds"],
             ('cfg_playlists', 'sql_treeview', 'style', 'color'):
@@ -2020,16 +2015,13 @@ class Config:
             ('cfg_sql_music', 'sql_treeview', 'column', 'order'):
                 ["os_filename", "track_number", "row_id", "os_atime",
                  "os_file_size", "artist", "album", "title", "lyrics", "genre"],
-            # NOTE: When column order, width or headings changed they are
-            # saved in a new history row:
+            # NOTE: When column order, width or headings are changed, values
+            # saved in a new configuration record:
             # ('cfg_sql_music', 'sql_treeview', 'column', 'custom'):
             #     [["os_filename", 242, "OS Filename"], ["row_id", 80, "Row ID"]...
-
             ('cfg_sql_music', 'sql_treeview', 'style', 'color'):
                 {"name": 'sql_music.Treeview', "foreground": "Black",
                  "background": "LemonChiffon", "fieldbackground": "LemonChiffon",
-                 # Consider adding heading font, row font, sbar_width, sbar_colors
-                 # See cfg_play_top treeview for highlight color, select color
                  "edge_color": "NavajoWhite", "edge_px": 5},
             ('cfg_sql_music', 'sql_treeview', 'style', 'scroll'):
                 {"name": 'sql_music.Treeview', "width": 14},
@@ -2069,7 +2061,7 @@ class Config:
             ('cfg_calculator', 'toplevel', 'taskbar_icon', 'height & colors'):
                 {"height": 64, "outline": 'Black', "fill": 'LemonChiffon',
                  "text": 'Black', "font_family": 'DejaVuSans.ttf',
-                 "char": 'C'},  # VALUE dictionary or list
+                 "char": 'C'},
 
             # Volume during TV commercials
             ('cfg_tv_volume', 'toplevel', 'taskbar_icon', 'height & colors'):
@@ -2078,10 +2070,8 @@ class Config:
                  "char": 'V'},
 
             # Tooltips default color when parent widget has no background color
-            # TODO: Add default fade in, delay, etc.
             ('cfg_tooltips', 'default', 'style', 'color'):
                 {"foreground": "FireBrick", "background": "LemonChiffon"},
-
             ('cfg_tooltips', 'default', 'time', 'ms'):
                 {"VISIBLE_DELAY": 750, "VISIBLE_SPAN": 5000, "EXTRA_WORD_SPAN": 500,
                  "FADE_IN_SPAN": 500, "FADE_OUT_SPAN": 400},
@@ -2089,6 +2079,8 @@ class Config:
             ('cfg_end', 'sql_treeview', 'end', 'end'):
                 {"nothing": 1, "here": 2}  # To make inserting before end easier
         }
+
+        # HISTORY RECORD stores non-default User Configuration records
         # All column variables in history row, except primary ID auto assigned.
         # Variables used to insert new Row into History Table.
         self.Time = time.time()
@@ -2105,7 +2097,7 @@ class Config:
         self.Comments = None
         self.Timestamp = self.Time
 
-        # window_names is used to get screen coordinates and sizes of windows
+        # window_names dictionary for saved coordinates and sizes of windows
         # NOTE: TV volume during commercials always opens in same position and size
         # Type = "window", Action = window_name
         self.window_names = {
@@ -3395,17 +3387,35 @@ class PrettyNormalize:
 
         # self.tabs is WIP: https://stackoverflow.com/a/46605414/6929343
         self.uom = True  # Units of Measure used
+        ''' Was working fine up to 2024-06-06 then doubled in width? 
+            2024-06-08 After reboot margins are back to normal.
+        '''
         self.tabs = [('2m', 'left', 'black'),  # var name
                      ('108m', 'right', 'black'),  # value
                      ('111m', 'left', 'black'),  # UoM
                      ('150m', 'right', 'black'),  # integrated value
                      ('153m', 'left', 'red'),  # UoM
-                     ('200m', 'right', 'black'),  # value
+                     ('200m', 'right', 'black'),  # True Peak value
                      ('203m', 'left', 'red'),  # UoM
-                     ('250m', 'right', 'black'),  # value
+                     ('250m', 'right', 'black'),  # LRA value
                      ('253m', 'left', 'red'),  # UoM
-                     ('300m', 'right', 'black'),  # value
+                     ('300m', 'right', 'black'),  # Threshold value
                      ('303m', 'left', 'red')]  # UoM
+
+        ''' 2024-06-06 Try inches for 12 point font. 
+            2024-06-08 After reboot margins are too narrow.
+        self.tabs = [('0.1i', 'left', 'black'),  # var name
+                     ('2.8i', 'right', 'black'),  # value
+                     ('2.11i', 'left', 'black'),  # UoM
+                     ('4.0i', 'right', 'black'),  # integrated value
+                     ('4.1i', 'left', 'red'),  # UoM
+                     ('5.3i', 'right', 'black'),  # True Peak
+                     ('5.4i', 'left', 'red'),  # UoM
+                     ('6.7i', 'right', 'black'),  # LRA
+                     ('6.8i', 'left', 'red'),  # UoM
+                     ('8.0i', 'right', 'black'),  # Threshold
+                     ('8.1i', 'left', 'red')]  # UoM
+        '''
 
         self.heading = "Normaliztion Steps\t\tValue\t\t" + \
                        "Integra\t-ted\tTrue\tPeak\tLRA\t\tThresh\t-old\n"

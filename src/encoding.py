@@ -1094,8 +1094,6 @@ class RipCD:
 
             if self.caller_disc:
                 ''' Disc ID passed to save time during development '''
-                # ext_name = "python disc_get.py " + IPC_PICKLE_FNAME
-                # self.active_pid = ext.launch_command(ext_name)
                 self.active_pid = 0
                 self.disc = self.caller_disc  # misleading disc object and string
 
@@ -1107,7 +1105,7 @@ class RipCD:
                     pickle.dump(self.disc, f)  # Save dictionary as pickle file
             else:
                 ext_name = "python disc_get.py " + IPC_PICKLE_FNAME + NO_STDOUT
-                self.active_pid = ext.launch_command(ext_name)
+                self.active_pid = ext.launch_command(ext_name, toplevel=self.cd_top)
 
         elif self.mbz_get1_active:
 
@@ -1189,8 +1187,7 @@ class RipCD:
                 NO_STDOUT = " > " + g.TEMP_DIR + "mserve_mbz_get1_stdout"
                 ext_name = "python mbz_get1.py " + IPC_PICKLE_FNAME + " 10 " + \
                            EMAIL_ADDRESS + NO_STDOUT
-                self.active_pid = ext.launch_command(ext_name,
-                                                     toplevel=self.cd_top)
+                self.active_pid = ext.launch_command(ext_name, toplevel=self.cd_top)
                 # TODO: Status is getting MusicBrainz Release List with mbz_get1.py.
 
         elif self.mbz_get2_active:
@@ -1294,8 +1291,7 @@ class RipCD:
                 NO_STDOUT = " > " + g.TEMP_DIR + "mserve_mbz_get2_stdout"
                 ext_name = "python mbz_get2.py " + IPC_PICKLE_FNAME + " 500" + \
                            NO_STDOUT
-                self.active_pid = ext.launch_command(ext_name,
-                                                     toplevel=self.cd_top)
+                self.active_pid = ext.launch_command(ext_name, toplevel=self.cd_top)
                 # TODO: Status update: getting MusicBrainz Album Artwork with mbz_get2.py.
 
         elif self.treeview_active:
@@ -1480,14 +1476,12 @@ class RipCD:
     def rip_cd(self):
         """ Rip the CD
 
-            TODO: Hide button until all songs selected.
-                  Add buttons to override Artist, Album, Composer
-                  self.get_refresh
+            TODO: Hide Rip CD button until songs selected.
 
             Ensure songs selected.
             Warning if no artwork selected, Continue? Yes/No
             Warning if no date selected, Continue? Yes/No
-            Warning If more than one artwork selected, alternate images
+            Info If more than one artwork selected, alternate images
             Review window for Artist Name, Album Name, Release Date,
                 First Date (If greatest hits of 80's, use 1985),
                 Composer. Allow changing what release / recording used.
@@ -2004,7 +1998,7 @@ class RipCD:
         self.cd_rotated_value = 0  # Start next song with animation right-side up
 
         ''' Just finish ripping a song? '''
-        if self.rip_current_track > 0:
+        if self.rip_current_track > 0 and self.check_rip_success():
             # print('END:   self.encode_track_time:', time.time())
             self.encode_track_time = time.time() - self.encode_track_time
             self.add_sql_music()  # Create SQL Music Table Row stub
@@ -2042,7 +2036,7 @@ class RipCD:
             if self.next_image_key_ndx == self.image_count:
                 self.next_image_key_ndx = 0  # End of image list, back 1st
 
-        if not self.get_next_rip_name():  # Last track just finished?
+        if not self.get_next_rip_name():  # Finished?
             if self.encode_album_track_cnt > 0:  # Save SQL history for album
                 duration = tmf.mm_ss(self.encode_album_seconds)
                 sql.hist_add(
@@ -2074,23 +2068,85 @@ class RipCD:
 
         # Rip next track
         self.encode_track_time = time.time()
-        NO_STDOUT = " > " + g.TEMP_DIR + "mserve_gst_launch"
+        # Redirect stderr to stdout
+        NO_STDOUT = " > " + g.TEMP_DIR + "mserve_gst_launch 2>&1"
         ext_name = 'gst-launch-1.0 cdiocddasrc track={} ! ' \
                    .format(self.rip_current_track) + \
                    'audioresample ! audioconvert ! {} '.format(self.gst_encoding)
         ext_name += ' ! filesink location="{}"'.format(self.os_full_path)
         ext_name += NO_STDOUT
 
-        text = "Launching gstreamer to encode music file. Parameters:\n\n"
+        ''' 2024-06-04 crash disc # 1 song # 12 of 12
+
+        CONTENTS OF g.TEMP_DIR + "mserve_gst_launch":
+        
+Setting pipeline to PAUSED ...
+Pipeline is PREROLLING ...
+Pipeline is PREROLLED ...
+Setting pipeline to PLAYING ...
+New clock: GstSystemClock
+Execution ended after 0:00:21.280865230
+Setting pipeline to PAUSED ...
+Setting pipeline to READY ...
+Setting pipeline to NULL ...
+Freeing pipeline ...
+
+        CONTENTS OF stdout:
+ERROR: from element /GstPipeline:pipeline0/GstCdioCddaSrc:cdiocddasrc0: Could not read from CD.
+Additional debug info:
+gstcdiocddasrc.c(201): gst_cdio_cdda_src_read_sector (): /GstPipeline:pipeline0/GstCdioCddaSrc:cdiocddasrc0:
+cdio_read_audio_sector at 202317 failed: Input/output error
+gstreamer failed to generate music file. Try again.
+Mutagen error on: /media/rick/SANDISK128/Music/Compilations/Guardians of the Galaxy, Awesome Mix, Vol. 1/1-12 Ain’t No Mountain High Enough.m4a
+Exception: not a MP4 file
+Exception in Tkinter callback
+Traceback (most recent call last):
+  File "/usr/lib/python2.7/lib-tk/Tkinter.py", line 1540, in __call__
+    return self.func(*args)
+  File "/usr/lib/python2.7/lib-tk/Tkinter.py", line 590, in callit
+    func(*args)
+  File "/home/rick/python/encoding.py", line 1368, in cd_run_to_close
+    self.rip_next_track()
+  File "/home/rick/python/encoding.py", line 2027, in rip_next_track
+    self.add_image_to_m4a()
+  File "/home/rick/python/encoding.py", line 2465, in add_image_to_m4a
+    video = MP4(self.os_full_path)
+  File "/usr/lib/python2.7/dist-packages/mutagen/_file.py", line 42, in __init__
+    self.load(filename, *args, **kwargs)
+  File "/usr/lib/python2.7/dist-packages/mutagen/mp4/__init__.py", line 974, in load
+    self.info = MP4Info(atoms, fileobj)
+  File "/usr/lib/python2.7/dist-packages/mutagen/mp4/__init__.py", line 854, in __init__
+    raise MP4StreamInfoError("not a MP4 file")
+MP4StreamInfoError: not a MP4 file
+
+        '''
+
+
+        text = "Launching 'gstreamer' to encode music file. Parameters:\n\n"
         self.info.cast(text + ext_name)
         #print(ext_name)  # to copy text which info.cast doesn't allow yet...
 
-        # ext_name = "sleep 3" # Activate this for speedy loop testing
-        self.active_pid = ext.launch_command(ext_name,
-                                             toplevel=self.cd_top)
+        # ext_name = "sleep 3"  # Activate this for speedy loop testing
+        self.active_pid = ext.launch_command(ext_name, toplevel=self.cd_top)
 
         # TODO: Call webscrape and get lyrics into buffer
         return  # Loops for next song
+
+    def check_rip_success(self):
+        """ Check stdout for gstreamer errors """
+        stdout = ext.read_into_string(g.TEMP_DIR + "mserve_gst_launch")
+        #text = "'gstreamer' finish. Results:\n\n"
+        #self.info.cast(text + stdout)  # Uncomment to see normal stdout w/o errors
+
+        # If "ERROR:" in stderr redirected to stdout
+        if "ERROR:" in stdout:
+            title = "Encoding song failed."
+            text = "'ERROR:' reported by 'gstreamer':\n\n" + stdout
+            message.ShowInfo(self.cd_top, title, text, thread=self.update_display)
+            ext.remove_existing(self.os_full_path)  # Delete file with errors
+            return False
+
+        return True  # Success
 
     def add_sql_music(self):
         """ Populate SQL Music Table Row with new CD track after encoding

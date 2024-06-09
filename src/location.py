@@ -4120,7 +4120,7 @@ filename.
     #
     # ==============================================================================
 
-    def cmp_build_toplevel(self, sbar_width=14, prefix="cmp"):
+    def cmp_build_toplevel(self, prefix="cmp"):
         """ Dual purpose Compare Locations & Analyze Volume based on prefix:
 
             "cmp" = Compare target location songs to build treeview of differences.
@@ -4265,7 +4265,7 @@ filename.
         ''' Create frames '''
         treeview = prefix + "_treeview"  # prefix = "cmp" or "avo" (analyze volume)
         colors = self.get_cfg([treeview, 'style', 'color'])
-        _scroll = self.get_cfg([treeview, 'style', 'scroll'])
+        scroll = self.get_cfg([treeview, 'style', 'scroll'])
         
         self.cmp_frame = tk.Frame(self.cmp_top, bg=self.bg, relief=tk.RIDGE)
         self.cmp_frame.grid(sticky=tk.NSEW)
@@ -4349,8 +4349,8 @@ filename.
             # Could rename Mean & Maximum to Integrated & Threshold for 'loudnorm'
 
         ''' Treeview Scrollbars - Vertical & Horizontal '''
-        v_scroll = tk.Scrollbar(self.cmp_tree_frame, orient=tk.VERTICAL, width=sbar_width,
-                                command=self.cmp_tree.yview)
+        v_scroll = tk.Scrollbar(self.cmp_tree_frame, orient=tk.VERTICAL,
+                                width=scroll['width'], command=self.cmp_tree.yview)
         v_scroll.grid(row=0, column=1, sticky=tk.NS)
         self.cmp_tree.configure(yscrollcommand=v_scroll.set)
         self.cmp_tree.tag_configure('cmp_sel', background='ForestGreen',
@@ -4394,8 +4394,8 @@ filename.
 
         # noinspection SpellCheckingInspection
         ''' Aug 5/23 - Horizontal Scrollbar removed for lack of purpose 
-        h_scroll = tk.Scrollbar(self.cmp_tree_frame, orient=tk.HORIZONTAL, width=sbar_width,
-                                command=self.cmp_tree.xview)
+        h_scroll = tk.Scrollbar(self.cmp_tree_frame, orient=tk.HORIZONTAL, 
+                                width=scroll['width'], command=self.cmp_tree.xview)
         h_scroll.grid(row=1, column=0, sticky=tk.EW)
         self.cmp_tree.configure(xscrollcommand=h_scroll.set)
         '''
@@ -6721,7 +6721,7 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
             n_data = sql.PrettyNormalize(music_id, self.act_code)
             win_title = "Normalization Summary - " + Song + " - mserve"
             self.pretty_window(
-                self.cmp_top, n_data, win_title, 1300, 700,
+                self.cmp_top, n_data, win_title, 1400, 700,
                 x, y, new=True)  # new = use right align tab stops and uom
 
         def remove_normalize(prompt=True):
@@ -6776,6 +6776,10 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
             #                             title=title, text=text)
             #if answer.result != 'yes':
             #    return
+
+            if self.win_grp:
+                # Input not allowed if viewing Normalization Summary so close all
+                self.win_grp.destroy_all()
 
             if not self.avo_parameters(redo=True):
                 return  # selected Cancel (not Proceed)
@@ -6899,7 +6903,7 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
             self.win_grp.register_child(title, top)
 
         def close():
-            """ Close and unregister child  window """
+            """ Close and unregister child window """
             if self.win_grp:
                 self.win_grp.destroy_by_key(title)
             else:

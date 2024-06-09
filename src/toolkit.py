@@ -4439,8 +4439,7 @@ class ToolTips(CommonTip):
         self.tips_list[self.tips_index] = self.dict
 
     def force_fade_out(self):
-        """ Override enter time to begin fading out now
-        """
+        """ Override enter time to begin fading out now. """
         _fade_in, _fade_out = self.calc_fade_in_out()
         diff = _fade_out - self.enter_time
         self.enter_time = self.now - diff
@@ -4628,9 +4627,15 @@ class ToolTips(CommonTip):
 
     def process_tip(self):
         """ Check if window should be created or destroyed.
-            Check if we are fading in or fading out and set alpha.
+            Check if window is fading in or fading out and set alpha.
 
-            TODO: Leave event is not passed to InfoCentre() unless fading in/out
+            TODO: Leave event is not passed to InfoCentre() unless fading in/out.
+
+            TODO: If existing splash window exists destroy it. Otherwise it will
+                  remain painted forever. Noticed on 2024-06-07 when playlist splash
+                  for chron filter didn't come up and lib_top splash for playlist
+                  information stays up forever.
+
         """
         #if not self.widget.winfo_exists():  # Oct 18/23 - enhancement
         if not self.widget.winfo_exists() and self.tool_type is not 'piggy_back' \
@@ -4652,8 +4657,7 @@ class ToolTips(CommonTip):
                       "self.tip.window doesn't exist")
                 return
 
-        ''' Pending event to start displaying tooltip balloon?
-        '''
+        ''' Pending event to start displaying tooltip balloon? '''
         if self.enter_time == 0.0:
             if self.tip_window:
                 self.tip_window.destroy()
@@ -4782,7 +4786,7 @@ class ToolTips(CommonTip):
             self.current_alpha = alpha  # Save to prevent spamming same alpha
 
     def create_tip_window(self):
-        """ Create tooltip window with helpful text / usage instructions """
+        """ Create tooltip window at anchor position. """
         # Screen coordinates of widget  NW -- NE
         #                               |      |
         #                               SW -- SE
@@ -5016,9 +5020,9 @@ class ToolTips(CommonTip):
             self.pb_leave()  # Let "piggy_back" know mouse left parent widget
 
     def motion(self, event):
-        """ Mouse is panning over widget.
-            Keep windows steady traveling along x-axis.
-            This generates a lot of noise when printing debug information...
+        """ Mouse is moving over widget.
+            Tip window follows mouse along x-axis with y-axis fixed.
+            This generates a lot of output when printing debug information...
         """
         #d_print('MOVES:', str(event.widget)[-4:], event.x, event.y)
         self.log_event('motion', event.widget, event.x, event.y)
