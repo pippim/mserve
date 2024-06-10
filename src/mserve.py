@@ -93,6 +93,7 @@ warnings.simplefilter('default')  # in future Python versions.
 #       Apr. 28 2024 - Loudness Normalization using ffmpeg 'loudnorm' filter.
 #       May. 12 2024 - New shuffle - Artist/Album/Song (order of appearance).
 #       May. 13 2024 - Major bug fix, delete playlist replaces favorites.
+#       Jun. 09 2024 - Fine-tune time index new Edit line feature.
 #
 #==============================================================================
 
@@ -905,7 +906,6 @@ class MusicLocTreeCommonSelf:
         TODO: Move suitable variables to FileControl().FileControlCommonSelf
 
     """
-
     def __init__(self):
         #def __init__(self, toplevel, song_list, **kwargs):
 
@@ -1304,7 +1304,6 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
         If toplevel is not None then it is the splash screen to destroy.
 
     """
-
     def __init__(self, toplevel, song_list):
 
         MusicLocTreeCommonSelf.__init__(self)  # Define self. variables
@@ -9509,14 +9508,16 @@ Call search.py when these control keys occur
             return False  # Used to be a "continue" statement
 
         ''' Synchronizing lyrics to time index controls music '''
-        if self.fine_tune and self.fine_tune.top_is_active:
+        if self.fine_tune and self.fine_tune.top:  # 2024-06-09 Was active w/no top
             #self.fine_tune.top_lift()  # Raise window focus to top
             # Above steals focus and keyboard from other applications !
             # Above was source of HUGE BUG July 4, 2023
-            self.fine_tune.top.update()  # Without this no keyboard/mouse click
+            self.fine_tune.top.update()  # Get pending keyboard/mouse clicks
             sleep = SLEEP_PLAYING - (int(time.time() - now))
             sleep = 1 if sleep < 1 else sleep   # Sleep minimum 1 millisecond
-            self.fine_tune.top.after(sleep)  # Wait until lyric sync
+            # 2024-06-09 Was active w/no top
+            if self.fine_tune.top:
+                self.fine_tune.top.after(sleep)  # Wait until lyric sync
             return False  # Looks like True causes animations to freeze
 
         ''' Set previous or restart into button text '''
@@ -13200,16 +13201,18 @@ class FineTune:
         self.ffplay_is_running = False  # Currently, playing and syncing?
         self.sync_changed_score = False  # For warning messages
 
-        self.info.cast("Begin Fine-Tune Time Indexes")
-
         ''' Create window '''
         self.top = tk.Toplevel()
         self.top.minsize(g.WIN_MIN_WIDTH, g.WIN_MIN_HEIGHT)
         self.top_is_active = True
 
         ''' Set program icon in taskbar '''
-        # Not sure why other windows don't need below?
-        img.taskbar_icon(self.top, 64, 'white', 'lightskyblue', 'black')
+        # 2024-06-09 - Use SQL for Configuration colors
+        sql_key = ['cfg_finetune', 'toplevel', 'taskbar_icon', 'height & colors']
+        ti = cfg.get_cfg(sql_key)
+        img.taskbar_icon(self.top, ti['height'], ti['outline'],
+                         ti['fill'], ti['text'], char=ti['char'])
+        #img.taskbar_icon(self.top, 64, 'white', 'lightskyblue', 'black')
 
         ''' Place Window top-left of play list window 
             TODO: Give own window with save position '''
@@ -13282,14 +13285,24 @@ class FineTune:
 
         # From: https://stackoverflow.com/a/43834987/6929343
         style = ttk.Style(frame2)
-        style.configure("syn.Treeview", background='Black',
+        style.configure("finetune.Treeview", background='Black',
                         fieldbackground='Black',
                         foreground='Gold')
 
         self.tree = CheckboxTreeview(
             frame2, columns=("new", "lyrics", "old_dur", "new_dur"),
             selectmode='none', show=('tree', 'headings',))
-        self.tree.configure(style="syn.Treeview")
+        self.tree.configure(style="finetune.Treeview")
+
+        colors = cfg.get_cfg(['cfg_finetune', 'treeview', 'style', 'color'])
+        style_name = colors['name']  # 2024-06-09 'finetune.Treeview'
+        row_height = int(colors['font_size'] * 2.2)
+        style.configure(style_name, font=(None, colors['font_size']),
+                        rowheight=row_height, foreground=colors['foreground'],
+                        background=colors['background'],
+                        fieldbackground=colors['fieldbackground'])
+        self.tree.configure(style=style_name)
+
 
         self.tree.column("#0", width=200, anchor='w', stretch=tk.NO)
         self.tree.heading("#0", text="Time index")
@@ -13316,30 +13329,39 @@ class FineTune:
         ''' Create Treeview item list '''
         self.populate_treeview()
 
-        ''' sync lyrics Treeview Scrollbars '''
+        ''' sync lyrics Treeview Scrollbar '''
+        sql_key = ['cfg_finetune', 'treeview', 'style', 'scroll']
+        d = cfg.get_cfg(sql_key)  # 2024-06-09
+
         # Create a vertical scrollbar linked to the frame.
-        v_scroll = tk.Scrollbar(frame2, orient=tk.VERTICAL, width=SCROLL_WIDTH,
+        v_scroll = tk.Scrollbar(frame2, orient=tk.VERTICAL, width=d['width'],
                                 command=self.tree.yview)
         v_scroll.grid(row=1, column=1, sticky=tk.NS)
         self.tree.configure(yscrollcommand=v_scroll.set)
         v_scroll.config(troughcolor='black', bg='gold')
 
         ''' sync lyrics treeview Colors '''
-        self.tree.tag_configure('normal', background='Black',
-                                foreground='Gold')
-        self.tree.tag_configure('sync_sel', background='grey18',
-                                foreground='LightYellow')
+        t = cfg.get_cfg(['cfg_finetune', 'treeview', 'style', 'normal'])
+        self.tree.tag_configure('normal', background=t['background'],
+                                foreground=t['foreground'])
 
         ''' Configure tag for row highlight '''
-        self.tree.tag_configure('highlight', background='LightBlue',
-                                foreground="Black")
+        t = cfg.get_cfg(['cfg_finetune', 'treeview', 'style', 'highlight'])
+        self.tree.tag_configure('highlight', background=t['background'],
+                                foreground=t['foreground'])
+
+        ''' 2024-06-09 - Configure tag for highlight of sync_sel line '''
+        t = cfg.get_cfg(['cfg_finetune', 'treeview', 'style', 'sync_sel'])
+        self.tree.tag_configure('sync_sel', background=t['background'],
+                                foreground=t['foreground'])
 
         self.tree.bind('<Motion>', self.tree_highlight_row)
         self.tree.bind("<Leave>", self.tree_leave_row)
 
         '''   B U T T O N   B A R   F R A M E   '''
         self.btn_bar_frm = tk.Frame(self.top, relief=tk.GROOVE,
-                                    background=self.theme_bg, borderwidth=g.FRM_BRD_WID)
+                                    background=self.theme_bg,
+                                    borderwidth=g.FRM_BRD_WID)
         self.btn_bar_frm.grid(row=2, column=0, padx=2, pady=2, sticky=tk.W)
         self.build_btn_bar_frm()  # Defaults to 'top' for top main window
 
@@ -13358,6 +13380,12 @@ class FineTune:
 
         self.time_ctl = FileControl(self.top, self.info, silent=True)
         self.time_ctl.new(self.play_path)
+
+        # 2024-06-09 - self.info.cast() was wiping out last button when
+        # it was called before button bar was created above. self.info.cast()'s
+        # piggy-back tooltip wasn't deleted but rather duplicated before button
+        # bar. This has occurred in other code sections where info.cast removed.
+        self.info.cast("Begin Fine-Tune Time Indices")
 
     def tree_highlight_row(self, event):
         """ Cursor hovering over row highlights it in light blue """
@@ -13411,7 +13439,7 @@ class FineTune:
         """ Build buttons for top_level, begin sync and sample all """
         if not self.top_is_active:
             return
-        if self.tt and self.btn_bar_frm:
+        if self.tt and self.btn_bar_frm and self.tt.check(self.btn_bar_frm):
             self.tt.close(self.btn_bar_frm)  # Remove old tooltip buttons in play_btn frame
         self.btn_bar_frm.grid_forget()
         self.btn_bar_frm.destroy()
@@ -13427,7 +13455,7 @@ class FineTune:
         ''' Define three different button bars '''
         if level == 'top':
             button_list = ["Close", "Begin", "Delete", "Sample",
-                           "Merge", "Insert", "Save", "HelpT"]
+                           "Merge", "Edit", "Save", "HelpT"]
         elif level == 'sync':
             button_list = ["Sync", "DoneB", "RewindB", "HelpB"]
         elif level == 'sample_all':
@@ -13493,17 +13521,17 @@ class FineTune:
                     merge, "First check two or more lines. Then\n" +
                            "click this button to merge together.", anchor="nw")
 
-            elif name == "Insert":
-                ''' + Insert line - Insert line line eg [chorus] or [bridge] '''
-                insert = tk.Button(self.btn_bar_frm, text="+ Insert line", font=ms_font,
-                                   width=g.BTN_WID - 2, command=self.insert_line)
+            elif name == "Edit":
+                ''' + Edit line - Change lyrics text '''
+                insert = tk.Button(self.btn_bar_frm, text="+ Edit line", font=ms_font,
+                                   width=g.BTN_WID - 2, command=self.edit_line)
                 insert.grid(row=0, column=col)
                 self.tt.add_tip(
-                    insert, "First check line to insert before. Then\n" +
-                            "click this button to insert a new line.", anchor="ne")
+                    insert, "First check line to edit. Then\n" +
+                            "click this button to edit text.", anchor="ne")
 
             elif name == "Save":
-                ''' 💾  Save - Save lyrics (may be merged) and time indices '''
+                ''' 💾  Save - Save lyrics (may be edited) and time indices '''
                 save = tk.Button(self.btn_bar_frm, text=" 💾 Save", font=ms_font,
                                  width=g.BTN_WID2 - 4, command=self.save_changes)
                 save.grid(row=0, column=col)
@@ -14268,7 +14296,7 @@ class FineTune:
                 str(i + 1))['values']  # Get line values to delete
             self.tree.delete(str(i + 1))  # Delete from treeview
             self.delete_line(i + 1)  # Delete from lyrics score
-            values[1] = values[1] + trg_values[1]  # Merge lyrics to line
+            values[1] += trg_values[1]  # Merge lyrics to line
             self.tree.item(str(first), values=values)  # Update lyrics line
 
             ''' Remove index in new_time_list[] and new_durations_list[] '''
@@ -14358,23 +14386,41 @@ class FineTune:
                                      title="More than three lines checked")
         return answer.result != 'yes'
 
-    def insert_line(self):
-        """ Insert line like [chorus], [bridge], [solo], "song lyrics line"
-            Option to insert "Line(s) just copied" has added advantage of
-            increasing time indices for all following lyric lines automatically.
-        """
+    def edit_line(self):
+        """ Edit lyrics line text. """
         first, last = self.check_all_boxes()  # Verify checkbox(es)
         if first is None:
-            return  # Error message already
+            return  # Error message already displayed
 
         if first != last:
             messagebox.showinfo(
                 title="Check only one box", icon="error",
-                message="Check the line to insert before.",
+                message="Check the line to edit.",
                 parent=self.top)
             return
 
-        self.remove_all_checkboxes()
+        # lyrics line text tree values[1]
+        values = list(self.tree.item(str(first))['values'])
+        default_string = new_name = values[1]
+        title = "Edit lyrics line " + str(first)
+        text = "Edit text for:\n\n" + default_string
+        string_width = int(len(default_string) * 1.1)
+        answer = message.AskString(
+            self.top, title, text, thread=self.get_refresh_thread,
+            string=default_string, string_width=string_width)
+
+        if answer.result != "yes":
+            return
+
+        values[1] = answer.string
+        self.tree.item(str(first), values=values)  # Update lyrics line
+        # self.remove_all_checkboxes()  # 2024-06-09 leave checked in case
+
+        ''' Update lyrics textbox '''
+        lyrics_score = self.work_lyrics_score.split("\n")
+        lyrics_score[first-1] = answer.string
+        self.work_lyrics_score = '\n'.join(line for line in lyrics_score)
+        self.sync_changed_score = True  # Lyrics score has been changed
 
     def save_changes(self):
         """ Save changes to time indices and possibly lyrics score too.
@@ -14398,6 +14444,7 @@ class FineTune:
         sql.update_lyrics(self.work_sql_key, self.work_lyrics_score,
                           self.new_time_list)
         self.new_time_list = self.work_time_list  # To prevent close warning
+        self.sync_changed_score = False
         self.close()  # Close window & exit
 
     def top_lift(self):
@@ -15027,7 +15074,6 @@ class FileControlCommonSelf:
 
 class FileControl(FileControlCommonSelf):
     """ Control Music Files, including play, pause, end """
-
     def __init__(self, tk_top, info, close_callback=None, silent=False,
                  log_level='all', get_thread=None):
         """ FileControlCommonSelf to remove last temporary files. """

@@ -287,7 +287,7 @@ class RipCD:
         self.cd_top.bind("<FocusIn>", self.handle_cd_top_focus)
 
         ''' Set program icon in taskbar '''
-        cfg = sql.Config()  # 2024-03-13 Use SQL for Configuration colors
+        cfg = sql.Config()  # 2024-06-03 Use SQL for Configuration colors
         sql_key = ['cfg_encode', 'toplevel', 'taskbar_icon', 'height & colors']
         ti = cfg.get_cfg(sql_key)
         img.taskbar_icon(self.cd_top, ti['height'], ti['outline'],

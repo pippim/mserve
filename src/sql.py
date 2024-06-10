@@ -1887,7 +1887,14 @@ class Config:
         SourceDetail:   'color' / 'height & colors'
         Target:         [{}, {}, ... {}]  fields / columns / colors / fonts / buttons
         Comments:       "Version: 1.0 | Updated: yyyy-mm-dd hh:hh"
+        self.tree.tag_configure('normal', background='Black',
+                                foreground='Gold')
+        self.tree.tag_configure('sync_sel', background='grey18',
+                                foreground='LightYellow')
 
+        ''' Configure tag for row highlight '''
+        self.tree.tag_configure('highlight', background='LightBlue',
+                                foreground="Black")
         """
 
         # Defaults Dictionary is used when no SQL override record exists.
@@ -1996,7 +2003,7 @@ class Config:
             ('cfg_encode', 'toplevel', 'taskbar_icon', 'height & colors'):
                 {"height": 64, "outline": 'White', "fill": 'Black',
                  "text": 'Red', "font_family": 'DejaVuSans.ttf',
-                 "char": 'R'},  # VALUE dictionary or list
+                 "char": 'R'},
             # chron.Treeview frame is always the same height with no edge
             ('cfg_encode', 'treeview', 'style', 'color'):
                 {"name": 'encode.Treeview', "foreground": "DarkRed",
@@ -2006,6 +2013,29 @@ class Config:
             ('cfg_encode', 'treeview', 'style', 'scroll'):
                 {"name": 'encode.Treeview', "width": 14},
 
+            # Fine-tune time index (Synchronize Time Index to Lyrics)
+            ('cfg_finetune', 'toplevel', 'taskbar_icon', 'height & colors'):
+                {"height": 64, "outline": 'White', "fill": 'Black',
+                 "text": 'Red', "font_family": 'DejaVuSans.ttf',
+                 "char": 'F'},
+            # finetune.Treeview frame is always the same height with no edge
+            ('cfg_finetune', 'treeview', 'style', 'color'):
+                {"name": 'finetune.Treeview', "foreground": "Gold",
+                 "background": "Black", "fieldbackground": "Black",
+                 "font_size": g.MON_FONTSIZE,
+                 "edge_color": "NavajoWhite", "edge_px": 5},
+            ('cfg_finetune', 'treeview', 'style', 'scroll'):
+                {"name": 'finetune.Treeview', "width": 14},
+            ('cfg_finetune', 'treeview', 'style', 'normal'):
+                # normal overrides treeview foreground & background
+                {"foreground": "Gold", "background": "Black"},
+            ('cfg_finetune', 'treeview', 'style', 'highlight'):
+                {"foreground": "Black", "background": "LightBlue"},
+            # grey18',
+            #                                 foreground='LightYellow'
+            ('cfg_finetune', 'treeview', 'style', 'sync_sel'):
+                {"foreground": "LightYellow", "background": "Grey18"},
+            
             # View SQL Music Table taskbar icon
             ('cfg_sql_music', 'toplevel', 'taskbar_icon', 'height & colors'):
                 {"height": 64, "outline": 'White', "fill": 'LemonChiffon',
