@@ -584,15 +584,17 @@ AttributeError: 'module' object has no attribute 'pulsectl'
         self.aliens = list(self.sinks_now)  # Shallow copy for fade_in() later
         for Sink in self.aliens:
             if not Sink.name.startswith("ffplay"):
+                # Force non-ffplay volume down to 1% to easily identify later
                 self.fade(Sink.sink_no_str, Sink.volume, 1.0, fade_time)
 
     def fade_in_aliens(self, fade_time):
         """ Turn up volume for all applications except 'ffplay'.
-            E.G. Firefox would be an alien """
+            E.G. Firefox would be an alien sound source """
+
         self.get_all_sinks()
         for Now in self.sinks_now:
             if not Now.name.startswith("ffplay"):
-                if Now.volume != 1.0:  # fade_out went down to 1%
+                if Now.volume != 1:  # fade_out went down to 1%
                     continue  # User manually reset volume
                 for Sink in self.aliens:  # Use shallow copy from fade_out()
                     if Sink.sink_no_str == Now.sink_no_str:
@@ -600,6 +602,26 @@ AttributeError: 'module' object has no attribute 'pulsectl'
                                   fade_time)
                         break
 
+        ''' 2024-06-15 - Debug version
+        self.poll_fades()  # Required because called twice with sample_done()
+        self.get_all_sinks()
+        print("\nself.aliens:", self.aliens, "\n")
+        for Sink in self.aliens:  # Use shallow copy from fade_out()
+            if not Sink.name.startswith("ffplay"):
+                print("Restoring Alien Sink:", Sink)
+                for Now in self.sinks_now:
+                    if Now.volume != 1.0:  # fade_out went down to 1%
+                        print("Now.volume != 1.0 :", Now)
+                        continue  # User manually reset volume
+                    if Sink.sink_no_str == Now.sink_no_str:
+                        print("Matching Now Sink:", Now)
+                        self.fade(Sink.sink_no_str, Now.volume, Sink.volume,
+                                  fade_time)
+                        self.poll_fades()
+                        break
+        '''
+
+    # noinspection SpellCheckingInspection
     def get_all_sinks(self):
         """ Get PulseAudio list of all sinks
             Return list of tuples with:
@@ -617,7 +639,34 @@ AttributeError: 'module' object has no attribute 'pulsectl'
         # If Python pulseaudio is working, use the fast method
         if self.pulse_is_working:
             # .sink_input_list() only takes 0.0001280308 to 0.0008969307
+            #print("\nself.pulse.sink_input_list():")
+            #print(self.pulse.sink_input_list())
             for sink in self.pulse.sink_input_list():
+                #print(sink.name)  # Simple DirectMedia Layer
+                #print(sink.volume)  # channels=2, volumes=[100% 100%]
+                #print(sink.index)  # 917
+                #print(sink.proplist)
+                # {u'window.x11.display': u':0',
+                # u'application.process.session_id': u'c4',
+                # u'application.process.host': u'alien',
+                # u'native-protocol.peer': u'UNIX socket client',
+                # u'application.process.binary': u'ffplay',
+                # u'native-protocol.version': u'30',
+                # u'application.process.machine_id': u'1ff17e6df1874fb3b2a75e669fa978f1',
+                # u'application.name': u'ffplay',
+                # u'application.process.id': u'25590',
+                # u'media.name': u'Simple DirectMedia Layer',
+                # u'module-stream-restore.id': u'sink-input-by-application-name:ffplay',
+                # u'application.process.user': u'rick',
+                # u'application.language': u'C'}
+
+                # $ ps aux | grep ffplay
+                # rick     25590  0.0  0.1 952120 48580 pts/23   Tl+  17:20   0:00
+                # ffplay -autoexit
+                # /media/rick/SANDISK128/Music/Big Wreck/Ghosts/03 Ghosts.oga
+                # -ss 2.05024790764
+                # -af afade=type=in:start_time=2.05024790764:duration=1 -nodisp
+
                 this_volume = str(sink.volume)
                 # <PulseVolumeInfo... - channels=1, volumes=[0%]>
                 # <PulseVolumeInfo... - channels=2, volumes=[25% 25%]>

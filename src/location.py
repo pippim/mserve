@@ -1251,8 +1251,7 @@ class LocationsCommonSelf:
         self.avo_max_m4a_ar = 96000  # ffmpeg default aac codec only goes to 96000
         self.avo_max_mp3_ar = 44100  # ffmpeg default mp3 codec only goes to 44100
         self.loudnorm_cmd = ""  # Common parm. E.G. loudnorm=I=-23.0:TP=0.0:LRA=11.0
-        #self.avo_comment = "April 23, 2024"  # SQL History Table "Comments" column
-        self.avo_comment = now_str
+        self.avo_comment = now_str  # SQL History Table "Comments" column
 
         ''' Make TMP names unique for multiple processes running at once '''
         letters = string.ascii_lowercase + string.digits
@@ -5501,7 +5500,7 @@ filename.
         #tk.Grid.rowconfigure(frame, 0, weight=1)
         tk.Grid.columnconfigure(frame, 2, weight=1)
         frame.grid(row=0, column=0, sticky=tk.NSEW)
-        proceed = self.display_avo_parameters(frame, redo)
+        proceed = self.avo_display_parameters(frame, redo)
         if not self.cmp_top:
             return False  # Closing down
         self.cmp_top.update_idletasks()
@@ -5520,16 +5519,11 @@ filename.
         return proceed
 
     # noinspection SpellCheckingInspection
-    def display_avo_parameters(self, frame, redo):
+    def avo_display_parameters(self, frame, redo):
         """ Analyze Volume (avo_) parameters populate frame where treeview
             eventually appears.
 
             Field Reference: http://k.ylo.ph/2016/04/04/loudnorm.html
-
-            if self.state == "detect_old":      SourceMaster = "detect_old"
-            if self.state == "loudnorm_1":    SourceMaster = "loudnorm_1"
-            if self.state == "loudnorm_2":     SourceMaster = "loudnorm_2"
-            if self.state == "detect_new":  SourceMaster = "detect_new"
         """
         detect_old = True if self.state == "detect_old" else False
         loudnorm_1 = True if self.state == "loudnorm_1" else False
@@ -6373,15 +6367,16 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=$int
         IN = input_i if self.avo_use_inputs else self.avo_integrated
         #print("IN:", IN, "self.avo_use_inputs:", self.avo_use_inputs,
         #      "self.avo_integrated:", self.avo_integrated, "input_i:", input_i)
-        self.loudnorm_cmd = 'loudnorm=I=' + IN + ':TP=' + self.avo_true_peak
-        self.loudnorm_cmd += ':LRA=' + self.avo_lra
+        #self.loudnorm_cmd = 'loudnorm=I=' + IN + ':TP=' + self.avo_true_peak
+        #self.loudnorm_cmd += ':LRA=' + self.avo_lra
+        #comment = self.loudnorm_cmd + ":linear=" + self.avo_linear
+
+        comment = self.uln_build_comment(IN)
 
         ''' Build complex ffmpeg command line '''
         # -y = overwrite previous .new file.
         cmd = self.avo_ffmpeg + ' -y -i "' + trg_path + '" -af '
-        #cmd += 'loudnorm=I=' + IN + ':TP=' + TP + ':LRA=' + LRA
         cmd += self.loudnorm_cmd  # 'loudnorm=I=' + IN + ':TP=' + TP + ':LRA=' + LRA
-
         cmd += ':measured_I=' + input_i + ':measured_TP=' + input_tp
         cmd += ':measured_LRA=' + input_lra + ':measured_thresh=' + input_thresh
         cmd += ':offset=' + target_offset + ':linear=' + self.avo_linear
@@ -6422,7 +6417,6 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=$int
         music_id = sql.music_id_for_song(OsBase)
         if json_dict == {}:  # No metadata, dictionary empty
             d = sql.hist_get_music_var(music_id, "volume", "loudnorm_2", loc)
-
             if d:
                 print(_who, "Not overwriting existing 'loudnorm' Filter':\n\t",
                       d['Target'], "with empty dictionary.")
@@ -6438,8 +6432,7 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=$int
         if music_id:
             sql.hist_add_music_var(
                 music_id, 'volume', 'loudnorm_2', SourceMaster=loc,
-                SourceDetail='Analyze', Comments=self.loudnorm_cmd +
-                ":linear=" + self.avo_linear,
+                SourceDetail='Analyze', Comments=comment,
                 Target=json.dumps(json_dict), Size=trg_size,
                 Seconds=round(end_ffmpeg - start_ffmpeg, 4))
             # TODO: Add Music ID to a newly created special playlist
@@ -6447,6 +6440,14 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=$int
         ''' Insert song into treeview '''
         insert_tv_row()
         return self.cmp_top_is_active
+
+    def uln_build_comment(self, IN):
+        """ Called from uln_insert_tree_row() above and from
+            mserve.py chron_apply_filter()
+        """
+        self.loudnorm_cmd = 'loudnorm=I=' + IN + ':TP=' + self.avo_true_peak
+        self.loudnorm_cmd += ':LRA=' + self.avo_lra
+        return self.loudnorm_cmd + ":linear=" + self.avo_linear
 
     def uln_run_ffmpeg(self, trg_path, size, cmd):
         """ Analyze 'loudnorm' Filter. Return dictionary of results:
@@ -6845,12 +6846,17 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
         menu.bind("<FocusOut>", lambda _: close())
 
     def pretty_window(self, parent, pretty, title, width, height, 
-                      x=None, y=None, new=False, tabs=None):
+                      x=None, y=None, new=False, tabs=None, taskbar='metadata'):
         """ Create new window top-left of parent window with g.PANEL_HGT padding
 
             2024-03-29 was being used for three SQL Table viewers but now they
                 will use their own dd_view.pretty_xxx_xxx() methods.
-                Only lib_top will be calling to display SQL row windows
+                lib_top will be calling to display SQL row windows
+                Also called by Normalization Summary in location.py and mserve.py.
+
+            2024-06-12 - Add keyword; "taskbar='metadata'" for "View SQL Metadata"
+                or "view Raw Metadata. Other option is "taskbar='normalization'
+                which is for "View Normalization Summary".
 
             Before calling:
                 Create pretty data dictionary using tree column data dictionary

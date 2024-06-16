@@ -93,7 +93,8 @@ warnings.simplefilter('default')  # in future Python versions.
 #       Apr. 28 2024 - Loudness Normalization using ffmpeg 'loudnorm' filter.
 #       May. 12 2024 - New shuffle - Artist/Album/Song (order of appearance).
 #       May. 13 2024 - Major bug fix, delete playlist replaces favorites.
-#       Jun. 09 2024 - Fine-tune time index new Edit line feature.
+#       Jun. 09 2024 - Fine-tune time index new Edit line feature. Bug fixes.
+#       Jun. 16 2024 - Port mainline ffplay functions to FileControl() class.
 #
 #==============================================================================
 
@@ -920,12 +921,12 @@ class MusicLocTreeCommonSelf:
 
         self.play_top = None                # Music player selected songs
         self.play_on_top = None             # Is play frame overtop library?
-        self.secs_before_pause = None       # get_curr_ffplay_secs(
+        self.secs_before_pause = None       # FileControl().elapsed()
         self.current_song_path = None       # Full pathname can have utf-8 chars
         self.current_song_t_start = None    # time.time() started playing
         self.current_song_secs = None       # How much time played
         self.current_song_mm_ss_d = None    # time in mm:ss.d (decisecond)
-        self.saved_DurationSecs = None      # self.play_ctl.DurationSecs
+        self.saved_DurationSecs = None      # FileControl().DurationSecs
         self.saved_DurationMin = None       # Duration in Min:Sec.Deci
         self.song_set_ndx_just_run = None   # Song manually set, don't use 'Next'
         self.last_started = None            # self.ndx catch fast clicking Next
@@ -1915,22 +1916,22 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
 
         def view_normalize():
             """ Popup Window with SQL Music Table Row Metadata for song
-                TODO: 1) Taskbar icon
+                TODO: 1) Taskbar icon as of 2024-06-12 it's a question mark
                       2) play_win_grp.register()
                       3) rename 'new=True' to 'tabs=True'
             """
             n_data = sql.PrettyNormalize(music_id, loc)
             win_title = "Normalization Summary - " + Song + " - mserve"
             lcs.pretty_window(
-                self.play_top, n_data, win_title, 1300, 700,
-                x, y, new=True)  # new = use right align tab stops and uom
+                self.play_top, n_data, win_title, 1300, 720, x, y, new=True)
+            # new = use right align tab stops and uom
 
         def remove_normalize(prompt=True):
             """ Remove four history records for song
                 TODO: 1) Review new history record:
-                         music_id, 'volume', 'accept_new'
+                         music_id, 'volume', 'accept_new' (OR 'update_new')
                       2) Review new history record:
-                         music_id, 'volume', 'revert_old'
+                         music_id, 'volume', 'revert_old' (OR 'restore_old')
             """
             title = "Confirm loudness normalization removal"
             text = "Removing the records for this song allows the process\n"
@@ -6661,16 +6662,20 @@ Call search.py when these control keys occur
         menu.add_separator()
 
         if dd_view == self.mus_view:
-            """ SQL Music Table must be opened for show_raw_metadata() """
-            os_filename = PRUNED_DIR + pretty.dict['OS Filename']
+            """ Only SQL Music Table supports dd_view.pretty_meta_row() """
+            try:
+                os_filename = PRUNED_DIR + pretty.dict['OS Filename']
 
-            # 2024-04-07 dd_view.pretty_meta_row() replaces self.show_raw_metadata() 
-            #menu.add_command(label="View Raw Metadata", font=(None, g.MED_FONT),
-            #                 command=lambda: self.show_raw_metadata(pretty))
-            menu.add_command(label="View Metadata", font=(None, g.MED_FONT),
-                             command=lambda: dd_view.pretty_meta_row(
-                                 FileControl, os_filename, self.info, x, y))
-            menu.add_separator()
+                # 2024-04-07 dd_view.pretty_meta_row() replaces self.show_raw_metadata()
+                #menu.add_command(label="View Raw Metadata", font=(None, g.MED_FONT),
+                #                 command=lambda: self.show_raw_metadata(pretty))
+                menu.add_command(label="View Metadata", font=(None, g.MED_FONT),
+                                 command=lambda: dd_view.pretty_meta_row(
+                                     FileControl, os_filename, self.info, x, y))
+                menu.add_separator()
+            except KeyError as _err:
+                print(_err)
+                print(pretty.dict)
 
         menu.add_command(label="Ignore click", font=(None, g.MED_FONT),
                          command=lambda: self.show_sql_close_row_menu(dd_view, menu))
@@ -8488,7 +8493,7 @@ Call search.py when these control keys occur
             pav.fade(self.pav_ctl.sink, cur_vol, 25, .5,
                      step_cb=self.init_ffplay_slider,
                      finish_cb=self.pp_finish_fade_out)
-            self.secs_before_pause = self.play_ctl.elapsed()
+            self.secs_before_pause = self.pav_ctl.elapsed()  # 2024-06-16 - rename
             if self.play_hockey_active:  # Is TV hockey broadcast on air?
                 set_tv_sound_levels(25, 100)  # Restore TV sound to 100%
         else:
@@ -8499,7 +8504,7 @@ Call search.py when these control keys occur
             if self.play_hockey_active:
                 set_tv_sound_levels(100, 25)  # Soften volume on tv to 25%
             self.current_song_t_start = time.time()
-            _elapsed = self.play_ctl.elapsed()  # Must call after .cont()
+            _elapsed = self.pav_ctl.elapsed()  # Must call after .cont()
 
             ''' Can be reversing fade out from Pause click. '''
             self.pp_toggle_fading_in = True  # Playing music fade in signal
@@ -10482,13 +10487,14 @@ Call search.py when these control keys occur
         sql.update_lyrics(self.play_make_sql_key(), save, None)
 
     def play_override_score(self):
-        """ If lyrics not found return None, else return them """
+        """ If lyrics not found return None, else replace '{}' characters with
+            '[]' characters and return the revised lyrics score. """
         if self.lyrics_score is None:
             return None  # Jan 3, 2023
-        if self.lyrics_score.startswith("No lyrics found for "):
+        if self.lyrics_score.startswith("No lyrics found"):
             # May 9, 2023 - This was broken and save was being done
             # However this is good so we don't keep trying to retrieve
-            # You find using SQL Music Text String "No lyrics".
+            # You find using SQL Music Text String "No lyrics found".
             return None
         else:
             # 2024-04-06 "{}" causes next column in row to disappear in treeview
@@ -12583,13 +12589,16 @@ mark set markName index"
         menu.add_separator()
 
         if self.chron_has_filter is None and self.is_loudnorm_playlist:
-            # Give three filter options
+            # Give four loudness normalization filter options
             menu.add_command(label="Filter volume worse", font=g.FONT,
                              command=lambda: self.chron_apply_filter('volume_worse', item))
             menu.add_command(label="Filter volume missed target", font=g.FONT,
                              command=lambda: self.chron_apply_filter('volume_missed', item))
             menu.add_command(label="Filter volume met target", font=g.FONT,
                              command=lambda: self.chron_apply_filter('volume_met', item))
+            menu.add_command(label="Filter volume options changed", font=g.FONT,
+                             command=lambda: self.chron_apply_filter('options_changed', item))
+
         elif self.chron_has_filter is None:
             # Give three filter options
             menu.add_command(label="Filter Synchronized songs", font=g.FONT,
@@ -12661,12 +12670,14 @@ mark set markName index"
             songs give message and don't apply filter.
 
             filtering playlist with:
-                    1) Songs with time index (synchronized lyrics)
-                    2) Songs for specific artist
-                    3) Songs over 5 minutes long
-                    4) Volume worse
-                    5) Volume missed target
-                    6) Volume met target
+                1) Songs with time index (synchronized lyrics)
+                2) Songs for specific artist
+                3) Songs over 5 minutes long
+                4) Volume worse
+                5) Volume missed target
+                6) Volume met target
+                7) Volume options changed
+
                 When filtered other songs are detached from treeview.
                 In self.song_set_ndx(item - 1) when hitting detached song,
                     preform recursive call with same operation.
@@ -12769,7 +12780,8 @@ mark set markName index"
 
             if old_max == trg_max_vol:
                 # Check for bugs in def create_loudnorm()
-                print(_who, "\n\tRecord shouldn't exist when old_max =", old_max,
+                print(_who, "check_volume_detect(chron_iid):" 
+                      "\n\tRecord shouldn't exist when old_max =", old_max,
                       "and new_max = ", new_max, "iid:", iid)
                 return False
 
@@ -12792,6 +12804,57 @@ mark set markName index"
         if option.startswith("volume_"):
             for iid in self.chron_tree.get_children():
                 if check_volume_detect(iid):
+                    self.chron_iid_dict[int(iid)] = True
+
+
+        def options_changed(chron_iid):
+            """ Reconstruct what default ffmpeg 'loudnorm' filter pass 2
+                parameters would be and compare to comment in SQL History.
+            """
+            lib_iid = self.saved_selections[int(chron_iid) - 1]  # lib tree IID
+            MusicId = self.get_music_id_for_lib_tree_id(lib_iid)
+            if not MusicId:
+                print(_who, "options_changed():",
+                      "Could not get MusicId for chron_iid:", chron_iid)
+                return False
+
+            ''' History record for 'loudnorm' filter pass 1 '''
+            d = sql.hist_get_music_var(MusicId, "volume", "loudnorm_1", lcs.open_code)
+            if not d:
+                print(_who, "options_changed():",
+                      "Could not get SQL 'loudnorm_1' for chron_iid:", chron_iid)
+                return False  # Skip this song file
+
+            json_dict = json.loads(d['Target'])
+            input_i = json_dict.get("input_i", None)
+            if input_i is None:
+                print(_who, "options_changed(): 'input_i' is <None>")
+                return False  #
+
+            IN = input_i if lcs.avo_use_inputs else lcs.avo_integrated
+            comment = lcs.uln_build_comment(IN)
+
+            d2 = sql.hist_get_music_var(MusicId, "volume", "loudnorm_2", lcs.open_code)
+            if not d2:
+                print(_who, "options_changed():",
+                      "Could not get SQL 'loudnorm_2' for chron_iid:", chron_iid)
+                return False  # Skip this song file
+
+            if comment == d2['Comments']:
+                return False
+
+            #print("comment :", comment,
+            #      "\nComments:", d2['Comments'])
+            # TODO: 2024-06-10 - Consider output d and d2 for analysis on why
+            #       it was necessary to override and/or how to programmatically
+            #       override without painstaking user trial & error..
+
+            return True
+
+        # Volume Loudness Normalization parameters/options changed?
+        if option == "options_changed":
+            for iid in self.chron_tree.get_children():
+                if options_changed(iid):
                     self.chron_iid_dict[int(iid)] = True
 
         # chron_attached & chron_detached lists for easier checking
@@ -13114,16 +13177,10 @@ mark set markName index"
 class FineTune:
     """ Fine-tune time index (Synchronize Time Index to Lyrics)
 
-        Startup check to ensure at least 80% of lines are already
-        synchronized. If not, use message.ShowInfo with basic sync
-        instructions. This is already done.
-
-        Highlight current line based on elapsed time given by caller.
-
-        NOTES: Mainline code converted to class in July 3, 2023.
-               Merge lines and Insert line hasn't been tested.
+        NOTES: Mainline code converted to class on July 3, 2023.
+               Merge lines line hasn't been tested.
                Save under various circumstances hasn't been tested.
-               More testing to synchronize lines and document.
+               Need more testing everywhere and documentation.
 
     """
 
@@ -13244,24 +13301,24 @@ class FineTune:
 
         ''' Song name and Duration Seconds '''
         # foreground=self.theme_fg, \
-        ms_font = (None, MED_FONT)
-        tk.Label(frame1, text="Title: " + self.play_Title,
+        ms_font = g.FONT
+        tk.Label(frame1, text="title: " + self.play_Title,
                  font=ms_font, padx=10) \
             .grid(row=0, column=1, sticky=tk.W)
-        tk.Label(frame1, text="Total seconds: " + str(self.play_DurationSecs),
+        tk.Label(frame1, text="total seconds: " + str(self.play_DurationSecs),
                  font=ms_font, padx=10) \
             .grid(row=0, column=2, sticky=tk.W)
 
-        tk.Label(frame1, text="Artist: " + self.play_Artist,
+        tk.Label(frame1, text="artist: " + self.play_Artist,
                  font=ms_font, padx=10) \
             .grid(row=1, column=1, sticky=tk.W)
         self.line_count_var = tk.StringVar()
-        self.line_count_var.set("Line count: " + str(self.lyrics_line_count))
+        self.line_count_var.set("line count: " + str(self.lyrics_line_count))
         tk.Label(frame1, textvariable=self.line_count_var,
                  font=ms_font, padx=10) \
             .grid(row=1, column=2, sticky=tk.W)
 
-        tk.Label(frame1, text="Album: " + self.play_Album,
+        tk.Label(frame1, text="album: " + self.play_Album,
                  font=ms_font, padx=10) \
             .grid(row=2, column=1, sticky=tk.W)
 
@@ -13279,30 +13336,28 @@ class FineTune:
         '''
         width = int(geometry.split('x')[0])  # geometry from play_top
         width -= 680  # Not sure why subtracting 680?
-        if width < 200:
-            width = 200
-        row_height = int(MON_FONTSIZE * 2.2)
-
-        # From: https://stackoverflow.com/a/43834987/6929343
-        style = ttk.Style(frame2)
-        style.configure("finetune.Treeview", background='Black',
-                        fieldbackground='Black',
-                        foreground='Gold')
-
-        self.tree = CheckboxTreeview(
-            frame2, columns=("new", "lyrics", "old_dur", "new_dur"),
-            selectmode='none', show=('tree', 'headings',))
-        self.tree.configure(style="finetune.Treeview")
+        width = width if width > 200 else 200
 
         colors = cfg.get_cfg(['cfg_finetune', 'treeview', 'style', 'color'])
         style_name = colors['name']  # 2024-06-09 'finetune.Treeview'
         row_height = int(colors['font_size'] * 2.2)
+
+        # From: https://stackoverflow.com/a/43834987/6929343
+        style = ttk.Style(frame2)
         style.configure(style_name, font=(None, colors['font_size']),
                         rowheight=row_height, foreground=colors['foreground'],
                         background=colors['background'],
                         fieldbackground=colors['fieldbackground'])
+
+        self.tree = CheckboxTreeview(
+            frame2, columns=("new", "lyrics", "old_dur", "new_dur"),
+            selectmode='none', show=('tree', 'headings',))
         self.tree.configure(style=style_name)
 
+        # configure finetune.Treeview.Heading override finetune.Treeview too
+        #style.configure(style_name + ".Heading", font=(None, g.MED_FONT),
+        #                rowheight=int(g.MED_FONT * 2.2))
+        #self.tree.configure(style=style_name + ".Heading")
 
         self.tree.column("#0", width=200, anchor='w', stretch=tk.NO)
         self.tree.heading("#0", text="Time index")
@@ -13464,7 +13519,8 @@ class FineTune:
             self.info.cast("Programming error bad button level: " + level)
             return
 
-        ms_font = (None, MED_FONT)
+        #ms_font = (None, MED_FONT)
+        ms_font = g.FONT  # 2024-06-15 - medium 11 pt to larger 12 pt
 
         help_text = "Open new window in default web browser for\n"
         help_text += "videos and explanations on using this screen.\n"
@@ -13476,7 +13532,7 @@ class FineTune:
                 ''' ✘ Close Button - Cancels changes '''
                 # leading space when text begins with utf-8 symbol centers text better?
                 close = tk.Button(self.btn_bar_frm, text=" ✘ Close", font=ms_font,
-                                  width=g.BTN_WID2 - 4, command=self.close)
+                                  width=g.BTN_WID2 - 6, command=self.close)
                 close.grid(row=0, column=col, padx=2, sticky=tk.W)
                 # Disable for now because Child process like "self.sync()" should
                 # be trapping ESCAPE -- How do you unbind <Escape>
@@ -13488,7 +13544,7 @@ class FineTune:
             elif name == "Begin":
                 ''' ▶  Begin Button - Synchronize selected lines '''
                 begin = tk.Button(self.btn_bar_frm, text=" ▶ Begin sync", font=ms_font,
-                                  width=g.BTN_WID2, command=self.sync)
+                                  width=g.BTN_WID2 - 2, command=self.sync)
                 begin.grid(row=0, column=col)
                 self.tt.add_tip(
                     begin, "First check boxes for first and last line.\n" +
@@ -13496,8 +13552,8 @@ class FineTune:
 
             elif name == "Delete":
                 ''' 😒 Delete - 😒 (u+1f612) - Delete all '''
-                delete = tk.Button(self.btn_bar_frm, text=" 😒 Delete all", font=ms_font,
-                                   width=g.BTN_WID2, command=self.delete_all)
+                delete = tk.Button(self.btn_bar_frm, text="😒 Delete all", font=ms_font,
+                                   width=g.BTN_WID2 - 3, command=self.delete_all)
                 delete.grid(row=0, column=col)
                 self.tt.add_tip(
                     delete, "When time indices are hopelessly wrong,\n" +
@@ -13506,7 +13562,7 @@ class FineTune:
             elif name == "Sample":
                 ''' 🎵  Sample all - Sample all show library '''
                 sample = tk.Button(self.btn_bar_frm, text=" 🎵 Sample all", font=ms_font,
-                                   width=g.BTN_WID2, command=self.sample_all)
+                                   width=g.BTN_WID2 - 3, command=self.sample_all)
                 sample.grid(row=0, column=col)
                 self.tt.add_tip(
                     sample, "Click to sample the first second of every line.",
@@ -13524,16 +13580,16 @@ class FineTune:
             elif name == "Edit":
                 ''' + Edit line - Change lyrics text '''
                 insert = tk.Button(self.btn_bar_frm, text="+ Edit line", font=ms_font,
-                                   width=g.BTN_WID - 2, command=self.edit_line)
+                                   width=g.BTN_WID - 6, command=self.edit_line)
                 insert.grid(row=0, column=col)
                 self.tt.add_tip(
                     insert, "First check line to edit. Then\n" +
                             "click this button to edit text.", anchor="ne")
 
             elif name == "Save":
-                ''' 💾  Save - Save lyrics (may be edited) and time indices '''
-                save = tk.Button(self.btn_bar_frm, text=" 💾 Save", font=ms_font,
-                                 width=g.BTN_WID2 - 4, command=self.save_changes)
+                ''' 💾 Save - Save lyrics (may be edited) and time indices '''
+                save = tk.Button(self.btn_bar_frm, text="💾 Save", font=ms_font,
+                                 width=g.BTN_WID2 - 5, command=self.save_changes)
                 save.grid(row=0, column=col)
                 self.tt.add_tip(
                     save, "Save time indices and close\n" +
@@ -13541,7 +13597,7 @@ class FineTune:
 
             elif name == "HelpT":
                 ''' ⧉ Help - Videos and explanations on pippim.com '''
-                help = tk.Button(self.btn_bar_frm, text="⧉ Help", width=g.BTN_WID2 - 4,
+                help = tk.Button(self.btn_bar_frm, text="⧉ Help", width=g.BTN_WID2 - 6,
                                  font=ms_font, command=lambda: g.web_help("HelpT"))
                 help.grid(row=0, column=col)
                 self.tt.add_tip(help, help_text, anchor="ne")
@@ -13573,7 +13629,7 @@ class FineTune:
 
             elif name == "HelpB":
                 ''' ⧉ Help - Videos and explanations on pippim.com '''
-                help = tk.Button(self.btn_bar_frm, text="⧉ Help", width=g.BTN_WID2-4,
+                help = tk.Button(self.btn_bar_frm, text="⧉ Help", width=g.BTN_WID2-6,
                                  font=ms_font, command=lambda: g.web_help("HelpB"))
                 help.grid(row=0, column=col)
                 self.tt.add_tip(help, help_text, anchor="nw")
@@ -13618,7 +13674,7 @@ class FineTune:
 
             elif name == "HelpS":
                 ''' ⧉ Help - Videos and explanations on pippim.com '''
-                help = tk.Button(self.btn_bar_frm, text="⧉ Help", width=g.BTN_WID2 - 4,
+                help = tk.Button(self.btn_bar_frm, text="⧉ Help", width=g.BTN_WID2 - 6,
                                  font=ms_font,
                                  command=lambda: g.web_help("HelpS"))
                 help.grid(row=0, column=col)
@@ -13822,8 +13878,8 @@ class FineTune:
         ''' TODO: event.y() fits coding conventions better than .focus() '''
         clicked_line = int(self.tree.focus())  # Line that was clicked
         print("clicked_line:", clicked_line,
-              "self.curr_line_highlight:", self.curr_line_highlight)
-        # clicked_line: 6 self.curr_line_highlight: 5
+              " | self.curr_line_highlight:", self.curr_line_highlight)
+        # clicked_line: 6  | self.curr_line_highlight: 5
 
         if clicked_line < self.first_checked or \
                 clicked_line > self.last_checked:  # Between first and last
@@ -13920,15 +13976,24 @@ class FineTune:
         pav.fade_in_aliens(1)
 
     def remove_all_highlights(self):
-        """ Remove everything highlighted.  TODO: shorten code """
+        """ Remove everything highlighted.  TODO: shorten code .tag_has('sync """
+
+        ''' 2024-06-11 - New version missing "selection_remove()" '''
+        tag_selections = self.tree.tag_has("sync_sel")
+        for item in tag_selections:
+            toolkit.tv_tag_remove(self.tree, item, "sync_sel")
+            toolkit.tv_tag_add(self.tree, item, "normal")
+
+        ''' 2024-06-11 - Older inefficient version 
         for item in self.tree.get_children():  # For all items
-            self.tree.selection_remove(item)  # Remove selection
+            #self.tree.selection_remove(item)  # Remove selection
+            # 2024-06-11 selection_remove seems to have no effect?
             tags = self.tree.item(item)['tags']  # Remove line highlight
             if "sync_sel" in tags:
                 tags.remove("sync_sel")
                 tags.append("normal")
-                self.tree.item(item, tags=tags)
-
+                self.tree.item(item, tags=tags) '''
+                
     def remove_all_checkboxes(self):
         """ Remove all checkboxes.  TODO: shorten code  """
         for line in self.tree.tag_has("checked"):
@@ -14060,8 +14125,6 @@ class FineTune:
             Mount new buttons like sync has sync_done,
                  sync_rewind
 
-            BUGS: Last two lines aren't checked.
-
             TODO: button to instantly adjust last line just played. Tagging
                   and coming back after entire song finishes takes too much
                   time and effort.
@@ -14131,7 +14194,7 @@ class FineTune:
         play_seconds = 4.0  # First time play is for 4.0 seconds. Then 2 secs
         self.curr_line_no = 1
 
-        while self.top_is_active:
+        while self.top_is_active and self.ffplay_is_running:
             elapsed = self.time_ctl.elapsed()  # Fast .00017 seconds
             if elapsed > self.start_sec + play_seconds:
                 # Uncheck line just played via CheckboxTreeview()
@@ -14147,16 +14210,6 @@ class FineTune:
             if not self.refresh_works(self.get_refresh_thread):
                 break
             play_seconds = 1.5  # restart used .25 in .5 out .75 full volume
-
-        # Clear highlights
-        # below is covered by sample_done() now called above
-        #if not self.top_is_active:
-        #    return  # Window closed?
-        #self.remove_all_highlights()
-        # Make first manually checked box visible (if any)
-        #items = self.tree.tag_has("checked")
-        #if items:
-        #    self.tree.see(items[0])
 
     def sample_restart(self, line_no):
         """ Restart playing at line number for 1.25 seconds with
@@ -14205,11 +14258,13 @@ class FineTune:
         """
         if self.time_ctl and self.time_ctl.state != 'stop':
             self.time_ctl.stop()  # Don't want to close because path reset
+        if not self.ffplay_is_running:
+            return  # Already called once manually, now again from sample_all()
+        self.ffplay_is_running = False  # No longer playing "Playing"
         if not self.top_is_active:
             return
         self.remove_all_highlights()
         self.remove_all_checkboxes()  # Do we want to leave them checked?
-        self.ffplay_is_running = False  # No longer playing "Playing"
         # If clicked "Done" while music was paused, reset for next time
         if self.pp_state is 'Paused':
             self.pp_state = 'Playing'
@@ -15983,13 +16038,36 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilatio
         self.limit_sec = limit_sec          # Number of seconds to play. 0 = play all
         self.fade_in_sec = fade_in_sec      # Number of seconds to fade in
         self.fade_out_sec = fade_out_sec    # Number of seconds to fade out
-        self.ff_name = ff_name              # TMP_CURR_SONG, etc.
+        self.ff_name = ff_name              # e.g. TMP_CURR_SONG
         self.dead_start = dead_start        # Number of seconds to fade out
 
         ''' extra options passed to ffplay for fade-in, etc. '''
+
+        extra_opt = ' -ss ' + str(self.start_sec)  # start position
+    
+        if self.fade_in_sec > 0.0:
+            # noinspection SpellCheckingInspection
+            extra_opt += ' -af "afade=type=in:start_time=' + str(self.start_sec) + \
+                         ':duration=' + str(self.fade_in_sec) + '"'
+    
+        if self.fade_out_sec > 0.0 and self.limit_sec > 0.0:
+            fade_start = self.start_sec + self.limit_sec - self.fade_out_sec
+            if fade_start < 0.0:
+                print(self.who + "start() Programming error. self.fade_out_sec:",
+                      self.fade_out_sec, " | self.limit_sec:", self.limit_sec)
+            else:
+                # noinspection SpellCheckingInspection
+                extra_opt += ' -af "afade=type=out:start_time=' + str(fade_start) + \
+                             ':duration=' + str(self.fade_out_sec) + '"'
+    
+        if self.limit_sec > 0.0:
+            extra_opt += ' -t ' + str(self.limit_sec)  # could be int or float
+
+        
+        ''' 2024-06-16 - Old method to call deprecated_ffplay_extra_opt
         extra_opt = ffplay_extra_opt(self.start_sec, self.fade_in_sec,
                                      self.fade_out_sec, self.limit_sec)
-
+        '''
         # start = seconds offset to start song at. If 0.0, start at beginning
         # duration = seconds to play song for. If 0.0, entire song, skip duration set
         # fade_in = seconds to fade in for. If continuing, manually adjust volume
@@ -15997,7 +16075,7 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilatio
         # ff_name = Filename used by ffplay, ffmpeg and ffprobe with command
         #           Output. In this case it is ffplay output only.
         # dead_start = After starting song set volume to zero and stop running.
-        #              When starting with fade-in there is no sound "pop"
+        #              Then, with fade-in restart, there is no sound "pop"
 
         ''' Aug 18/23 Bug fixed 3 months ago, not in production ffplay 
             https://trac.ffmpeg.org/ticket/9248 '''
@@ -16025,8 +16103,29 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilatio
             return 0, ""  # No PID, No Sink
 
         '''   B I G   T I C K E T   E V E N T   '''
-        self.pid, self.sink = start_ffplay(self.path, self.ff_name,
-                                           extra_opt, toplevel=self.tk_top)
+        # noinspection SpellCheckingInspection
+        cmd = 'ffplay -autoexit ' + '"' + self.path + '" ' + \
+              extra_opt + ' -nodisp 2>' + self.ff_name
+
+        # ext.launch_command(ffplay) in background and return pid
+        self.pid = ext.launch_command(cmd, toplevel=self.tk_top)
+        self.sink = ""  # May 21, 2023 functions expect "" for no sink
+        if self.pid == 0:
+            print('Waited 10 seconds, aborting start_ffplay() get PID')
+            print(song)
+        else:
+            self.sink = pav.find(self.pid)
+            if not self.sink:
+                print('Sink not found for pid:', self.pid)
+                print(self.path)
+                self.sink = ""  # pretty much same thing as 'None' anyway...
+
+        ''' 2024-06-16 - Old method calling deprecated_start_ffplay
+        self.pid, self.sink = deprecated_start_ffplay(
+            self.path, self.ff_name, extra_opt, toplevel=self.tk_top)
+
+        '''
+
 
         ''' Sanity check '''
         if self.start_sec > self.DurationSecs:
@@ -16100,18 +16199,55 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilatio
         self.log('start')
 
     def elapsed(self):
-        """ How many seconds have elapsed """
+        """ How many float seconds have elapsed playing song """
         if self.ff_name is None or self.path is None or self.pid == 0:
             #print("FileControl.elapsed() requested when song ended")
             #print("This may screw up percent played calculation.")
             return 0.0
 
         ext.t_init("FileControl.elapsed()")
-        self.elapsed_secs = get_curr_ffplay_secs(self.ff_name)
+        #self.elapsed_secs = get_curr_ffplay_secs(self.ff_name)  # 2024-06-16
+
+        """ 2024-06-16 - Copy get_curr_ffplay_sec from mainline. 
+            Change tmp_name to self.ff_name
+            Change second_last to self.elapsed_secs
+        
+            July 5, 2023 - Should no longer call directly.
+            FileControl.elapsed() calls get_curr_ffplay_secs(tmp_name).
+
+            Get elapsed play time from ffplay output file in RAM
+            If resuming play, first time is unreliable so return second time.
+            If we've just paused then first time is reliable.
+        """
+        last_time = 0
+        second_last = 0
+        time_count = 0
+        ''' File format (approximately the last 256 bytes positioned to with seek).
+            79.21 M-A:  0.000 fd=   0 aq=   23KB vq=    0KB sq=    0B f=0/0   \r  # 69 bytes  
+            79.24 M-A:  0.000 fd=   0 aq=   23KB vq=    0KB sq=    0B f=0/0   \r  
+            79.27 M-A: -0.000 fd=   0 aq=   23KB vq=    0KB sq=    0B f=0/0   \r  
+            79.30 M-A: -0.000 fd=   0 aq=   22KB vq=    0KB sq=    0B f=0/0   \r'  # 69 bytes    
+        '''
+        with open(self.ff_name, "rb") as f:
+            f.seek(-256, os.SEEK_END)  # 256 from end. Note minus sign
+            x = f.read()
+            fields = x.split()
+            for i, val in enumerate(fields):
+                if val == "M-A:" and i > 0:
+                    time_count += 1
+                    second_last = last_time
+                    last_time = fields[i - 1]  # time proceeds "M-A:" tag
+
+            # print('times found:', i, '.  Last:', last_time, \
+            #      'Second last:', second_last)
+            f.close()  # May 16 2023, add close but it should be automatic anyway
+
+        self.elapsed_secs = float(second_last)  # End of code copied from mainline
+
         job_time = ext.t_end('no_print')  # 0.0000710487 to 0.0001909733
         # Hardly any time used, but add half of job time to elapsed time
         self.elapsed_secs += job_time / 2
-        return self.elapsed_secs  # In case parent requested
+        return self.elapsed_secs  # Some callers expect return value
 
     def check_pid(self):
         """ Check if PID is still running. Else song is over. """
@@ -21760,7 +21896,7 @@ def convert_seconds(s):
     return sum(n * sec for n, sec in zip(seg[::-1], (1, 60, 3600)))
 
 
-def ffplay_extra_opt(start=None, fade_in=3.0, fade_out=0.0, duration_secs=0.0):
+def deprecated_ffplay_extra_opt(start=None, fade_in=3.0, fade_out=0.0, duration_secs=0.0):
     """ Format extra_opt string to start playing song at x seconds
         :param start: whole number string or int to start playing song
         :param fade_in: Start volume at 0% and go to 100% over fade_in
@@ -21782,7 +21918,7 @@ def ffplay_extra_opt(start=None, fade_in=3.0, fade_out=0.0, duration_secs=0.0):
             duration_secs and float(duration_secs) > 0.0:
         fade_start = float(start) + float(duration_secs) - float(fade_out)
         if fade_start < 0.0:
-            print("ffplay_extra_opt() Programming error. fade_out:",
+            print("deprecated_ffplay_extra_opt() Programming error. fade_out:",
                   fade_out, " | duration_secs:", duration_secs)
         else:
             # noinspection SpellCheckingInspection
@@ -21795,7 +21931,7 @@ def ffplay_extra_opt(start=None, fade_in=3.0, fade_out=0.0, duration_secs=0.0):
     return extra_opt
 
 
-def start_ffplay(song, tmp_name, extra_opt, toplevel=None):
+def deprecated_start_ffplay(song, tmp_name, extra_opt, toplevel=None):
     """ Start playing song. Wait short time to return pid and sink.
 
     :param song: unquoted song name, we'll add the quotes
@@ -21832,7 +21968,7 @@ def start_ffplay(song, tmp_name, extra_opt, toplevel=None):
     return found_pid, found_sink
 
 
-def get_curr_ffplay_secs(tmp_name):
+def deprecated_get_curr_ffplay_secs(tmp_name):
     """
         July 5, 2023 - Should no longer call directly.
         FileControl.get_elapsed() calls get_curr_ffplay_secs(tmp_name).
