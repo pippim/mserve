@@ -1283,7 +1283,7 @@ P = PyCharm
         # Removing "place" from gsettings allows smooth shark movement over
         # monitors. However there are screen resets with disappearing windows
         # for a couple seconds from time to time. Keeping "place" has shark
-        # stop at monitor border then "jump" into the next monitor.
+        # pause at monitor edge then "jump" into the next monitor.
         '''
         if "'place', " in self.old_compiz_plugins:
             self.place_in_plugins = True
@@ -1291,7 +1291,7 @@ P = PyCharm
             #print('override:', override)
             self.set_gsettings(override)
         '''
-
+        
     def shark_move(self):
         """ How much to move window each step depends on:
             distance / duration / interval

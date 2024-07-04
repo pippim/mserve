@@ -174,11 +174,22 @@ def get_gtk_window():
 DISPLAY = None
 SCREEN = None
 NUMBER_OF_MONITORS = 0  # pycharm doesn't like to see 'None'
-GNOME = None
+GNOME_VER = None
 
 
 class Monitors:
-    """ Build list of all monitors connected to computer """
+    """ Build list of all monitors connected to computer
+
+        Monitor SQL Configuration: 15-char ShortName, Manufacturer, Model,
+        Serial Number, Purchase Date, warranty, 60-char LongName, physical size,
+        LAN MAC, LAN IP, WiFi MAC, WiFi IP, Backlight MAC, Backlight IP,
+        resolution, refresh, adaptive brightness, communication language, power
+        on command, power off command, screen off command, screen on command,
+        volume up command, volume down command, mute command, un-mute command,
+        disable eyesome command, enable eyesome command, xrandr name, monitor 0-#,
+        screen width, height, x-offset, y-offset, image (300x300 or so)
+
+    """
     def __init__(self):
         """ Build list of monitors forming desktop (aka X11 screen) """
         self.who = "monitors.py Monitors()."
@@ -189,7 +200,7 @@ class Monitors:
         gi.require_version('Gdk', '3.0')
         from gi.repository import Gdk
 
-        global DISPLAY, SCREEN, NUMBER_OF_MONITORS, GNOME
+        global DISPLAY, SCREEN, NUMBER_OF_MONITORS, GNOME_VER
 
         if DISPLAY is None:
             DISPLAY = Gdk.Display.get_default()
@@ -202,31 +213,33 @@ class Monitors:
         try:
             # Gnome 3.22
             NUMBER_OF_MONITORS = DISPLAY.get_n_monitors()
-            GNOME = 3.22
+            GNOME_VER = 3.22
         except AttributeError:
             # Gnome 3.18
             NUMBER_OF_MONITORS = SCREEN.get_n_monitors()
             primary = SCREEN.get_primary_monitor()
-            GNOME = 3.18
+            GNOME_VER = 3.18
 
-        self.screen_width = SCREEN.width()    # Screen width (all monitors)
+        self.screen_width = SCREEN.width()  # Screen width (all monitors)
         self.screen_height = SCREEN.height()  # 3240 not equal to desk_height: 5760
-        self.gdk_gnome_version = GNOME      # Traditional for outside
+        self.gdk_gnome_version = GNOME_VER  # Traditional for outside attribute
 
-        self.monitors_list = []             # List of dictionaries w/monitor
+        self.monitors_list = []  # List of dictionaries w/monitor
+        self.string_list = []
         self.monitor_count = NUMBER_OF_MONITORS
         self.found_monitor = None
-        self.found_window = None            # Not really necessary but simpler
+        self.found_window = None  # Not really necessary but simpler
         self.primary_monitor = None
 
         # collect data about monitors
         for index in range(NUMBER_OF_MONITORS):
             mon = OrderedDict()
-            if GNOME == 3.22:
+            if GNOME_VER == 3.22:
                 monitor = DISPLAY.get_monitor(index)
                 primary = monitor.is_primary()
                 geometry = monitor.get_geometry()
                 name = monitor.get_monitor_plug_name()
+                # 2024-06-28 - Read SQL for monitor attributes like ShortName
             else:
                 geometry = SCREEN.get_monitor_geometry(index)
                 name = SCREEN.get_monitor_plug_name(index)
@@ -243,7 +256,7 @@ class Monitors:
             mon['width'] = geometry.width
             mon['height'] = geometry.height
             if index == primary:
-                mon['primary'] = True       # Usually static but user could change
+                mon['primary'] = True  # Usually static but user could change
                 # noinspection PyArgumentList
                 #self.primary_monitor = Monitor(mon.keys())(*mon.values())
                 self.primary_monitor = namedtuple('Monitor', mon.keys())(*mon.values())
@@ -252,6 +265,10 @@ class Monitors:
 
             self.found_monitor = namedtuple('Monitor', mon.keys())(*mon.values())
             self.monitors_list.append(self.found_monitor)
+            self.string_list.append(
+                "Screen " + str(index + 1) + ", " + name + ", " + str(geometry.width) +
+                "x" + str(geometry.height) + ", +" + str(geometry.x) + "+" +
+                str(geometry.y))   
 
             # Running calculation of desktop width x height
             x2 = geometry.x + geometry.width
@@ -276,8 +293,10 @@ class Monitors:
         if primary is None:
             print('ERROR monitor.py: Primary monitor not found!')
 
-    def get_n_monitors(self):
-        """ For external call to get number of monitors connected to computer """
+    def deprecated_get_n_monitors(self):
+        """ For external call to get number of monitors connected to computer
+            2024-06-27 - Deprecated because caller can use self.monitor_count
+        """
         return self.monitor_count
 
     # noinspection PyUnusedLocal
@@ -569,7 +588,7 @@ def get_monitors():
     gi.require_version('Gdk', '3.0')
     from gi.repository import Gdk
 
-    global DISPLAY, SCREEN, NUMBER_OF_MONITORS, GNOME
+    global DISPLAY, SCREEN, NUMBER_OF_MONITORS, GNOME_VER
 
     if DISPLAY is None:
         DISPLAY = Gdk.Display.get_default()
@@ -580,18 +599,18 @@ def get_monitors():
         # Gnome 3.22
         NUMBER_OF_MONITORS = DISPLAY.get_n_monitors()
         primary = False
-        GNOME = 3.22
+        GNOME_VER = 3.22
     except AttributeError:
         # Gnome 3.18
         NUMBER_OF_MONITORS = SCREEN.get_n_monitors()
         primary = SCREEN.get_primary_monitor()
-        GNOME = 3.18
+        GNOME_VER = 3.18
 
     # collect data about monitors
     monitors = []
     for index in range(NUMBER_OF_MONITORS):
         mon = {}
-        if GNOME == 3.22:
+        if GNOME_VER == 3.22:
             monitor = DISPLAY.get_monitor(index)
             primary = monitor.is_primary()
             geometry = monitor.get_geometry()

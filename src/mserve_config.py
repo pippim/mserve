@@ -536,6 +536,8 @@ def make_toolkit_cfg():
     cfg.append(make_dict(m, None, "os"))
     cfg.append(make_dict(m, None, "time"))
     cfg.append(make_dict(m, None, "datetime"))
+    cfg.append(make_dict(m, None, "subprocess32", required=False))
+    cfg.append(make_dict(m, None, "subprocess"))
     cfg.append(make_dict(m, "namedtuple", "collections"))
     cfg.append(make_dict(m, "OrderedDict", "collections"))
     cfg.append(make_dict(m, None, "re"))

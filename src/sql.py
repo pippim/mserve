@@ -2395,25 +2395,40 @@ def get_config(Type, Action):
         'Type' + 'Action' columns. Not to be confused with user configurations
         kept in sql.Config() class above.
 
-        VARIABLE        DESCRIPTION
+        2024-07-01 - Define future 'desktop' and 'monitor' records.
+
+        KEY COLUMNS      DESCRIPTION
         --------------  -----------------------------------------------------
-        Type - Action   'window' - library, playlist(Music Playing), history,
-                        encoding, sql_music, sql_history, sql_location,
-                        playlists(maintenance),
+        Type - Action   'desktop' - 'active' (only 1) or 'inactive' (many)
+                        SourceMaster = 'default', 'mobile', 'home', 'work'
+                        SourceDetail = Description
+                        Count = Monitor Count
+                        Target = List of monitor dictionaries
+        Type - Action   'monitor' - HDMI-0, DP-1-1, eDP-1-1, HDMI-A-1, HDMI-A-2
+                        SourceMaster = 'active' ("connected") or 'inactive'
+                        SourceDetail = 15 char ShortName
+                        Target = Dictionary using json.loads() and json.dumps()
+                        Comments = LongName (60 chars) from Target dictionary
+        Type - Action   'window' - library, playlist(Music Playing/Song Queue),
+                        history(webscraping), encoding, sql_music, sql_history, 
+                        sql_location, playlists(maintenance), 
                         locations(maintenance), calculator, results(DELETE)
                         See: monitory.py - get_window_geom(name)
+                        SourceMaster = geometry (x, y, width, height)
+                        SourceDetail = vague comment. TODO: 'desktop' name
+                        Size = Currently 0. TODO 0=Inactive, 1=Active
+                        Comments = vague comment. TODO: window name
         Type - Action   'resume' - L999 or P999999. SourceMaster = Playing/Paused
                         'chron_state' - L999 or P999999. SourceMaster = hide/show
                         'hockey_state' - L999 or P999999. SourceMaster = On/Off
-                        'make_lrc' - L999 or P999999. FUTURE use
-                        'copy_new' - L999 or P999999. FUTURE use
+                        'playlist' - L999 or P999999. SourceMaster = location
+                        'volume' - detect_old, loudnorm_1 / 2, detect_new
         Type - Action   'location' - 'last': The last location played.
                         SourceMaster = loc. Code, SourceDetail = loc. Name,
                         Target = TopDir
         Type - Action   'encoding' - 'format': Target = oga, mp4, flac or wav
                         'encoding' - 'quality': Size = 30 to 100
                         'encoding' - 'naming': SM = '99 ' or '99 - '
-        Target          For Type='window' = geometry (x, y, width, height)
 
     """
 
@@ -2533,6 +2548,7 @@ def hist_delete_type_action(Type, Action):
 def hist_rename_type_action(Type, Action, newType, newAction):
     """ Rename History Rows for matching Type and Action.
         Created to rename "Volume", "Analyze" to "volume", "detect_1"
+        Called in location.py Locations().avo_startup_check()
     """
 
     print("sql.py hist_rename_type_action(Type, Action...) <--- OLD")
@@ -2547,6 +2563,25 @@ def hist_rename_type_action(Type, Action, newType, newAction):
 
     print("sql.py hist_count_type_action(...newType, newAction) <--- NEW")
     hist_count_type_action(newType, newAction)
+
+
+def hist_rename_source_detail(Type, Action, oldDetail, newDetail):
+    """ Rename History Rows for matching Type and Action.
+        Created to rename "Analyze" to "Update" and then to "Create".
+        Called in location.py Locations().avo_startup_check()
+    """
+
+    print("sql.py hist_rename_source_detail(Type, Action...) BEGIN")
+    hist_count_type_action(Type, Action)
+
+    sql = "UPDATE History INDEXED BY TypeActionIndex " +\
+          "SET SourceDetail = ? " +\
+          "WHERE Type = ? AND Action = ? AND SourceDetail = ?"
+    hist_cursor.execute(sql, (newDetail, Type, Action, oldDetail))
+    con.commit()
+
+    print("sql.py hist_count_type_action(Type, Action) END")
+    hist_count_type_action(Type, Action)
 
 
 def hist_count_type_action(Type, Action, prt=True, tab=True):
@@ -3647,7 +3682,9 @@ def sql_format_date(value):
 
 
 def tkinter_display(pretty):
-    """ Popup display all values in pretty print format
+    """ ORIGINAL Version < March 2024
+    
+        Popup display all values in pretty print format
         Uses new tkinter window with single text entry field
 
         Requires ordered dict and optional lists specifying sections
@@ -3696,19 +3733,24 @@ def tkinter_display(pretty):
         curr_key += 1  # Current key index
 
     if pretty.search is not None:
-        # Breakdown string into set of words
-        words = pretty.search.split()
-        # NOTE: yellow, cyan and magenta are defined to highlight background
-        #pretty.scrollbox.highlight_pattern(pretty.search, "yellow")
-        for w in words:
-            pretty.scrollbox.highlight_pattern(w, "yellow")
+        try:
+            # Breakdown string into set of words
+            words = pretty.search.split()
+            # NOTE: yellow, cyan and magenta are defined to highlight background
+            #pretty.scrollbox.highlight_pattern(pretty.search, "yellow")
+            for w in words:
+                pretty.scrollbox.highlight_pattern(w, "yellow")
+        except AttributeError:
+            pass  # SearchText instance has no attribute 'split'
 
     # Don't allow changes to displayed selections (test copy clipboard)
     pretty.scrollbox.configure(state="disabled")
 
 
 def pretty_display(pretty, scrollbox):
-    """ Popup display all values in pretty print format based on tkinter_display()
+    """ NEW Version > March 2024
+    
+        Popup display all values in pretty print format based on tkinter_display()
         Support for pretty.uom and pretty.tabs
 
         Requires ordered dict and optional lists specifying sections
@@ -3716,12 +3758,17 @@ def pretty_display(pretty, scrollbox):
 
     # Allow program changes to scrollable text widget
     pretty.scrollbox = scrollbox
-    pretty.scrollbox.configure(state="normal")
+    pretty.scrollbox.configure(state="normal")  # Required to populate
     pretty.scrollbox.delete('1.0', 'end')  # Delete previous entries
 
-    # Split string values into two fields: 'value' and 'uom'
-    use_uom = True if pretty.uom is True else False
-    use_tabs = True if pretty.tabs else False  # list of tuples may exist
+    try:
+        # Split dictionary values into two fields: 'value' and 'uom'?
+        use_uom = True if pretty.uom is True else False
+        use_tabs = True if pretty.tabs else False  # Left & Right tab stops
+    except AttributeError:
+        # < 2024-04 pretty dictionaries don't have uom & tabs
+        use_uom = False
+        use_tabs = False
 
     # self.tabs is WIP: https://stackoverflow.com/a/46605414/6929343
     if use_tabs:
@@ -3738,12 +3785,14 @@ def pretty_display(pretty, scrollbox):
 
     def reset_tabs(event):
         """ https://stackoverflow.com/a/46605414/6929343 """
-        event.widget.configure(tabs=tab_list)
-        #print("Reset tabs:", tab_list)  # It's working
+        if use_tabs:
+            event.widget.configure(tabs=tab_list)
+            #print("Reset tabs:", tab_list)  # It's working
 
     pretty.scrollbox.bind("<Configure>", reset_tabs)
 
-    if pretty.heading is not None:
+    if hasattr(pretty, 'heading'):
+        #if pretty.heading is not None:
         pretty.scrollbox.insert("end", pretty.heading + u"\n")
 
     curr_key = 0  # Current key index
@@ -4647,7 +4696,6 @@ class FixData:
         # Print count total lines
         self.print_summary("fix_meta_edit()", fix_list)
         self.wrapup(update)
-
 
     def fix_utc_dates(self, update=False):
         """ Change UTC dates to Local format

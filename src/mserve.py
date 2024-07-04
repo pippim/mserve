@@ -94,7 +94,8 @@ warnings.simplefilter('default')  # in future Python versions.
 #       May. 12 2024 - New shuffle - Artist/Album/Song (order of appearance).
 #       May. 13 2024 - Major bug fix, delete playlist replaces favorites.
 #       Jun. 09 2024 - Fine-tune time index new Edit line feature. Bug fixes.
-#       Jun. 16 2024 - Port mainline ffplay functions to FileControl() class.
+#       Jun. 16 2024 - Move mainline ffplay functions to FileControl() class.
+#       Jun. 22 2024 - TV_MOVE_WINDOW, TV_WINDOW_ANCHOR & TV_MOVE_WITH_COMPIZ.
 #
 #==============================================================================
 
@@ -263,13 +264,6 @@ RENAME FUNCTIONS:
     'self.song_set_ndx()'   -> 'self.play_new_song()'
     'self.song_set_ndx()'   -> 'self.play_set_ndx()'
     'self.song_set_ndx()'   -> 'self.set_play_ndx()'    # July 1, 2023 5:28pm
-    Advantage of changing "self.song_" to "self.play_" is below too:
-        self.song_artist_var.set(make_ellipsis(self.play_ctl.Artist, E_WIDTH))
-        self.song_album_var.set(make_ellipsis(self.play_ctl.Album, E_WIDTH))
-        self.song_title_var.set(make_ellipsis(self.play_ctl.Title, E_WIDTH))
-
-    'self.play_insert()'    -> 'self.add_selected()'
-    'self.play_insert()'    -> 'self.insert_selection()'
     
 RENAME WINDOWS:
     'Playing Playlist'      -> 'Playing Music' window
@@ -280,7 +274,7 @@ RENAME WINDOWS:
                             -> 'Checked Music' window
                             -> 'Playlist Music' window
                             -> 'Playlist Songs' window
-                            -> 'Queue' window
+                            -> 'Song Queue' window
 
     'Music Location Tree'   -> doesn't have a name, just location name
 
@@ -586,7 +580,10 @@ ENCODE_DEV = True  # Development encoding.py last disc ID recycled saving 63 sec
 
 KID3_INSTALLED = False  # Reset just before popup menu created
 KID3_NAME = "Kid3 Audio Tagger"
-KID3_COMMAND = "xrandr --dpi 144 && kid3 "  # Kid3 isn't HDPI yet
+if toolkit.X_is_running():
+    KID3_COMMAND = "xrandr --dpi 144 && kid3 "  # Kid3 isn't HDPI yet
+else:
+    KID3_COMMAND = "kid3 "
 KID3_WIN_SIZE = "1280x736"  # Window size changed after program starts
 
 FM_INSTALLED = False  # Reset just before popup menu created
@@ -601,6 +598,7 @@ WMCTRL_INSTALLED = True  # Sep 27/23 - experimental youTubePlaylist
 # Kill application.name: speech-dispatcher, application.process.id: 5529
 DELETE_SPEECH = True  # Kill speech dispatcher which has four threads each boot.
 CHROME_TMP_FILES = True  # Check Chrome temporary disk space with `du` command.
+DPRINT_ON = False  # Debug printing to console.
 
 # Chrome os Linux Beta doesn't support .grid_remove() properly
 GRID_REMOVE_SUPPORTED = True
@@ -649,10 +647,15 @@ $ aplay /tmp/test.wav
 $ rm /tmp/test.wav
 '''
 
-TV_BREAK1 = 90          # Hockey TV commercial break is 90 seconds
-TV_BREAK2 = 1080        # Hockey TV intermission is 18 minutes
-TV_VOLUME = 60          # Hockey TV mserve play music at 60% volume level
-TV_SOUND = "Firefox"    # Hockey broadcast is aired on Firefox browser
+# SET global variables in get_hockey_state()
+TV_APP_NAME = "Firefox"  # Hockey TV application running on Firefox browser
+TV_VOLUME = 60  # Hockey TV mserve plays music at 60% volume level
+TV_BREAK1 = 90  # Hockey TV commercial break is 90 seconds
+TV_BREAK2 = 1080  # Hockey TV intermission is 18 minutes
+TV_MONITOR = 0  # Monitor hosting Hockey TV broadcast
+TV_MOVE_WINDOW = True  # During TV commercials, play window moves over top
+TV_WINDOW_ANCHOR = "center"  # Center play window on Hockey monitor
+TV_MOVE_WITH_COMPIZ = False  # Smooth monitor jump but prone to glitches
 
 ''' Update last access time after X % of song has been played. '''
 ATIME_THRESHOLD = 80    # playing 80% of song updates last access to now.
@@ -1532,6 +1535,16 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
         self.lib_tree.bind('<Motion>', self.lib_highlight_row)
         self.lib_tree.bind("<Leave>", self.lib_leave_row)
 
+        ''' Bind entire class '''
+        # self.bind_class("Entry", "<<Paste>>", toolkit.custom_paste)
+        #   File "/home/rick/python/mserve.py", line 22568, in main
+        #     MusicLocationTree(toplevel, SORTED_LIST)  # Build treeview of songs
+        #   File "/home/rick/python/mserve.py", line 1530, in __init__
+        #     self.bind_class("Entry", "<<Paste>>", toolkit.custom_paste)
+        # AttributeError: MusicLocationTree instance has no attribute 'bind_class'
+        self.lib_top.bind("Entry", "<<Paste>>", toolkit.custom_paste)
+
+
         '''         B I G   T I C K E T   E V E N T
             Create Album/Artist/ OS Song filename Treeview 
         '''
@@ -1721,7 +1734,8 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
         """ Compare pid to know pids and return correct sink number
             2024-05-22 - check_sinks() replaces need for force_sink()
         """
-        title = self.who + "force_sink(): "
+        prt_time = datetime.datetime.now().strftime("%M:%S.%f")[:-2]
+        title = self.who + "force_sink() " + prt_time + ": "
         pav.get_all_sinks()  # Populate pav.sinks_now
         for Sink in pav.sinks_now:
             if pid == Sink.pid and sink == Sink.sink_no_str:
@@ -1745,7 +1759,8 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
     
     def check_sinks(self):
         """ Compare pid to know PulseAudio pids and return correct sink number """
-        title = self.who + "check_sinks(): "
+        prt_time = datetime.datetime.now().strftime("%M:%S.%f")[:-2]
+        title = self.who + "check_sinks() " + prt_time + ": "
         pav.get_all_sinks()  # Populate pav.sinks_now
 
         def print_debug(name, ctl, sink):
@@ -4940,7 +4955,9 @@ Call search.py when these control keys occur
         self.tv_vol = tvVolume(top=self.lib_top, tooltips=self.tt,
                                thread=self.get_refresh_thread,
                                save_callback=self.get_hockey_state,
-                               playlists=self.playlists, info=self.info)
+                               playlists=self.playlists, info=self.info,
+                               get_config_for_loc=self.get_config_for_loc,
+                               save_config_for_loc=self.save_config_for_loc)
 
     def calculator_open(self):
         """ Big Number Calculator allows K, M, G, T, etc. UoM """
@@ -4994,10 +5011,57 @@ Call search.py when these control keys occur
         self.debug_detail("g.OS_NAME         :", g.OS_NAME)
         self.debug_detail("g.OS_VERSION      :", g.OS_VERSION)
         self.debug_detail("g.OS_RELEASE      :", g.OS_RELEASE)
-        lsb_ver = os.popen("lsb_release -a").read().strip()
+        lsb_ver = os.popen("lsb_release -a 2>/dev/null").read().strip()
         self.debug_detail(lsb_ver)  # lsb_release has 4 lines
-        xr_ver = os.popen("xrandr --version").read().strip()
+        if toolkit.X_is_running():
+            xr_ver = os.popen("xrandr --version").read().strip()
+        else:
+            xr_ver = "xrandr is not running."
         self.debug_detail(xr_ver)  # Two lines due to customization
+
+        # Gnome/GTK/wnck versions, Compiz version
+        # $ apt-cache policy libgtk2.0-0 libgtk-3-0 libgtk-4-1
+        # libgtk2.0-0:
+        #   Installed: 2.24.30-1ubuntu1.16.04.2
+        #   Candidate: 2.24.30-1ubuntu1.16.04.2
+        #   Version table:
+        #  *** 2.24.30-1ubuntu1.16.04.2 500
+        #         500 http://ca.archive.ubuntu.com/ubuntu xenial-updates/main amd64 Packages
+        #         100 /var/lib/dpkg/status
+        #      2.24.30-1ubuntu1 500
+        #         500 http://ca.archive.ubuntu.com/ubuntu xenial/main amd64 Packages
+        # libgtk-3-0:
+        #   Installed: 3.18.9-1ubuntu3.3
+        #   Candidate: 3.18.9-1ubuntu3.3
+        #   Version table:
+        #  *** 3.18.9-1ubuntu3.3 500
+        #         500 http://ca.archive.ubuntu.com/ubuntu xenial-updates/main amd64 Packages
+        #         100 /var/lib/dpkg/status
+        #      3.18.9-1ubuntu3 500
+        #         500 http://ca.archive.ubuntu.com/ubuntu xenial/main amd64 Packages
+        # libgtk-4-1:
+        #   Installed: (none)
+        #   Candidate: (none)
+        #   Version table:
+        # ────────────────────────────────────────────────────────────────────────────────────────────
+        # rick@alien:~/python$ dpkg -l libgtk2.0-0 libgtk-3-0 libgtk-4-1
+        # Desired=Unknown/Install/Remove/Purge/Hold
+        # | Status=Not/Inst/Conf-files/Unpacked/halF-conf/Half-inst/trig-aWait/Trig-pend
+        # |/ Err?=(none)/Reinst-required (Status,Err: uppercase=bad)
+        # ||/ Name                              Version               Architecture          Description
+        # +++-=================================-=====================-=====================-=======================================================================
+        # ii  libgtk-3-0:amd64                  3.18.9-1ubuntu3.3     amd64                 GTK+ graphical user interface library
+        # un  libgtk-4-1                        <none>                <none>                (no description available)
+        # ii  libgtk2.0-0:amd64                 2.24.30-1ubuntu1.16.0 amd64                 GTK+ graphical user interface library
+        # ────────────────────────────────────────────────────────────────────────────────────────────
+        # rick@alien:~/python$ apt-cache show gnome-shell | grep Version
+        # Version: 3.18.5-0ubuntu0.3
+        # Version: 3.18.4-0ubuntu3
+
+        # $ dpkg -l | grep wnck
+        # ii  gir1.2-wnck-3.0:amd64 3.14.1-2 amd64 GObject introspection data for the WNCK library
+        # ii  libwnck-3-0:amd64 3.14.1-2 amd64 Window Navigator Construction Kit - runtime files
+        # ii  libwnck-3-common 3.14.1-2 all Window Navigator Construction Kit - common files
 
         self.debug_detail("g.USER            :", g.USER)
         self.debug_detail("g.USER_ID         :", g.USER_ID)
@@ -5039,7 +5103,7 @@ Call search.py when these control keys occur
         sshfs_ver = os.popen("sshfs --version | grep 'SSHFS version'").\
             read().strip()
         self.debug_detail('sshfs Version     :', sshfs_ver)
-        fusermount_ver = os.popen("fusermount --version").read().strip()
+        fusermount_ver = os.popen("fusermount --version 2>&1").read().strip()
         self.debug_detail('fusermount Version:', fusermount_ver)
         wakeonlan_ver = os.popen("wakeonlan --version 2>&1 | grep 'wakeonlan version'").\
             read().strip()[:60] + " ..."
@@ -5070,8 +5134,8 @@ Call search.py when these control keys occur
         self.debug_detail("mon.screen_width x mon.screen_height:",
                           mon.screen_width, "x", mon.screen_height, "\n")
 
-        self.debug_detail("Number of monitors - mon.get_n_monitors():",
-                          mon.get_n_monitors())
+        self.debug_detail("Number of monitors - mon.monitor_count:",
+                          mon.monitor_count)
         self.debug_detail("for m in mon.monitors_list: -- self.debug_detail(' ', m):")
         for m in mon.monitors_list:
             self.debug_detail(" ", m)
@@ -5282,11 +5346,18 @@ Call search.py when these control keys occur
 
         # File Control class instances -------------------------------------------
         self.debug_header("\nself.Xxx_ctl = FileControl() instances opened")
+
         if self.play_ctl.metadata is not None:  # FileControl() always here
             self.debug_detail("Last file accessed - 'ffprobe' (self.play_ctl.metadata):")
             self.debug_detail("--------------------------------------------------------\n")
             for i in self.play_ctl.metadata:
                 self.debug_detail(i, ":", self.play_ctl.metadata[i])
+
+        if self.loud_ctl.metadata is not None:  # FileControl() always here
+            self.debug_detail("Last file accessed - 'ffprobe' (self.loud_ctl.metadata):")
+            self.debug_detail("--------------------------------------------------------\n")
+            for i in self.loud_ctl.metadata:
+                self.debug_detail(i, ":", self.loud_ctl.metadata[i])
 
         if self.ltp_ctl and self.ltp_ctl.metadata is not None:
             self.debug_detail("\nLast file accessed - 'ffprobe' (self.ltp_ctl.metadata):")
@@ -5310,15 +5381,35 @@ Call search.py when these control keys occur
 
         # Global variables ------------------------------------------
         self.debug_header("\nGLOBAL VARIABLES")
-        self.debug_detail("START_DIR  :", START_DIR, " | START_DIR.count(os.sep):",
-                          START_DIR.count(os.sep))
-        self.debug_detail("PRUNED_DIR :", PRUNED_DIR, " | PRUNED_COUNT:", PRUNED_COUNT)
-        self.debug_detail("TV_VOLUME  :", TV_VOLUME, " | TV_SOUND:", TV_SOUND)
-        self.debug_detail("TV_BREAK1  :", TV_BREAK1, " | TV_BREAK2:", TV_BREAK2)
-        self.debug_detail("REW_FF_SECS:", REW_FF_SECS, " | REW_CUTOFF:", REW_CUTOFF)
-        self.debug_detail("ENCODE_DEV :", ENCODE_DEV)
-        self.debug_detail("self.get_pending_cnt_total():", self.get_pending_cnt_total())
+
+        self.debug_detail("START_DIR  :", START_DIR.ljust(27),
+                          " | START_DIR.count(os.sep):", START_DIR.count(os.sep))
+        self.debug_detail("PRUNED_DIR :", PRUNED_DIR.ljust(27),
+                          " | PRUNED_COUNT:", PRUNED_COUNT)
+        # Hockey TV commercial variables
+        self.debug_detail("TV_APP_NAME:", TV_APP_NAME.ljust(27),
+                          " | TV_MONITOR:", TV_MONITOR)
+        self.debug_detail("TV_VOLUME  :", str(TV_VOLUME).ljust(27),
+                          " | TV_MOVE_WINDOW:", TV_MOVE_WINDOW)
+        self.debug_detail("TV_BREAK1  :", str(TV_BREAK1).ljust(27),
+                          " | TV_WINDOW_ANCHOR:", TV_WINDOW_ANCHOR)
+        self.debug_detail("TV_BREAK2  :", str(TV_BREAK2).ljust(27),
+                          " | TV_MOVE_WITH_COMPIZ:", TV_MOVE_WITH_COMPIZ)
+
+        self.debug_detail("ENCODE_DEV :", str(ENCODE_DEV).ljust(27))
+        self.debug_detail("REW_FF_SECS:", str(REW_FF_SECS).ljust(27),
+                          " | REW_CUTOFF:", REW_CUTOFF)
+        self.debug_detail("self.get_pending_cnt_total()              :",
+                          self.get_pending_cnt_total())
         self.debug_detail("pending_apply() debug print flag DPRINT_ON:", DPRINT_ON)
+        self.debug_detail("global_variables.py g.DEBUG_LEVEL         :", g.DEBUG_LEVEL)
+        self.debug_detail("global_variables.py g.MUSIC_MIN_SIZE      :",
+                          g.MUSIC_MIN_SIZE)
+        self.debug_detail("global_variables.py g.MUSIC_FILE_TYPES    :",
+                          g.MUSIC_FILE_TYPES[0:4], "\n\t",
+                          g.MUSIC_FILE_TYPES[4:-1])
+        self.debug_detail("global_variables.py g.MSERVE_VERSION      :",
+                          g.MSERVE_VERSION)
         self.debug_output()
 
         # SQL - Sqlite3 Tables ------------------------------------------
@@ -7834,6 +7925,11 @@ Call search.py when these control keys occur
         ''' When getting focus, see if overrides prevent buttons. '''
         self.play_top.bind("<FocusIn>", self.handle_play_top_focus)
 
+        ''' Failed attempts at getting Ctrl+V to replace highlighted text. '''
+        #self.play_top.bind_class("Entry", "<<Paste>>", toolkit.custom_paste)
+        #self.play_top.bind("Entry", "<<Paste>>", toolkit.custom_paste)
+        #self.play_top.bind("<<Paste>>", toolkit.custom_paste)
+
         ''' Retrieve location's last playing/paused status, song progress seconds '''
         resume = self.get_resume()
         chron_state = self.get_chron_state()
@@ -8011,9 +8107,10 @@ Call search.py when these control keys occur
         elif fld is self.play_ctl.OsFileSize:
             var.set(toolkit.human_mb(self.play_ctl.OsFileSize))
         else:
-            # global E_WIDTH
-            E_WIDTH = 32
-            var.set(make_ellipsis(fld, E_WIDTH))
+            # text field, limited to 32 characters
+            E_WID = 32
+            ellipsis_text = fld if len(fld) < E_WID else fld[:E_WID-3] + "..."
+            var.set(ellipsis_text)
 
     def display_meta_row(self, row, text, var):
         """ Display single row """
@@ -8270,7 +8367,7 @@ Call search.py when these control keys occur
                                             s=self: s.start_hockey(TV_BREAK1))
                 self.com_button.grid(row=0, column=col, padx=2, sticky=tk.W)
                 self.tt.add_tip(self.com_button, "Play music for " +
-                                sec_min_str(TV_BREAK1) + ".\n" +
+                                hockey_remain_str(TV_BREAK1) + ".\n" +
                                 "Turn down TV volume whilst playing.", anchor="sw")
             elif name == "Int":
                 ''' Hockey Intermission Button '''
@@ -8280,7 +8377,7 @@ Call search.py when these control keys occur
                                             s=self: s.start_hockey(TV_BREAK2))
                 self.int_button.grid(row=0, column=col, padx=2, sticky=tk.W)
                 self.tt.add_tip(self.int_button, "Play music for " +
-                                sec_min_str(TV_BREAK2) + ".\n" +
+                                hockey_remain_str(TV_BREAK2) + ".\n" +
                                 "Turn down TV volume whilst playing.", anchor="se")
             elif name == "Rew":
                 ''' Rewind Button -10 sec '''
@@ -8890,7 +8987,7 @@ Call search.py when these control keys occur
             answer = message.AskQuestion(
                 self.play_top, thread=self.get_refresh_thread,
                 title="TV break in progress - mserve", confirm='no',
-                text="There are " + sec_min_str(self.play_hockey_remaining) +
+                text="There are " + hockey_remain_str(self.play_hockey_remaining) +
                      "\nremaining in commercial/intermission.\n\n" +
                      "Do you want to pause music and restore TV sound?")
             if answer.result != 'yes':
@@ -11485,6 +11582,9 @@ mark set markName index"
         self.lyrics_score_box.bind("<Control-Shift-Key-Z>",
                                    self.lyrics_score_box.edit_redo)
 
+        ''' Paste replaces selection '''
+        self.lyrics_score_box.bind("<<Paste>>", toolkit.custom_paste)
+
         # Fix Control+C  https://stackoverflow.com/a/64938516/6929343
         self.lyrics_score_box.bind(
             "<Button>", lambda event: self.lyrics_score_box.focus_set())
@@ -11682,8 +11782,20 @@ mark set markName index"
 
         if self.play_current_song_art is None and ARTWORK_SUBSTITUTE:
             # print("Getting ARTWORK_SUBSTITUTE:", ARTWORK_SUBSTITUTE)
-            self.play_current_song_art, self.play_resized_art, self.play_original_art = \
-                storage_artwork(self.art_width, self.art_height)
+            #self.play_current_song_art, self.play_resized_art, self.play_original_art = \
+            #    deprecated_storage_artwork(self.art_width, self.art_height)
+            try:
+                self.play_original_art = Image.open(ARTWORK_SUBSTITUTE)
+                self.play_resized_art = self.play_original_art.resize(
+                    (self.art_width, self.art_height), Image.ANTIALIAS)
+                self.play_current_song_art = ImageTk.PhotoImage(
+                    self.play_resized_art)
+            except (tk.TclError, IOError) as _err:
+                # Song has no artwork that ffmpeg can identify.
+                print("mserve.py set_artwork_colors():",
+                      "os.path.isfile(ARTWORK_SUBSTITUTE) failed test")
+                print(ARTWORK_SUBSTITUTE)
+                print(_err)  # File not found or invalid image file
 
         if self.play_current_song_art is None:
             self.play_no_art()  # Use "No Artwork" image
@@ -12105,9 +12217,21 @@ mark set markName index"
         self.save_config_for_loc('chron_state', state, Comments=Comments)
 
     def get_hockey_state(self):
-        """ Get saved state for Hockey TV Commercial Buttons and Volume """
-        global TV_VOLUME  # mserve volume when TV commercial on air
-        global TV_BREAK1, TV_BREAK2, TV_SOUND
+        """ Get saved state for Hockey TV Commercial Buttons and Volume 
+
+Defined top of file mserve.py:
+TV_APP_NAME = "Firefox"  # Hockey TV application running on Firefox browser
+TV_VOLUME = 60  # Hockey TV mserve plays music at 60% volume level
+TV_BREAK1 = 90  # Hockey TV commercial break is 90 seconds
+TV_BREAK2 = 1080  # Hockey TV intermission is 18 minutes
+TV_MONITOR = 0  # Monitor hosting Hockey TV broadcast
+TV_MOVE_WINDOW = True  # During TV commercials, play window moves over top
+TV_WINDOW_ANCHOR = "center"  # Center play window on Hockey monitor
+TV_MOVE_WITH_COMPIZ = False  # Smooth monitor jump but prone to glitches
+
+        """
+        global TV_APP_NAME, TV_VOLUME, TV_BREAK1, TV_BREAK2, TV_MONITOR
+        global TV_MOVE_WINDOW, TV_WINDOW_ANCHOR, TV_MOVE_WITH_COMPIZ
 
         d = self.get_config_for_loc('hockey_state')
         if d is None:
@@ -12117,7 +12241,8 @@ mark set markName index"
             TV_VOLUME = int(d['Size'])  # TV_VOLUME from 25 to 100 is valid
         else:
             print("mserve.py get_hockey_state() TV_VOLUME is invalid:",
-                  int(d['Size']))
+                  d['Size'])
+            return False  # 2024-06-22 - Don't continue with unstable data
 
         # Initial versions didn't have these fields initialized
         if d['Count'] > 10:
@@ -12125,7 +12250,13 @@ mark set markName index"
         if d['Seconds'] > 10:
             TV_BREAK2 = int(d['Seconds'])
         if d['SourceDetail'] != "":
-            TV_SOUND = d['SourceDetail']
+            TV_APP_NAME = d['SourceDetail']
+        if d['Target']:
+            tv_dict = json.loads(d['Target'])
+            TV_MONITOR = tv_dict['TV_MONITOR']
+            TV_MOVE_WINDOW = tv_dict['TV_MOVE_WINDOW']
+            TV_WINDOW_ANCHOR = tv_dict['TV_WINDOW_ANCHOR']
+            TV_MOVE_WITH_COMPIZ = tv_dict['TV_MOVE_WITH_COMPIZ']
 
         # Hockey volume can now be changed. Note description must MATCH EXACTLY
         self.edit_menu.entryconfig("Volume During TV Commercials", state=tk.NORMAL)
@@ -12136,9 +12267,16 @@ mark set markName index"
         """ Save state for Hockey TV Commercial Buttons and Volume """
         state = "On" if self.play_hockey_allowed else "Off"
         Comments = "Hockey TV Commercial Buttons used?"
+        tv_dict = dict()
+        tv_dict['TV_MONITOR'] = TV_MONITOR
+        tv_dict['TV_MOVE_WINDOW'] = TV_MOVE_WINDOW
+        tv_dict['TV_WINDOW_ANCHOR'] = TV_WINDOW_ANCHOR
+        tv_dict['TV_MOVE_WITH_COMPIZ'] = TV_MOVE_WITH_COMPIZ
+        Target = json.dumps(tv_dict)
+
         self.save_config_for_loc(
-            'hockey_state', state, TV_SOUND, Size=TV_VOLUME, Count=TV_BREAK1,
-            Seconds=float(TV_BREAK2), Comments=Comments)
+            'hockey_state', state, TV_APP_NAME, Size=TV_VOLUME, Count=TV_BREAK1,
+            Seconds=float(TV_BREAK2), Target=Target, Comments=Comments)
 
     def get_open_states_to_list(self):
         """ Get list of artists and albums that are expanded (opened) """
@@ -12465,9 +12603,10 @@ mark set markName index"
             else:
                 values = ("yes",)  # To find synchronized lyrics (time index)
             try:  # June 22, 2023 was 'iid = i + 1'
-                self.chron_tree.insert('', 'end', iid=song_iid, text=line, values=values,
-                                       tags=("normal",))
-                self.chron_tree.tag_bind(song_iid, '<Motion>', self.chron_highlight_row)
+                self.chron_tree.insert('', 'end', iid=song_iid, text=line,
+                                       values=values, tags=("normal",))
+                self.chron_tree.tag_bind(song_iid, '<Motion>',
+                                         self.chron_highlight_row)
                 self.chron_iid_dict[int(song_iid)] = True  # iid is attached
             except tk.TclError:
                 bad_msg = "mserve.py populate_chron_tree() bad line:"
@@ -12477,7 +12616,8 @@ mark set markName index"
                                            " " + song_iid, tags=("normal",))
                     self.chron_tree.tag_bind(song_iid, '<Motion>', self.chron_highlight_row)
                 except Exception as err:
-                    print('mserve.py populate_chron_tree() insert failed with Error: %s' % (str(err)))
+                    print('mserve.py populate_chron_tree() insert failed with",'
+                          '"Error: %s' % (str(err)))
                     print()  # When it breaks tons of errors so separate into grouped msgs
 
         ''' Highlight current song
@@ -12951,19 +13091,38 @@ mark set markName index"
             🔇 (1f507) 🔈 (1f508) 🔉 (1f509) 🔊 (1f50a)
             big space  (2003)   “tabular width”, the width of digits (2007)
 
-            may 20, 2023 - short_line to be deprecated. always make full line.
+            May 20, 2023 - short_line to be deprecated. always make full line.
         """
         # BIG_SPACE = " "  # UTF-8 (2003) aka Em Space
-        # DIGIT_SPACE = " "       # UTF-8 (2007)
-        # NUMBER_PREFIX = "№ "    # UTF-8 (2116) + normal space
+        # DIGIT_SPACE = " "  # UTF-8 (2007)
+        # NUMBER_PREFIX = "№ "  # UTF-8 (2116) + normal space
         TITLE_PREFIX = " 🎵 "  # big space + UTF-8 (1f3b5) + normal space
         ARTIST_PREFIX = " 🎨 "  # big space + UTF-8 (1f3a8) + normal space
         ALBUM_PREFIX = " 🖸 "  # big space + UTF-8 (1f5b8) + normal space
-        # FUTURE SUPPORT:
         DATE_PREFIX = " 📅 "  # big space + UTF-8 (1f4c5) + normal space
         # CLOCK_PREFIX = " 🕐 "  # big space + UTF-8 (1f550) + normal space
         CLOCK_PREFIX = " 🕑 "  # big space + UTF-8 (1f551) + normal space
-        TIME_PREFIX = " 🗲 "   # big space + Unicode Character “🗲” (U+1F5F2)."
+        TIME_PREFIX = " 🗲 "  # big space + Unicode Character “🗲” (U+1F5F2)."
+        # Loudness normalization old and new maximum volume 🔉 (1f509) 🔊 (1f50a)
+
+        ''' Concatenate 3 variables '''
+        def cat3(lin, prefix, text):
+            """ Concatenating texts with latin characters has error:
+
+                    UnicodeEncodeError: 'ascii' codec can't encode character
+                    u'\xc6' in position 0: ordinal not in range(128)
+            """
+            # noinspection PyBroadException
+            try:
+                return lin + prefix + text.encode("utf8")
+            except:
+                # noinspection PyProtectedMember
+                print(self.who + 'build_chron_line():',
+                      'called from:', sys._getframe(1).f_code.co_name,
+                      '() Latin character error in:', prefix, text)
+                # noinspection SpellCheckingInspection
+                ''' Latin character error in:  🎵  Ænema '''
+                return lin + prefix + "????????"
 
         ''' Pad song number with spaces to line up song name evenly '''
         number_digits = len(str(len(self.saved_selections)))
@@ -13038,7 +13197,6 @@ mark set markName index"
                 return "N/A dB"
             mean_volume, max_volume = json.loads(vol_d['Target'])
             return max_volume
-
 
         # Loudness normalization old and new maximum volume 🔉 (1f509) 🔊 (1f50a)
         if self.is_loudnorm_playlist:
@@ -14456,7 +14614,7 @@ class FineTune:
 
         # lyrics line text tree values[1]
         values = list(self.tree.item(str(first))['values'])
-        default_string = new_name = values[1]
+        default_string = values[1]
         title = "Edit lyrics line " + str(first)
         text = "Edit text for:\n\n" + default_string
         string_width = int(len(default_string) * 1.1)
@@ -14735,7 +14893,7 @@ class tvVolume:
 
     def __init__(self, top=None, name="ffplay", title=None, text=None,
                  tooltips=None, thread=None, save_callback=None, playlists=None,
-                 info=None):
+                 info=None, get_config_for_loc=None, save_config_for_loc=None):
         """
         """
         # self-ize parameter list
@@ -14744,10 +14902,12 @@ class tvVolume:
         self.title = title          # E.G. "Set volume for mserve"
         self.text = text            # "Adjust mserve volume to match other apps"
         self.tt = tooltips          # Tooltips pool for buttons
-        self.get_thread_func = thread        # E.G. self.get_refresh_thread
+        self.get_thread_func = thread  # E.G. self.get_refresh_thread
         self.save_callback = save_callback  # Set hockey fields to new values
         self.playlists = playlists
         self.info = info
+        self.get_config_for_loc = get_config_for_loc
+        self.save_config_for_loc = save_config_for_loc
 
         self.last_sink = None
         self.last_volume = None
@@ -14803,10 +14963,58 @@ class tvVolume:
                  font=ms_font)\
             .grid(row=0, column=0, columnspan=3, sticky=tk.W, padx=PAD_X)
 
-        ''' Input fields: TV_BREAK1, TV_BREAK2 and TV_SOUND '''
+        ''' 
+Defined top of file mserve.py:
+TV_APP_NAME = "Firefox"  # Hockey TV application running on Firefox browser
+TV_VOLUME = 60  # Hockey TV mserve plays music at 60% volume level
+TV_BREAK1 = 90  # Hockey TV commercial break is 90 seconds
+TV_BREAK2 = 1080  # Hockey TV intermission is 18 minutes
+TV_MONITOR = 0  # Monitor hosting Hockey TV broadcast
+TV_MOVE_WINDOW = True  # During TV commercials, play window moves over top
+TV_WINDOW_ANCHOR = "center"  # Center play window on Hockey monitor
+TV_MOVE_WITH_COMPIZ = False  # Smooth monitor jump but prone to glitches        
+        '''
+
+        ''' Create images for checked and unchecked radio buttons '''
+        box_height = int(g.MON_FONTSIZE * 2.2)
+        self.radio_boxes = img.make_checkboxes(box_height, 'WhiteSmoke',
+                                               'LightGray', 'Green')
+                                               #'Red', 'Green')
+
+        def check_button_var(txt, scr_name, row, col):
+            """ Create TK label text and radio box value. """
+            tk.Label(self.vol_frm, text=txt, font=g.FONT, bg="#eeeeee"). \
+                grid(row=row, column=col, sticky=tk.W)
+            fld = tk.Checkbutton(
+                self.vol_frm, variable=scr_name, anchor=tk.W, bg="#eeeeee",
+                image=self.radio_boxes[0], selectimage=self.radio_boxes[2]
+            )
+            fld.grid(row=row, column=col+1, sticky=tk.W, padx=5, pady=5)
+            return fld
+
         self.commercial_secs = tk.IntVar()
         self.intermission_secs = tk.IntVar()
         self.tv_application = tk.StringVar()
+        self.tv_move_window = tk.BooleanVar()
+        self.tv_window_anchor = tk.StringVar()
+        self.tv_move_with_compiz = tk.BooleanVar()
+        self.tv_monitor = tk.StringVar()
+        mon = monitor.Monitors()
+        """
+        mon.string_list:
+            Screen 1, HDMI-0, 1920x1080, +0+=0
+            Screen 2, DP-1-1, 3840x2160, +1920+0
+            Screen 3, eDP-1-1, 1920x1080, +3870+2160
+
+        Monitor SQL Configuration: 20-char Name, MAC, IP, ED ID, Manufacturer,
+        Model, Serial Number, Purchase Date, warranty, 60-char name, physical size,
+        LAN MAC, LAN IP, WiFi MAC, WiFi IP, Backlight MAC, Backlight IP,
+        adaptive brightness, communication channel, communication language, power
+        on command, power off command, screen off command, screen on command,
+        volume up command, volume down command, mute command, un-mute command,
+        disable eyesome command, enable eyesome command, xrandr name, monitor 0-#,
+        screen width, height, x-offset, y-offset, image (300x300 or so)
+        """
         tk.Label(self.vol_frm, text="Commercial seconds:", bg="#eeeeee",
                  font=ms_font).grid(row=1, column=0, sticky=tk.W)
         tk.Entry(self.vol_frm, textvariable=self.commercial_secs,
@@ -14819,11 +15027,35 @@ class tvVolume:
                  font=ms_font).grid(row=3, column=0, sticky=tk.W)
         tk.Entry(self.vol_frm, textvariable=self.tv_application,
                  font=ms_font).grid(row=3, column=1, sticky=tk.W)
+        tk.Label(self.vol_frm, text="TV Monitor:", bg="#eeeeee",
+                 font=ms_font).grid(row=4, column=0, sticky=tk.W)
+        ttk.Combobox(self.vol_frm, textvariable=self.tv_monitor, bg="#eeeeee",
+                     height=len(mon.string_list), values=mon.string_list,
+                     width=len(mon.string_list[0]), state="readonly",
+                     font=ms_font).grid(row=4, column=1, sticky=tk.W)
+        _fld_move_window = check_button_var(
+            "Move play window to TV?", self.tv_move_window, 5, 0)
+        _fld_move_with_compiz = check_button_var(
+            "Tricky move with Compiz?", self.tv_move_with_compiz, 6, 0)
+        self.tv_monitor.set(mon.string_list[TV_MONITOR])
+        self.tv_move_window.set(TV_MOVE_WINDOW)
+        self.tv_move_with_compiz.set(TV_MOVE_WITH_COMPIZ)
+        ''' 
+Defined top of file mserve.py:
+TV_APP_NAME = "Firefox"  # Hockey TV application running on Firefox browser
+TV_VOLUME = 60  # Hockey TV mserve plays music at 60% volume level
+TV_BREAK1 = 90  # Hockey TV commercial break is 90 seconds
+TV_BREAK2 = 1080  # Hockey TV intermission is 18 minutes
+TV_MONITOR = 0  # Monitor hosting Hockey TV broadcast
+TV_MOVE_WINDOW = True  # During TV commercials, play window moves over top
+TV_WINDOW_ANCHOR = "center"  # Center play window on Hockey monitor
+TV_MOVE_WITH_COMPIZ = False  # Smooth monitor jump but prone to glitches        
+        '''
 
         ''' Volume During TV Commercials Slider '''
         self.slider = tk.Scale(self.vol_frm, from_=100, to=25, tickinterval=5,
                                command=self.set_sink, bg="#eeeeee")
-        self.slider.grid(row=0, column=3, rowspan=4, padx=5, pady=5, sticky=tk.NS)
+        self.slider.grid(row=0, column=3, rowspan=7, padx=5, pady=5, sticky=tk.NS)
 
         ''' button frame '''
         bottom_frm = tk.Frame(self.vol_frm, bg="#eeeeee")
@@ -14843,8 +15075,8 @@ class tvVolume:
             https://www.pippim.com/programs/mserve.html#HelpTvVolume '''
         ''' ⧉ Help - Videos and explanations on pippim.com '''
 
-        help_text = "Open new window in default web browser for\n"
-        help_text += "videos and explanations on using this screen.\n"
+        help_text = "Open a new window in the default web browser for\n"
+        help_text += "videos and explanations about this function.\n"
         help_text += "https://www.pippim.com/programs/mserve.html#\n"
 
         help_btn = tk.Button(
@@ -14959,38 +15191,6 @@ class tvVolume:
             Count=d['Count'], Seconds=d['Seconds'], Comments=d['Comments'])
         self.save_callback()  # This resets global TV_VOLUME variable for us
         return True
-
-    def get_config_for_loc(self, Type):
-        """ Wrapper Action is auto assigned as location or playlist number string
-            TODO:   Same function in MusicLocationTree() class and tvVolume() class.
-                    Awkward that tvVolume() class needs to be passed Playlists().
-        """
-        if NEW_LOCATION:
-            return None
-
-        if self.playlists.open_name:
-            Action = self.playlists.open_code
-        else:
-            Action = lcs.open_code
-        return sql.get_config(Type, Action)
-
-    def save_config_for_loc(self, Type, SourceMaster="", SourceDetail="", Target="",
-                            Size=0, Count=0, Seconds=0.0, Comments=""):
-        """ Wrapper Action is auto assigned as location or playlist number string
-            TODO:   Same function in MusicLocationTree() class and tvVolume() class.
-                    Awkward that tvVolume() class needs to be passed Playlists().
-        """
-        if NEW_LOCATION:
-            return None
-        if self.playlists.open_name:
-            Action = self.playlists.open_code
-        else:
-            Action = lcs.open_code
-
-        sql.save_config(
-            Type, Action, SourceMaster=SourceMaster, SourceDetail=SourceDetail,
-            Target=Target, Size=Size, Count=Count, Seconds=Seconds,
-            Comments=Comments)
 
     def close(self, *_args):
         """ Close Volume During TV Commercials Window """
@@ -15269,7 +15469,7 @@ class FileControl(FileControlCommonSelf):
             TODO: Huge time lag with .oga image of 10 MB inside 30 MB file.
         """
 
-        _who = self.who + "get_metadata():"
+        _who = self.who + "get_metadata(): "
         self.metadata = OrderedDict()
 
         # 2024-04-12 ffmpeg spams some error messages ~100 times
@@ -15372,13 +15572,13 @@ class FileControl(FileControlCommonSelf):
             print("\t", fname)
             return
 
-        #print(who + "Calling open(self.TMP_FFPROBE)")
+        #print(_who + "Calling open(self.TMP_FFPROBE)")
         in_dictionary = False  # Inside ffmpeg json_print 'loudnorm' filter dict()
         json_dict = {}
         with open(fname) as f:
             for line in f:
                 line = line.rstrip()  # remove \r and \n
-                #print(who + "line:", line)
+                #print(_who + "line:", line)
                 if not input_encountered:
                     if line.startswith('Input #0, '):
                         input_encountered = True
@@ -15387,8 +15587,11 @@ class FileControl(FileControlCommonSelf):
                     continue
 
                 if line.strip().upper().startswith("STREAM #0:"):
-                    # E.G. STREAM #0:0[0X1](UND):
-                    (key, val) = half_split(line, ':', 2)  # Split second colon
+                    # E.G. STREAM #0:1:	Video: png, rgba(pc), 225x225 ...
+                    parts = line.split(":")  # STREAM #0 | 1 | Video | png, rgba...
+                    key = ':'.join(parts[:2])  # STREAM #0:1
+                    val = ':'.join(parts[2:])  # Video: png, rgba(pc), 225x225 ...
+                    #(key, val) = deprecated_half_split(line, ':', 2)
                     
                     if " Hz, " in val:  # Audio rate for ffmpeg 'loudnorm'
                         # E.G. Audio: aac (LC) (mp4a / 0x6134706D), 44100 Hz, ste
@@ -15648,21 +15851,15 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilatio
         # 2024-04-12 Test text file of length 6 contains "N/A" for self.Duration
         convert = self.Duration.split('.') if self.Duration != "N/A" else None
         if convert:
-            try:
-                convert_out = convert_seconds(convert[0])  # Note must save in parent
-                if convert[1]:
-                    convert_out = str(convert_out) + "." + convert[1]
-                self.DurationSecs = float(convert_out)
-            except ValueError:
-                # 2024-04-12: Trap new error introduced with ffmpeg
-                # File "/home/rick/python/mserve.py", line 14455, in get_metadata
-                #     convert_out = convert_seconds(convert[0])  # Note must save in parent
-                #   File "/home/rick/python/mserve.py", line 20413, in convert_seconds
-                #     return sec_str + " seconds (" + min_str + " min: " + rem_str + " sec)"
-                # ValueError: invalid literal for int() with base 10: 'N/A'
-                print("convert = self.Duration.split('.') ValueError:",
-                      self.Duration)
-                exit()
+            # Grab segments between : in hh:mm:ss
+            #convert_out = deprecated_convert_seconds(convert[0])
+            seg = list(map(int, convert[0].split(':')))  # Python 3.x & 2.x
+            convert_out = sum(
+                n * sec for n, sec in zip(seg[::-1], (1, 60, 3600))
+            )
+            if convert[1]:  # fractions of second?
+                convert_out = str(convert_out) + "." + convert[1]
+            self.DurationSecs = float(convert_out)
         else:
             self.DurationSecs = 0.0  # Note must save in parent
 
@@ -21845,30 +22042,25 @@ FADE_OUT_SPAN = 400     # 1/5 second to fade out
 #       Independent (Stand Alone) Functions
 #
 # ==============================================================================
-def half_split(stg, sep, pos):
-    """ Split string in halves. e.g. position 2 instead of position 1.
-        From: https://stackoverflow.com/a/52008134/6929343
+def deprecated_storage_artwork(width, height):
     """
-    stg = stg.split(sep)
-    return sep.join(stg[:pos]), sep.join(stg[pos:])
-
-
-def play_padded_number(song_number, number_digits, prefix=NUMBER_PREFIX):
-    """ Pad song number with spaces to line up song name evenly
-        Called from refresh_acc_times() and build_chron_line()
+        Use image file stored in mserve directory as substitute
+        artwork for song. Do this when song file has no artwork. EG WAV
     """
-    padded_number = ""
-    if song_number is None:
-        print("mserve.py play_padded_number() received song_number '<type>None'")
-        song_number = "?"
-    this_digits = len(str(song_number))
-    pad_digits = number_digits - this_digits
-    for _ in range(pad_digits):
-        padded_number = padded_number + DIGIT_SPACE
-    return prefix + padded_number + str(song_number)
+
+    if not os.path.isfile(ARTWORK_SUBSTITUTE):
+        # Song has no artwork that ffmpeg can identify.
+        print("mserve.py storage_artwork() os.path.isfile(ARTWORK_SUBSTITUTE) " +
+              "failed test")
+        return None, None, None
+
+    original_art = Image.open(ARTWORK_SUBSTITUTE)
+    resized_art = original_art.resize(
+        (width, height), Image.ANTIALIAS)
+    return ImageTk.PhotoImage(resized_art), resized_art, original_art
 
 
-def make_ellipsis(text, cutoff):
+def deprecated_make_ellipsis(text, cutoff):
     """ Change: 'Long long long long' to: 'Long long...' """
     if not text:
         print("mserve.py make_ellipsis() no text passed")
@@ -21878,15 +22070,15 @@ def make_ellipsis(text, cutoff):
     return text
 
 
-def sec_min_str(seconds):
-    """ TV Hockey countdown remaining. """
-    sec_str = '%.0f' % seconds
-    min_str = '%.0f' % (seconds / 60)
-    rem_str = '%02d' % (seconds % 60)
-    return sec_str + " seconds (" + min_str + " min: " + rem_str + " sec)"
+def deprecated_half_split(stg, sep, pos):
+    """ Split string in halves. e.g. position 2 instead of position 1.
+        From: https://stackoverflow.com/a/52008134/6929343
+    """
+    stg = stg.split(sep)
+    return sep.join(stg[:pos]), sep.join(stg[pos:])
 
 
-def convert_seconds(s):
+def deprecated_convert_seconds(s):
     """ Convert duration d:hh:mm:ss to seconds """
     # Grab segments between : in hh:mm:ss
     if PYTHON_VER == "2":
@@ -22038,46 +22230,7 @@ def deprecated_sink_list(program):
     return indices
 
 
-def set_tv_sound_levels(start_percent, end_percent, _thread=None):
-    """
-        Set Firefox tv sound levels to given percentage
-        Ending percent is 25 when going down and 100 when going up
-    """
-    pav.get_all_sinks()
-    for Sink in pav.sinks_now:
-        if Sink.name == TV_SOUND:
-            pav.fade(Sink.sink_no_str, start_percent, end_percent, 1)
-
-
-def storage_artwork(width, height):
-    """
-        Use image file stored in mserve directory as substitute
-        artwork for song. Do this when song file has no artwork. EG WAV
-    """
-
-    if not os.path.isfile(ARTWORK_SUBSTITUTE):
-        # Song has no artwork that ffmpeg can identify.
-        print("mserve.py storage_artwork() os.path.isfile(ARTWORK_SUBSTITUTE) " +
-              "failed test")
-        return None, None
-
-    original_art = Image.open(ARTWORK_SUBSTITUTE)
-    resized_art = original_art.resize(
-        (width, height), Image.ANTIALIAS)
-    return ImageTk.PhotoImage(resized_art), resized_art, original_art
-
-
-DPRINT_ON = False
-
-
-def dprint(*args):
-    """ Debug printing """
-    global DPRINT_ON
-    if DPRINT_ON:
-        print(*args)
-
-
-def cat3(line, prefix, text):
+def deprecated_cat3(line, prefix, text):
     """ Concatenating texts with latin characters has error:
 
             UnicodeEncodeError: 'ascii' codec can't encode character
@@ -22095,7 +22248,7 @@ def cat3(line, prefix, text):
         return line + prefix + "????????"
 
 
-def get_dir(top, title, start):
+def deprecated_get_dir(top, title, start):
     """ Get directory name same function in location.py """
     root.directory = filedialog.askdirectory(initialdir=start,
                                              parent=top,
@@ -22103,7 +22256,7 @@ def get_dir(top, title, start):
     return root.directory
 
 
-def custom_paste(event):
+def deprecated_custom_paste(event):
     """ Allow paste to wipe out current selection. Doesn't work yet!
         From: https://stackoverflow.com/a/46636970/6929343
         July 23, 2023 - Fix and move to toolkit.py
@@ -22115,6 +22268,48 @@ def custom_paste(event):
         pass
     event.widget.insert("insert", event.widget.clipboard_get())
     return "break"
+
+
+def play_padded_number(song_number, number_digits, prefix=NUMBER_PREFIX):
+    """ Pad song number with spaces to line up song name evenly
+        Called from refresh_acc_times() and build_chron_line()
+    """
+    padded_number = ""
+    if song_number is None:
+        print("mserve.py play_padded_number() received song_number '<type>None'")
+        song_number = "?"
+    this_digits = len(str(song_number))
+    pad_digits = number_digits - this_digits
+    for _ in range(pad_digits):
+        padded_number = padded_number + DIGIT_SPACE
+    return prefix + padded_number + str(song_number)
+
+
+def hockey_remain_str(seconds):
+    """ TV Hockey countdown remaining for tooltips and messages. Format:
+        625 seconds (10 min: 25 sec) """
+    sec_str = '%.0f' % seconds
+    min_str = '%.0f' % (seconds / 60)
+    rem_str = '%02d' % (seconds % 60)
+    return sec_str + " seconds (" + min_str + " min: " + rem_str + " sec)"
+
+
+def set_tv_sound_levels(start_percent, end_percent, _thread=None):
+    """
+        Set Firefox tv sound levels to given percentage
+        Ending percent is 25 when going down and 100 when going up
+    """
+    pav.get_all_sinks()
+    for Sink in pav.sinks_now:
+        if Sink.name == TV_APP_NAME:
+            pav.fade(Sink.sink_no_str, start_percent, end_percent, 1)
+
+
+def dprint(*args):
+    """ Debug printing """
+    global DPRINT_ON
+    if DPRINT_ON:
+        print(*args)
 
 
 LODICT = {}  # Never change LODICT after startup!
@@ -22132,14 +22327,14 @@ def create_files():
         print("Created directory:", g.USER_DATA_DIR)
     except OSError:  # [Err no 17] File exists: '.../.local/share/mserve'
         print("Could not create directory:", g.USER_DATA_DIR)
-        return False
+        return
     # Open and Close will create SQL database
     sql.open_db(LCS=lcs)  # sql needs use open_xxx vars in Locations() class
     sql.set_db_version()  # user_version = 3 as of Aug 19/23.
     sql.close_db()
-    # create lc.FNAME_LOCATIONS
+    # create lc.FNAME_LOCATIONS ("locations" master file / lcs.LIST)
     lc.read()  # If no file, creates empty lc.LIST for favorites & last records
-    lc.write()  # LIST is empty and written as pickle
+    lc.write()  # Empty LIST written as pickle
     # create lc.FNAME_LAST_LOCATION is not needed now. It is saved at close
 
 
@@ -22292,6 +22487,13 @@ def open_files(old_cwd, prg_path, parameters, toplevel=None):
             print(text)  # Print to console and show message on screen at 100, 100
             message.ShowInfo(root, title=title, text=text, icon='error',
                              thread=dummy_thread)
+
+    def get_dir(top, title_text, start):
+        """ Get directory name same function in location.py """
+        root.directory = filedialog.askdirectory(initialdir=start,
+                                                 parent=top,
+                                                 title=title_text)
+        return root.directory
 
     lcs.open_code = 'new'
     lcs.open_name = music_dir
@@ -22478,7 +22680,7 @@ def main(toplevel=None, cwd=None, parameters=None):
         Should deleted highlighted text when paste is used.
         Only applies to X11 because other systems do it automatically. 
     """
-    root.bind_class("Entry", "<<Paste>>", custom_paste)  # X11 only test
+    root.bind_class("Entry", "<<Paste>>", toolkit.custom_paste)  # X11 only test
     ''' Set font style for all fonts including tkSimpleDialog.py '''
     img.set_font_style()  # Make messagebox text larger for HDPI monitors
     ''' Set program icon in taskbar '''

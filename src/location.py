@@ -631,7 +631,8 @@ def test(iid, toplevel):
 
 
 def get_dir(parent, title, start):
-    """ Get directory name. NOTE: June 6, 2023 - This function is in mserve.py already! """
+    """ Get directory name.
+        NOTE: June 6, 2023 - Identical function embedded in mserve.py main() """
     root.directory = filedialog.askdirectory(
         initialdir=start, parent=parent, title=title)
     return root.directory       # July 7, 2021 - used to be in brackets, didn't test
@@ -5330,6 +5331,8 @@ filename.
         #sql.hist_rename_type_action('Volume', 'Analyze', 'volume', 'detect_old')
         #sql.hist_rename_type_action('Volume', 'loudnorm', 'volume', 'loudnorm_1')
         #sql.hist_rename_type_action('Update', 'loudnorm', 'volume', 'loudnorm_2')
+        #sql.hist_rename_source_detail('volume', 'loudnorm_2', 'Analyze', 'Update')
+        #sql.hist_rename_source_detail('volume', 'loudnorm_2', 'Update', 'Create')
 
         #print("\nTally History Records for Volume Analysis and Update")
         ext.t_init('BEFORE History Records')
@@ -6430,12 +6433,12 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=$int
         json_dict["ar"] = ar  # m4a 192k -> 96k, mp3 192k -> 44.1k
 
         if music_id:
+            # 2024-06-30 - SourceDetail was 'Analyze' but 'Create' a better fit
             sql.hist_add_music_var(
                 music_id, 'volume', 'loudnorm_2', SourceMaster=loc,
-                SourceDetail='Analyze', Comments=comment,
+                SourceDetail='Create', Comments=comment,
                 Target=json.dumps(json_dict), Size=trg_size,
                 Seconds=round(end_ffmpeg - start_ffmpeg, 4))
-            # TODO: Add Music ID to a newly created special playlist
 
         ''' Insert song into treeview '''
         insert_tv_row()
@@ -6680,7 +6683,7 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
                 print(_who, "music_id:", music_id, "Invalid SQL row not found.")
                 return
         else:
-            music_row = OsBase = fake_path = trg_path = trg_path_new = None
+            music_row = fake_path = trg_path_new = None
 
         if music_row:
             OsBase = music_row['OsFileName']
@@ -6763,7 +6766,7 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
                 it appears "force inputs" give best results.
 
             """
-            title = "REDO loudness normalization"
+            _title = "REDO loudness normalization"
             text = Song + "\n\n"
             text += "All four steps of loudness normalization will be performed.\n"
             # Add up history record seconds for last run. If any were zero then
@@ -6898,6 +6901,8 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
         top.title(title)
 
         ''' Set program icon in taskbar '''
+        if taskbar == "metadata":
+            pass  # Use as SQL Key
         #img.taskbar_icon(top, 64, 'white', 'lightskyblue', 'black', char='S')
 
         # Trials to get out of taskbar
@@ -6913,7 +6918,7 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
             if self.win_grp:
                 self.win_grp.destroy_by_key(title)
             else:
-                top2 = top_save[0]
+                top2 = top_save[0]  # list holds shared variables
                 top2.destroy()
 
         ''' Bind <Escape>, <Alt>+F4 & Window's-X to close window '''

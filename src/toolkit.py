@@ -75,7 +75,12 @@ import re                   # w, h, old_x, old_y = re.split(r'\D+', geom)
 import copy
 import traceback            # To display call stack (functions that got us here)
 import locale               # Use decimals or commas for float remainder?
-
+try:
+    import subprocess32 as sp
+    SUBPROCESS_VER = '32'
+except ImportError:  # No module named subprocess32
+    import subprocess as sp
+    SUBPROCESS_VER = 'native'
 # mserve modules
 import global_variables as g
 if g.USER is None:
@@ -580,6 +585,33 @@ def tv_tag_remove_all(tv, old):
     for item in items:
         tv_tag_remove(tv, item, old, strict=True)
     return items
+
+
+def custom_paste(event):
+    """ Clipboard paste replaces current text selection.
+        Macro level doesn't work at all. Also Ctrl-Z (undo) works with error msgs.
+        Works at micro level. E.G.:
+            self.lyrics_score_box.bind("<<Paste>>", toolkit.custom_paste)
+
+        From: https://stackoverflow.com/a/46636970/6929343
+        July 23, 2023 - Fix and move to toolkit.py
+        2024-06-18 - Moved to toolkit.py as planned last year.
+    """
+    # noinspection PyBroadException
+    try:
+        event.widget.delete("sel.first", "sel.last")
+    except:
+        pass
+    event.widget.insert("insert", event.widget.clipboard_get())
+    return "break"
+
+
+def X_is_running():
+    """ Determine if xserver is running.
+        https://stackoverflow.com/a/1027942/6929343 """
+    p = sp.Popen(["xset", "-q"], stdout=sp.PIPE, stderr=sp.PIPE)
+    p.communicate()
+    return p.returncode == 0
 
 
 # ==============================================================================
@@ -1956,12 +1988,16 @@ class DictTreeview:
         top.bind("<Escape>", close)
         top.protocol("WM_DELETE_WINDOW", close)
 
-        ''' frame - Holds scrollable text entry '''
+        ''' frame - Holds scrollable text entry and close button '''
         frame = ttk.Frame(top, borderwidth=g.FRM_BRD_WID,
                           padding=(2, 2, 2, 2), relief=tk.RIDGE)
         frame.grid(column=0, row=0, sticky=tk.NSEW)
         ms_font = (None, g.MON_FONT)  # bs_font = bserve, ms_font = mserve
 
+        close_btn = tk.Button(
+            frame, width=g.BTN_WID, text="✘ Close", command=close)
+        close_btn.grid(row=1, column=0, padx=10, pady=5, sticky=tk.E)
+        
         ''' custom scrolled text box with pattern highlighting '''
         scrollbox = CustomScrolledText(
             frame, state="normal", font=ms_font, borderwidth=15, relief=tk.FLAT)
@@ -1970,9 +2006,20 @@ class DictTreeview:
         frame.rowconfigure(0, weight=1)
         frame.columnconfigure(0, weight=1)
 
-        pretty_row.scrollbox = scrollbox
+        #pretty_row.scrollbox = scrollbox
         pretty_row.search = search  # To highlight Search Words
-        sql.tkinter_display(pretty_row)  # Populate scrollbox
+        #sql.tkinter_display(pretty_row)  # Populate scrollbox
+
+        sql.pretty_display(pretty_row, scrollbox)  # 2024-06-09 - NEW version
+        # 2024-06-29 - sql.pretty_display is upgrade to sql.tkinter_display
+        # Does not work because:
+        #   File "/home/rick/python/mserve.py", line 6744, in <lambda>
+        #     search, pretty, x, y))
+        #   File "/home/rick/python/toolkit.py", line 2010, in pretty_sql_row
+        #     sql.pretty_display(pretty_row, scrollbox)
+        #   File "/home/rick/python/sql.py", line 3730, in pretty_display
+        #     use_uom = True if pretty.uom is True else False
+        # AttributeError: PrettyMusic instance has no attribute 'uom'
 
     def pretty_meta_row(self, FileControl, os_filename, info, x=None, y=None):
         """ Display pretty file metadata details using Data Dictionary of clicked row.
@@ -3146,6 +3193,17 @@ class SearchText:
         # Search text entry box
         self.entry = None  # input field for search string
 
+        ''' Cannot conduct search when Row SQL Details (RSD) are viewed. '''
+        if self.view.rsd_top_is_active:
+            title = 'Text search disabled.'
+            text = 'Row SQL Details window must be closed before Text Search.'
+            #print(self.who + '__init__(): Text search disabled.')
+            #print('self.view.rsd_top_is_active - Close details window.')
+            # .Show
+            message.ShowInfo(self.toplevel, title, text, thread=self.get_thread_func)
+            self.toplevel = None  # Signal inactive
+            return
+
         ''' keypress search variables '''
         self.keypress_waiting = None  # A keypress is waiting
         self.search_text = tk.StringVar()
@@ -3309,8 +3367,15 @@ class SearchText:
             if self.keypress waiting is False then reattach from last search.
 
         """
+        ''' Cannot conduct search when Row SQL Details (RSD) are viewed. '''
+        if self.view.rsd_top_is_active:
+            #print(self.who + 'find(): Text search disabled.')
+            #print('self.view.rsd_top_is_active - Close details window.')
+            # message already displayed in init
+            return
+
         if self.find_str is not None:
-            print('toolkit.py.SearchText.find_column() should have been called.')
+            print(self.who + '.find(): find_column() should have been called.')
             self.find_column()
             return
 
