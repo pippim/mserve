@@ -61,8 +61,8 @@ WIN_MIN_HEIGHT = 63     # resizing to shrink too much
 # Older Global variables from mmm (multiple monitors manager), so need renaming.
 BIG_FONT = 18           # Font size not used
 LARGE_FONT = 14         # Font size not used
-MON_FONTSIZE = 12       # Font size for monitor name
-WIN_FONTSIZE = 11       # Font size for Window name
+MON_FONTSIZE = 12       # Size commonly used across most modules
+WIN_FONTSIZE = 11       # Default size set in image.set_font_style()
 MED_FONT = 10           # Medium Font size
 MON_FONT = 12           # Alias to MON_FONTSIZE (Historical names need revamping) 
 

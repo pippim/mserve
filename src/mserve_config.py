@@ -689,7 +689,7 @@ def make_img_cfg():
     cfg.append(make_dict(m, "namedtuple", "collections"))
     cfg.append(make_dict(m, None, "x11", "pippim.com"))  # Under review
     cfg.append(make_dict(m, "ext", "external", "pippim.com"))
-    cfg.append(make_dict(m, None, "monitor", "pippim.com"))  # Not "as mon"
+    cfg.append(make_dict(m, "mon", "monitor", "pippim.com"))
     return cfg
 
 

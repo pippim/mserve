@@ -21,6 +21,7 @@ from __future__ import with_statement  # Error handling for file opens
 #       July 12 2023 - Interface to/from mserve_config.py
 #       Mar. 30 2024 - TCombobox drop down arrow image styling
 #       Apr. 16 2024 - ffmpeg 6.1 artwork now (R, G, B, Alpha). Before RGB only
+#       July 06 2027 - import monitor as mon. Utilize global_variables.py
 #
 #==============================================================================
 
@@ -50,13 +51,11 @@ import datetime
 import io
 from collections import namedtuple
 
+import global_variables as g
 import x11                  # x11 wrapper functions for GoneFishing() class
 import external as ext
-import monitor              # Screen, Monitor and Window functions
-
-
-MON_FONTSIZE = 12                   # Font size for monitor name
-WIN_FONTSIZE = 11                   # Font size for Window name
+import monitor as mon       # Screen, Monitor and Window functions
+import toolkit
 
 # Make Gradient image below from: https://stackoverflow.com/a/32532502/6929343
 BLACK, DARK_GRAY, GRAY = ((0, 0, 0), (63, 63, 63), (127, 127, 127))
@@ -548,12 +547,34 @@ def set_font_style():
     """ Globally set font style of widgets """
 
     # Used by get_dir, save_items and load_items
-    # Nov 15, 2020 copy from mserve to encoding,py to try in tkSimpleDialog
-    #style = ttk.Style(root)
+    # Nov 15, 2020 copy from mserve to encoding.py to try in tkSimpleDialog
     style = ttk.Style()
-    style.configure('.', font=(None, WIN_FONTSIZE))
-    text = font.nametofont("TkTextFont")  # TkDefaultFont changes buttons
-    text.configure(size=MON_FONTSIZE)
+    style.configure('.', font=(None, g.WIN_FONTSIZE))
+    _text = font.nametofont("TkTextFont")  # TkDefaultFont changes buttons
+    ''' Display font attributes 
+    print("'TkTextFont'  | family:", _text['family'], " | size:", _text['size'],
+          " | weight:", _text['weight'])
+    print("\t\tslant:", _text['slant'], " | underline:", _text['underline'],
+          " | overstrike:", _text['overstrike'])
+    # 'TkTextFont'  | family: sans-serif  | size: -12  | weight: normal
+    # 		slant: roman  | underline: 0  | overstrike: 0
+    '''
+
+    #print(_text.actual())
+    # {'family': 'DejaVu Sans', 'weight': 'normal', 'slant': 'roman',
+    # 'overstrike': 0, 'underline': 0, 'size': 0}
+
+    _text.configure(size=g.MON_FONTSIZE)
+
+    _text = font.nametofont("TkDefaultFont")  # TkDefaultFont changes buttons
+    ''' Display font attributes 
+    print("'TkDefaultFont'  | family:", _text['family'], " | size:", _text['size'],
+          " | weight:", _text['weight'])
+    print("\t\t | slant:", _text['slant'], " | underline:", _text['underline'],
+          " | overstrike:", _text['overstrike'])
+    # 'TkDefaultFont'  | family: sans-serif  | size: -12  | weight: normal
+    # 	               | slant: roman  | underline: 0  | overstrike: 0
+    '''
 
     # from example # 7 in program creek:
     # https://www.programcreek.com/python/example/104617/tkinter.font.nametofont
@@ -573,13 +594,18 @@ def set_font_style():
         default_font = font.nametofont(typ)
         #default_font.configure(size=self.font_size,
         #                       weight=ww[self.font_weight], family=ff)
-        default_font.configure(size=WIN_FONTSIZE) 
+        default_font.configure(size=g.WIN_FONTSIZE)
+
+    _text = font.nametofont("TkTextFont")  # TkDefaultFont changes buttons
+    #print("TkTextFont:", _text.actual())
+    # TkTextFont: {'family': 'DejaVu Sans', 'weight': 'normal', 
+    # 'slant': 'roman', 'overstrike': 0, 'underline': 0, 'size': 11}
 
     ''' old code in mserve '''
     icon = font.nametofont("TkIconFont")  # TkDefaultFont changes buttons
-    icon.configure(size=MON_FONTSIZE)
+    icon.configure(size=g.MON_FONTSIZE)
     dialog = font.nametofont("TkCaptionFont")  # Dialog Box text
-    dialog.configure(size=WIN_FONTSIZE)
+    dialog.configure(size=g.WIN_FONTSIZE)
 
 
 def m_splash_image(hgt, out_c, fill_c, text_c, char="M"):
@@ -911,7 +937,7 @@ class RoundedRectangle(RoundedButton):
 
     '''
 
-    def __init__(self, parent, text, color, bg, ms_font=(None, WIN_FONTSIZE),
+    def __init__(self, parent, text, color, bg, ms_font=(None, g.WIN_FONTSIZE),
                  command=None, stretch=True):
 
         # As of June 10/2021 mserve 'ms_font' is '(None, SIZE)' tuple.
@@ -1044,9 +1070,13 @@ P = PyCharm
 
     """
 
-    def __init__(self, parent, ms_font=(None, WIN_FONTSIZE * 4)):
+    def __init__(self, parent, TV_MONITOR, TV_MOVE_WINDOW,
+                 TV_MOVE_WITH_COMPIZ):
 
         self.src_toplevel = parent          # mserve play_top
+        self.trg_monitor = TV_MONITOR
+        self.move_src_to_trg = TV_MOVE_WINDOW
+        self.move_with_compiz = TV_MOVE_WITH_COMPIZ
         self.shark_pid = None
         self.man_pid = None
         self.src_cover_top = None
@@ -1054,13 +1084,16 @@ P = PyCharm
         self.trg_was_above = None
         self.src_was_below = None
         self.place_in_plugins = False
+        self.who = "image.py GoneFishing()."
+        self.shark_name = "shark.png"
+        self.shark_alpha_name = "shark_alpha.png"
+        self.man_falling_name = "man falling.png"
 
         # geometry of target window - Do this first to ensure window exists!
         self.trg_window_id_hex, trg_geom = self.trg_get_window_id()
         if self.trg_window_id_hex is None:
             # No target window, tell functions there is no shark window
-            self.shark_window_id_dec = None     # plot_move() and shark_move()
-            print("No target window to go fishing on. Needed at x,y coordinates 0,0")
+            self.shark_window_id_dec = None  # plot_move() and shark_move()
             return
 
         self.src_cover_top = None           # Gone Fishing placeholder window
@@ -1078,7 +1111,7 @@ P = PyCharm
         self.on_x_axis = None               # Are we traversing x-axis?
         self.on_y_axis = None               # Are we traversing y-axis?
         self.direction_x = None             # 'left' or 'right' movement
-        self.direction_y = None             # 'up' or 'down' movement (first)
+        self.direction_y = None             # 'up' or 'down' movement
         self.src_window_moved = None        # Is source window overtop target?
         self.old_compiz_plugins = self.get_gsettings()
         self.place_in_plugins = False       # Compiz doesn't contain: 'place',
@@ -1093,7 +1126,7 @@ P = PyCharm
 
         # Use monitor function that compensates for window decoration
         self.src_x, self.src_y, self.src_w, self.src_h = \
-            monitor.get_window_geom_raw(self.src_toplevel)
+            mon.get_window_geom_raw(self.src_toplevel)
         src_geom = (self.src_x, self.src_y, self.src_w, self.src_h)
         # Using X lib to get geom....
         self.src_wm_window_geom = self.src_wm_window.get_geometry()
@@ -1110,7 +1143,7 @@ P = PyCharm
         self.src_cover_top.grid_rowconfigure(0, weight=1)
 
         ''' TODO: Put screenshot image into source cover '''
-        #self.src_window_id_hex = monitor.wm_get_active_window()
+        #self.src_window_id_hex = mon.wm_get_active_window()
         #print(self.src_cover_top.put_pil_image())
 
         # create and pack the canvas. Then load image file
@@ -1124,7 +1157,7 @@ P = PyCharm
         src_frame.grid(column=0, row=0, sticky=tk.NSEW)
         src_frame.grid_columnconfigure(0, weight=1)
         src_frame.grid_rowconfigure(0, weight=1)
-
+        ms_font = (None, 48)
         src_label = tk.Label(src_frame, text="Gone Fishing", fg="red",
                              bg="black", font=ms_font)
         src_label.grid(column=0, row=0, sticky=tk.NSEW)
@@ -1143,7 +1176,7 @@ P = PyCharm
         # Apply shark silhouette - based on: m_circle_splash_image
         # TODO: Shark is facing left. If Man to right, flip horizontally.
         #shark_img = Image.open('shark.png').convert('L').resize(self.src_img.size)
-        shark_img = Image.open('shark.png').convert('L').resize(
+        shark_img = Image.open(self.shark_name).convert('L').resize(
             (self.src_geom.width, self.src_geom.height))
 
         # Invert black & transparent:
@@ -1156,7 +1189,7 @@ P = PyCharm
 
         # Blend raw image and silhouette
         self.src_img.putalpha(shark_blur)
-        self.src_img.save("shark_alpha.png")
+        self.src_img.save(self.shark_alpha_name)
 
         # At this point make window undecorated, don't do it sooner!
         # From: https://stackoverflow.com/a/37199655/6929343
@@ -1167,9 +1200,8 @@ P = PyCharm
         fudge_y = str(src_geom[1] + 24)
         # fudge_x = str(src_geom[0])
         # fudge_y = str(src_geom[1])
-        shark_alpha_name = " shark_alpha.png"
         ext_name = 'pqiv -c -i -P ' + fudge_x + ',' + fudge_y +\
-                   " " + shark_alpha_name
+                   " " + self.shark_alpha_name
 
         # Place the shark over source window and get it's PID
         ''' Need option to wait for GUI window to open! '''
@@ -1181,8 +1213,9 @@ P = PyCharm
         #ext.t_end('print')
 
         self.shark_window_id_dec = \
-            x11.wait_visible_name('pqiv:' + shark_alpha_name, self.src_toplevel, 33, 100)
-
+            x11.wait_visible_name(
+                'pqiv: ' + self.shark_alpha_name, self.src_toplevel, 33, 100
+            )
         if self.shark_window_id_dec is None:
             print('Waited ' + str(33 * 100 / 1000) + ' seconds but no shark appeared')
             return
@@ -1217,7 +1250,7 @@ P = PyCharm
         fudge_x = str(trg_geom[0] + 450)
         fudge_y = str(trg_geom[1] + 200)
         ext_name = 'pqiv -c -c -i -P ' + fudge_x + ',' + fudge_y +\
-                   ' "man falling.png"'
+                   ' "' + self.man_falling_name + '"'
         #print('ext_name:', ext_name)
 
         # Place the "man falling" over target window and get it's PID
@@ -1241,7 +1274,6 @@ P = PyCharm
         os.popen(
             'gsettings set org.compiz.core:/org/compiz/profiles/unity/plugins/core/' +
             ' active-plugins ' + '"' + settings + '"')
-
 
     def plot_move(self, iterations):
         """ How much to move window each step depends on:
@@ -1284,14 +1316,12 @@ P = PyCharm
         # monitors. However there are screen resets with disappearing windows
         # for a couple seconds from time to time. Keeping "place" has shark
         # pause at monitor edge then "jump" into the next monitor.
-        '''
-        if "'place', " in self.old_compiz_plugins:
+        if self.move_with_compiz and "'place', " in self.old_compiz_plugins:
             self.place_in_plugins = True
-            override = self.old_compiz_plugins.replace("'place', ", '')
+            override = self.old_compiz_plugins.replace("'place', ", "")
             #print('override:', override)
             self.set_gsettings(override)
-        '''
-        
+
     def shark_move(self):
         """ How much to move window each step depends on:
             distance / duration / interval
@@ -1301,6 +1331,7 @@ P = PyCharm
 
             Move center of shark to center of man.
         """
+        _who = self.who + "shark_move():"
         if self.shark_window_id_dec is None:
             print("image.py GoneFishing.shark_move() shark_window_id_dec is None")
             # June 10, 2023 - Gazillion error messages for above
@@ -1383,6 +1414,13 @@ active-plugins "['core', 'composite', 'opengl', 'regex', 'mousepoll',
         self.x11_move_window(self.shark_window_id_dec, self.curr_x, self.curr_y,
                              self.src_w, self.src_h)
 
+        ''' 2024-07-07 - Below test is successful. Comment out to save time.
+        if self.place_in_plugins:
+            settings = self.get_gsettings()
+            if "place" in settings:
+                print(_who, "'place' still in gsettings after removal.")
+        '''
+
         # Set for next iteration
         if self.on_x_axis:
             if self.curr_x == self.trg_x:
@@ -1395,7 +1433,6 @@ active-plugins "['core', 'composite', 'opengl', 'regex', 'mousepoll',
 
         return self.on_y_axis, self.on_x_axis
 
-
     def move_src_toplevel(self):
         """ Move source toplevel (self.play_top) over target window.
             At this time shark has finished eating man.
@@ -1405,7 +1442,7 @@ active-plugins "['core', 'composite', 'opengl', 'regex', 'mousepoll',
         self.src_toplevel.geometry('+{}+{}'.
                                    format(self.trg_x, self.trg_y))
         #self.src_toplevel.overrideredirect(1)    # Turn off decorations
-        _mon_dict = monitor.center(self.src_toplevel)
+        _mon_dict = mon.center(self.src_toplevel)
         self.src_toplevel.deiconify()  # Forces window to appear
         self.src_toplevel.update_idletasks()
         self.src_window_moved = True
@@ -1415,7 +1452,6 @@ active-plugins "['core', 'composite', 'opengl', 'regex', 'mousepoll',
             self.set_gsettings(self.old_compiz_plugins)  # Old is restored twice
             self.place_in_plugins = False
 
-
     @staticmethod
     def x11_move_window(window_id_dec, x, y, width, height):
         """ Use x11 library to move window From:
@@ -1424,14 +1460,15 @@ active-plugins "['core', 'composite', 'opengl', 'regex', 'mousepoll',
 
         import Xlib.display
 
+        ext.t_init("x11_move_window")
         d = Xlib.display.Display()
         window = d.create_resource_object('window', window_id_dec)
         window.configure(x=x, y=y, width=width, height=height, border_width=0,
                          stack_mode=Xlib.X.Above)
+        ext.t_end('no_print')  # 2024-07-07 - mostly 0.003, ten 0.01 and one 0.1
         d.sync()
 
-    @staticmethod
-    def trg_get_window_id():
+    def trg_get_window_id(self):
         """  TEMPORARY: Largest window on monitor at 0,0 is the target window.
 
             TODO: Get desktop size EG 5760x3240 and skip this as a window
@@ -1456,6 +1493,42 @@ active-plugins "['core', 'composite', 'opengl', 'regex', 'mousepoll',
                 0  * DG: 5790x3240  VP: 0,0  WA: 0,24 5790x3216  N/A
 
         """
+
+        _who = self.who + "trg_get_window_id():"
+        good_to_go = True
+        if not ext.check_command('gsettings'):
+            print(_who, "gsettings is not installed.")
+            good_to_go = False
+        if not ext.check_command('wmctrl'):
+            print(_who, "wmctrl is not installed.")
+            good_to_go = False
+        if not ext.check_command('xrandr'):
+            print(_who, "xrandr is not installed.")
+            good_to_go = False
+        if not ext.check_command('pqiv'):
+            print(_who, "pqiv is not installed.")
+            good_to_go = False
+        if not toolkit.X_is_running():
+            print(_who, "X is not running.")
+            good_to_go = False
+        if not os.path.isfile(g.PROGRAM_DIR + self.shark_name):
+            print(_who, self.shark_name + " image file not found.")
+            good_to_go = False
+        if not os.path.isfile(g.PROGRAM_DIR + self.shark_alpha_name):
+            print(_who, self.shark_alpha_name + " image file not found.")
+            good_to_go = False
+        if not os.path.isfile(g.PROGRAM_DIR + self.man_falling_name):
+            print(_who, self.man_falling_name + " image file not found.")
+            good_to_go = False
+        if self.trg_monitor is None:  # Monitor #0 will fail 'not' test.
+            print(_who, "Target monitor not defined.")
+            good_to_go = False
+        if not self.move_src_to_trg:
+            print(_who, "Move to TV monitor not requested.")
+            good_to_go = False
+
+        if not good_to_go:
+            return None, None
 
         all_windows = os.popen('wmctrl -lG').read().strip().splitlines()
         # print('all_windows:', len(all_windows), all_windows)
@@ -1492,6 +1565,10 @@ active-plugins "['core', 'composite', 'opengl', 'regex', 'mousepoll',
             last_geom = geom
             last_window = wid
 
+        if last_window is None:
+            print(_who, "\n\tTarget window not found for mserve Music Player")
+
+        #print(_who, "\n\tlast_window:", last_window, " | last_geom:", last_geom)
         return last_window, last_geom
 
     def win_remove_above(self):
@@ -1774,7 +1851,7 @@ def create_text(x1, y1, **kwargs):
         ShadowColor="black"
         create_text(x1, y1 + PANEL_HGT/SCALE, text"stuff", fill=InvertColor, \
                      shadow_fill=ShadowColor, thick=2, \
-                     anchor="nw", font=(None, MON_FONTSIZE))
+                     anchor="nw", font=(None, g.MON_FONTSIZE))
 
 
     """

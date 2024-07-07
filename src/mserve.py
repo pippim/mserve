@@ -656,6 +656,8 @@ TV_MONITOR = 0  # Monitor hosting Hockey TV broadcast
 TV_MOVE_WINDOW = True  # During TV commercials, play window moves over top
 TV_WINDOW_ANCHOR = "center"  # Center play window on Hockey monitor
 TV_MOVE_WITH_COMPIZ = False  # Smooth monitor jump but prone to glitches
+COMPIZ_FISHING_STEPS = 90  # May 18, 2023 when 100 steps windows disappear
+# 2024-07-07 - When 100 steps Monitors freeze and mouse only moves in eDP-1
 
 ''' Update last access time after X % of song has been played. '''
 ATIME_THRESHOLD = 80    # playing 80% of song updates last access to now.
@@ -668,7 +670,6 @@ REW_FF_SECS = "10"
 REW_CUTOFF = 12         # If current less than cutoff, play previous song
 
 PRUNED_COUNT = 0  # sys arg topdir = 0, artist = 1, album = 2
-COMPIZ_FISHING_STEPS = 100  # May 18, 2023 when 100 steps windows disappear
 # for a few seconds & system freezes once. It was compiz 'place' window bug.
 
 # When no artwork for song use this image file
@@ -1734,7 +1735,7 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
         """ Compare pid to know pids and return correct sink number
             2024-05-22 - check_sinks() replaces need for force_sink()
         """
-        prt_time = datetime.datetime.now().strftime("%M:%S.%f")[:-2]
+        prt_time = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-2]
         title = self.who + "force_sink() " + prt_time + ": "
         pav.get_all_sinks()  # Populate pav.sinks_now
         for Sink in pav.sinks_now:
@@ -1759,7 +1760,7 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
     
     def check_sinks(self):
         """ Compare pid to know PulseAudio pids and return correct sink number """
-        prt_time = datetime.datetime.now().strftime("%M:%S.%f")[:-2]
+        prt_time = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-2]
         title = self.who + "check_sinks() " + prt_time + ": "
         pav.get_all_sinks()  # Populate pav.sinks_now
 
@@ -4954,10 +4955,9 @@ Call search.py when these control keys occur
 
         self.tv_vol = tvVolume(top=self.lib_top, tooltips=self.tt,
                                thread=self.get_refresh_thread,
-                               save_callback=self.get_hockey_state,
                                playlists=self.playlists, info=self.info,
-                               get_config_for_loc=self.get_config_for_loc,
-                               save_config_for_loc=self.save_config_for_loc)
+                               get_config=self.get_hockey_state,
+                               save_config=self.save_hockey_state)
 
     def calculator_open(self):
         """ Big Number Calculator allows K, M, G, T, etc. UoM """
@@ -9011,7 +9011,8 @@ Call search.py when these control keys occur
 
         ''' GoneFishing gobbles up big screen with shark '''
         ext.t_init('Gone Fishing')
-        self.gone_fishing = img.GoneFishing(self.play_top)
+        self.gone_fishing = img.GoneFishing(
+            self.play_top, TV_MONITOR, TV_MOVE_WINDOW, TV_MOVE_WITH_COMPIZ)
         # TODO: After hockey ends, remove "Always on Top" attribute from play_top
         ext.t_end('no_print')  # Time was: 1.3247601986
 
@@ -9035,7 +9036,7 @@ Call search.py when these control keys occur
         if not self.play_hockey_active:
             return  # Play hockey not active?
 
-        if self.gone_fishing is not None:
+        if self.gone_fishing and self.gone_fishing.shark_window_id_dec:
             self.gone_fishing.shark_move()  # Move shark closer to falling man
 
         if elapsed < self.play_hockey_secs:
@@ -11793,9 +11794,11 @@ mark set markName index"
             except (tk.TclError, IOError) as _err:
                 # Song has no artwork that ffmpeg can identify.
                 print("mserve.py set_artwork_colors():",
-                      "os.path.isfile(ARTWORK_SUBSTITUTE) failed test")
-                print(ARTWORK_SUBSTITUTE)
+                      "'ARTWORK_SUBSTITUTE' failed test:")
+                print("\t" + ARTWORK_SUBSTITUTE)
                 print(_err)  # File not found or invalid image file
+                global ARTWORK_SUBSTITUTE
+                ARTWORK_SUBSTITUTE = None  # Print error once, don't try again
 
         if self.play_current_song_art is None:
             self.play_no_art()  # Use "No Artwork" image
@@ -12216,7 +12219,7 @@ mark set markName index"
         Comments = "Chronology (playlist) 'Show' or 'Hide'"
         self.save_config_for_loc('chron_state', state, Comments=Comments)
 
-    def get_hockey_state(self):
+    def get_hockey_state(self, set_menu=True):
         """ Get saved state for Hockey TV Commercial Buttons and Volume 
 
 Defined top of file mserve.py:
@@ -12258,10 +12261,12 @@ TV_MOVE_WITH_COMPIZ = False  # Smooth monitor jump but prone to glitches
             TV_WINDOW_ANCHOR = tv_dict['TV_WINDOW_ANCHOR']
             TV_MOVE_WITH_COMPIZ = tv_dict['TV_MOVE_WITH_COMPIZ']
 
-        # Hockey volume can now be changed. Note description must MATCH EXACTLY
-        self.edit_menu.entryconfig("Volume During TV Commercials", state=tk.NORMAL)
-
-        return hockey_state
+        if set_menu:  # Do not set menu when called from tvVolume() class callback
+            # Hockey volume can now be changed. Note description must MATCH EXACTLY
+            self.edit_menu.entryconfig(
+                "Volume During TV Commercials", state=tk.NORMAL
+            )
+        return hockey_state  # "On" or "Off"
 
     def save_hockey_state(self):
         """ Save state for Hockey TV Commercial Buttons and Volume """
@@ -14879,10 +14884,8 @@ class tvVolume:
 
     self.tv_vol = tvVolume(parent, name, title, text, tooltips=self.tt,
                            thread=self.get_refresh_thread,
-                           save_callback=self.save_callback
                            playlists=self.playlists, info=self.info)
           - Music must be playing (name=ffplay) or at least a song paused.
-          - save_callback=function that will reread new variables saved.
 
     if self.tv_vol and self.tv_vol.top:
         - Volume top level exists so lift() overtop of self.lib_top
@@ -14892,34 +14895,27 @@ class tvVolume:
     """
 
     def __init__(self, top=None, name="ffplay", title=None, text=None,
-                 tooltips=None, thread=None, save_callback=None, playlists=None,
-                 info=None, get_config_for_loc=None, save_config_for_loc=None):
+                 tooltips=None, thread=None, playlists=None,
+                 info=None, get_config=None, save_config=None):
         """
         """
         # self-ize parameter list
-        self.parent = top    # self.parent
-        self.name = name            # Process name to search for current volume
-        self.title = title          # E.G. "Set volume for mserve"
-        self.text = text            # "Adjust mserve volume to match other apps"
-        self.tt = tooltips          # Tooltips pool for buttons
+        self.parent = top  # self.parent is self.lib_top
+        self.name = name  # Process name to search for current volume
+        self.title = title  # E.G. "Set volume for mserve"
+        self.text = text  # "Adjust mserve volume to match other apps"
+        self.tt = tooltips  # Tooltips pool for buttons
         self.get_thread_func = thread  # E.G. self.get_refresh_thread
-        self.save_callback = save_callback  # Set hockey fields to new values
         self.playlists = playlists
         self.info = info
-        self.get_config_for_loc = get_config_for_loc
-        self.save_config_for_loc = save_config_for_loc
+        self.get_config = get_config  # get_hockey_state
+        self.save_config = save_config  # save_hockey_state
 
         self.last_sink = None
         self.last_volume = None
         self.curr_volume = None
         self.slider = None
-        if self.save_callback is None:
-            toolkit.print_trace()
-            print("mserve.py tvVolume() class self.save_callback is 'None'")
-            return
-        else:
-            #print("Test self.save_callback():", self.save_callback)
-            pass
+        self.mon = None  # Monitors() class
 
         ''' Regular geometry is no good. Linked to lib_top is better '''
         self.top = tk.Toplevel()
@@ -14963,23 +14959,12 @@ class tvVolume:
                  font=ms_font)\
             .grid(row=0, column=0, columnspan=3, sticky=tk.W, padx=PAD_X)
 
-        ''' 
-Defined top of file mserve.py:
-TV_APP_NAME = "Firefox"  # Hockey TV application running on Firefox browser
-TV_VOLUME = 60  # Hockey TV mserve plays music at 60% volume level
-TV_BREAK1 = 90  # Hockey TV commercial break is 90 seconds
-TV_BREAK2 = 1080  # Hockey TV intermission is 18 minutes
-TV_MONITOR = 0  # Monitor hosting Hockey TV broadcast
-TV_MOVE_WINDOW = True  # During TV commercials, play window moves over top
-TV_WINDOW_ANCHOR = "center"  # Center play window on Hockey monitor
-TV_MOVE_WITH_COMPIZ = False  # Smooth monitor jump but prone to glitches        
-        '''
-
         ''' Create images for checked and unchecked radio buttons '''
         box_height = int(g.MON_FONTSIZE * 2.2)
         self.radio_boxes = img.make_checkboxes(box_height, 'WhiteSmoke',
-                                               'LightGray', 'Green')
-                                               #'Red', 'Green')
+                                               #'Red', 'Green'
+                                               'LightGray', 'Green'
+                                               )
 
         def check_button_var(txt, scr_name, row, col):
             """ Create TK label text and radio box value. """
@@ -14999,7 +14984,7 @@ TV_MOVE_WITH_COMPIZ = False  # Smooth monitor jump but prone to glitches
         self.tv_window_anchor = tk.StringVar()
         self.tv_move_with_compiz = tk.BooleanVar()
         self.tv_monitor = tk.StringVar()
-        mon = monitor.Monitors()
+        self.mon = monitor.Monitors()
         """
         mon.string_list:
             Screen 1, HDMI-0, 1920x1080, +0+=0
@@ -15029,17 +15014,16 @@ TV_MOVE_WITH_COMPIZ = False  # Smooth monitor jump but prone to glitches
                  font=ms_font).grid(row=3, column=1, sticky=tk.W)
         tk.Label(self.vol_frm, text="TV Monitor:", bg="#eeeeee",
                  font=ms_font).grid(row=4, column=0, sticky=tk.W)
-        ttk.Combobox(self.vol_frm, textvariable=self.tv_monitor, bg="#eeeeee",
-                     height=len(mon.string_list), values=mon.string_list,
-                     width=len(mon.string_list[0]), state="readonly",
+        # 2024-07-04 - Style needed to change color of 'readonly'
+        # https://stackoverflow.com/a/18610520/6929343
+        ttk.Combobox(self.vol_frm, textvariable=self.tv_monitor,
+                     height=len(self.mon.string_list), values=self.mon.string_list,
+                     width=len(self.mon.string_list[0]), state="readonly",
                      font=ms_font).grid(row=4, column=1, sticky=tk.W)
         _fld_move_window = check_button_var(
             "Move play window to TV?", self.tv_move_window, 5, 0)
         _fld_move_with_compiz = check_button_var(
             "Tricky move with Compiz?", self.tv_move_with_compiz, 6, 0)
-        self.tv_monitor.set(mon.string_list[TV_MONITOR])
-        self.tv_move_window.set(TV_MOVE_WINDOW)
-        self.tv_move_with_compiz.set(TV_MOVE_WITH_COMPIZ)
         ''' 
 Defined top of file mserve.py:
 TV_APP_NAME = "Firefox"  # Hockey TV application running on Firefox browser
@@ -15144,15 +15128,17 @@ TV_MOVE_WITH_COMPIZ = False  # Smooth monitor jump but prone to glitches
         """ Get last saved volume.  Based on get_hockey. If nothing found
             set defaults. """
         self.curr_volume = 100  # mserve volume when TV commercial on air
-        d = self.get_config_for_loc('hockey_state')
-        if d is None:
+        if not self.get_config(set_menu=False):
             return None
-        ''' Get hockey tv commercial volume '''
-        if 25 <= int(d['Size']) <= 100:
-            self.curr_volume = int(d['Size'])
-        self.commercial_secs.set(d['Count'])
-        self.intermission_secs.set(int(d['Seconds']))
-        self.tv_application.set(d['SourceDetail'])
+
+        ''' Setup screen fields  '''
+        self.curr_volume = TV_VOLUME
+        self.commercial_secs.set(TV_BREAK1)
+        self.intermission_secs.set(TV_BREAK2)
+        self.tv_application.set(TV_APP_NAME)
+        self.tv_monitor.set(self.mon.string_list[TV_MONITOR])
+        self.tv_move_window.set(TV_MOVE_WINDOW)
+        self.tv_move_with_compiz.set(TV_MOVE_WITH_COMPIZ)
         if self.last_volume:
             pav.fade(self.last_sink, self.last_volume, self.curr_volume, 1)
         self.slider.set(self.curr_volume)
@@ -15160,36 +15146,60 @@ TV_MOVE_WITH_COMPIZ = False  # Smooth monitor jump but prone to glitches
         return True
 
     def save_vol(self):
-        """ Save volume setting during TV Hockey Broadcast Commercials """
+        """ Save volume setting during TV Hockey Broadcast Commercials
 
-        ''' Reread hockey state in case user changed after set_tv_volume started '''
-        d = self.get_config_for_loc('hockey_state')
+        From: MusicLocationTree().self.save_hockey_state():
+
+        Comments = "Hockey TV Commercial Buttons used?"
+        tv_dict = dict()
+        tv_dict['TV_MONITOR'] = TV_MONITOR
+        tv_dict['TV_MOVE_WINDOW'] = TV_MOVE_WINDOW
+        tv_dict['TV_WINDOW_ANCHOR'] = TV_WINDOW_ANCHOR
+        tv_dict['TV_MOVE_WITH_COMPIZ'] = TV_MOVE_WITH_COMPIZ
+        Target = json.dumps(tv_dict)
+
+        self.save_config_for_loc(
+            'hockey_state', state, TV_APP_NAME, Size=TV_VOLUME, Count=TV_BREAK1,
+            Seconds=float(TV_BREAK2), Target=Target, Comments=Comments)
+
+        """
+
+        global TV_APP_NAME, TV_VOLUME, TV_BREAK1, TV_BREAK2
+        global TV_MONITOR, TV_MOVE_WINDOW, TV_MOVE_WITH_COMPIZ
+
         # If we don't rewrite fields they get blanked out. Action=Location
         try:
-            d['Count'] = int(self.commercial_secs.get())  # int() wrapper not needed
-            d['Size'] = float(self.intermission_secs.get())
+            TV_BREAK1 = self.commercial_secs.get()
+            TV_BREAK2 = self.intermission_secs.get()
         except ValueError:
             message.ShowInfo(self.top, "Invalid Seconds Entered.",
                              "Commercial or Intermission contains non-digit(s).",
                              icon='error', thread=self.get_thread_func)
             return False
 
-        d['SourceDetail'] = self.tv_application.get()
-        _volume, sink = self.get_volume(name=d['SourceDetail'])
+        TV_VOLUME = self.curr_volume
+        TV_APP_NAME = self.tv_application.get()
+        try:
+            TV_MONITOR = self.mon.string_list.index(self.tv_monitor.get())
+        except IndexError as _err:
+            print(_err)
+            TV_MONITOR = 0
+        TV_MOVE_WINDOW = self.tv_move_window.get()
+        TV_MOVE_WITH_COMPIZ = self.tv_move_with_compiz.get()
+
+        _volume, sink = self.get_volume(TV_APP_NAME)
         if sink is None:
             title = "Invalid TV Application Name."
-            text = "The application '" + d['SourceDetail'] + \
-                   "' does not have a stream opened for sound.\n\n" + \
-                   "Ensure your browser has opened a video (it can be paused)."
+            text = "The application '" + TV_APP_NAME + \
+                   "', does not have a stream opened for sound.\n\n" + \
+                   "Ensure the application has opened a stream with sound."
             self.info.cast(title + "\n\n" + text, 'error')
-            message.ShowInfo(self.top, title, text,
-                             icon='error', thread=self.get_thread_func)
+            message.ShowInfo(self.top, title, text, icon='error',
+                             thread=self.get_thread_func)
             return False
 
-        self.save_config_for_loc(
-            'hockey_state', d['SourceMaster'], d['SourceDetail'], Size=self.curr_volume,
-            Count=d['Count'], Seconds=d['Seconds'], Comments=d['Comments'])
-        self.save_callback()  # This resets global TV_VOLUME variable for us
+        self.save_config()
+
         return True
 
     def close(self, *_args):
@@ -15208,7 +15218,7 @@ TV_MOVE_WITH_COMPIZ = False  # Smooth monitor jump but prone to glitches
     # noinspection PyUnusedLocal
     def apply(self, *args):
         """ Save volume setting """
-        if self.save_vol():  # calls self.save_callback() which calls get_hockey_state()
+        if self.save_vol():  # calls save_hockey_state()
             self.close()
 
 

@@ -225,7 +225,8 @@ class Monitors:
         self.gdk_gnome_version = GNOME_VER  # Traditional for outside attribute
 
         self.monitors_list = []  # List of dictionaries w/monitor
-        self.string_list = []
+        self.long_string_list = []  # For combobox
+        self.string_list = []  # For combobox
         self.monitor_count = NUMBER_OF_MONITORS
         self.found_monitor = None
         self.found_window = None  # Not really necessary but simpler
@@ -265,10 +266,14 @@ class Monitors:
 
             self.found_monitor = namedtuple('Monitor', mon.keys())(*mon.values())
             self.monitors_list.append(self.found_monitor)
-            self.string_list.append(
+            self.long_string_list.append(
                 "Screen " + str(index + 1) + ", " + name + ", " + str(geometry.width) +
                 "x" + str(geometry.height) + ", +" + str(geometry.x) + "+" +
                 str(geometry.y))   
+            self.string_list.append(
+                name + ": " + str(geometry.width) +
+                "x" + str(geometry.height) + "+" + str(geometry.x) + "+" +
+                str(geometry.y))
 
             # Running calculation of desktop width x height
             x2 = geometry.x + geometry.width
