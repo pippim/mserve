@@ -1234,23 +1234,25 @@ class LocationsCommonSelf:
         self.avo_playlist_name = self.avo_playlist_prefix
         self.avo_playlist_description = self.avo_playlist_prefix + " - " + now_str
         # Playlist with New Maximum Volumes
-        self.avo_ffmpeg = g.PROGRAM_DIR + os.sep + 'ffmpeg'  # in mserve directory
-        self.avo_ffmpeg = 'ffmpeg'  # default = find in path
+        self.avo_ffmpeg = g.PROGRAM_DIR + os.sep + 'ffmpeg-7.0.1' + \
+            os.sep + 'ffmpeg'  # Version 7 uses multi-processors for faster results
+        #self.avo_ffmpeg = 'ffmpeg'  # default = find in path
         # Set to "ffmpeg" for regular path. If a special version of ffmpeg needed
         # (E.G. for 'loudnorm' filter) then specify location. Needed when special
         # version breaks other mserve features.
         self.avo_select_max_lower = -10.0  # Select songs >= maximum volume
         self.avo_select_max_upper = -0.2  # Select songs <= maximum volume
         # E.G. self.avo_select_max_lower <= song_max <= self.avo_select_max_upper
-        self.avo_skip_complete = True  # Skip if step completed for file (new only).
-        self.avo_skip_count = 0  # How many existing records were skipped
+        self.avo_skip_complete = True  # Skip if step completed for file
         self.avo_integrated = "-23.0"  # AKA input_i. ffmpeg 'loudnorm' defaults
         self.avo_true_peak = "-0.0"  # AKA input_tp  TODO: Setup in user sql.Config()
         self.avo_lra = "11.0"  # AKA input_lra and "LRA"
         self.avo_linear = "false"  # False = dynamic normalization (better results)
-        self.avo_use_inputs = True  # Override defaults using pass 1 values
+        self.avo_use_inputs = True  # Override pass 2 integrated with pass 1 value
         self.avo_max_m4a_ar = 96000  # ffmpeg default aac codec only goes to 96000
         self.avo_max_mp3_ar = 44100  # ffmpeg default mp3 codec only goes to 44100
+
+        self.avo_skip_count = 0  # How many existing records were skipped
         self.loudnorm_cmd = ""  # Common parm. E.G. loudnorm=I=-23.0:TP=0.0:LRA=11.0
         self.avo_comment = now_str  # SQL History Table "Comments" column
 

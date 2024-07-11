@@ -96,6 +96,7 @@ warnings.simplefilter('default')  # in future Python versions.
 #       Jun. 09 2024 - Fine-tune time index new Edit line feature. Bug fixes.
 #       Jun. 16 2024 - Move mainline ffplay functions to FileControl() class.
 #       Jun. 22 2024 - TV_MOVE_WINDOW, TV_WINDOW_ANCHOR & TV_MOVE_WITH_COMPIZ.
+#       Jul. 10 2024 - May 13 fix disabled "Save Favorites" function. Correct.
 #
 #==============================================================================
 
@@ -1969,10 +1970,9 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
             if os.path.isfile(trg_path_new):
                 self.rm_file(trg_path_new)
 
-        def keep_normalize():
+        def apply_normalize():
             """ Keep loudness normalization for a single song
-                TODO: 1) Create new history record:
-                         music_id, 'volume', 'rename_new'
+                TODO: 1) Remove from playlist
             """
             title = "Keep loudness normalization?"
             text = Song + "\n\n"
@@ -1986,18 +1986,18 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
 
             os.renames(self.play_ctl.path, trg_path_old)
             os.renames(trg_path_new, self.loud_ctl.path)
-            remove_normalize(prompt=False)
+            remove_normalize(prompt=False)  # remove history records
 
             # Update SQL metadata with new file size and times
+            sql.update_metadata(self.loud_ctl)
 
         # Display popup menu
-
         menu.add_command(label="Normalization Summary", font=(None, g.MON_FONT),
                          command=view_normalize)
         menu.add_command(label="Remove Normalization", font=(None, g.MON_FONT),
                          command=remove_normalize)
-        menu.add_command(label="Keep Normalization", font=(None, g.MON_FONT),
-                         command=keep_normalize)
+        menu.add_command(label="Apply Normalization", font=(None, g.MON_FONT),
+                         command=apply_normalize)
         menu.add_separator()
 
         menu.add_command(label="Ignore click", font=(None, g.MON_FONT),
@@ -2061,9 +2061,10 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
         # and: SLOWDOWN BUG: https://gitlab.gnome.org/GNOME/gnome-shell/-/issues/3125
         # The facts are apparent when you restart. To save time, just exit and type 'm'.
 
+        # 2024-07-10 - "Save Favorites" - argument count error: lambda _:
         self.file_menu.add_command(label="Save Favorites", font=g.FONT,
                                    underline=1, state=tk.DISABLED,
-                                   command=lambda _: self.write_playlist_to_disk(
+                                   command=lambda: self.write_playlist_to_disk(
                                        save_favorites=True))
         self.file_menu.add_command(label="Exit and CANCEL Pending", font=g.FONT,
                                    underline=9, command=self.exit_without_save,
@@ -5047,12 +5048,12 @@ Call search.py when these control keys occur
         # rick@alien:~/python$ dpkg -l libgtk2.0-0 libgtk-3-0 libgtk-4-1
         # Desired=Unknown/Install/Remove/Purge/Hold
         # | Status=Not/Inst/Conf-files/Unpacked/halF-conf/Half-inst/trig-aWait/Trig-pend
-        # |/ Err?=(none)/Reinst-required (Status,Err: uppercase=bad)
+        # |/ Err?=(none)/Re inst-required (Status,Err: uppercase=bad)
         # ||/ Name                              Version               Architecture          Description
-        # +++-=================================-=====================-=====================-=======================================================================
-        # ii  libgtk-3-0:amd64                  3.18.9-1ubuntu3.3     amd64                 GTK+ graphical user interface library
+        # +++-=================================-=====================-=====================-==========================
+        # ii  libgtk-3-0:amd64                  3.18.9-1ubuntu3.3     amd64                 GTK+ graphical user inter
         # un  libgtk-4-1                        <none>                <none>                (no description available)
-        # ii  libgtk2.0-0:amd64                 2.24.30-1ubuntu1.16.0 amd64                 GTK+ graphical user interface library
+        # ii  libgtk2.0-0:amd64                 2.24.30-1ubuntu1.16.0 amd64                 GTK+ graphical user inter
         # ────────────────────────────────────────────────────────────────────────────────────────────
         # rick@alien:~/python$ apt-cache show gnome-shell | grep Version
         # Version: 3.18.5-0ubuntu0.3
@@ -11766,6 +11767,8 @@ mark set markName index"
         """ Get artwork for currently playing song.
             Apply artwork colors to panels, buttons and text. """
 
+        global ARTWORK_SUBSTITUTE  # Path to substitute artwork when file has none
+
         if self.runSlideShow:
             if self.nextSlideIndex >= len(self.listSlideNames):
                 self.nextSlideIndex = 0
@@ -11781,11 +11784,12 @@ mark set markName index"
                 self.play_original_art = \
                 self.play_ctl.get_artwork(self.art_width, self.art_height)
 
-        if self.play_current_song_art is None and ARTWORK_SUBSTITUTE:
+        if self.play_current_song_art is None and ARTWORK_SUBSTITUTE is not None:
             # print("Getting ARTWORK_SUBSTITUTE:", ARTWORK_SUBSTITUTE)
             #self.play_current_song_art, self.play_resized_art, self.play_original_art = \
             #    deprecated_storage_artwork(self.art_width, self.art_height)
             try:
+                # noinspection PyTypeChecker
                 self.play_original_art = Image.open(ARTWORK_SUBSTITUTE)
                 self.play_resized_art = self.play_original_art.resize(
                     (self.art_width, self.art_height), Image.ANTIALIAS)
@@ -11795,9 +11799,9 @@ mark set markName index"
                 # Song has no artwork that ffmpeg can identify.
                 print("mserve.py set_artwork_colors():",
                       "'ARTWORK_SUBSTITUTE' failed test:")
+                # noinspection PyTypeChecker
                 print("\t" + ARTWORK_SUBSTITUTE)
                 print(_err)  # File not found or invalid image file
-                global ARTWORK_SUBSTITUTE
                 ARTWORK_SUBSTITUTE = None  # Print error once, don't try again
 
         if self.play_current_song_art is None:
@@ -12879,7 +12883,6 @@ TV_MOVE_WITH_COMPIZ = False  # Smooth monitor jump but prone to glitches
                     if minutes.isdigit() and int(minutes) >= 5:
                         self.chron_iid_dict[int(iid)] = True
 
-
         # Filter options for ffmpeg loudness normalization
         trg_max_vol = float(lcs.avo_true_peak)
 
@@ -12950,7 +12953,6 @@ TV_MOVE_WITH_COMPIZ = False  # Smooth monitor jump but prone to glitches
             for iid in self.chron_tree.get_children():
                 if check_volume_detect(iid):
                     self.chron_iid_dict[int(iid)] = True
-
 
         def options_changed(chron_iid):
             """ Reconstruct what default ffmpeg 'loudnorm' filter pass 2
