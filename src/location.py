@@ -1083,7 +1083,7 @@ class LocationsCommonSelf:
         ''' Lists of all Locations - Built on program start and each maintenance '''
         self.all_codes = []  # "L001", "L002", etc... can be holes
         self.all_names = []  # Names matching all_codes
-        self.all_topdir = []  # Top Directories matching all_codes
+        self.all_topdirs = []  # Top Directories matching all_codes
         self.loc_list = []  # Inserted into Treeview
         self.loc_dict = {}  # Single line inserted into Treeview
         self.who = "location.py Locations()."
@@ -1105,6 +1105,11 @@ class LocationsCommonSelf:
         self.act_comments = None
         self.act_row_id = None  # Location SQL Primary Key
         self.act_ftp = None  # libftp.FTP() instance
+
+        ''' Work fields NOT stored in SQL Location Table '''
+        self.act_music_ids = []  # Based on mserve.py 'saved_selections' list. 
+        # 'saved_selections' is index into mserve.py 'real_paths'.
+        # Favorites read from ~/.config/mserve/L999/last_playlist with full paths.
 
         ''' fld_intro = 
             Code: L001 | Last modified: <time> | Free: 99,999 MB of 999,999 MB '''
@@ -1359,6 +1364,11 @@ class Locations(LocationsCommonSelf):
         self.open_comments = None
         self.open_row_id = None  # SQL Location Table Primary ID (int)
         self.open_ftp = None  # libftp.FTP() instance
+
+        ''' Work fields NOT stored in SQL Location Table '''
+        self.open_music_ids = []  # Based on mserve.py 'saved_selections' list. 
+        # 'saved_selections' is index into mserve.py 'real_paths'.
+        # Favorites read from ~/.config/mserve/L999/last_playlist with full paths.
 
         ''' Additional Open Location variables not in SQL '''
         self.host_down = False  # For emergency shutdown
@@ -2269,7 +2279,7 @@ class Locations(LocationsCommonSelf):
         #if not new_topdir.endswith(os.sep):
         #    new_topdir += os.sep  # Commented out Aug 7/23
 
-        ''' Validate Music Top Directory has Artists/Albums/Songs '''
+        ''' Validate Music Top Directory has Artists/Albums/Titles '''
         work_list, depth_count = self.make_sorted_list(
             new_topdir, self.main_top, check_only=True)
         print("depth_count:", depth_count)
@@ -2411,7 +2421,7 @@ class Locations(LocationsCommonSelf):
         """ Build lists of all SQL Location Table rows """
         self.all_codes = []  # "L001", "L002", etc... can be holes
         self.all_names = []  # Names matching all_codes
-        self.all_topdir = []  # Descriptions matching all_codes
+        self.all_topdirs = []  # Descriptions matching all_codes
         self.loc_list = []  # List of dictionaries inserted into Treeview
         global LIST  # Temporary
         #LIST = []  # Temporary "   ☰ " + self.lib_top_playlist_name + " - mserve")
@@ -2423,9 +2433,9 @@ class Locations(LocationsCommonSelf):
             self.make_act_from_sql_dict(d)
             self.loc_dict = OrderedDict(d)  # Line inserted into Treeview
             self.loc_list.append(self.loc_dict)  # All lines inserted into TV
-            self.all_codes.append(self.act_code)  # must match all_topdir order
+            self.all_codes.append(self.act_code)  # must match all_topdirs order
             self.all_names.append(self.act_name)  # use to verify unique names
-            self.all_topdir.append(self.act_topdir)  # must match all_codes order
+            self.all_topdirs.append(self.act_topdir)  # must match all_codes order
             #LIST.append(self.make_ver1_dict_from_sql_dict(d))  # Temporary
 
     def get_dict_by_dirname(self, dirname):
@@ -2443,7 +2453,7 @@ class Locations(LocationsCommonSelf):
         """
 
         ''' Read backwards assuming last location added is correct one '''
-        for i, topdir in reversed(list(enumerate(self.all_topdir))):
+        for i, topdir in reversed(list(enumerate(self.all_topdirs))):
             if topdir.rstrip(os.sep) == dirname.rstrip(os.sep):
                 if self.read_location(self.all_codes[i]):
                     return True
@@ -2747,7 +2757,7 @@ class Locations(LocationsCommonSelf):
             location already defined.
         """
         stripped_last = dirname.rstrip(os.sep)
-        for i, topdir in enumerate(self.all_topdir):
+        for i, topdir in enumerate(self.all_topdirs):
             if topdir == stripped_last:
                 return self.read_location(self.all_codes[i])
 
@@ -4297,7 +4307,7 @@ filename.
         self.cmp_tree = ttk.Treeview(self.cmp_tree_frame, show=('tree', 'headings'),
                                      columns=columns, selectmode="none")
         self.cmp_tree.column("#0", width=630, stretch=tk.YES)
-        # self.cmp_tree.heading("#0", text = "➕ / ➖   Artist/Album/Song")
+        # self.cmp_tree.heading("#0", text = "➕ / ➖   Artist/Album/Title")
         self.cmp_tree.heading(
             "#0", text="Click ▼ (collapse) ▶ (expand) an Artist or Album")
         if prefix == "cmp":
@@ -4581,7 +4591,7 @@ filename.
 
     def cmp_populate_tree(self, prefix="cmp"):
 
-        """ Add Artist, Album and Song to treeview self.cmp_tree.
+        """ Add Artist, Album and Title to treeview self.cmp_tree.
             Similar to add_items() in Music Location Tree
 
         :returns True: When locations are different
@@ -4622,11 +4632,11 @@ filename.
 
             self.fast_refresh(tk_after=False)  # Update play_top animations
 
-            # split song /mnt/music/Artist/Album/Song.m4a into variable names
+            # split song /mnt/music/Artist/Album/Title.m4a into variable names
             groups = fake_path.split(os.sep)
             Artist = str(groups[start_dir_sep + 1])
             Album = str(groups[start_dir_sep + 2])
-            Song = str(groups[start_dir_sep + 3])
+            Title = str(groups[start_dir_sep + 3])
 
             if Artist != LastArtist:
                 try:
@@ -4647,20 +4657,20 @@ filename.
                 self.cmp_top.update_idletasks()  # Allow close button to abort
 
             if prefix == "cmp":
-                # str(i) will be iid if and when Song inserted.
-                if not self.cmp_insert_tree_row(fake_path, CurrAlbumId, str(i), Song):
+                # str(i) will be iid if and when Title inserted.
+                if not self.cmp_insert_tree_row(fake_path, CurrAlbumId, str(i), Title):
                     return False  # Closing down
             elif self.state == "detect_old":
-                if not self.avo_insert_tree_row(fake_path, CurrAlbumId, str(i), Song):
+                if not self.avo_insert_tree_row(fake_path, CurrAlbumId, str(i), Title):
                     return False  # Closing down
             elif self.state == "detect_new":
-                if not self.avn_insert_tree_row(fake_path, CurrAlbumId, str(i), Song):
+                if not self.avn_insert_tree_row(fake_path, CurrAlbumId, str(i), Title):
                     return False  # Closing down
             elif self.state == "loudnorm_1":
-                if not self.aln_insert_tree_row(fake_path, CurrAlbumId, str(i), Song):
+                if not self.aln_insert_tree_row(fake_path, CurrAlbumId, str(i), Title):
                     return False  # Closing down
             elif self.state == "loudnorm_2":
-                if not self.uln_insert_tree_row(fake_path, CurrAlbumId, str(i), Song):
+                if not self.uln_insert_tree_row(fake_path, CurrAlbumId, str(i), Title):
                     return False  # Closing down
             else:
                 print("locations.py cmp_populate_tree() invalid state:", self.state)
@@ -4703,8 +4713,8 @@ filename.
             self.out_fact_show(title, text)
             return False
 
-    def cmp_insert_tree_row(self, fake_path, CurrAlbumId, iid, Song):
-        """ Test if Song is candidate and insert into treeview.
+    def cmp_insert_tree_row(self, fake_path, CurrAlbumId, iid, Title):
+        """ Test if Title is candidate and insert into treeview.
             Artists and Albums already inserted.
             Always return True even if not a candidate.
             Only return False when app is closing.
@@ -4741,10 +4751,10 @@ filename.
             return False  # Closing down
 
         ''' Insert song into comparison treeview and show on screen '''
-        self.cmp_tree.insert(CurrAlbumId, "end", iid=iid, text=Song,
+        self.cmp_tree.insert(CurrAlbumId, "end", iid=iid, text=Title,
                              values=(src_ftime, trg_ftime, src_fsize, trg_fsize, action,
                                      float(src_time), float(trg_time)),
-                             tags=("Song",))
+                             tags=("Title",))
         self.cmp_tree.see(iid)
         self.cmp_top.update_idletasks()  # Allow close button to abort
         self.cmp_found += 1
@@ -5247,7 +5257,7 @@ filename.
     def build_command_list(self, iid):
         """ Extract commands from treeview and stick into list """
         ''' fields from .insert() method
-            self.cmp_tree.insert(CurrAlbumId, "end", iid=str(i), text=Song,
+            self.cmp_tree.insert(CurrAlbumId, "end", iid=str(i), text=Title,
                 values=(src_ftime, trg_ftime, src_fsize, trg_fsize, action,
                                     float(src_time), float(trg_time)), '''
         action = self.cmp_tree.item(iid)['values'][4]  # 6th treeview column
@@ -5836,9 +5846,9 @@ filename.
 
         return retn[0]
 
-    def avo_insert_tree_row(self, fake_path, CurrAlbumId, iid, Song,
+    def avo_insert_tree_row(self, fake_path, CurrAlbumId, iid, Title,
                             use_tv=True, current_tree=False):
-        """ Analyze Mean Volume and Maximum Volume for Old (Original) Song
+        """ Analyze Mean Volume and Maximum Volume for Old (Original) Title
             use_tv = False when analyzing one song not in treeview.
         """
 
@@ -5868,9 +5878,9 @@ filename.
                     self.cmp_tree.set(iid, "Maximum", max_volume)
                 return  # Processing single song already in Treeview.
 
-            self.cmp_tree.insert(CurrAlbumId, "end", iid=iid, text=Song,
+            self.cmp_tree.insert(CurrAlbumId, "end", iid=iid, text=Title,
                                  values=(mean_volume, max_volume, music_id),
-                                 tags=("Song",))
+                                 tags=("Title",))
             self.cmp_tree.see(iid)
             self.cmp_top.update_idletasks()  # Allow close button to abort
             self.cmp_found += 1
@@ -6058,7 +6068,7 @@ One-liner to copy and paste into terminal:
 
         return True  # Was failure but FTP retry was successful
 
-    def aln_insert_tree_row(self, fake_path, CurrAlbumId, iid, Song, 
+    def aln_insert_tree_row(self, fake_path, CurrAlbumId, iid, Title,
                             use_tv=True, current_tree=False):
         """ Get Song's 'loudnorm' levels for pass 1.  """
 
@@ -6118,7 +6128,7 @@ One-liner to copy and paste into terminal:
                 return  # Processing single song already in Treeview.
 
             self.cmp_tree.insert(
-                CurrAlbumId, "end", iid=iid, text=Song, tags=("Song",),
+                CurrAlbumId, "end", iid=iid, text=Title, tags=("Title",),
                 values=(input_i, input_tp, input_lra, input_thresh, music_id)
             )
             
@@ -6270,7 +6280,7 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=$int
         # Get FileControl() class metadata dictionary's json formatted dictionary
         return self.trg_ctl.metadata.get('json_dict', {})
 
-    def uln_insert_tree_row(self, fake_path, CurrAlbumId, iid, Song, 
+    def uln_insert_tree_row(self, fake_path, CurrAlbumId, iid, Title,
                             use_tv=True, current_tree=False):
         """ Normalize Song's Loudness using 'loudnorm' Filter pass 2 """
         _who = self.who + "uln_insert_tree_row():"
@@ -6325,7 +6335,7 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=$int
                 return  # Processing single song already in Treeview.
 
             self.cmp_tree.insert(
-                CurrAlbumId, "end", iid=iid, text=Song, tags=("Song",),
+                CurrAlbumId, "end", iid=iid, text=Title, tags=("Title",),
                 values=(output_i, output_tp, output_lra, output_thresh, music_id)
             )
             self.cmp_tree.see(iid)
@@ -6503,7 +6513,7 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
         self.trg_ctl.get_metadata(ffmpeg_results=self.TMP_STDERR, trg_path=trg_path)
         return self.trg_ctl.metadata.get('json_dict', {})
 
-    def avn_insert_tree_row(self, fake_path, CurrAlbumId, iid, Song, 
+    def avn_insert_tree_row(self, fake_path, CurrAlbumId, iid, Title,
                             use_tv=True, current_tree=False):
         """ Analyze Mean Volume and Maximum Volume for New (Normalized) Song 
             Calls self.avo_run_ffmpeg() shared with avo_insert_tree_row()
@@ -6551,9 +6561,9 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
                     self.set_missed_target(iid, old_max_volume, max_volume)
                 return  # Processing single song already in Treeview.
 
-            self.cmp_tree.insert(CurrAlbumId, "end", iid=iid, text=Song,
+            self.cmp_tree.insert(CurrAlbumId, "end", iid=iid, text=Title,
                                  values=(old_max_volume, max_volume, music_id),
-                                 tags=("Song",))
+                                 tags=("Title",))
             self.set_missed_target(iid, old_max_volume, max_volume)
             self.cmp_tree.see(iid)
             self.cmp_top.update_idletasks()  # Allow close button to abort
@@ -6690,7 +6700,7 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
         if music_row:
             OsBase = music_row['OsFileName']
             CurrAlbumId = tree.parent(iid)
-            Song = OsBase.split(os.sep)[-1]
+            Title = OsBase.split(os.sep)[-1]
             fake_path = self.open_topdir + os.sep + OsBase
             trg_path = self.cmp_target_dir + os.sep + OsBase  # self.cmp_target_dir
             trg_path_new = trg_path + ".new"
@@ -6725,7 +6735,7 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
         def view_normalize():
             """ Popup Window with SQL Music Table Row Metadata for song """
             n_data = sql.PrettyNormalize(music_id, self.act_code)
-            win_title = "Normalization Summary - " + Song + " - mserve"
+            win_title = "Normalization Summary - " + Title + " - mserve"
             self.pretty_window(
                 self.cmp_top, n_data, win_title, 1400, 700,
                 x, y, new=True)  # new = use right align tab stops and uom
@@ -6769,7 +6779,7 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
 
             """
             _title = "REDO loudness normalization"
-            text = Song + "\n\n"
+            text = Title + "\n\n"
             text += "All four steps of loudness normalization will be performed.\n"
             # Add up history record seconds for last run. If any were zero then
             # say 20 seconds. Otherwise state actual seconds
@@ -6804,19 +6814,19 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
             use_tv = False  # Don't insert new row into treeview
 
             current_tree = True if self.state == "detect_old" else False
-            self.avo_insert_tree_row(fake_path, CurrAlbumId, iid, Song,
+            self.avo_insert_tree_row(fake_path, CurrAlbumId, iid, Title,
                                      use_tv, current_tree)
 
             current_tree = True if self.state == "loudnorm_1" else False
-            self.aln_insert_tree_row(fake_path, CurrAlbumId, iid, Song, 
+            self.aln_insert_tree_row(fake_path, CurrAlbumId, iid, Title,
                                      use_tv, current_tree)
 
             current_tree = True if self.state == "loudnorm_2" else False
-            self.uln_insert_tree_row(fake_path, CurrAlbumId, iid, Song, 
+            self.uln_insert_tree_row(fake_path, CurrAlbumId, iid, Title,
                                      use_tv, current_tree)
 
             current_tree = True if self.state == "detect_new" else False
-            self.avn_insert_tree_row(fake_path, CurrAlbumId, iid, Song, 
+            self.avn_insert_tree_row(fake_path, CurrAlbumId, iid, Title,
                                      use_tv, current_tree)
 
             self.cmp_top.config(cursor="")  # Restore normal cursor (no hourglass)

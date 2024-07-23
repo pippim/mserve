@@ -1908,7 +1908,7 @@ class DictTreeview:
             y = self.toplevel.winfo_y() + g.PANEL_HGT
 
         self.hcd_top_is_active = True  # heading column details
-        top = self.make_common_top('column details', title, 640, 400, x, y)
+        top = self.make_common_top('column details', title, 640, 500, x, y)
 
         ''' Bind <Escape> to close window '''
         top.bind("<Escape>", close)
@@ -1920,13 +1920,17 @@ class DictTreeview:
         frame.grid(column=0, row=0, sticky=tk.NSEW)
         ms_font = (None, g.MON_FONT)  # bs_font = bserve, ms_font = mserve
 
+        close_btn = tk.Button(
+            frame, width=g.BTN_WID, text="✘ Close", command=close)
+        close_btn.grid(row=1, column=0, padx=10, pady=5, sticky=tk.E)
+
         scrollbox = CustomScrolledText(
             frame, state="normal", font=ms_font, borderwidth=15, relief=tk.FLAT)
         scroll_defaults(scrollbox)  # Default tab stops are too wide
-        scrollbox.config(tabs=("2m", "40m", "80m"))  # "Nicer" tab stops
-        scrollbox.grid(row=0, column=1, padx=3, pady=3, sticky=tk.NSEW)
+        scrollbox.config(tabs=("2m", "60m", "80m"))  # "Nicer" tab stops
+        scrollbox.grid(row=0, column=0, padx=3, pady=3, sticky=tk.NSEW)
         frame.rowconfigure(0, weight=1)
-        frame.columnconfigure(1, weight=1)  # 2024-04-07 - Why column 1 and not 0?
+        frame.columnconfigure(0, weight=1)  # 2024-07-13 - Was column 1
 
         column_dict = get_dict_column(column_name, self.tree_dict)
         pretty_column = sql.PrettyTreeHeading(column_dict)

@@ -35,6 +35,7 @@ warnings.simplefilter('default')  # in future Python versions.
 #       Aug. 20 2023 - Print SQL Table sizes and Row Counts by Type
 #       Mar. 09 2024 - print_windows() - Print Window offsets, sizes and name
 #       Mar. 24 2024 - Save treeview configuration. Revamp dict_treeview.
+#       Jul. 23 2024 - Rename and Delete files across all locations.
 
 #   TODO:
 
@@ -1027,6 +1028,11 @@ class OsFileNameBlacklist:
             index and sets whitelist @ index to good key passed.
         ofb.GetWhitelist(bad) returns the good key to replace the bad key
             or returns None.
+        ofb.CreateInitialLists() process 'rename' and 'delete' records in
+            SQL History Table. Blacklist old OS base names and whitelist
+            the renamed OS base name.
+        ofb.SetFileRename(old, new) called by ofb.CreateInitialLists() and
+            the mserve.py .rename_files() method.
     """
 
     def __init__(self):
@@ -1034,6 +1040,7 @@ class OsFileNameBlacklist:
         self.whites = []
 
         self.white_key = None  # Used for GetWhitelist(key)
+        self.who = "sql.py OsFileNameBlacklist()."
 
     def Select(self, key):
         """
@@ -1069,7 +1076,9 @@ class OsFileNameBlacklist:
             return False
 
     def AddBlacklist(self, key):
-        """ Music Location Library Tree has <No Artist>/<No Album> """
+        """ Music Location Library Tree has <No Artist>/<No Album>
+            or a file has been renamed. 
+        """
         try:
             ndx = self.blacks.index(key)
             print("sql.py AddBlacklist(key) already exists in list:", key,
@@ -1113,6 +1122,74 @@ class OsFileNameBlacklist:
             print("sql.py SetWhitelist(black_key, white_key) invalid black_key:",
                   black_key)
             return None
+
+    def CreateInitialLists(self):
+        """ Read history for all renames and deletes.
+            Called by mserve.py when OS is walked in make_sorted_list()
+        """
+
+        self.__init__()  # Clear any existing data
+        _who = self.who + "CreateInitialLists():"
+        lcs.build_locations()
+        this_topdir = lcs.all_topdirs[lcs.all_codes.index(lcs.open_code)]
+        old_loc_missing = False
+
+        # Blacklist & Whitelist rename files
+        sql = "SELECT * FROM History INDEXED BY TypeActionIndex " + \
+              "WHERE Type = ?"
+        hist_cursor.execute(sql, ('rename', ))
+        rows = hist_cursor.fetchall()
+        for hd in rows:
+            old_loc = hd['SourceMaster']  # L999
+            try:
+                old_topdir = lcs.all_topdirs[lcs.all_codes.index(old_loc)]
+            except IndexError:
+                if not old_loc_missing:
+                    print(_who, "Old location doesn't exist:", old_loc)
+                    old_loc_missing = True
+                continue
+            old_path = hd['SourceDetail']  # top/dir/artist/album/99 title.ext
+            old_base = old_path.replace(old_topdir + os.sep, '')
+            
+            if self.CheckBlacklist(old_base):
+                continue  # Already blacklisted by another location just processed
+
+            md = music_get_row(hd['MusicId'], print_err=False)
+            if md is None:
+                self.AddBlacklist(old_base)  # Was renamed and then was deleted.
+            else:
+                new_base = md['OsFileName']
+                self.SetFileRename(old_base, new_base)
+
+        # Blacklist delete files
+        sql = "SELECT * FROM History INDEXED BY TypeActionIndex " + \
+              "WHERE Type = ?"
+        hist_cursor.execute(sql, ('delete',))
+        rows = hist_cursor.fetchall()
+        for hd in rows:
+            old_loc = hd['SourceMaster']  # L999
+            try:
+                old_topdir = lcs.all_topdirs[lcs.all_codes.index(old_loc)]
+            except IndexError:
+                if not old_loc_missing:
+                    print(_who, "Old location doesn't exist:", old_loc)
+                    old_loc_missing = True
+                continue
+            old_path = hd['SourceDetail']  # top/dir/artist/album/99 title.ext
+            old_base = old_path.replace(old_topdir + os.sep, '')
+
+            if self.CheckBlacklist(old_base):
+                continue  # Already blacklisted by another location just processed
+
+            if not self.CheckBlacklist(old_base):  # Another loc. blacklisted
+                self.AddBlacklist(old_base)  # Not blacklisted yet
+
+    def SetFileRename(self, black_key, white_key):
+        """ Add substitute for files that were renamed. """
+        if self.CheckBlacklist(black_key):
+            return  # Already blacklisted due to history for another location
+        self.AddBlacklist(black_key)
+        self.SetWhitelist(black_key, white_key)
 
 
 ''' Global substitution for read Music Table by path '''
@@ -1192,21 +1269,18 @@ def get_last_play(key):
         return d["PlayCount"], d["LastPlayTime"]
 
 
-def music_get_row(key):
+def music_get_row(key, print_err=True):
     """ Get Music Table row using Music Id """
     # Get row using the MusicID
     cursor.execute("SELECT * FROM Music WHERE Id = ?", [key])
 
     try:
         row = dict(cursor.fetchone())
+        return OrderedDict(row)
     except TypeError:  # TypeError: 'NoneType' object is not iterable:
-        row = None
-
-    if row is None:
-        print('sql.py - music_get_row() not found:', key)
+        if print_err:
+            print('sql.py - music_get_row() not found:', key)
         return None
-
-    return OrderedDict(row)
 
 
 def loc_code():
@@ -1275,13 +1349,13 @@ def update_metadata(fc, commit=True):
 
     # pycharm doesn't like PRUNED_DIR type 'None', expected 'Sized'
     # noinspection PyTypeChecker
-    key = fc.path[len(PRUNED_DIR):]  # Create OsFileName (base path)
+    key = fc.path[len(PRUNED_DIR):]  # Construct OsFileName (base path)
     d = ofb.Select(key)
     if d is None:
         # File and Directory names with ":", "?", "/", etc. replaced with "_"
         fudged_Artist = ext.legalize_dir_name(fc.Artist)
         fudged_Album = ext.legalize_dir_name(fc.Album)
-        fudged_Title = key.split(os.sep)[-1]  # Expand "Title" to "99 Title.ext"
+        fudged_Title = key.split(os.sep)[-1]  # "Title" becomes "99 Title.ext"
         fudged_Title = ext.legalize_song_name(fudged_Title)
         white_key = fudged_Artist + os.sep + fudged_Album + os.sep + fudged_Title
 
@@ -1482,7 +1556,7 @@ def music_id_for_song(key):
 
     if d['Id'] == 0:
         print('music_id_for_song(key) error music ID is 0:', key)
-        return 0
+        return 0  # Pretty much impossible to get 0.
     else:
         return d['Id']  # The actual Music ID found
 
@@ -3347,7 +3421,7 @@ class PrettyTreeHeading:
 
         # Data dictionary for treeview column format is simple
         self.part_start = [0]  # Only 1 part
-        self.part_names = ['Column Keys\tAttributes\n']
+        self.part_names = ['Column Key\t\tValue\n']
         self.part_color = ['red']
         for key, value in column_dict.iteritems():
             self.dict[key] = sql_format_value(value)
