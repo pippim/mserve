@@ -758,7 +758,8 @@ def make_sorted_list(start_dir, toplevel=None, idle=None, check_only=False):
     work_list = []
     dtb = message.DelayedTextBox(title="Scanning music directories",
                                  toplevel=toplevel, width=1000)
-    sql.ofb.CreateInitialLists()  # Blacklist renames and deletes
+    sql.ofb.CreateInitialLists()  # Blacklist renames
+    sql.ofb.RenameFilesList()  # Rename files before OS walk
 
     depth_count = [0, 0, 0]  # Count of songs at topdir, artist, album
     last_check = time.time()  # Time we last checked to enter idle loop
@@ -2728,7 +2729,7 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
                     self.playlists.open_count += 1
                     self.playlists.open_seconds += d['Seconds']
                     dprint("Building Music ID:", d['Id'],
-                           self.playlists.open_loc_id,
+                           self.playlists.open_loc_code,
                            self.playlists.open_code,
                            self.playlists.open_count,
                            self.playlists.open_seconds)
@@ -3543,7 +3544,7 @@ Call search.py when these control keys occur
             self.set_all_parent(item, 'Del', event)
         elif 'Title' in tags:
             self.pending_append(item, 'Del')
-            self.reverse(item)
+            self.toggle_song_title_checkbox(item)
         else:
             print('process_unchecked() bad line type tag:', tags)
 
@@ -3556,7 +3557,7 @@ Call search.py when these control keys occur
             if not self.validate_song_addition(item, event):
                 return  # Adding to playlist but no SQL Music Table Row exists
             self.pending_append(item, 'Add')
-            self.reverse(item)
+            self.toggle_song_title_checkbox(item)
         else:
             print('process_checked() bad line type tag:', tags)
 
@@ -3586,7 +3587,7 @@ Call search.py when these control keys occur
             if (selected == "" and action == "Add") or \
                     (not selected == "" and action == "Del"):
                 self.pending_append(child, action)
-                self.reverse(child)
+                self.toggle_song_title_checkbox(child)
 
     def validate_song_addition(self, Id, event):
         """ If playlists, can only add songs that exist in the SQL Music Table """
@@ -3738,9 +3739,9 @@ Call search.py when these control keys occur
         menu.add_command(label="Collapse list", font=(None, MED_FONT),
                          command=lambda: self.collapse_all(Id))
         menu.add_command(label="Rename " + level, font=(None, MED_FONT),
-                         command=lambda: self.rename_files(Id, level))
+                         command=lambda: self.rd_rename_files(Id, level))
         menu.add_command(label="Delete " + level, font=(None, MED_FONT),
-                         command=lambda: self.delete_files(Id, level))
+                         command=lambda: self.rd_delete_files(Id, level))
         menu.add_separator()
 
         global KID3_INSTALLED, FM_INSTALLED
@@ -3774,9 +3775,9 @@ Call search.py when these control keys occur
         menu.add_separator()
 
         menu.add_command(label="Rename Song Title", font=(None, MED_FONT),
-                         command=lambda: self.rename_files(Id, "Title"))
+                         command=lambda: self.rd_rename_files(Id, "Title"))
         menu.add_command(label="Delete Song", font=(None, MED_FONT),
-                         command=lambda: self.delete_files(Id, "Title"))
+                         command=lambda: self.rd_delete_files(Id, "Title"))
 
         global KID3_INSTALLED, FM_INSTALLED
         KID3_INSTALLED = ext.check_command('kid3')
@@ -3876,8 +3877,8 @@ Call search.py when these control keys occur
         pretty.scrollbox = self.scrollbox
         sql.tkinter_display(pretty)
 
-    # noinspection PyUnusedLocal
-    def rename_files(self, Id, level):
+    # rd_ - Rename / Delete files
+    def rd_rename_files(self, Id, level):
         """ Rename Artist, Album, Song on disc and in SQL Music Table
         :param Id: Treeview Id for item. Artists/Albums start with 'I'
         :param level: string with 'Artist', 'Album', or "Title"
@@ -3886,11 +3887,11 @@ Call search.py when these control keys occur
         old_name = self.lib_tree.item(Id)['text']
         default_string = old_name
 
-        if not self.check_files('rename', old_name):
+        if not self.rd_check_files('rename', old_name):
             self.wrapup_lib_popup()  # Set color tags and counts
             return
 
-        old_rows, artist_name, album_name = self.fetch_files(level, Id, old_name)
+        old_rows, artist_name, album_name = self.rd_tree_os_base_names(level, Id, old_name)
 
         while True:  # Loop until all errors fixed
             title = "Rename " + level
@@ -3985,6 +3986,9 @@ Call search.py when these control keys occur
 
             ''' Ensure old name isn't playing - Do this last so music
                 player can't switch to new song during other dialog boxes. '''
+            if not self.check_song_playing('rename', level, old_name):
+                continue
+            """ Code ported to self.check_song_playing(...)  
             old_playing = False
             # 2024-07-20 'if self.ltp_ctl and old_name in self.ltp_ctl.path': FAILS
             if self.ltp_ctl is not None and old_name in self.ltp_ctl.path:
@@ -4005,13 +4009,17 @@ Call search.py when these control keys occur
                 message.ShowInfo(self.lib_top, title, text, icon='error',
                                  thread=self.get_refresh_thread)
                 continue
+            """
             break
 
         ''' Message Kid3 required to renumber Compilation Flag '''
-        show_compilation_msg = True  # For future 'Skip' checkbox
+        _show_compilation_msg = True  # For future 'Skip' checkbox
 
         def kid3_msg(song_title, new_flag):
-            """ If show_compilation_msg flag is True, warning message """
+            """ If show_compilation_msg flag is True, warning message
+                2024-07-24 - TODO: Init all compilation flags to 0.
+                    Call mutagen or kid3-cli to set flag on mp3.
+            """
             if not show_compiliation_flag:
                 return False  # Flag turned off
             ttl = "Kid3 audio tagger required"
@@ -4040,8 +4048,8 @@ Call search.py when these control keys occur
             if level == "Title":
                 new_title = legal_string  # For OS Filename
                 ''' Metadata title - remove track number and filename extension '''
-                NewTitle = new_title.lstrip('0123456789.- ')  # Trim leading digits
-                NewTitle = os.path.splitext(newTitle)[0]  # Trim trailing ext
+                newTitle = new_title.lstrip('0123456789.- ')  # Trim leading digits
+                newTitle = os.path.splitext(newTitle)[0]  # Trim trailing ext
             elif level == 'Album':
                 newAlbum = new_album = legal_string  # For meta & OS Filename[part]
             else:
@@ -4052,6 +4060,7 @@ Call search.py when these control keys occur
             new_path = PRUNED_DIR + new_base
 
             # Compilation flag set only in mserve SQL not in actual file
+            # Need to call mutagen or kid3-cli to set flag in actual file.
             if new_artist == "Compilations":  # 2024-06-05
                 new_compilation = "1"
             else:  # Most Music flags are NULL before 2024-07-21
@@ -4086,32 +4095,55 @@ Call search.py when these control keys occur
 
             ''' os.renames(old, new) 
                 2024-07-21 - TODO: On startup, read history for files that have
-                    been renamed and deleted. Apply this history to current
-                    location. 'rename' may have originated in another location
+                    been renamed in another location and not currently opened loc.
             '''
-            os.renames(old_path, new_path)
-            change_count += 1
-            sql.hist_add(time.time(), music_id, g.USER, 'rename', level, lcs.open_code,
-                         old_path, new_path, change_count, 0, 0.0, legal_string)
-            sql.ofb.SetFileRename(old_base, new_base)
+            # Rename OS file and '.old' or '.new' loudness normalization extensions
+            sql.ofb.RenameFileGroup(old_path, new_path, level=level,
+                                    music_id=music_id)  # Also add history
+            sql.ofb.SetFileRename(old_base, new_base, True, music_id)
 
             ''' Update fake_paths, real_paths and playlist_paths 
-                2024-07-21 - TODO: Update sql.ofb.Select (black & white lists)
-                    Update Song Queue / Chronology treeview. Currently, restart
-                    required to see renamed variables.
+                2024-07-21 - TODO: Update Song Queue / Chronology treeview. 
+                    Currently, a restart is required to see renamed variables.
             '''
+
+            def rename_path(from_end, old, new, paths):
+                """ Called from rd_rename_files() to process one filename in paths list
+
+                :param from_end: -1 = song, -2 = album, -3 = artist
+                :param old: old name
+                :param new: new name
+                :param paths: list of paths
+                :return: True if old string was found and changed. Otherwise, False.
+                """
+                for i, path in enumerate(paths):
+                    parts = path.split(os.sep)
+                    if parts[from_end] == old:
+                        parts[from_end] = new
+                        new_full = os.sep.join(parts)
+                        old_full = paths[i]
+                        paths[i] = new_full  # Update list element
+                        # ofb (Os Filename Blacklist), whitelist, this location = True
+                        sql.ofb.SetFileRename(old_full, new_full, True)
+                        # Called a few times but, above only logs the blacklist once.
+                        return True
+                print(self.who + "rd_rename_files():",
+                      "old not found:")
+                print(" ", old)
+                return False
+
             if level == 'Title':  # 2024-07-19 - Added 'xxx_title' renames.
-                self.rename_path(-1, old_title, new_title, self.fake_paths)
-                self.rename_path(-1, old_title, new_title, self.real_paths)
-                self.rename_path(-1, old_title, new_title, self.playlist_paths)
+                rename_path(-1, old_title, new_title, self.fake_paths)
+                rename_path(-1, old_title, new_title, self.real_paths)
+                rename_path(-1, old_title, new_title, self.playlist_paths)
             elif level == 'Album':
-                self.rename_path(-2, old_album, new_album, self.fake_paths)
-                self.rename_path(-2, old_album, new_album, self.real_paths)
-                self.rename_path(-2, old_album, new_album, self.playlist_paths)
+                rename_path(-2, old_album, new_album, self.fake_paths)
+                rename_path(-2, old_album, new_album, self.real_paths)
+                rename_path(-2, old_album, new_album, self.playlist_paths)
             else:
-                self.rename_path(-3, old_artist, new_artist, self.fake_paths)
-                self.rename_path(-3, old_artist, new_artist, self.real_paths)
-                self.rename_path(-3, old_artist, new_artist, self.playlist_paths)
+                rename_path(-3, old_artist, new_artist, self.fake_paths)
+                rename_path(-3, old_artist, new_artist, self.real_paths)
+                rename_path(-3, old_artist, new_artist, self.playlist_paths)
 
         sql.con.commit()  # Write changes to disk
         self.lib_tree.item(Id, text=legal_string)  # Update Music Location Tree
@@ -4134,7 +4166,7 @@ Call search.py when these control keys occur
                 2024-07-21 - TODO: Apply SQL history to other locations when mserve
                     is opened. 'rename' can originate in any location. Must be done
                     when mserve starts up otherwise SQL Music Table row will not
-                    be found.
+                    be found. Candidate is ofb.CreateInitialLists()
             '''
             text += "\n\nUse your file manager (not mserve) to rename in other locations."
             text += "\n\nOtherwise the mserve SQL database will no longer be perfect"
@@ -4147,8 +4179,8 @@ Call search.py when these control keys occur
 
         self.wrapup_lib_popup()  # Set color tags and counts
 
-    def check_files(self, mode, old_name):
-        """ Check conditions for rename_files() and delete_files() """
+    def rd_check_files(self, mode, old_name):
+        """ Check conditions for rd_rename_files() and rd_delete_files() """
 
         if encoding.RIP_CD_IS_ACTIVE:
             title = "CD Ripping is Active"
@@ -4185,7 +4217,7 @@ Call search.py when these control keys occur
 
         return True  # Pre-Checks successful. OK to delete or rename files.
 
-    def fetch_files(self, level, Id, old_name):
+    def rd_tree_os_base_names(self, level, Id, old_name):
         """ Fetch SQL Rows for Song(s) by Artist, Album or Title
 
 7 CDs to buy for $10:
@@ -4218,7 +4250,38 @@ Glenn Frey - Solo Collection
         old_rows = sql.cursor.fetchall()
         return old_rows, artist_name, album_name
 
-    def delete_files(self, Id, level):
+    def check_song_playing(self, mode, level, old_name):
+        """ Check given file for rd_rename_files() and rd_delete_files().
+            Called during startup and Tools menu to apply rd updates. 
+        """
+
+        ''' Ensure old name isn't playing - Do this last so music
+        11454 jasper 
+            player can't switch to new song during other dialog boxes. '''
+        old_playing = False
+        # 2024-07-20 'if self.ltp_ctl and old_name in self.ltp_ctl.path': FAILS
+        if self.ltp_ctl is not None and old_name in self.ltp_ctl.path:
+            old_playing = True  # Library Tree Play sampling same Album
+        if self.play_ctl is not None and old_name in self.play_ctl.path:
+            old_playing = True  # Music Player playing same Album
+        if self.fine_tune is not None and old_name in self.fine_tune.time_ctl.path:
+            old_playing = True  # Library Tree Playing same Album
+
+        if old_playing:
+            title = level + " is being played."
+            text = "The " + level + ":" + old_name
+            text += " is in use.\n\n"  # pycharm has problem with this string
+            text += "Cannot " + mode + " the "  + level
+            text += " currently being played.\n"
+            text += "\n\nSwitch music player to a different " + level + "."
+            self.info.cast(title + "\n\n" + text, 'error')
+            message.ShowInfo(self.lib_top, title, text, icon='error',
+                             thread=self.get_refresh_thread)
+            return False
+
+        return True  # Pre-Checks successful. OK to delete or rename files.
+
+    def rd_delete_files(self, Id, level):
         """ Delete Artist, Album or Song.
 
             If song is checked as a favorite it must be unchecked before it
@@ -4233,15 +4296,21 @@ Glenn Frey - Solo Collection
 
         old_name = self.lib_tree.item(Id)['text']
 
-        if not self.check_files('rename', old_name):
+        if not self.rd_check_files('rename', old_name):
             self.wrapup_lib_popup()  # Set color tags and counts
             return
 
-        old_rows, artist_name, album_name = self.fetch_files(level, Id, old_name)
+        old_rows, artist_name, album_name = self.rd_tree_os_base_names(level, Id, old_name)
 
         ''' loop through files selected for deletion '''
         in_playlist = 0
+        music_playing_found = False
         for old_base, music_id, oldArtist, oldAlbum, oldTitle in old_rows:
+
+            if not self.check_song_playing('delete', level, old_name):
+                music_playing_found = True
+                continue
+
             if music_id in lcs.open_music_ids:
                 in_playlist += 1
                 title = "Cannot delete " + level + ": " + old_name
@@ -4251,16 +4320,21 @@ Glenn Frey - Solo Collection
                 self.info.cast(title + "\n\n" + text, 'error')
                 message.ShowInfo(self.lib_top, title, text, icon='error',
                                  thread=self.get_refresh_thread)
+                continue  # 2024-07-23 - Simpler to return than continue?
 
-        if in_playlist:
+        if in_playlist or music_playing_found:
             self.wrapup_lib_popup()  # Set color tags and counts
             return False
+
+        # 2024-07-27 - Loop through os base names
 
         self.wrapup_lib_popup()  # Set color tags and counts
 
     @staticmethod
     def rename_path(from_end, old, new, paths):
-        """ Called from rename_files() to process one filename in paths list
+        """ DEPRECATED - MOVED INTERNALLY
+
+            Called from rd_rename_files() to process one filename in paths list
 
         :param from_end: -1 = song, -2 = album, -3 = artist
         :param old: old name
@@ -4277,7 +4351,7 @@ Glenn Frey - Solo Collection
                 return True
         return False
 
-    def reverse(self, Id):
+    def toggle_song_title_checkbox(self, Id):
         """ Toggle song tag on/off. Only used for song, not parent """
         if Id.startswith("I"):
             print("mserve.py reverse(" + Id + "): should not be called.")
@@ -5369,7 +5443,7 @@ Glenn Frey - Solo Collection
             self.debug_detail("playlists.open_name :", self.playlists.open_name)
             self.debug_detail("open_row_id         :", self.playlists.open_row_id)
             self.debug_detail("open_code           :", self.playlists.open_code)
-            self.debug_detail("open_loc_id         :", self.playlists.open_loc_id)
+            self.debug_detail("open_loc_code         :", self.playlists.open_loc_code)
             self.debug_detail("self.open_name      :", self.playlists.open_name)
             self.debug_detail("#(self.open_music_ids):", len(self.playlists.open_music_ids))
             self.debug_detail("open_size           :", self.playlists.open_size)
@@ -5556,6 +5630,10 @@ Glenn Frey - Solo Collection
             self.debug_detail("\nSQL Whitelist substitutes")
             self.debug_detail("-" * 51, "\n")
             for i, entry in enumerate(sql.ofb.whites):
+                self.debug_detail(i, ":", entry)
+            self.debug_detail("\nSQL Whitelist reasons")
+            self.debug_detail("-" * 51, "\n")
+            for i, entry in enumerate(sql.ofb.reasons):
                 self.debug_detail(i, ":", entry)
 
         self.debug_detail("\nSQL Table Sizes")
@@ -10576,7 +10654,7 @@ Glenn Frey - Solo Collection
         """ turn on auto scrolling, it can be overridden from saved steps or
             if left-clicking on lyrics to set lyrics line to time index.
         """
-        # webscrape.delete_files()  # Cleanup last run
+        # webscrape.rd_delete_files()  # Cleanup last run
         self.lyrics_line_count = 1  # Average about 45 lines
 
         ''' uni_str = byte_str.encode("utf-8")  DOES NOT WORK !!! 
@@ -10695,7 +10773,7 @@ Glenn Frey - Solo Collection
         self.lyrics_score_box.configure(state="disabled")
         if True is False:
             webscrape.print_files()  # Print 3 mserve_scrape* file contents
-        webscrape.delete_files()  # Delete 3 mserve_scrape* files
+        webscrape.rd_delete_files()  # Delete 3 mserve_scrape* files
 
         end = self.lyrics_score_box.index('end')  # returns line.column
         self.lyrics_line_count = int(end.split('.')[0]) - 1
@@ -17163,7 +17241,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         self.open_row_id = None  # History Table record number = "RowId"
         # SQL History Table Row's "Type" column will contain "Playlist"
         self.open_code = None  # E.G. "P000001" = "Action"
-        self.open_loc_id = None  # E.G. "L004" = "SourceMaster"
+        self.open_loc_code = None  # E.G. "L004" = "SourceMaster"
         self.open_name = None  # E.G. "Oldies" = "SourceDetail"
         self.open_music_ids = []  # Sorted in play order = "Target"
         self.open_size = 0  # Size of all song files = "Size"
@@ -17543,7 +17621,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         """ Create open Playlist variables """
         self.open_row_id = self.act_row_id
         self.open_code = self.act_code
-        self.open_loc_id = self.act_loc_id
+        self.open_loc_code = self.act_loc_id
         self.open_name = self.act_name
         self.open_music_ids = self.act_music_ids
         self.open_size = self.act_size
@@ -17555,7 +17633,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         """ Create open Playlist variables """
         self.open_row_id = None
         self.open_code = None
-        self.open_loc_id = None
+        self.open_loc_code = None
         self.open_name = None
         self.open_music_ids = None
         self.open_size = None
@@ -17760,14 +17838,14 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                 Target-JSON list of sorted Music IDs, Size=MB, Count=# Songs,
                 Seconds=Total Duration, Comments=Playlist Description """
         ''' Current Playlist work fields - History Record format '''
-        if not self.open_code or not self.open_loc_id or not self.open_name:
+        if not self.open_code or not self.open_loc_code or not self.open_name:
             print("Playlists.save_playlist() Error: One of three are blank:")
             print("self.open_code:", self.open_code,
-                  "  | self.open_loc_id:", self.open_loc_id,
+                  "  | self.open_loc_code:", self.open_loc_code,
                   "  | self.open_name:", self.open_name)
             toolkit.print_trace()
             return
-        sql.save_config('playlist', self.open_code, self.open_loc_id,
+        sql.save_config('playlist', self.open_code, self.open_loc_code,
                         self.open_name, json.dumps(self.open_music_ids),
                         self.open_size, self.open_count, self.open_seconds,
                         self.open_description)

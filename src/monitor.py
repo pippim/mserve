@@ -944,6 +944,25 @@ def check_window_geom(_geom):
 
         NOTE: Gnome (or X11) already moves new window fully onto monitor.
 
+    SSR offers some unique perspective:
+
+[PageRecord::StartInput] Starting input ...
+[X11Input::Init] Using X11 shared memory.
+[X11Input::Init] Detecting screen configuration ...
+[X11Input::Init] Screen 0: x1 = 3870, y1 = 2160, x2 = 5790, y2 = 3240
+[X11Input::Init] Screen 1: x1 = 0, y1 = 0, x2 = 1920, y2 = 1080
+[X11Input::Init] Screen 2: x1 = 1920, y1 = 0, x2 = 5760, y2 = 2160
+[X11Input::Init] Dead space 0: x1 = 5760, y1 = 0, x2 = 5790, y2 = 1080
+[X11Input::Init] Dead space 1: x1 = 0, y1 = 1080, x2 = 1920, y2 = 2160
+[X11Input::Init] Dead space 2: x1 = 5760, y1 = 1080, x2 = 5790, y2 = 2160
+[X11Input::Init] Dead space 3: x1 = 0, y1 = 2160, x2 = 3870, y2 = 3240
+
+    Where:
+        Screen 0: Laptop HD at Bottom Right
+        Screen 1: Sony HD TV at Top Left
+        Screen 2: TCL 4K TV at Top Right
+
+
     :param _geom: Geometry (width & height plus coordinates: "WxH+X+Y")
     :return: Valid geometry to use
     """

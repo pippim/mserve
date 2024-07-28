@@ -566,12 +566,7 @@ def open_db(LCS=None):
     con.execute("CREATE UNIQUE INDEX IF NOT EXISTS TimeIndex ON " +
                 "History(Timestamp)")
 
-    """ Version 2 
-    con.execute("CREATE INDEX IF NOT EXISTS TimeIndex ON " +
-                "History(Time)")
-    """
-    con.execute("CREATE INDEX IF NOT EXISTS TypeActionIndex ON " +
-                "History(Type, Action)")
+
 
     # LOCATION TABLE
     con.execute(
@@ -1036,8 +1031,13 @@ class OsFileNameBlacklist:
     """
 
     def __init__(self):
-        self.blacks = []
-        self.whites = []
+        self.blacks = []  # List of blacklisted file base names
+        self.whites = []  # List of whitelisted replacements for blacklist
+        self.reasons = []  # List of tuples - ('reason', this_location_flag)
+        # reasons - reason, location usage:
+        #   "partial" - partial base name, location = None
+        #   "rename" - file renamed, location = True if open location renamed
+        #   "delete" - file deleted, location = True if open location deleted
 
         self.white_key = None  # Used for GetWhitelist(key)
         self.who = "sql.py OsFileNameBlacklist()."
@@ -1075,7 +1075,7 @@ class OsFileNameBlacklist:
         except ValueError:
             return False
 
-    def AddBlacklist(self, key):
+    def AddBlacklist(self, key, reason='partial', this_loc=True, music_id=0):
         """ Music Location Library Tree has <No Artist>/<No Album>
             or a file has been renamed. 
         """
@@ -1088,6 +1088,7 @@ class OsFileNameBlacklist:
             # This is normally expected
             self.blacks.append(key)
             self.whites.append(None)
+            self.reasons.append((reason, this_loc, music_id))
             return True
 
     def CheckWhitelist(self, key):
@@ -1123,6 +1124,22 @@ class OsFileNameBlacklist:
                   black_key)
             return None
 
+    def ResetReasonList(self, black_key, reason, this_loc):
+        """ If history matches this opened location code, record it. """
+        if this_loc is False:
+            return  # Only reset when history record matches open location
+
+        try:
+            ndx = self.blacks.index(black_key)
+            old_reason, old_flag, old_music_id = self.reasons[ndx]
+            if old_flag is True:
+                print(self.who + "ResetReasonList this_loc already True:")
+                print(" ", black_key)
+            self.reasons[ndx] = (reason, True, old_music_id)
+        except ValueError:
+            print(self.who + "ResetReasonList(): Invalid black_key:")
+            print(" ", black_key)
+
     def CreateInitialLists(self):
         """ Read history for all renames and deletes.
             Called by mserve.py when OS is walked in make_sorted_list()
@@ -1130,8 +1147,8 @@ class OsFileNameBlacklist:
 
         self.__init__()  # Clear any existing data
         _who = self.who + "CreateInitialLists():"
-        lcs.build_locations()
-        this_topdir = lcs.all_topdirs[lcs.all_codes.index(lcs.open_code)]
+        lcs.build_locations()  # Build location master lists
+        _this_topdir = lcs.all_topdirs[lcs.all_codes.index(lcs.open_code)]
         old_loc_missing = False
 
         # Blacklist & Whitelist rename files
@@ -1141,55 +1158,126 @@ class OsFileNameBlacklist:
         rows = hist_cursor.fetchall()
         for hd in rows:
             old_loc = hd['SourceMaster']  # L999
+            this_loc = True if old_loc == lcs.open_code else False
             try:
                 old_topdir = lcs.all_topdirs[lcs.all_codes.index(old_loc)]
             except IndexError:
                 if not old_loc_missing:
-                    print(_who, "Old location doesn't exist:", old_loc)
+                    print(_who, "'CreateInitialLists' -",
+                          "Old location doesn't exist:", old_loc)
                     old_loc_missing = True
                 continue
             old_path = hd['SourceDetail']  # top/dir/artist/album/99 title.ext
-            old_base = old_path.replace(old_topdir + os.sep, '')
+            old_base = old_path.replace(old_topdir + os.sep, '')  # remove top
             
             if self.CheckBlacklist(old_base):
+                self.ResetReasonList(old_base, 'rename', this_loc)
                 continue  # Already blacklisted by another location just processed
 
             md = music_get_row(hd['MusicId'], print_err=False)
             if md is None:
-                self.AddBlacklist(old_base)  # Was renamed and then was deleted.
+                # File was renamed and then was deleted. Doesn't matter if this
+                # was current location or not, set flag for rename already done.
+                self.AddBlacklist(old_base, 'rename', this_loc=True,
+                                  music_id=hd['MusicId'])
+                #print("Music doesn't exist force this_loc=True:", len(self.blacks))
             else:
                 new_base = md['OsFileName']
-                self.SetFileRename(old_base, new_base)
+                # Add blacklist, whitelist and this location True/False flag
+                self.SetFileRename(old_base, new_base, this_loc, hd['MusicId'])
 
-        # Blacklist delete files
-        sql = "SELECT * FROM History INDEXED BY TypeActionIndex " + \
-              "WHERE Type = ?"
-        hist_cursor.execute(sql, ('delete',))
-        rows = hist_cursor.fetchall()
-        for hd in rows:
-            old_loc = hd['SourceMaster']  # L999
-            try:
-                old_topdir = lcs.all_topdirs[lcs.all_codes.index(old_loc)]
-            except IndexError:
-                if not old_loc_missing:
-                    print(_who, "Old location doesn't exist:", old_loc)
-                    old_loc_missing = True
-                continue
-            old_path = hd['SourceDetail']  # top/dir/artist/album/99 title.ext
-            old_base = old_path.replace(old_topdir + os.sep, '')
+        # Whitelist delete files as potential update
+        #  - apply, remind later or keep file(s)
 
-            if self.CheckBlacklist(old_base):
-                continue  # Already blacklisted by another location just processed
 
-            if not self.CheckBlacklist(old_base):  # Another loc. blacklisted
-                self.AddBlacklist(old_base)  # Not blacklisted yet
-
-    def SetFileRename(self, black_key, white_key):
+    def SetFileRename(self, black_key, white_key, this_loc, music_id):
         """ Add substitute for files that were renamed. """
         if self.CheckBlacklist(black_key):
             return  # Already blacklisted due to history for another location
-        self.AddBlacklist(black_key)
+        # Not blacklisted yet. Is this history record for opened location?
+        self.AddBlacklist(black_key, 'rename', this_loc, music_id)
         self.SetWhitelist(black_key, white_key)
+
+    def RenameFilesList(self):
+        """ Process all blacks & whites for this location not renamed yet.
+            Called by mserve.py make_sorted_list() before OS walk starts.
+        """
+        this_topdir = lcs.all_topdirs[lcs.all_codes.index(lcs.open_code)]
+
+        for i, black_key in enumerate(self.blacks):
+            reason, already_renamed, music_id = self.reasons[i]
+            if reason != 'rename' or already_renamed is True or music_id == 0:
+                continue
+            white_key = self.whites[i]
+            if white_key is None:
+                print(self.who + "RenameFiles(): Invalid black_key:")
+                print(" ", black_key)
+
+            # Rename OS file and '.old' or '.new' loudness normalization extensions
+            original_path = this_topdir + os.sep + black_key
+            renamed_path = this_topdir + os.sep + white_key
+            self.RenameFileGroup(original_path, renamed_path,
+                                 music_id=music_id, ndx=i)
+
+    def RenameFileGroup(self, old_path, new_path, level=None,
+                        music_id=None, ndx=None):
+        """ Given "song title.mp3" check for "song title.mp3.new" and
+            "song title.mp3.old" too. 
+            Also called from mserve.py MusicLocationTree().rd_rename_files()
+            when level is passed as "Artist", "Album" or "Title".
+        """
+
+        if level is None:
+            level_log = 'Other Location'
+        else:
+            level_log = level
+
+        ext_list = ['', '.old', '.new']
+        for e in ext_list:
+            os_old_name = old_path + e
+            os_new_name = new_path + e
+            ''' Try to get OS information (os.stat) on original file '''
+            file_exists = True
+            try:
+                stat = os.stat(os_old_name)  # Get file attributes
+            except OSError as err:
+                if e == '' and level is not None:  # .old or .new usually don't exist
+                    print(self.who + "RenameFileGroup(): os.stat() IOError:")
+                    print(err)
+                file_exists = False
+
+            ''' Try to rename original to renamed (os.renames) '''
+            if file_exists:
+                try:
+                    os.renames(os_old_name, os_new_name)
+                except OSError as err:
+                    if e == '' and level is not None:  # .old or .new never an error
+                        print(self.who + "RenameFileGroup(): os.renames() IOError:")
+                        print(err)
+                    file_exists = False
+
+            ''' Try to update OS timestamps on renamed file to match original file '''
+            if file_exists:
+                try:
+                    os.utime(os_new_name, (stat.st_atime, stat.st_mtime))
+                except OSError as err:
+                    if e == '' and level is not None:  # errors only reported for original filename
+                        print(self.who + "RenameFileGroup(): os.utime() IOError:")
+                        print(err)
+
+            # Log history only for real filename, not '.old' or '.new' files
+            # used by loudness normalization work files.
+            if e != '':
+                continue  # '.old' or '.new' filename extension
+
+            comment = "File renamed." if file_exists else \
+                "Nothing to rename. File doesn't exist."
+            hist_add(time.time(), music_id, g.USER, 'rename', level_log,
+                     lcs.open_code, old_path, new_path, 0, 0, 0.0, comment)
+            if ndx is not None:
+                # Reset reason to this location updated
+                old_reason, old_flag, old_music_id = self.reasons[ndx]
+                self.reasons[ndx] = (old_reason, True, old_music_id)
 
 
 ''' Global substitution for read Music Table by path '''
@@ -4242,7 +4330,7 @@ def playlist_treeview():
         self.his_view.tree.heading('size', text='Size of Files')
         self.his_view.tree.heading('seconds', text='Duration')
 
-                sql.save_config('playlist', self.open_code, self.open_loc_id,
+                sql.save_config('playlist', self.open_code, self.open_loc_code,
                         self.open_name, json.dumps(self.open_id_list),
                         self.open_size, self.open_count, self.open_seconds,
                         self.open_description)
