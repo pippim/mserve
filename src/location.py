@@ -1367,8 +1367,11 @@ class Locations(LocationsCommonSelf):
 
         ''' Work fields NOT stored in SQL Location Table '''
         self.open_music_ids = []  # Based on mserve.py 'saved_selections' list. 
-        # 'saved_selections' is index into mserve.py 'real_paths'.
+        # 'saved_selections' are lib_tree_iid in play order.
         # Favorites read from ~/.config/mserve/L999/last_playlist with full paths.
+        self.open_size = None
+        self.open_count = None
+        self.open_seconds = None
 
         ''' Additional Open Location variables not in SQL '''
         self.host_down = False  # For emergency shutdown
@@ -2884,6 +2887,8 @@ class Locations(LocationsCommonSelf):
         self.open_touchmin = d['HostTouchMinutes']
         self.open_comments = d['Comments']
         self.open_row_id = d['Id']  # Location SQL Primary Key
+        ''' work variables: self.open_music_ids, self.open_size, etc.
+            updated by populate_chron_tree '''
 
     @staticmethod
     def code_to_ndx(code):

@@ -35,7 +35,8 @@ warnings.simplefilter('default')  # in future Python versions.
 #       Aug. 20 2023 - Print SQL Table sizes and Row Counts by Type
 #       Mar. 09 2024 - print_windows() - Print Window offsets, sizes and name
 #       Mar. 24 2024 - Save treeview configuration. Revamp dict_treeview.
-#       Jul. 23 2024 - Rename and Delete files across all locations.
+#       Jul. 23 2024 - Rename and Delete files across all locations
+#       Aug. 05 2024 - Music Table 'OsFileSize' was discovered to be <None>
 
 #   TODO:
 
@@ -206,6 +207,7 @@ def populate_tables(SortedList, start_dir, pruned_dir, lodict):
     START_DIR = start_dir
     PRUNED_DIR = pruned_dir  # Toplevel directory, EG /mnt/music/
     LODICT = lodict  # Location dictionary Aug 3/23 - soon will be <type None>
+    _who = "sql.py populate_tables():"
 
     ''' NOTE from mserve.py June/2023:
     LODICT['iid'] = 'new'  # June 6, 2023 - Something new to fit into code
@@ -277,7 +279,7 @@ def populate_tables(SortedList, start_dir, pruned_dir, lodict):
         try:
             stat = os.stat(full_path)  # Get file attributes
         except OSError:
-            print("Could not stat:", full_path)
+            print(_who, "Could not stat:", full_path)
             continue
 
 
@@ -1052,6 +1054,11 @@ class OsFileNameBlacklist:
         cursor.execute("SELECT * FROM Music WHERE OsFileName = ?", [key])
         try:
             d = dict(cursor.fetchone())
+            # 2024-08-05 - 'OsFileSize' was discovered to be <None>
+            if d['OsFileSize'] is None:
+                d['OsFileSize'] = 0  # Used to calculate playlist size
+            if d['Seconds'] is None:
+                d['Seconds'] = 0  # Used to calculate playlist duration
             return d  # Normal successful read
 
         except TypeError:  # TypeError: 'NoneType' object is not iterable:
@@ -1133,8 +1140,9 @@ class OsFileNameBlacklist:
             ndx = self.blacks.index(black_key)
             old_reason, old_flag, old_music_id = self.reasons[ndx]
             if old_flag is True:
-                print(self.who + "ResetReasonList this_loc already True:")
-                print(" ", black_key)
+                #print(self.who + "ResetReasonList this_loc already True:")
+                #print(" ", black_key)
+                pass  # Not really an error and it happens from time to time.
             self.reasons[ndx] = (reason, True, old_music_id)
         except ValueError:
             print(self.who + "ResetReasonList(): Invalid black_key:")
@@ -1186,10 +1194,6 @@ class OsFileNameBlacklist:
                 # Add blacklist, whitelist and this location True/False flag
                 self.SetFileRename(old_base, new_base, this_loc, hd['MusicId'])
 
-        # Whitelist delete files as potential update
-        #  - apply, remind later or keep file(s)
-
-
     def SetFileRename(self, black_key, white_key, this_loc, music_id):
         """ Add substitute for files that were renamed. """
         if self.CheckBlacklist(black_key):
@@ -1197,6 +1201,17 @@ class OsFileNameBlacklist:
         # Not blacklisted yet. Is this history record for opened location?
         self.AddBlacklist(black_key, 'rename', this_loc, music_id)
         self.SetWhitelist(black_key, white_key)
+
+        # Whitelist delete files as potential update
+        #  - apply, remind later or keep file(s)
+
+    def SetFileDelete(self, black_key, this_loc, music_id):
+        """ Add substitute for files that were renamed. """
+        if self.CheckBlacklist(black_key):
+            return  # Already blacklisted due to history for another location
+        # Not blacklisted yet. Is this history record for opened location?
+        self.AddBlacklist(black_key, 'delete', this_loc, music_id)
+        self.SetWhitelist(black_key, black_key)  # Black filename for white
 
     def RenameFilesList(self):
         """ Process all blacks & whites for this location not renamed yet.
@@ -1218,21 +1233,23 @@ class OsFileNameBlacklist:
             renamed_path = this_topdir + os.sep + white_key
             self.RenameFileGroup(original_path, renamed_path,
                                  music_id=music_id, ndx=i)
+        con.commit()  # Write to disk
 
     def RenameFileGroup(self, old_path, new_path, level=None,
                         music_id=None, ndx=None):
         """ Given "song title.mp3" check for "song title.mp3.new" and
             "song title.mp3.old" too. 
             Also called from mserve.py MusicLocationTree().rd_rename_files()
-            when level is passed as "Artist", "Album" or "Title".
+            where level is passed as "Artist", "Album" or "Title".
         """
 
         if level is None:
-            level_log = 'Other Location'
+            level_log = 'Other'
         else:
             level_log = level
 
-        ext_list = ['', '.old', '.new']
+        # 2024-08-01 - TODO: Use glob.glob() to get list of all matching search
+        ext_list = ['', '.old', '.new', '.lrc', '.png', '.jpg', '.jpeg']
         for e in ext_list:
             os_old_name = old_path + e
             os_new_name = new_path + e
@@ -1242,9 +1259,11 @@ class OsFileNameBlacklist:
                 stat = os.stat(os_old_name)  # Get file attributes
             except OSError as err:
                 if e == '' and level is not None:  # .old or .new usually don't exist
-                    print(self.who + "RenameFileGroup(): os.stat() IOError:")
+                    print(self.who + "RenameFileGroup(): os.stat() OSError:")
+                    print(" ", old_path)
                     print(err)
                 file_exists = False
+                stat = None  # Make pycharm happy
 
             ''' Try to rename original to renamed (os.renames) '''
             if file_exists:
@@ -1252,7 +1271,8 @@ class OsFileNameBlacklist:
                     os.renames(os_old_name, os_new_name)
                 except OSError as err:
                     if e == '' and level is not None:  # .old or .new never an error
-                        print(self.who + "RenameFileGroup(): os.renames() IOError:")
+                        print(self.who + "RenameFileGroup(): os.renames() OSError:")
+                        print(" ", old_path)
                         print(err)
                     file_exists = False
 
@@ -1262,7 +1282,8 @@ class OsFileNameBlacklist:
                     os.utime(os_new_name, (stat.st_atime, stat.st_mtime))
                 except OSError as err:
                     if e == '' and level is not None:  # errors only reported for original filename
-                        print(self.who + "RenameFileGroup(): os.utime() IOError:")
+                        print(self.who + "RenameFileGroup(): os.utime() OSError:")
+                        print(" ", old_path)
                         print(err)
 
             # Log history only for real filename, not '.old' or '.new' files
@@ -1279,8 +1300,51 @@ class OsFileNameBlacklist:
                 old_reason, old_flag, old_music_id = self.reasons[ndx]
                 self.reasons[ndx] = (old_reason, True, old_music_id)
 
+    def DeleteFileGroup(self, old_path, level=None,
+                        music_id=None, ndx=None):
+        """ Given "song title.mp3" check for "song title.mp3.new" and
+            "song title.mp3.old" too. 
+            Also called from mserve.py MusicLocationTree().rd_delete_files()
+            where level is passed as "Artist", "Album" or "Title".
+        """
 
-''' Global substitution for read Music Table by path '''
+        if level is None:
+            level_log = 'Other'
+        else:
+            level_log = level
+
+        # 2024-08-01 - TODO: Use glob.glob() to get list of all matching search
+        ext_list = ['', '.old', '.new', '.lrc', '.png', '.jpg', '.jpeg']
+        for e in ext_list:
+            os_old_name = old_path + e
+
+            ''' Try to delete original to deleted (os.remove) '''
+            file_exists = True
+            try:
+                os.remove(os_old_name)
+            except OSError as err:
+                if e == '' and level is not None:  # .old or .new never an error
+                    print(self.who + "DeleteFileGroup(): os.remove() OSError:")
+                    print(" ", old_path)
+                    print(err)
+                file_exists = False
+
+            # Log history only for real file delete, not '.old' or '.new' files
+            # used by loudness normalization work files.
+            if e != '':
+                continue  # '.old' or '.new' file extension
+
+            comment = "File deleted." if file_exists else \
+                "Nothing to delete. File doesn't exist."
+            hist_add(time.time(), music_id, g.USER, 'delete', level_log,
+                     lcs.open_code, old_path, '', 0, 0, 0.0, comment)
+            if ndx is not None:
+                # Reset reason to this location as file deleted
+                old_reason, old_flag, old_music_id = self.reasons[ndx]
+                self.reasons[ndx] = (old_reason, True, old_music_id)
+
+
+''' Global substitution for read Music Table by Artist/Album/Title.ext '''
 ofb = OsFileNameBlacklist()
 
 
@@ -1364,11 +1428,43 @@ def music_get_row(key, print_err=True):
 
     try:
         row = dict(cursor.fetchone())
+        # 2024-08-05 - 'OsFileSize' was discovered to be <None>
+        if row['OsFileSize'] is None:
+            row['OsFileSize'] = 0  # Used to calculate playlist size
+        if row['Seconds'] is None:
+            row['Seconds'] = 0  # Used to calculate playlist duration
+
         return OrderedDict(row)
     except TypeError:  # TypeError: 'NoneType' object is not iterable:
         if print_err:
             print('sql.py - music_get_row() not found:', key)
         return None
+
+
+def music_update_stat(key, full_path):
+    """ Update Music records OS access times and size. 
+        Assume duration is the same as before. Called by mserve.py
+        when renaming loudness normalization file to original file.
+
+        NOTE: Playlist total size needs to be recalculated by
+              subtracting old file size and adding new file size.
+    """
+    _who = "sql.py music_update_stat():"
+    try:
+        stat = os.stat(full_path)  # Get file attributes
+    except OSError:
+        print(_who, "Could not stat:", full_path)
+        return None
+    sql = "UPDATE Music SET OsAccessTime=?, OsModifyTime=?, \
+          OsChangeTime=?, OsFileSize=? WHERE OsFileName = ?" 
+
+    cursor.execute(sql, (stat.st_atime, stat.st_mtime,
+                         stat.st_ctime, stat.st_size, key))
+    return {"OsAccessTime": stat.st_atime,
+            "OsModifyTime": stat.st_mtime,
+            "OsChangeTime": stat.st_ctime,
+            "OsFileSize": stat.st_size,
+            "OsFileName": key}
 
 
 def loc_code():
@@ -1419,13 +1515,18 @@ def update_metadata(fc, commit=True):
             'meta' 'init' for first time
             'meta' 'edit' for 2nd and subsequent changes
 
-        Problem when one location has less metadata for song than another
-        will be blanking out other location's extra metadata
+        Problem when one location has less metadata for a song, 
+        it will be blanking out other location's extra metadata
+
+        TODO: If Artist, Album or Title have been changed, then
+              the OsFileName key must be updated. The rd_rename_files()
+              method in mserve.py renames OsFileName appropriately.
 
     :param fc: File control block: mus_ctl, ltp_ctl and play_ctl.
     :param commit: Live run. Update SQL database if metadata changed. If
         not a live run, return changed row dictionary instead of False. 
-    :returns: True if Metadata changed and SQL updated """
+    :returns: True if Metadata changed and SQL updated 
+    """
 
     # Don't allow GIGO which required FixData del_music_ids() function June 2023
     if fc.Artist is None or fc.Album is None or fc.Title is None:

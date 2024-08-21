@@ -442,6 +442,7 @@ def make_mserve_cfg():
     cfg.append(make_dict(m, None, "time"))
     cfg.append(make_dict(m, None, "datetime"))
     cfg.append(make_dict(m, None, "re"))
+    cfg.append(make_dict(m, None, "copy"))
     cfg.append(make_dict(m, None, "traceback"))
     cfg.append(make_dict(m, None, "locale"))
     # noinspection SpellCheckingInspection
