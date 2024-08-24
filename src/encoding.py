@@ -41,6 +41,7 @@ warnings.simplefilter('default')  # in future Python versions.
 #       Dec. 10 2023 - Code review and typo corrections.
 #       May. 31 2024 - Make "No Audio Disc" error message appear correctly.
 #       Jun. 02 2024 - User configurable colors, bug fixes and debug printing.
+#       Aug. 24 2024 - SQL Music Table speed boost using OsFileNameIndex.
 #
 # ==============================================================================
 # noinspection SpellCheckingInspection
@@ -2176,9 +2177,9 @@ MP4StreamInfoError: not a MP4 file
         #print("\n encoding.py sql_add_music() last_music_id:", last_music_id)
         # returning last history # 20,659 when no music (already exists)
 
-        ''' Check if song existed previously in SQL. '''
-        sql.cursor.execute("SELECT Id FROM Music WHERE OsFileName = ?",
-                           [self.sqlOsFileName])
+        ''' Check if song already exists in SQL Music Table. '''
+        sql.cursor.execute("SELECT Id FROM Music INDEXED BY OsFileNameIndex " +
+                           "WHERE OsFileName = ?", [self.sqlOsFileName])
         d = dict(sql.cursor.fetchone())
         sql.con.commit()  # Will this fix bug?
         self.music_id = d["Id"]

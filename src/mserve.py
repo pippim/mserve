@@ -99,6 +99,7 @@ warnings.simplefilter('default')  # in future Python versions.
 #       Jun. 22 2024 - TV_MOVE_WINDOW, TV_WINDOW_ANCHOR & TV_MOVE_WITH_COMPIZ.
 #       Jul. 10 2024 - May 13 fix disabled "Save Favorites" function. Correct.
 #       Aug. 05 2024 - Create separate and shared delete from playlist method.
+#       Aug. 24 2024 - SQL Music Table speed boost using OsFileNameIndex.
 #
 # ==============================================================================
 
@@ -1909,7 +1910,8 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
                 splash("New", self.loud_size_str, self.loud_max_vol)
 
     def loudness_menu(self):
-        """ Options to View Summary, Apply Song, Apply All filtered, Remove
+        """ Options to View Summary, Apply New Song, Apply All filtered,
+            Remove New Song.
             Filter - Max Volume Worse than before
                    - Max Volume missed target > .2 dB
                    - Max Volume reached target
@@ -1990,7 +1992,7 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
 
             # Delete from playlist using music_id list with one element
             music_id_list = [mus_id]
-            self.delete_from_playlist(music_id_list)
+            self.delete_from_memory(music_id_list)
             self.write_playlist_to_disk(show_info=False)
             sql.con.commit()
 
@@ -2054,7 +2056,7 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
                 # Remove SQL History loudness normalization 'volume' records
                 remove_normalize(prompt=False, mus_id=mus_id)
 
-            self.delete_from_playlist(music_id_list)
+            self.delete_from_memory(music_id_list)
             self.write_playlist_to_disk(show_info=False)
 
             # Update size_deltas to all playlists
@@ -2101,7 +2103,7 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
 
             # Delete from playlist using music_id list with one element
             music_id_list = [music_id]
-            self.delete_from_playlist(music_id_list)
+            self.delete_from_memory(music_id_list)
 
             # Update size_deltas to all playlists
             self.update_playlist_sizes(size_deltas)
@@ -2489,8 +2491,24 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
                 print(_who, "ERROR music_id missing:", music_id)
                 continue
             full_path = PRUNED_DIR + d['OsFileName']
+            try:
+                ndx = self.real_paths.index(full_path)
+                # 2024-08-21 - After opening Loudness Normalization playlist
+                #   File "/home/rick/python/mserve.py", line 18516, in apply
+                #     self.apply_callback()  # Parent will start playing (if > 1 song in list)
+                #   File "/home/rick/python/mserve.py", line 2494, in apply_playlists
+                #     ndx = self.real_paths.index(full_path)
+                # ValueError: u'/media/rick/SANDISK128/Music/April Wine/The Hits/
+                #       03 Just Between You and Me.wav' is not in list
+
+                # Yesterday this song was deleted but it wasn't removed from the
+                # playlist
+            except ValueError:
+                print(_who, "ERROR full_path is missing:\n ", full_path)
+                # self.playlists.open_music_ids.remove
+                continue
+
             self.playlist_paths.append(full_path)
-            ndx = self.real_paths.index(full_path)
             iid = str(ndx)
             self.saved_selections.append(iid)
 
@@ -2782,7 +2800,7 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
 
         ''' Step 2 - Delete songs from playlist '''
         dprint("\n''' Step 2 - Delete songs from playlist '''")
-        # 2024-08-04 - variable and lists below moved to delete_from_playlist()
+        # 2024-08-04 - variable and lists below moved to delete_from_memory()
         delete_music_ids = []  # 2024-08-04 - Music Ids to be deleted
 
         ''' 2024-08-04 - Build list of music ids to be deleted '''
@@ -2797,7 +2815,7 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
                 delete_music_ids.append(music_id)
 
         if self.pending_del_cnt > 0:
-            self.delete_from_playlist(delete_music_ids)
+            self.delete_from_memory(delete_music_ids)
 
         ''' Step 3 - Add songs to playlist '''
         dprint("\n''' Step 3 - Add songs to playlist '''")
@@ -3006,8 +3024,10 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
                 current_lib_tree_iid = self.saved_selections[self.ndx]
         return current_playing_ndx, current_lib_tree_iid
 
-    def delete_from_playlist(self, delete_list):
-        """ Called from pending_apply(), loudness_menu().apply_normalize()
+    def delete_from_memory(self, delete_list):
+        """ Delete music ID list from memory lists (but not disk)
+
+            Called from pending_apply(), loudness_menu().apply_normalize()
             and loudness_menu().apply_all_filtered()
 
             Parent responsible for updating chron_tree and lib_tree.
@@ -3023,7 +3043,7 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
         if len(delete_list) == 0:
             return  # Nothing to delete
 
-        _who = self.who + "delete_from_playlist():"
+        _who = self.who + "delete_from_memory():"
         global DPRINT_ON
         DPRINT_ON = True  # Debug printing: 'dprint(*args)' calls 'print(*args)'
 
@@ -3071,24 +3091,24 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
 
             try:
                 delete_ndx = music_id_list.index(music_id)
-                delete_ndx_list.append(delete_ndx)
-                delete_music_ndx_list.append(delete_ndx)
             except (ValueError, IndexError):
                 toolkit.print_trace()
                 print("\n" + _who)
                 print("Could not find MusicId:", music_id, "in music_id_list.", "\n")
                 continue
+            delete_ndx_list.append(delete_ndx)
+            delete_music_ndx_list.append(delete_ndx)
             delete_iid = self.saved_selections[delete_ndx]
             delete_path = self.real_paths[int(delete_iid)]
 
             try:
                 delete_play_path_ndx = self.playlist_paths.index(delete_path)
-                delete_play_ndx_list.append(delete_play_path_ndx)
             except (ValueError, IndexError):
                 toolkit.print_trace()
                 print("\n" + _who)
                 print("Could not find song in playlist:", delete_path, "\n")
                 continue
+            delete_play_ndx_list.append(delete_play_path_ndx)
 
             if delete_play_path_ndx != delete_ndx:
                 print(_who)
@@ -4247,12 +4267,12 @@ Call search.py when these control keys occur
         old_name = self.lib_tree.item(Id)['text']
         default_string = old_name
 
-        if not self.rd_check_files('rename', old_name):
+        if not self.rd_safe_to_run('rename', old_name):
             self.wrapup_lib_popup()  # Set color tags and counts
             return
 
         old_rows, artist_name, album_name, search = \
-            self.rd_tree_os_base_names(level, Id, old_name)
+            self.rd_get_sql_keys(level, Id, old_name)
 
         while True:  # Loop until all errors fixed
             if not self.lib_top_is_active:
@@ -4319,8 +4339,15 @@ Call search.py when these control keys occur
                 search = artist_name + os.sep + legal_string + os.sep
             else:
                 search = legal_string + os.sep  # Renaming artists
+
+            if "%" in search:
+                # If SQL wildcard character in search string, escape with ':'
+                search = search.replace("%", ":%")
+                print("Escape '%' in search string:", search)
+
             sql.cursor.execute("SELECT OsFileName, Id FROM Music " +
-                               "WHERE OsFileName LIKE ? ", [search + "%"])
+                               "INDEXED BY OsFileNameIndex WHERE OsFileName " +
+                               "LIKE ? ESCAPE ':'", [search + "%"])
             test_rows = sql.cursor.fetchall()
 
             ''' Trying to rename to another song that exists under /Album '''
@@ -4516,7 +4543,7 @@ Call search.py when these control keys occur
 
         self.wrapup_lib_popup()  # Set color tags and counts
 
-    def rd_check_files(self, mode, old_name):
+    def rd_safe_to_run(self, mode, old_name):
         """ Check conditions for rd_rename_files() and rd_delete_files()
             E.G. - Playlist maintenance or Location maintenance can't be open.
             def enable_lib_menu
@@ -4563,11 +4590,12 @@ Call search.py when these control keys occur
 
         return True  # Pre-Checks successful. OK to delete or rename files.
 
-    def rd_tree_os_base_names(self, level, Id, old_name):
-        """ Fetch SQL Rows for Song(s) by Artist, Album or Title
-
-            TODO: May be unnecessary because treeview parent iid can return
-                  all children ID's which -1 points to path in self.real_paths[].
+    def rd_get_sql_keys(self, level, Id, old_name):
+        """ Fetch SQL OsFileName, MusicId, Artist, Album and Title
+            :param level: 'Artist', 'Album' or 'Title' search level flag
+            :param Id: Music Location Tree IID
+            :param old_name: Artist, Album or Song Title name
+            :returns: OsFileName, Id, Artist, Album, Title, search string
         """
         album_name = None
         if level == 'Title':
@@ -4580,12 +4608,18 @@ Call search.py when these control keys occur
             artist_id = self.lib_tree.parent(Id)
             artist_name = self.lib_tree.item(artist_id)['text']
             search = artist_name + os.sep + old_name + os.sep
-        else:
+        else:  # Renaming artists
             artist_name = old_name
-            search = old_name + os.sep  # Renaming artists
+            search = old_name + os.sep
+
+        if "%" in search:
+            # If SQL wildcard character in search string, escape with ':'
+            search = search.replace("%", ":%")
+            print("Escape '%' in search string:", search)
 
         sql.cursor.execute("SELECT OsFileName, Id, Artist, Album, Title " +
-                           "FROM Music WHERE OsFileName LIKE ? ", [search + "%"])
+                           "FROM Music INDEXED BY OsFileNameIndex " +
+                           "WHERE OsFileName LIKE ? ESCAPE ':'", [search + "%"])
         old_rows = sql.cursor.fetchall()
         return old_rows, artist_name, album_name, search
 
@@ -4621,7 +4655,25 @@ Call search.py when these control keys occur
         return True  # Pre-Checks successful. OK to delete or rename files.
 
     def rd_delete_files(self, Id, level):
-        """ Delete an Artist, an Album or a single Song file.
+        """ Physically delete an Artist, an Album or a single Song Title.
+
+            TODO: 1) Where is self.delete_from_memory() called?
+                  2) Bug (appeared once then not again on startup):
+MusicLocationTree().apply_playlists(delete_only=False): ERROR full_path is missing:
+  /media/rick/SANDISK128/Music/April Wine/The Hits/03 Just Between You and Me.wav
+MusicLocationTree().apply_playlists(delete_only=False): ERROR full_path is missing:
+  /media/rick/SANDISK128/Music/April Wine/The Hits/02 Enough Is Enough.wav
+MusicLocationTree().apply_playlists(delete_only=False): ERROR full_path is missing:
+  /media/rick/SANDISK128/Music/April Wine/The Hits/01 - Say Hello.flac
+MusicLocationTree().apply_playlists(delete_only=False): ERROR full_path is missing:
+  /media/rick/SANDISK128/Music/April Wine/The Hits/01 Say Hello.wav
+
+                  3) Unrelated error to fix (that keeps occurring):
+MusicLocationTree().build_chron_line() No SQL History 'volume', 'detect_old' found for:
+  /media/rick/SANDISK128/Music/Alice Cooper/Welcome To My Nightmare/11 Escape.m4a
+MusicLocationTree().build_chron_line() No SQL History 'volume', 'detect_new' found for:
+  /media/rick/SANDISK128/Music/Alice Cooper/Welcome To My Nightmare/11 Escape.m4a
+
 
             If song is checked as a favorite it must be unchecked before it
             can be deleted. Songs currently playing can't be deleted. Songs
@@ -4637,12 +4689,13 @@ Call search.py when these control keys occur
 
         old_name = self.lib_tree.item(Id)['text']
 
-        if not self.rd_check_files('rename', old_name):
+        # Is it safe to delete files (key processes not running) 
+        if not self.rd_safe_to_run('delete', old_name):
             self.wrapup_lib_popup()  # Set color tags and counts
             return
 
         old_rows, artist_name, album_name, search = \
-            self.rd_tree_os_base_names(level, Id, old_name)
+            self.rd_get_sql_keys(level, Id, old_name)
 
         ''' loop through files selected for deletion '''
         delete_count = 0
@@ -4716,7 +4769,7 @@ Call search.py when these control keys occur
             self.wrapup_lib_popup()  # Set color tags and counts
             return False
 
-        ''' Music id's previously deleted for current location '''
+        ''' Previous Music id's deleted for open location '''
         prev_music_ids = []
         prev_history_ids = []
         cmd = "SELECT * FROM History INDEXED BY TypeActionIndex " + \
@@ -4765,6 +4818,9 @@ Call search.py when these control keys occur
             opened_playlist_loc = self.playlists.open_loc_code
         else:
             opened_playlist_loc = ''
+
+        # Delete music list from all SQL history Type 'playlist' Target columns
+        # What about def delete_from_memory which processes saved_selections?
         for row in sql.hist_cursor.execute(
                 "SELECT * FROM History INDEXED BY TypeActionIndex " +
                 "WHERE Type = 'playlist'"):
@@ -4803,12 +4859,12 @@ Call search.py when these control keys occur
             try:
                 os.rmtree(search)  # Will NOT remove if files still exist
             except OSError as err:
-                print(self.who + "DeleteFileGroup(): os.remove() OSError:")
+                print(self.who + "rd_delete_files(): os.rmtree() OSError:")
                 print(" ", old_name)
                 print(err)
                 rm_tree_error = True
 
-        title = "Rename completed"
+        title = "Delete completed"
         if not self.lib_top_is_active:
             return False  # Shutting down, catch for Playlists() & Locations()
         if delete_count == 0:

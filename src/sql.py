@@ -37,6 +37,7 @@ warnings.simplefilter('default')  # in future Python versions.
 #       Mar. 24 2024 - Save treeview configuration. Revamp dict_treeview.
 #       Jul. 23 2024 - Rename and Delete files across all locations
 #       Aug. 05 2024 - Music Table 'OsFileSize' was discovered to be <None>
+#       Aug. 24 2024 - SQL Music Table speed boost using OsFileNameIndex
 
 #   TODO:
 
@@ -1051,7 +1052,8 @@ class OsFileNameBlacklist:
         :return: Returns dictionary or None
         """
 
-        cursor.execute("SELECT * FROM Music WHERE OsFileName = ?", [key])
+        cursor.execute("SELECT * FROM Music INDEXED BY OsFileNameIndex " +
+                       "WHERE OsFileName = ?", [key])
         try:
             d = dict(cursor.fetchone())
             # 2024-08-05 - 'OsFileSize' was discovered to be <None>
@@ -1064,8 +1066,8 @@ class OsFileNameBlacklist:
         except TypeError:  # TypeError: 'NoneType' object is not iterable:
             if self.CheckBlacklist(key):
                 if self.CheckWhitelist(key):
-                    cursor.execute("SELECT * FROM Music WHERE OsFileName = ?",
-                                   [self.white_key])
+                    cursor.execute("SELECT * FROM Music INDEXED BY OsFileNameIndex " +
+                                   "WHERE OsFileName = ?", [self.white_key])
                     d = dict(cursor.fetchone())
                     return d
                 else:
@@ -1357,8 +1359,8 @@ def update_lyrics(key, lyrics, time_index):
         time - init and time - edit could be placed.
     """
 
-    sql = "UPDATE Music SET LyricsScore=?, LyricsTimeIndex=? \
-           WHERE OsFileName = ?" 
+    sql = "UPDATE Music INDEXED BY OsFileNameIndex " +\
+          "SET LyricsScore=?, LyricsTimeIndex=? WHERE OsFileName = ?"
 
     if time_index is not None:
         # count = len(time_index)  # Not used
@@ -1405,7 +1407,8 @@ def increment_last_play(full_path, a_time=None):
 
 def update_last_play(key, play_count, last_play_time):
     """ Update Play Count and Last Play Time using OsFileName """
-    sql = "UPDATE Music SET PlayCount=?, LastPlayTime=? WHERE OsFileName = ?"
+    sql = "UPDATE Music INDEXED BY OsFileNameIndex " +\
+          "SET PlayCount=?, LastPlayTime=? WHERE OsFileName = ?"
     cursor.execute(sql, (play_count, last_play_time, key))
     con.commit()
 
@@ -1455,8 +1458,8 @@ def music_update_stat(key, full_path):
     except OSError:
         print(_who, "Could not stat:", full_path)
         return None
-    sql = "UPDATE Music SET OsAccessTime=?, OsModifyTime=?, \
-          OsChangeTime=?, OsFileSize=? WHERE OsFileName = ?" 
+    sql = "UPDATE Music INDEXED BY OsFileNameIndex SET OsAccessTime=?, " +\
+          "OsModifyTime=?, OsChangeTime=?, OsFileSize=? WHERE OsFileName = ?"
 
     cursor.execute(sql, (stat.st_atime, stat.st_mtime,
                          stat.st_ctime, stat.st_size, key))
@@ -1666,12 +1669,12 @@ def update_metadata(fc, commit=True):
     if not commit:
         return True  # Not updating but report back Metadata is different
 
-    # Update metadata for music file into SQL Music Table
-    sql = "UPDATE Music SET ffMajor=?, ffMinor=?, ffCompatible=?, \
-           Title=?, Artist=?, Album=?, Compilation=?, \
+    # Update metadata in SQL Music Table
+    sql = "UPDATE Music INDEXED BY OsFileNameIndex SET ffMajor=?, ffMinor=?, \
+           ffCompatible=?, Title=?, Artist=?, Album=?, Compilation=?, \
            AlbumArtist=?, AlbumDate=?, FirstDate=?, DiscNumber=?, \
            TrackNumber=?, Genre=?, Composer=?, Comment=?, Duration=?, \
-           Seconds=?, GaplessPlayback=? WHERE OsFileName=?"
+           Seconds=?, GaplessPlayback=? WHERE OsFileName = ?"
     cursor.execute(
         sql, (fc.ffMajor, fc.ffMinor, fc.ffCompatible,
               fc.Title, fc.Artist, fc.Album, fc.Compilation,
@@ -1886,7 +1889,8 @@ def hist_del_music_var(MusicId, Type, Action, SourceMaster=None):
 def hist_default_dict(key, time_type='access'):
     """ Construct a default dictionary used to add a new history record """
 
-    cursor.execute("SELECT * FROM Music WHERE OsFileName = ?", [key])
+    cursor.execute("SELECT * FROM Music INDEXED BY OsFileNameIndex " +
+                   "WHERE OsFileName = ?", [key])
 
     try:
         d = dict(cursor.fetchone())
