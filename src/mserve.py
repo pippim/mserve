@@ -5740,13 +5740,91 @@ MusicLocationTree().build_chron_line() No SQL History 'volume', 'detect_new' fou
         self.debug_detail("g.OS_NAME         :", g.OS_NAME)
         self.debug_detail("g.OS_VERSION      :", g.OS_VERSION)
         self.debug_detail("g.OS_RELEASE      :", g.OS_RELEASE)
+
+        self.debug_detail("g.USER            :", g.USER)
+        self.debug_detail("g.USER_ID         :", g.USER_ID)
+        self.debug_detail("g.HOME            :", g.HOME)
+        self.debug_detail("g.USER_CONFIG_DIR :", g.USER_CONFIG_DIR)
+        self.debug_detail("g.USER_DATA_DIR   :", g.USER_DATA_DIR)
+        self.debug_detail("g.MSERVE_DIR      :", g.MSERVE_DIR)
+        self.debug_detail("g.PROGRAM_DIR     :", g.PROGRAM_DIR)
+        self.debug_detail("g.TEMP_DIR        :", g.TEMP_DIR)
+
+        # Next six lines direct from sql.py .open_db()
+        user_cursor = sql.con.execute("PRAGMA user_version;")
+        user_version = user_cursor.fetchone()[0]
+        if user_version != int(g.MSERVE_VERSION[:1]):
+            print("SQL database incompatible user_version:", user_version)
+            print("Contact www.pippim.com for details")
+
+        # g.MSERVE_VERSION
+        self.debug_detail("g.MSERVE_VERSION  :", g.MSERVE_VERSION)
+        self.debug_detail("SQL PRAGMA Version:", user_version, '\n')
+
+        self.debug_detail("Python Version    :", sys.version.replace('\n', ' '))
+        self.debug_detail("Sqlite3 Version   :", sql.sqlite3.sqlite_version)
+        self.debug_detail('TK Version        :', tk.TkVersion)
+        try:
+            # Python 2.x
+            self.debug_detail('Pillow Version    :', Image.PILLOW_VERSION)
+            self.debug_detail('PIL Version       :', Image.VERSION)
+        except NameError:
+            # Python 3.x
+            self.debug_detail('Pillow Version    :', PIL.__version__)
+
+        # Add ttk widgets, c pulse versions
+
+        pa_ver = os.popen("pulseaudio --version").read().strip()
+        self.debug_detail('\nPulseAudio Version:', pa_ver)
+
+        def ff_version(ff_name):
+            """ loud norm filter in ffmpeg version 3.1 or higher.
+                :param ff_name: 'ffmpeg', 'ffplay' or 'ffprobe' """
+            result = os.popen(ff_name + " -version").read().strip()
+            version = result.split(" Copyright")[0]
+            version = version.split("version ")[1]
+            prefix = ff_name + " Version"
+            self.debug_detail(prefix.ljust(15), "  :", version)
+
+        ff_version("ffmpeg")
+        ff_version("ffplay")
+        ff_version("ffprobe")
+
+        xdo_ver = os.popen("xdotool --version").read().strip()
+        self.debug_detail('\nxdotool Version   :', xdo_ver)
+        xdo_ver = os.popen("wmctrl --version").read().strip()
+        self.debug_detail('wmctrl Version    :', xdo_ver)
+        pqiv_ver = os.popen("pqiv --help | grep version").read().strip()
+        self.debug_detail('pqiv Version      :', pqiv_ver.split()[2])
+
+        # Optional programs checked before usage
+        kid3_ver = os.popen("kid3 --version").read().strip()
+        self.debug_detail('kid3 Version      :', kid3_ver)
+        nautilus_ver = os.popen("nautilus --version").read().strip()
+        self.debug_detail('nautilus Version  :', nautilus_ver)
+        nmap_ver = os.popen("nmap --help | grep Nmap | grep nmap.org"). \
+            read().strip()
+        self.debug_detail('nmap Version      :', nmap_ver)
+        ssh_ver = os.popen("ssh -V 2>&1").read().strip()
+        self.debug_detail('SSH Version       :', ssh_ver)
+        sshfs_ver = os.popen("sshfs --version | grep 'SSHFS version'"). \
+            read().strip()
+        self.debug_detail('sshfs Version     :', sshfs_ver)
+        fusermount_ver = os.popen("fusermount --version 2>&1").read().strip()
+        self.debug_detail('fusermount Version:', fusermount_ver)
+        wakeonlan_ver = os.popen("wakeonlan --version 2>&1 | grep 'wakeonlan version'"). \
+            read().strip()[:60] + " ..."
+        self.debug_detail('wakeonlan Version :', wakeonlan_ver)
+
+        # def debug_detail - add refresh if last call > 16 ms
+
         lsb_ver = os.popen("lsb_release -a 2>/dev/null").read().strip()
-        self.debug_detail(lsb_ver)  # lsb_release has 4 lines
+        self.debug_detail('\n' + lsb_ver)  # lsb_release has 4 lines
         if toolkit.X_is_running():
             xr_ver = os.popen("xrandr --version").read().strip()
         else:
             xr_ver = "xrandr is not running."
-        self.debug_detail(xr_ver)  # Two lines due to customization
+        self.debug_detail(xr_ver)  # Two lines due to 1.5 and 1.5.1
 
         # Gnome/GTK/wnck versions, Compiz version
         # $ apt-cache policy libgtk2.0-0 libgtk-3-0 libgtk-4-1
@@ -5791,69 +5869,6 @@ MusicLocationTree().build_chron_line() No SQL History 'volume', 'detect_new' fou
         # ii  gir1.2-wnck-3.0:amd64 3.14.1-2 amd64 GObject introspection data for the WNCK library
         # ii  libwnck-3-0:amd64 3.14.1-2 amd64 Window Navigator Construction Kit - runtime files
         # ii  libwnck-3-common 3.14.1-2 all Window Navigator Construction Kit - common files
-
-        self.debug_detail("g.USER            :", g.USER)
-        self.debug_detail("g.USER_ID         :", g.USER_ID)
-        self.debug_detail("g.HOME            :", g.HOME)
-        self.debug_detail("g.USER_CONFIG_DIR :", g.USER_CONFIG_DIR)
-        self.debug_detail("g.USER_DATA_DIR   :", g.USER_DATA_DIR)
-        self.debug_detail("g.MSERVE_DIR      :", g.MSERVE_DIR)
-        self.debug_detail("g.PROGRAM_DIR     :", g.PROGRAM_DIR)
-        self.debug_detail("g.TEMP_DIR        :", g.TEMP_DIR)
-
-        self.debug_detail("Python Version    :", sys.version.replace('\n', ' '))
-        self.debug_detail("Sqlite3 Version   :", sql.sqlite3.sqlite_version)
-        self.debug_detail('TK Version        :', tk.TkVersion)
-        try:
-            self.debug_detail('Pillow Version    :', Image.PILLOW_VERSION)
-            self.debug_detail('PIL Version       :', Image.VERSION)
-        except NameError:
-            self.debug_detail('Pillow Version    :', PIL.__version__)
-
-        pa_ver = os.popen("pulseaudio --version").read().strip()
-        self.debug_detail('PulseAudio Version:', pa_ver)
-        xdo_ver = os.popen("xdotool --version").read().strip()
-        self.debug_detail('xdotool Version   :', xdo_ver)
-        xdo_ver = os.popen("wmctrl --version").read().strip()
-        self.debug_detail('wmctrl Version    :', xdo_ver)
-        pqiv_ver = os.popen("pqiv --help | grep version").read().strip()
-        self.debug_detail('pqiv Version      :', pqiv_ver.split()[2])
-
-        # Optional programs checked before usage
-        kid3_ver = os.popen("kid3 --version").read().strip()
-        self.debug_detail('kid3 Version      :', kid3_ver)
-        nautilus_ver = os.popen("nautilus --version").read().strip()
-        self.debug_detail('nautilus Version  :', nautilus_ver)
-        nmap_ver = os.popen("nmap --help | grep Nmap | grep nmap.org"). \
-            read().strip()
-        self.debug_detail('nmap Version      :', nmap_ver)
-        ssh_ver = os.popen("ssh -V 2>&1").read().strip()
-        self.debug_detail('SSH Version       :', ssh_ver)
-        sshfs_ver = os.popen("sshfs --version | grep 'SSHFS version'"). \
-            read().strip()
-        self.debug_detail('sshfs Version     :', sshfs_ver)
-        fusermount_ver = os.popen("fusermount --version 2>&1").read().strip()
-        self.debug_detail('fusermount Version:', fusermount_ver)
-        wakeonlan_ver = os.popen("wakeonlan --version 2>&1 | grep 'wakeonlan version'"). \
-            read().strip()[:60] + " ..."
-        self.debug_detail('wakeonlan Version :', wakeonlan_ver)
-
-        # def debug_detail - add refresh if last call > 16 ms
-
-        def ff_version(ff_name):
-            """ loud norm filter in ffmpeg version 3.1 or higher.
-                :param ff_name: 'ffmpeg', 'ffplay' or 'ffprobe' """
-            result = os.popen(ff_name + " -version").read().strip()
-            version = result.split(" Copyright")[0]
-            version = version.split("version ")[1]
-            prefix = ff_name + " version"
-            self.debug_detail(prefix.ljust(15), "  :", version)
-
-        ff_version("ffmpeg")
-        ff_version("ffplay")
-        ff_version("ffprobe")
-        self.debug_detail("Process ID (PID)  :", os.getpid())
-        self.debug_detail("Parent's PID      :", os.getppid())  # win needs > 3.2
 
         self.debug_output()  # self.info.fact() + print()
 
@@ -6154,6 +6169,9 @@ MusicLocationTree().build_chron_line() No SQL History 'volume', 'detect_new' fou
                           g.MUSIC_FILE_TYPES[4:-1])
         self.debug_detail("global_variables.py g.MSERVE_VERSION      :",
                           g.MSERVE_VERSION)
+        self.debug_detail("Process ID (PID)                          :", os.getpid())
+        self.debug_detail("Parent's PID                              :", os.getppid())
+        # Above might need a version? > 3.2
         self.debug_output()
 
         # SQL - Sqlite3 Tables ------------------------------------------
@@ -12722,8 +12740,11 @@ mark set markName index"
         # See: def apply_playlists(self, delete_only=False):
 
         self.playlist_paths = []  # full path names in song playing order
+        # 2024-08-30 - Favorites now stored in lcs.open_music_ids[] work list
         if self.playlists.open_name:  # Playlist open (not Favorites)?
             self.playlists.open_music_ids = []  # Playlist music id list in order
+        else:
+            lcs.open_music_ids = []
 
         for Id in self.saved_selections:
             music_id = self.get_music_id_for_lib_tree_id(Id)
@@ -12738,8 +12759,12 @@ mark set markName index"
                 print(_who, "sql.music_get_row(music_id)",
                       music_id)
                 continue
+
             if self.playlists.open_name:  # Playlist open (not Favorites)?
                 self.playlists.open_music_ids.append(music_id)
+            else:
+                lcs.open_music_ids.append(music_id)  # Favorites memory list
+
             full_path = PRUNED_DIR + d['OsFileName']
             self.playlist_paths.append(full_path)
 
@@ -12769,11 +12794,14 @@ mark set markName index"
 
         # Music starts playing with queue_next_song() tell it not to increment ndx
         self.song_set_ndx_just_run = True  # Song was manually set
+        # 2024-08-29 - Review for Loudness remove, apply. Review for delete files.
+        #   Create common method "reset_current_song_ndx()"
 
         self.info.cast("Shuffled randomly: '" + self.title_suffix + "' with " +
                        str(len(self.saved_selections)) + " songs.", action='update')
 
-        # Document how paused music now starts playing
+        # Document how paused music now starts playing - Refresh Play Top checks
+        # for song index (self.ndx) changes
 
     def play_remove(self, iid):
         """ Song has been unchecked. Remove from sorted playlist.
