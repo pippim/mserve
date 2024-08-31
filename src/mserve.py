@@ -2824,7 +2824,7 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
         insert_play_paths = []
         insert_music_ids = []
 
-        _music_id_list = self.playlists.open_music_ids if self.playlists.name \
+        _music_id_list = self.playlists.open_music_ids if self.playlists.open_name \
             else lcs.open_music_ids  # 2024-08-04 link to correct MusicId list
 
         for insert_iid in self.pending_additions:
@@ -3045,7 +3045,7 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
 
         _who = self.who + "delete_from_memory():"
         global DPRINT_ON
-        DPRINT_ON = True  # Debug printing: 'dprint(*args)' calls 'print(*args)'
+        DPRINT_ON = False  # Debug printing: 'dprint(*args)' calls 'print(*args)'
 
         dprint("\n=== " + _who + " ===")
 
@@ -3073,7 +3073,10 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
             self.saved_selections = list(self.saved_selections)
 
         dprint("current_lib_tree_iid:", current_lib_tree_iid)
-        dprint("current_playing_ndx:", current_playing_ndx)
+        dprint("self.saved_selections current_playing_ndx:", current_playing_ndx)
+        dprint("self.saved_selections[current_playing_ndx]:",
+               self.saved_selections[current_playing_ndx])
+        dprint("delete_list:", delete_list, "\n")
         #current_playing_deleted = False  # currently playing song deleted?
 
         ''' Step 2 - Delete songs from playlist '''
@@ -3082,9 +3085,12 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
         prior_to_current_count = 0  # How many songs deleted before self.ndx?
         # delete_play_ndx_list = delete_ndx_list  - They are identical
         delete_ndx_list = []  # List of saved_selections indices to delete
+        delete_play_ndx_list = []  # List of path indices to delete
 
-        music_id_list = self.playlists.open_music_ids if self.playlists.name \
+        music_id_list = self.playlists.open_music_ids if self.playlists.open_name \
             else lcs.open_music_ids  # 2024-08-04 link to correct MusicId list
+
+        dprint("\nmusic_id_list:", music_id_list, "\n")
 
         # Process delete_list - list of music id's to delete
         for music_id in delete_list:
@@ -3092,14 +3098,21 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
             try:
                 delete_ndx = music_id_list.index(music_id)
             except (ValueError, IndexError):
-                toolkit.print_trace()
                 print("\n" + _who)
-                print("Could not find MusicId:", music_id, "in music_id_list.", "\n")
+                print("Could not find MusicId:", music_id, "in music_id_list.")
                 continue
+
+            try:
+                delete_iid = self.saved_selections[delete_ndx]
+            except (ValueError, IndexError):
+                print("\n" + _who)
+                print("Could not find index:", delete_ndx,
+                      "in self.saved_selections.")
+                continue
+
+            delete_path = self.real_paths[int(delete_iid)]
             delete_ndx_list.append(delete_ndx)
             delete_music_ndx_list.append(delete_ndx)
-            delete_iid = self.saved_selections[delete_ndx]
-            delete_path = self.real_paths[int(delete_iid)]
 
             try:
                 delete_play_path_ndx = self.playlist_paths.index(delete_path)
@@ -12799,9 +12812,6 @@ mark set markName index"
 
         self.info.cast("Shuffled randomly: '" + self.title_suffix + "' with " +
                        str(len(self.saved_selections)) + " songs.", action='update')
-
-        # Document how paused music now starts playing - Refresh Play Top checks
-        # for song index (self.ndx) changes
 
     def play_remove(self, iid):
         """ Song has been unchecked. Remove from sorted playlist.
