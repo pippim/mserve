@@ -2521,7 +2521,8 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
             self.play_selected_list()
 
     def close_playlist(self):
-        """ Close running playlist and open favorites based on lib_tree. """
+        """ Close running playlist and open favorites.
+            Setup lib_tree checkboxes. """
         if not self.playlists.close():
             ''' If user confirms, playlists.close() proceeds with:
                     self.play_close()  # close main playing window
@@ -2532,6 +2533,7 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
         # If there were any pending amounts, use chose not to save.
         self.pending_tot_add_cnt = self.pending_tot_del_cnt = 0
         self.pending_reset(ShowInfo=False)  # Just in case it was open.
+        self.clear_all_checks_and_opened()  # Playlist had own checkboxes
         self.enable_lib_menu()
         self.load_last_selections()
 
@@ -11265,7 +11267,7 @@ MusicLocationTree().build_chron_line() No SQL History 'volume', 'detect_new' fou
         """ turn on auto scrolling, it can be overridden from saved steps or
             if left-clicking on lyrics to set lyrics line to time index.
         """
-        # webscrape.rd_delete_files()  # Cleanup last run
+        # webscrape.delete_files()  # Cleanup last run
         self.lyrics_line_count = 1  # Average about 45 lines
 
         ''' uni_str = byte_str.encode("utf-8")  DOES NOT WORK !!! 
@@ -11384,7 +11386,7 @@ MusicLocationTree().build_chron_line() No SQL History 'volume', 'detect_new' fou
         self.lyrics_score_box.configure(state="disabled")
         if True is False:
             webscrape.print_files()  # Print 3 mserve_scrape* file contents
-        webscrape.rd_delete_files()  # Delete 3 mserve_scrape* files
+        webscrape.delete_files()  # Delete 3 mserve_scrape* files
 
         end = self.lyrics_score_box.index('end')  # returns line.column
         self.lyrics_line_count = int(end.split('.')[0]) - 1
