@@ -3083,7 +3083,6 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
         dprint("\n''' Step 2 - Delete songs from playlist '''")
         delete_music_ndx_list = []  # June 17, 2023 - Playlist indices to delete
         prior_to_current_count = 0  # How many songs deleted before self.ndx?
-        # delete_play_ndx_list = delete_ndx_list  - They are identical
         delete_ndx_list = []  # List of saved_selections indices to delete
         delete_play_ndx_list = []  # List of path indices to delete
 
@@ -3117,10 +3116,10 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
             try:
                 delete_play_path_ndx = self.playlist_paths.index(delete_path)
             except (ValueError, IndexError):
-                toolkit.print_trace()
                 print("\n" + _who)
                 print("Could not find song in playlist:", delete_path, "\n")
                 continue
+
             delete_play_ndx_list.append(delete_play_path_ndx)
 
             if delete_play_path_ndx != delete_ndx:
@@ -3188,6 +3187,7 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
             # This test also solves problem when current_playing_ndx is None
             self.ndx = current_playing_ndx - prior_to_current_count
             self.last_started = self.ndx  # Prevents different song playing
+            self.song_set_ndx_just_run = True  # Added 2024-08-31
 
         ''' Rebuild chronology treeview after deleting songs '''
         if self.play_top_is_active:  # Play window open?
@@ -11396,7 +11396,13 @@ MusicLocationTree().build_chron_line() No SQL History 'volume', 'detect_new' fou
         """
         slice_from = len(PRUNED_DIR)  # Has / at end
         #return self.real_path(int(self.saved_selections[self.ndx]))[slice_from:]
-        return self.real_paths[int(self.saved_selections[self.ndx])][slice_from:]
+        if self.ndx < len(self.saved_selections):
+            return self.real_paths[int(self.saved_selections[self.ndx])][slice_from:]
+
+        toolkit.print_trace()
+        print(self.who + ".play_make_sql_key():")
+        print("self.ndx", self.ndx,
+              ">= len(self.saved_selections)", self.saved_selections)
 
     def play_save_score_erase_time(self):
         """ Preliminary lyrics save that WIPES OUT the lyrics time index """
@@ -12807,8 +12813,7 @@ mark set markName index"
 
         # Music starts playing with queue_next_song() tell it not to increment ndx
         self.song_set_ndx_just_run = True  # Song was manually set
-        # 2024-08-29 - Review for Loudness remove, apply. Review for delete files.
-        #   Create common method "reset_current_song_ndx()"
+        self.last_started = self.ndx  # Prevents paused to start playing?
 
         self.info.cast("Shuffled randomly: '" + self.title_suffix + "' with " +
                        str(len(self.saved_selections)) + " songs.", action='update')
@@ -13479,8 +13484,16 @@ TV_MOVE_WITH_COMPIZ = False  # Smooth monitor jump but prone to glitches
                     print(_who, 'Insert failed with Error:\n  %s' % (str(err)))
                     print()  # When it breaks tons of errors so separate into grouped msgs
 
+        ''' Get number of chron_tree children '''
+        children = self.chron_tree.get_children()
+
         ''' Highlight current song '''
-        self.play_chron_highlight(self.ndx, True)  # True = use short line
+        if self.ndx  < len(children):
+            # 2024-08-31 pending apply 1/2 done in  .delete_from_memory()
+            self.play_chron_highlight(self.ndx, True)  # True = use short line
+        else:
+            print(_who, "\n\tself.ndx", self.ndx,
+                  ">= self.chron_tree # of children", len(children))
         return existing_filter
 
     def chron_highlight_row(self, event):
@@ -14103,7 +14116,7 @@ TV_MOVE_WITH_COMPIZ = False  # Smooth monitor jump but prone to glitches
         for child in old:
             tags = self.chron_tree.item(child)['tags']
             tags.remove("chron_sel")
-            tags.append("normal")  # 2024-03-18 "normal" tag removed last year
+            tags.append("normal")  # 2024-03-18 "normal" color tag removed
             # "normal" is still required for processing, just not for coloring
             self.chron_tree.item(child, tags=tags)
 
