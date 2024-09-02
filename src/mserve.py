@@ -2522,7 +2522,8 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
 
     def close_playlist(self):
         """ Close running playlist and open favorites.
-            Setup lib_tree checkboxes. """
+            Setup lib_tree checkboxes via load_last_selections().
+            Called from File Dropdown Menu options. """
         if not self.playlists.close():
             ''' If user confirms, playlists.close() proceeds with:
                     self.play_close()  # close main playing window
@@ -4612,6 +4613,7 @@ Call search.py when these control keys occur
             :param old_name: Artist, Album or Song Title name
             :returns: OsFileName, Id, Artist, Album, Title, search string
         """
+        _who = self.who + "rd_get_sql_keys(level, Id, old_name):"
         album_name = None
         if level == 'Title':
             album_id = self.lib_tree.parent(Id)
@@ -4632,10 +4634,26 @@ Call search.py when these control keys occur
             search = search.replace("%", ":%")
             print("Escape '%' in search string:", search)
 
-        sql.cursor.execute("SELECT OsFileName, Id, Artist, Album, Title " +
-                           "FROM Music INDEXED BY OsFileNameIndex " +
-                           "WHERE OsFileName LIKE ? ESCAPE ':'", [search + "%"])
-        old_rows = sql.cursor.fetchall()
+        try:
+            sql.cursor.execute("SELECT OsFileName, Id, Artist, Album, Title " +
+                               "FROM Music " +
+                               "WHERE OsFileName LIKE ? ESCAPE ':'", [search + "%"])
+            # LIKE doesn't work on Case-Sensitive Index:
+            #   https://stackoverflow.com/a/42962114/6929343
+            #sql.cursor.execute("SELECT OsFileName, Id, Artist, Album, Title " +
+            #                   "FROM Music INDEXED BY OsFileNameIndex " +
+            #                   "WHERE OsFileName LIKE ? ESCAPE ':'", [search + "%"])
+            old_rows = sql.cursor.fetchall()
+        except sql.sqlite3.Error as er:
+            print(_who)
+            print('  SQLite error: %s' % (' '.join(er.args)))
+            print("  Exception class is: ", er.__class__)
+            print("  level:", level, " | lib_tree Id:", Id,
+                  " | old_name:", old_name)
+            print("  artist_name:", artist_name, " | album_name:", album_name,
+                  "\n  search:", search, "\n")
+            return [], artist_name, album_name, search
+
         return old_rows, artist_name, album_name, search
 
     def rd_check_song_playing(self, mode, level, old_name):
@@ -9249,7 +9267,7 @@ MusicLocationTree().build_chron_line() No SQL History 'volume', 'detect_new' fou
             self.toggle_chron_tt_positions()
 
     def on_resize(self, event):
-        """ Resize image and VU Meters when frame size changes """
+        """ Resize artwork image and VU Meters when frame size changes """
         # images use ratio of original width/height to new width/height
         h_scale = float(event.height) / self.start_h
         w_scale = h_scale  # It's a square!
