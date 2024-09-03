@@ -2070,7 +2070,7 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
             self.clear_all_checks_and_opened()
             self.set_all_checks_and_opened()
 
-        def apply_normalize():
+        def apply_normalize(mus_id=music_id):
             """ Apply loudness normalization for a single song """
             this_who = _who + " apply_normalize():"
             title = "Apply loudness normalization?"
@@ -4611,10 +4611,10 @@ Call search.py when these control keys occur
             :param level: 'Artist', 'Album' or 'Title' search level flag
             :param Id: Music Location Tree IID
             :param old_name: Artist, Album or Song Title name
-            :returns: OsFileName, Id, Artist, Album, Title, search string
+            :returns: old_rows (Music Rows), artist_name, album_name, search string
         """
         _who = self.who + "rd_get_sql_keys(level, Id, old_name):"
-        album_name = None
+        album_name = None  # When searching by Artist can be multiple Albums
         if level == 'Title':
             album_id = self.lib_tree.parent(Id)
             album_name = self.lib_tree.item(album_id)['text']
@@ -4635,6 +4635,12 @@ Call search.py when these control keys occur
             print("Escape '%' in search string:", search)
 
         try:
+            # Warning LIKE is case insensitve so "Alice" == "aLICE":
+            #   https://stackoverflow.com/a/8586390/6929343
+            #   ... WHERE word >= 'search_string' AND word < 'search_strinh'
+            #
+            #   by incrementing the last character of the search string. The
+            #   greater-than and less-than operators can use an index...
             sql.cursor.execute("SELECT OsFileName, Id, Artist, Album, Title " +
                                "FROM Music " +
                                "WHERE OsFileName LIKE ? ESCAPE ':'", [search + "%"])

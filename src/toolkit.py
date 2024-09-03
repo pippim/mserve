@@ -27,6 +27,7 @@ from __future__ import with_statement       # Error handling for file opens
 #       Mar. 23 2024 - Save custom views in DictTreeview() class
 #       Apr. 30 2024 - New tool_type="splash" manually invoked
 #       May. 15 2024 - User configurable Tooltip colors and timings
+#       Sep. 03 2024 - Tooltips - Remove old splash window before new splash
 #
 #==============================================================================
 
@@ -4611,12 +4612,43 @@ class ToolTips(CommonTip):
 
         self.fields_to_dict()
         i = self.check(self.widget)
-        if i is not None:
-            # Probably splash message being recycled.
-            self.tips_list[i] = self.dict
-        else:
+
+        ''' Normal processing: this is a new widget '''
+        if i is None:
             # Add tip dictionary to tips list
             self.tips_list.append(self.dict)
+            return
+
+        ''' i is not None: previous widget already exists so remove before new '''
+        # Probably splash message being recycled. Clean up ghost windows
+        old_dict = self.tips_list[i]  # Get previous widget dictionary
+        self.tips_list[i] = self.dict  # Needed to prevent recursion
+        # 2024-09-02 - Old splash message staying on screen
+        d_print("\n" + self.who + "add_tip(): i is not None:", i)
+
+        # 2024-09-02 - def pb_close(
+        callback_function = old_dict['pb_close']
+        if callback_function is not None:
+            # Loudness toggle splash
+            d_print("  running callback_function:", callback_function)
+            callback_function()  # Tell "piggy_back" to destroy it's frame
+            self.poll_tips()
+        else:
+            # Information splash window not linked to callback
+            self.close(self.widget, flush_log=False)
+
+        # Regular splash (not linked to callback) tip window still exists
+        tip_window = old_dict['tip_window']
+        if tip_window is not None:
+            d_print("  destroying window:", tip_window)
+            tip_window.destroy()
+
+        # 2024-09-02 - Above fix breaks Old/New song toggle button text
+        #if old_dict['pb_close'] is not None:
+        #    self.reset_tip()  # pb_close will probably destroy tip next...
+        #    self.pb_close()  # Tell "piggy_back" to destroy it's frame
+
+        self.tips_list.append(self.dict)
 
     def reset_tip(self):
         """ After cycle is finished reset selected widget values """
