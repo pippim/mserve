@@ -100,6 +100,7 @@ warnings.simplefilter('default')  # in future Python versions.
 #       Jul. 10 2024 - May 13 fix disabled "Save Favorites" function. Correct.
 #       Aug. 05 2024 - Create separate and shared delete from playlist method.
 #       Aug. 24 2024 - SQL Music Table speed boost using OsFileNameIndex.
+#       Sep. 07 2024 - Begin conversion from tk.Button() to ttk.Button().
 #
 # ==============================================================================
 
@@ -1482,7 +1483,7 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
             thread=self.get_refresh_thread, play_close=self.play_close,
             # 2024-05-20 - display_lib_title being called multiple times
             # display_lib_title=self.display_lib_title, info=self.info)
-            info=self.info)
+            info=self.info, real_paths=self.real_paths)
 
         ''' Last File Access Time overrides. E.G. Look but do not touch. '''
         self.play_ctl = FileControl(self.lib_top, self.info,
@@ -1599,9 +1600,27 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
 
         ''' ▶  Play Button '''
         self.play_text = "▶  Play"  # Appears when play_top is closed
-        self.lib_tree_play_btn = tk.Button(
-            self.lib_btn_frm, text=self.play_text, width=g.BTN_WID2 + 1,
-            font=g.FONT, command=self.play_selected_list)
+        '''
+        # 2024-09-07 - Xorg or Tkinter glitch only fixed by reboot makes tk.Button
+        #   3x wider and taller. Use ttk.Button which defaults to regular size.
+        #   The 'font=' keyword is NOT supported in ttk.Button which uses -style.
+        #   Tooltips breaks when querying background color of ttk.Button():
+        #   File "/home/rick/python/toolkit.py", line 4714, in poll_tips
+        #     self.process_tip()
+        #   File "/home/rick/python/toolkit.py", line 4851, in process_tip
+        #     self.create_tip_window()
+        #   File "/home/rick/python/toolkit.py", line 4930, in create_tip_window
+        #     self.fg = self.widget["background"]
+        #   File "/usr/lib/python2.7/lib-tk/Tkinter.py", line 1333, in cget
+        #     return self.tk.call(self._w, 'cget', '-' + key)
+        # _tkinter.TclError: unknown option "-background"
+        '''
+        #self.lib_tree_play_btn = tk.Button(
+        #    self.lib_btn_frm, text=self.play_text, width=g.BTN_WID2 + 1,
+        #    font=g.FONT, command=self.play_selected_list)
+        self.lib_tree_play_btn = ttk.Button(
+            self.lib_btn_frm, text = self.play_text, width = g.BTN_WID2 + 1,
+            command = self.play_selected_list)
         self.lib_tree_play_btn.grid(row=0, column=0, padx=10, pady=5,
                                     sticky=tk.E)
         self.tt.add_tip(self.lib_tree_play_btn, "Play selected songs.",
@@ -1609,16 +1628,21 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
 
         ''' Refresh Treeview Button u  1f5c0 🗀 '''
         ''' 🗘  Update differences Button u1f5d8 🗘'''
-        lib_refresh_btn = tk.Button(self.lib_btn_frm, text="🗘 Refresh library",
-                                    width=g.BTN_WID2 + 2, font=g.FONT,
-                                    command=self.rebuild_lib_tree)
+        #lib_refresh_btn = tk.Button(self.lib_btn_frm, text="🗘 Refresh library",
+        #                            width=g.BTN_WID2 + 2, font=g.FONT,
+        #                            command=self.rebuild_lib_tree)
+        lib_refresh_btn = ttk.Button(self.lib_btn_frm, text="🗘 Refresh library",
+                                     width=g.BTN_WID2 + 2,
+                                     command=self.rebuild_lib_tree)
         lib_refresh_btn.grid(row=0, column=1, padx=10, pady=5, sticky=tk.E)
         self.tt.add_tip(lib_refresh_btn, anchor="nw",
                         text="Scan disk for songs added and removed.")
 
         ''' Rip CD Button 🖸 (1f5b8) '''
-        lib_rip_cd_btn = tk.Button(self.lib_btn_frm, text="🖸  Rip CD", width=g.BTN_WID2 - 4,
-                                   font=g.FONT, command=self.rip_cd)
+        #lib_rip_cd_btn = tk.Button(self.lib_btn_frm, text="🖸  Rip CD", width=g.BTN_WID2 - 4,
+        #                           font=g.FONT, command=self.rip_cd)
+        lib_rip_cd_btn = ttk.Button(self.lib_btn_frm, text="🖸  Rip CD",
+                                    width=g.BTN_WID2 - 4, command=self.rip_cd)
         lib_rip_cd_btn.grid(row=0, column=2, padx=10, pady=5, sticky=tk.E)
         self.tt.add_tip(lib_rip_cd_btn, anchor="ne",
                         text="Encode songs from Audio CD to music files.")
@@ -1631,8 +1655,11 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
         help_text += "videos and explanations on using this screen.\n"
         help_text += "https://www.pippim.com/programs/mserve.html#\n"
 
-        lib_help_btn = tk.Button(
-            self.lib_btn_frm, text="⧉ Help", font=g.FONT, width=g.BTN_WID2 - 4,
+        #lib_help_btn = tk.Button(
+        #    self.lib_btn_frm, text="⧉ Help", font=g.FONT, width=g.BTN_WID2 - 4,
+        #    command=lambda: g.web_help("HelpMusicLocationTree"))
+        lib_help_btn = ttk.Button(
+            self.lib_btn_frm, text="⧉ Help", width=g.BTN_WID2 - 4,
             command=lambda: g.web_help("HelpMusicLocationTree"))
         lib_help_btn.grid(row=0, column=3, padx=10, pady=5, sticky=tk.E)
         if self.tt:
@@ -1641,8 +1668,10 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
         ''' ✘ Close Button '''
         self.lib_top.bind("<Escape>", self.close)
         self.lib_top.protocol("WM_DELETE_WINDOW", self.close)
-        lib_close_btn = tk.Button(self.lib_btn_frm, text="✘ Close", width=g.BTN_WID2 - 4,
-                                  font=g.FONT, command=self.close)
+        #lib_close_btn = tk.Button(self.lib_btn_frm, text="✘ Close", width=g.BTN_WID2 - 4,
+        #                          font=g.FONT, command=self.close)
+        lib_close_btn = ttk.Button(self.lib_btn_frm, text="✘ Close",
+                                   width=g.BTN_WID2 - 4, command=self.close)
         lib_close_btn.grid(row=0, column=4, padx=(10, 2), pady=5, sticky=tk.E)
         self.tt.add_tip(lib_close_btn, anchor="ne",
                         text="Close mserve and any windows mserve opened.")
@@ -2003,7 +2032,9 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
             return
 
         def apply_all_filtered():
-            """ Apply loudness normalization for all filtered songs """
+            """ Apply loudness normalization for all filtered songs
+                Long running process requiring delayed text box.
+            """
             this_who = _who + " apply_all_filtered():"
             filter_count = len(self.chron_attached)
             title = "Apply loudness normalization?"
@@ -2023,6 +2054,10 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
             if answer.string.upper() != 'Y':
                 return
 
+            wait_cursor(self.lib_top)
+            wait_cursor(self.play_top)
+            dtb = message.DelayedTextBox(title="Applying loudness normalization",
+                                         toplevel=self.play_top, width=600)
             music_id_list = []
             size_deltas = []  # (music_id, old_size, new_size)
             # process all filtered songs in attached list
@@ -2037,8 +2072,22 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
 
                 # Setup new self.play_ctl.path & self.loud_ctl.path
                 org_path = PRUNED_DIR + music_dict['OsFileName']
-                os.renames(org_path, org_path + '.old')
-                os.renames(org_path + '.new', org_path)
+                dtb.update(org_path)  # Update delayed text box with filename
+                try:
+                    os.rename(org_path, org_path + u'.old')
+                except OSError as err:
+                    print(this_who, "Rename Error:")
+                    print("  From:", org_path)
+                    print("  To  :", org_path + u'.old')
+                    print(err)
+
+                try:
+                    os.rename(org_path + u'.new', org_path)
+                except OSError as err:
+                    print(this_who, "Rename Error:")
+                    print("  From:", org_path + u'.new')
+                    print("  To  :", org_path)
+                    print(err)
 
                 # Update SQL metadata with new file size and times
                 new_dict = sql.music_update_stat(music_dict['OsFileName'], org_path)
@@ -2069,6 +2118,10 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
             # Reset checkboxes and totals
             self.clear_all_checks_and_opened()
             self.set_all_checks_and_opened()
+
+            self.lib_top.config(cursor="")  # Reset wait cursor to normal
+            self.play_top.config(cursor="")
+            dtb.close()  # Close delayed text box
 
         def apply_normalize(mus_id=music_id):
             """ Apply loudness normalization for a single song """
@@ -2240,11 +2293,11 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
 
         # 2024-07-10 - "Save Favorites" - argument count error: lambda _:
         self.file_menu.add_command(label="Save Favorites", font=g.FONT,
-                                   underline=1, state=tk.DISABLED,
+                                   underline=5, state=tk.DISABLED,
                                    command=lambda: self.write_playlist_to_disk(
                                        save_favorites=True))
         self.file_menu.add_command(label="Exit and CANCEL Pending", font=g.FONT,
-                                   underline=9, command=self.exit_without_save,
+                                   command=self.exit_without_save,
                                    state=tk.DISABLED)
         self.file_menu.add_separator()
 
@@ -4696,24 +4749,6 @@ Call search.py when these control keys occur
     def rd_delete_files(self, Id, level):
         """ Physically delete an Artist, an Album or a single Song Title.
 
-            TODO: 1) Where is self.delete_from_memory() called?
-                  2) Bug (appeared once then not again on startup):
-MusicLocationTree().apply_playlists(delete_only=False): ERROR full_path is missing:
-  /media/rick/SANDISK128/Music/April Wine/The Hits/03 Just Between You and Me.wav
-MusicLocationTree().apply_playlists(delete_only=False): ERROR full_path is missing:
-  /media/rick/SANDISK128/Music/April Wine/The Hits/02 Enough Is Enough.wav
-MusicLocationTree().apply_playlists(delete_only=False): ERROR full_path is missing:
-  /media/rick/SANDISK128/Music/April Wine/The Hits/01 - Say Hello.flac
-MusicLocationTree().apply_playlists(delete_only=False): ERROR full_path is missing:
-  /media/rick/SANDISK128/Music/April Wine/The Hits/01 Say Hello.wav
-
-                  3) Unrelated error to fix (that keeps occurring):
-MusicLocationTree().build_chron_line() No SQL History 'volume', 'detect_old' found for:
-  /media/rick/SANDISK128/Music/Alice Cooper/Welcome To My Nightmare/11 Escape.m4a
-MusicLocationTree().build_chron_line() No SQL History 'volume', 'detect_new' found for:
-  /media/rick/SANDISK128/Music/Alice Cooper/Welcome To My Nightmare/11 Escape.m4a
-
-
             If song is checked as a favorite it must be unchecked before it
             can be deleted. Songs currently playing can't be deleted. Songs
             that are symbolic links can't be deleted.
@@ -4726,6 +4761,7 @@ MusicLocationTree().build_chron_line() No SQL History 'volume', 'detect_new' fou
             :param level: string with 'Artist', 'Album', or "Title"
         """
 
+        _who = self.who + "rd_delete_files():"
         old_name = self.lib_tree.item(Id)['text']
 
         # Is it safe to delete files (key processes not running) 
@@ -4803,7 +4839,7 @@ MusicLocationTree().build_chron_line() No SQL History 'volume', 'detect_new' fou
             self.wrapup_lib_popup()  # Set color tags and counts
             return False
 
-        # print('answer.string:', answer.string)
+        # print(_who, 'answer.string:', answer.string)
         if answer.string.upper() != 'Y':
             self.wrapup_lib_popup()  # Set color tags and counts
             return False
@@ -4833,6 +4869,8 @@ MusicLocationTree().build_chron_line() No SQL History 'volume', 'detect_new' fou
 
             delete_count += 1
             old_path = PRUNED_DIR + old_base
+            # Delete physical file(s) matching search list below:
+            # ext_list = ['', '.old', '.new', '.lrc', '.png', '.jpg', '.jpeg']
             sql.ofb.DeleteFileGroup(old_path, level=level, music_id=music_id)
             sql.ofb.SetFileDelete(old_base, True, music_id)
             music_ids.append(music_id)
@@ -4893,12 +4931,16 @@ MusicLocationTree().build_chron_line() No SQL History 'volume', 'detect_new' fou
         self.lib_tree.delete(Id)  # Update Music Location Tree
         self.lib_top.update_idletasks()
 
+        # Physically delete empty directory from disk song files already deleted
+        old_path = PRUNED_DIR + search
         rm_tree_error = False
         if level == 'Artist' or level == 'Album':
             try:
-                os.rmtree(search)  # Will NOT remove if files still exist
+                os.rmdir(old_path)
+                print(_who, "os.rmdir(old_path):")
+                print(" ", old_path)
             except OSError as err:
-                print(self.who + "rd_delete_files(): os.rmtree() OSError:")
+                print(_who, "os.rmdir() OSError:")
                 print(" ", old_name)
                 print(err)
                 rm_tree_error = True
@@ -4912,8 +4954,8 @@ MusicLocationTree().build_chron_line() No SQL History 'volume', 'detect_new' fou
             text = str(delete_count) + " file(s) deleted.\n"
 
         if rm_tree_error:
-            text += "Directory not empty and not deleted:\n"
-            text += search + "\n"
+            text += "\nDirectory not empty and not deleted:\n\n"
+            text += old_path + "\n"
 
         if delete_count != 0:
             text += "\n\nTo view use: 'View', 'SQL History Table' and click the"
@@ -5538,7 +5580,7 @@ MusicLocationTree().build_chron_line() No SQL History 'volume', 'detect_new' fou
         self.lib_top.update_idletasks()
 
     def restore_lib_buttons(self):
-        """ When playing window closes, restore TreeView buttons """
+        """ When playing window closes, restore lib_top play button """
         if not self.lib_top_is_active:
             return
         self.lib_tree_play_btn["text"] = self.play_text
@@ -5767,6 +5809,20 @@ MusicLocationTree().build_chron_line() No SQL History 'volume', 'detect_new' fou
     def show_debug(self):
         """ Debugging - show machine info, monitors, windows, tooltips 
             locations, sql, metadata, global variables """
+
+        print(font.Font(font="TkDefaultFont").configure())
+        buttons = tk.Toplevel()
+        buttons.geometry("400x200")
+
+        pixel = tk.PhotoImage(width=1, height=1)
+        toolbar = tk.Frame(buttons)
+        toolbar.pack(side="top")
+        for size in (12, 16, 24, 32, 64, 128):
+            button = tk.Button(toolbar, text=str(size), width=size, height=size,
+                               image=pixel, compound="center", padx=0, pady=0)
+            button.pack(side="left")
+
+        buttons.update()
 
         ''' Make TMP names unique for concurrent FileControl() instances '''
         letters = string.ascii_lowercase + string.digits
@@ -9110,12 +9166,24 @@ MusicLocationTree().build_chron_line() No SQL History 'volume', 'detect_new' fou
 
     def build_play_btn_frm(self):
         """ Create frame for play_top buttons.
+
+            Called from:
+                play_selected_list()
+                toggle_hockey()
+                start_long_running_process()
+                end_long_running_process()
+                
             Dynamically create buttons depending on 'play_hockey_allowed'
             Less buttons for long running process. 
             № (U+2116)  🎵  (1f3b5)  🎨  (1f3a8)  🖌  (1f58c)  🖸 (1f5b8)
             Big space  (2003)   “Tabular width”, the width of digits (2007)
-                    
+
+            2024-09-07 - Convert tk.Button() to ttk.Button():
+                https://wiki.tcl-lang.org/page/ttk%3A%3Abutton (steals focus)
+                https://tkdocs.com/tutorial/styles.html#insidestyle (button style)
+
         """
+        _who = self.who + "build_play_btn_frm():"
         ''' Frame for Buttons '''
         self.play_btn_frm = tk.Frame(self.play_top, bg="LightGrey",
                                      borderwidth=g.FRM_BRD_WID, relief=tk.GROOVE)
@@ -9142,9 +9210,10 @@ MusicLocationTree().build_chron_line() No SQL History 'volume', 'detect_new' fou
         for col, name in enumerate(button_list):
             if name == "Close":
                 """" Close Button ✘ """
-                self.close_button = tk.Button(self.play_btn_frm, text="✘ Close",
-                                              width=g.BTN_WID2 - 6,
-                                              command=self.play_close)
+                #self.close_button = tk.Button(self.play_btn_frm, text="✘ Close",
+                self.close_button = ttk.Button(self.play_btn_frm, text="✘ Close",
+                                               width=g.BTN_WID2 - 6,
+                                               command=self.play_close)
                 self.close_button.grid(row=0, column=col, padx=2, sticky=tk.W)
                 self.play_top.bind("<Escape>", self.play_close)  # DO ONLY ONCE?
                 self.play_top.protocol("WM_DELETE_WINDOW", self.play_close)
@@ -9153,15 +9222,17 @@ MusicLocationTree().build_chron_line() No SQL History 'volume', 'detect_new' fou
             elif name == "Shuffle":
                 ''' Shuffle Button Em space + u 1f500 = 🔀 '''
                 # BIG_SPACE = " "         # UTF-8 (2003) aka Em Space
-                self.shuffle_button = tk.Button(self.play_btn_frm, text=" 🔀 Shuffle",
-                                                width=g.BTN_WID2 - 3, command=self.play_shuffle)
+                #self.shuffle_button = tk.Button(self.play_btn_frm, text=" 🔀 Shuffle",
+                self.shuffle_button = ttk.Button(self.play_btn_frm, text=" 🔀 Shuffle",
+                                                 width=g.BTN_WID2 - 3, command=self.play_shuffle)
                 self.shuffle_button.grid(row=0, column=col, padx=2, sticky=tk.W)
                 self.tt.add_tip(self.shuffle_button, "Shuffle songs randomly.",
                                 anchor="sw")
             elif name == "PP":  # TODO: Check current pp_state and dynamically format
                 ''' Pause/Play Button '''
-                self.pp_button = tk.Button(self.play_btn_frm, text=self.pp_pause_text,
-                                           width=g.BTN_WID2 - 5, command=self.pp_toggle)
+                #self.pp_button = tk.Button(self.play_btn_frm, text=self.pp_pause_text,
+                self.pp_button = ttk.Button(self.play_btn_frm, text=self.pp_pause_text,
+                                            width=g.BTN_WID2 - 5, command=self.pp_toggle)
                 self.pp_button.grid(row=0, column=col, padx=2)
                 text = "Pause music, pause artwork and\nallow manual lyrics scrolling."
                 self.tt.add_tip(self.pp_button, text, anchor="sw")
@@ -9171,8 +9242,8 @@ MusicLocationTree().build_chron_line() No SQL History 'volume', 'detect_new' fou
                 # June 17, 2023: Change 🠈 to last track button emoji (u+23ee) ⏮
                 self.prev_button_text = self.previous_text
                 self.prev_button = \
-                    tk.Button(self.play_btn_frm, text=self.prev_button_text, width=g.BTN_WID2 - 2,
-                              command=lambda s=self: s.song_set_ndx('prev'))
+                    ttk.Button(self.play_btn_frm, text=self.prev_button_text, width=g.BTN_WID2 - 2,
+                               command=lambda s=self: s.song_set_ndx('prev'))
                 self.prev_button.grid(row=0, column=col, padx=2, sticky=tk.W)
                 self.tt.add_tip(self.prev_button, "Play previous song.",
                                 anchor="sw")
@@ -9181,8 +9252,8 @@ MusicLocationTree().build_chron_line() No SQL History 'volume', 'detect_new' fou
                 # BIG_SPACE = " "         # UTF-8 (2003) aka Em Space
                 # June 17, 2023: Change 🠊 to next track button 23ED ⏭
                 self.next_button = \
-                    tk.Button(self.play_btn_frm, text="Next  ⏭", width=g.BTN_WID2 - 7,
-                              command=lambda s=self: s.song_set_ndx('next'))
+                    ttk.Button(self.play_btn_frm, text="Next  ⏭", width=g.BTN_WID2 - 7,
+                               command=lambda s=self: s.song_set_ndx('next'))
                 self.next_button.grid(row=0, column=col, padx=2, sticky=tk.W)
                 self.tt.add_tip(self.next_button, "Play next song in playlist.",
                                 anchor="se")
@@ -9192,37 +9263,41 @@ MusicLocationTree().build_chron_line() No SQL History 'volume', 'detect_new' fou
                     self.tt.close(self.com_button)  # Remove old tooltip from list
                 # 📺 | television (U+1F4FA)
                 # self.play_hockey_active = False  # U+1f3d2 🏒
-                self.com_button = tk.Button(self.play_btn_frm, text="📺  Commercial",
-                                            anchor=tk.CENTER,
-                                            width=g.BTN_WID2 + 3, command=lambda
-                                            s=self: s.start_hockey(TV_BREAK1))
+                #self.com_button = tk.Button(self.play_btn_frm, text="📺  Commercial",
+                self.com_button = ttk.Button(self.play_btn_frm, text="📺  Commercial",
+                                             anchor=tk.CENTER,
+                                             width=g.BTN_WID2 + 3, command=lambda
+                                             s=self: s.start_hockey(TV_BREAK1))
                 self.com_button.grid(row=0, column=col, padx=2, sticky=tk.W)
                 self.tt.add_tip(self.com_button, "Play music for " +
                                 hockey_remain_str(TV_BREAK1) + ".\n" +
                                 "Turn down TV volume whilst playing.", anchor="sw")
             elif name == "Int":
                 ''' Hockey Intermission Button '''
-                self.int_button = tk.Button(self.play_btn_frm, text="🏒  Intermission",
-                                            anchor=tk.CENTER,
-                                            width=g.BTN_WID2 + 3, command=lambda
-                                            s=self: s.start_hockey(TV_BREAK2))
+                #self.int_button = tk.Button(self.play_btn_frm, text="🏒  Intermission",
+                self.int_button = ttk.Button(self.play_btn_frm, text="🏒  Intermission",
+                                             anchor=tk.CENTER,
+                                             width=g.BTN_WID2 + 3, command=lambda
+                                             s=self: s.start_hockey(TV_BREAK2))
                 self.int_button.grid(row=0, column=col, padx=2, sticky=tk.W)
                 self.tt.add_tip(self.int_button, "Play music for " +
                                 hockey_remain_str(TV_BREAK2) + ".\n" +
                                 "Turn down TV volume whilst playing.", anchor="se")
             elif name == "Rew":
                 ''' Rewind Button -10 sec '''
-                self.rew_button = tk.Button(self.play_btn_frm, text="⏪  -" + REW_FF_SECS + " sec",
-                                            width=g.BTN_WID2 - 3, command=lambda
-                                            s=self: s.song_rewind())
+                #self.rew_button = tk.Button(self.play_btn_frm, text="⏪  -" + REW_FF_SECS + " sec",
+                self.rew_button = ttk.Button(self.play_btn_frm, text="⏪  -" + REW_FF_SECS + " sec",
+                                             width=g.BTN_WID2 - 3, command=lambda
+                                             s=self: s.song_rewind())
                 self.rew_button.grid(row=0, column=col, padx=2, sticky=tk.W)
                 self.tt.add_tip(self.rew_button, "Rewind song " + REW_FF_SECS +
                                 " seconds back.", anchor="sw")
             elif name == "FF":
                 ''' Fast Forward Button +10 sec'''
-                self.ff_button = tk.Button(self.play_btn_frm, text="+" + REW_FF_SECS + " sec  ⏩",
-                                           width=g.BTN_WID2 - 3, command=lambda
-                                           s=self: s.song_ff())
+                #self.ff_button = tk.Button(self.play_btn_frm, text="+" + REW_FF_SECS + " sec  ⏩",
+                self.ff_button = ttk.Button(self.play_btn_frm, text="+" + REW_FF_SECS + " sec  ⏩",
+                                            width=g.BTN_WID2 - 3, command=lambda
+                                            s=self: s.song_ff())
                 self.ff_button.grid(row=0, column=col, padx=2, sticky=tk.W)
                 self.tt.add_tip(self.ff_button, "Fast Forward song " + REW_FF_SECS +
                                 " seconds ahead.", anchor="se")
@@ -9234,18 +9309,20 @@ MusicLocationTree().build_chron_line() No SQL History 'volume', 'detect_new' fou
                 else:
                     button = "🎵  New Loudness"  # Music Note chron_line
                     tip = "Listen to new song at\nsame spot instantly."
-                self.loud_tog_button = tk.Button(self.play_btn_frm, text=button,
-                                                 width=g.BTN_WID2 + 2,
-                                                 command=self.loudness_toggle)
+                #self.loud_tog_button = tk.Button(self.play_btn_frm, text=button,
+                self.loud_tog_button = ttk.Button(self.play_btn_frm, text=button,
+                                                  width=g.BTN_WID2 + 2,
+                                                  command=self.loudness_toggle)
                 self.loud_tog_button.grid(row=0, column=col, padx=2)
                 self.tt.add_tip(self.loud_tog_button, tip, anchor="sw")
             elif name == "LoudMenu":
                 # Loudness Menu - Keep, Reject, View
                 button = "Loudness Menu"
                 tip = "Loudness Normalization\ninquiry and updates."
-                self.loud_menu_button = tk.Button(self.play_btn_frm, text=button,
-                                                  width=g.BTN_WID2,
-                                                  command=self.loudness_menu)
+                #self.loud_menu_button = tk.Button(self.play_btn_frm, text=button,
+                self.loud_menu_button = ttk.Button(self.play_btn_frm, text=button,
+                                                   width=g.BTN_WID2,
+                                                   command=self.loudness_menu)
                 self.loud_menu_button.grid(row=0, column=col, padx=2)
                 self.tt.add_tip(self.loud_menu_button, tip, anchor="sw")
             elif name == "Chron":
@@ -9255,7 +9332,8 @@ MusicLocationTree().build_chron_line() No SQL History 'volume', 'detect_new' fou
 
                 ''' Code copied from self.set_chron_button_text(). Make DRY '''
                 text, text2 = self.get_chron_button_text()
-                self.chron_button = tk.Button(
+                #self.chron_button = tk.Button(
+                self.chron_button = ttk.Button(
                     self.play_btn_frm, text=text,
                     width=g.BTN_WID2 + 2, command=lambda s=self: s.chron_toggle())
                 self.chron_button.grid(row=0, column=col, padx=2, sticky=tk.W)
@@ -14115,6 +14193,9 @@ TV_MOVE_WITH_COMPIZ = False  # Smooth monitor jump but prone to glitches
                 print(self.who + "build_chron_line() No SQL History 'volume', '"
                       + version + "' found for:")
                 print(" ", path)
+                # A crash occured in loop applying filtered normalization
+                print("  To fix, delete the Loudness Normalization Playlist",
+                      "and recreate it")
                 return "N/A dB"
             mean_volume, max_volume = json.loads(vol_d['Target'])
             return max_volume
@@ -17925,7 +18006,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                  apply_callback=None, enable_lib_menu=None, play_close=None,
                  # 2024-05-20 - display_lib_title() overused
                  # tooltips=None, thread=None, display_lib_title=None):
-                 tooltips=None, thread=None):
+                 tooltips=None, thread=None, real_paths=None):
         """
         Usage:
 
@@ -17947,6 +18028,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         self.enable_lib_menu = enable_lib_menu
         self.tt = tooltips  # Tooltips pool for buttons
         self.get_thread_func = thread  # E.G. self.get_refresh_thread
+        self.real_paths = real_paths
 
         self.who = "mserve.py Playlists()."
 
@@ -18253,7 +18335,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         self.enable_input()
 
     def create_loudnorm(self):
-        """ Called by lib_top File Menubar "New Playlist"
+        """ Called by lib_top Tools / Volumne Menubar "Create New..."
             If new songs are pending, do not allow playlist creation. """
         if self.check_pending():  # lib_top.tree checkboxes not applied?
             return  # We are all done. No window, no processing, nada
@@ -18672,6 +18754,16 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
                     print("mserve.Playlists().apply():",
                           "Catastrophic Error. Music Id not found:", music_id)
                     continue
+
+                # Could be older SQL History for file that no longer exists
+                full_path = PRUNED_DIR + mus_row['OsFileName']
+                try:
+                    ndx = self.real_paths.index(full_path)
+                except ValueError:
+                    print("mserve.Playlists().apply():",
+                          "ERROR full_path is missing:\n ", full_path)
+                    continue
+
                 self.act_music_ids.append(music_id)
                 self.act_size += row['Size']  # New file size can be smaller
                 self.act_seconds += mus_row['Seconds']  # Duration the same

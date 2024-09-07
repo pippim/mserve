@@ -4926,14 +4926,23 @@ class ToolTips(CommonTip):
         # Invert tooltip colors from current widget album art colors.
         #if self.tool_type is not 'canvas_button':  # comment June 15/23
         # What about 'label'?
+        # 2024-09-07 ttk.Button() has no color attributes like tk.Button()
+        try:
+            self.fg = self.widget["background"]  # self.tool_type 'button' or
+            self.bg = self.widget["foreground"]  # 'menu' using tk. NOT ttk.
+        except tk.TclError:
+            self.fg = self.dft_fg  # 'canvas_button', 'label', 'splash',
+            self.bg = self.dft_bg  # 'piggy-back' have no fg/bg colors.
+        ''' 2024-09-07 - Original code broken by ttk.Button() 
         if self.tool_type is 'button' or self.tool_type is 'menu':
             self.fg = self.widget["background"]
             self.bg = self.widget["foreground"]
         else:
             self.fg = self.dft_fg  # 'canvas_button', 'label', 'splash',
             self.bg = self.dft_bg  # and 'piggy-back' have no fg/bg colors.
+        '''
 
-        #self.tip_window = tw = tk.Toplevel(self.widget)  # Original weird code...
+        #self.tip_window = tw = tk.Toplevel(self.widget)  # Original sample code...
         if self.menu_tuple:
             # For 'menu' the self.widget is believed to be top-left monitor
             self.tip_window = tk.Toplevel(parent)

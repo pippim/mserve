@@ -20,6 +20,7 @@ from __future__ import with_statement  # Error handling for file opens
 #       Aug. 09 2023 - Add g.MSG_WIDTH_ADJ and self.title2 title width support.
 #       Aug. 17 2023 - threading.RLock() prevent to messages waiting at once.
 #       Mar. 17 2024 - Fix <Return> to <KP_Enter> for OK/Yes dialog buttons.
+#       Sep. 09 2024 - Switch 5 'tk.Button' to 'ttk.Button'
 #
 #==============================================================================
 
@@ -383,8 +384,8 @@ class ShowInfo(simpledialog.Dialog, AskCommonSelf):
 
         box = tk.Frame(self)
 
-        w = tk.Button(box, text="OK", width=10, command=self.ok, 
-                      default=tk.ACTIVE)
+        w = ttk.Button(box, text="OK", width=10, command=self.ok,
+                       default=tk.ACTIVE)
         w.pack(side=tk.LEFT, padx=5, pady=5)
 
         self.bind("<Return>", self.ok)  # 2024-03-17 Not working
@@ -668,11 +669,11 @@ TclError: grab failed: another application has grab
 
         box = tk.Frame(self)
 
-        w = tk.Button(box, text="Yes", width=10, command=self.ok, 
-                      default=tk.ACTIVE)
+        w = ttk.Button(box, text="Yes", width=10, command=self.ok,
+                       default=tk.ACTIVE)
         w.pack(side=tk.LEFT, padx=5, pady=5)
 
-        w = tk.Button(box, text="No", width=10, command=self.cancel)
+        w = ttk.Button(box, text="No", width=10, command=self.cancel)
         w.pack(side=tk.LEFT, padx=5, pady=5)
 
         self.bind("<Return>", self.ok)  # June 18, 2023 not working for self.ok()
@@ -771,11 +772,11 @@ class AskString(simpledialog.Dialog, AskCommonSelf):
         """ Add standard button box for AskString
             Override "Yes" and "No" to "Apply" and "Cancel" """
         box = tk.Frame(self)
-        w = tk.Button(box, text="Apply", width=10, command=self.ok,
-                      default=tk.ACTIVE)
+        w = ttk.Button(box, text="Apply", width=10, command=self.ok,
+                       default=tk.ACTIVE)
         w.pack(side=tk.LEFT, padx=5, pady=5)
 
-        w = tk.Button(box, text="Cancel", width=10, command=self.cancel)
+        w = ttk.Button(box, text="Cancel", width=10, command=self.cancel)
         w.pack(side=tk.LEFT, padx=5, pady=5)
 
         self.bind("<Return>", self.ok)  # June 18, 2023 not working for self.ok()
