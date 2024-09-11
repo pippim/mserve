@@ -1935,8 +1935,9 @@ class DictTreeview:
 
         column_dict = get_dict_column(column_name, self.tree_dict)
         pretty_column = sql.PrettyTreeHeading(column_dict)
-        pretty_column.scrollbox = scrollbox
-        sql.tkinter_display(pretty_column)  # Populate scrollbox
+        #pretty_column.scrollbox = scrollbox
+        #sql.tkinter_display(pretty_column)  # Populate scrollbox
+        sql.pretty_display(pretty_column, scrollbox)  # Populate scrollbox
 
     def pretty_sql_row(self, search, pretty_row, x=None, y=None):
         """ Display pretty SQL Row details using Data Dictionary of clicked row.
@@ -2011,20 +2012,12 @@ class DictTreeview:
         frame.rowconfigure(0, weight=1)
         frame.columnconfigure(0, weight=1)
 
-        #pretty_row.scrollbox = scrollbox
+        #pretty_row.scrollbox = scrollbox  # Needed for old version only
         pretty_row.search = search  # To highlight Search Words
-        #sql.tkinter_display(pretty_row)  # Populate scrollbox
+        #sql.tkinter_display(pretty_row)  # Populate scrollbox old version
 
         sql.pretty_display(pretty_row, scrollbox)  # 2024-06-09 - NEW version
         # 2024-06-29 - sql.pretty_display is upgrade to sql.tkinter_display
-        # Does not work because:
-        #   File "/home/rick/python/mserve.py", line 6744, in <lambda>
-        #     search, pretty, x, y))
-        #   File "/home/rick/python/toolkit.py", line 2010, in pretty_sql_row
-        #     sql.pretty_display(pretty_row, scrollbox)
-        #   File "/home/rick/python/sql.py", line 3730, in pretty_display
-        #     use_uom = True if pretty.uom is True else False
-        # AttributeError: PrettyMusic instance has no attribute 'uom'
 
     def pretty_meta_row(self, FileControl, os_filename, info, x=None, y=None):
         """ Display pretty file metadata details using Data Dictionary of clicked row.
@@ -2099,8 +2092,10 @@ class DictTreeview:
         frame.rowconfigure(1, weight=1)
         frame.columnconfigure(0, weight=1)
 
-        pretty_row.scrollbox = scrollbox
-        sql.tkinter_display(pretty_row)  # Populate scrollbox
+        #pretty_row.scrollbox = scrollbox
+        #sql.tkinter_display(pretty_row)  # Populate scrollbox
+        sql.pretty_display(pretty_row, scrollbox)  # Populate scrollbox
+
 
     def rename_column(self, column_name, x, y):
         """ Called from mserve.py view_sql_button_3() -> view_sql_heading_menu()
@@ -3159,9 +3154,9 @@ def scroll_defaults(scrollbox, tabs=None):
 
     scrollbox.configure(background="WhiteSmoke")
     if not tabs:
-        tabs = ("2m", "65m", "80m")
+        tabs = ("10", "240", "300")  # 2024-09-11 Use stable pixel units
     scrollbox.config(tabs=tabs)  # tab stops
-    scrollbox.tag_configure("margin", lmargin1="2m", lmargin2="65m")
+    scrollbox.tag_configure("margin", lmargin1="10", lmargin2="20")
     # Fix Control+C  https://stackoverflow.com/a/64938516/6929343
     scrollbox.bind("<Button-1>", lambda event: scrollbox.focus_set())
 
@@ -5095,7 +5090,8 @@ class ToolTips(CommonTip):
             of window to bottom and vice versa. E.G. mserve chronology.
         """
         for i, s in enumerate(self.tips_list):
-            if s['widget'] == widget:
+            #if s['widget'] == widget:  # process single widget
+            if str(s['widget']).startswith(str(widget)):  # process all inside frame
                 if s['anchor'] == "nw":
                     s['anchor'] = "sw"
                 elif s['anchor'] == "ne":

@@ -1245,8 +1245,8 @@ class HistoryTree:
         self.scrollbox.tag_config('cyan', background='Cyan')
         self.scrollbox.tag_config('magenta', background='Magenta')
 
-        self.scrollbox.config(tabs=("5m", "80m", "106m"))
-        self.scrollbox.tag_configure("margin", lmargin1="5m", lmargin2="80m")
+        self.scrollbox.config(tabs=("10", "240", "300"))
+        self.scrollbox.tag_configure("margin", lmargin1="10", lmargin2="20")
         # Fix Control+C  https://stackoverflow.com/a/64938516/6929343
         self.scrollbox.bind("<Button-1>", lambda event: self.scrollbox.focus_set())
 

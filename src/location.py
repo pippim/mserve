@@ -1386,6 +1386,14 @@ class Locations(LocationsCommonSelf):
         ''' Miscellaneous variables not reset on 'new', 'edit', etc. '''
         self.do_tell_commands = True  # Tell about missing commands one-time
 
+        style = ttk.Style()
+        style.map("L.TButton",
+                  foreground=[('!active', 'Black'), ('pressed', 'White'),
+                              ('active', 'Black')],
+                  background=[('!active', 'Grey75'), ('pressed', 'ForestGreen'),
+                              ('active', 'LightSkyBlue')]
+                  )
+
     def register_parent(self, parent):
         """ Register lib_top parent after it's declared in mserve.py """
         self.parent = parent  # Tooltips pool for buttons
@@ -1602,8 +1610,8 @@ class Locations(LocationsCommonSelf):
     def make_main_close_button(self):
         """ Added by main window, removed by testing. """
         ''' Close Button - After selecting location, changes to "✘ Cancel" '''
-        self.main_close_button = tk.Button(
-            self.btn_frame, text="✘ Close", font=g.FONT,
+        self.main_close_button = ttk.Button(
+            self.btn_frame, text="✘ Close", style="L.TButton",
             width=g.BTN_WID2 - 4, command=self.reset)
         self.main_close_button.grid(row=14, column=3, padx=(10, 5), pady=5,
                                     sticky=tk.E)
@@ -1630,8 +1638,8 @@ class Locations(LocationsCommonSelf):
         help_text += "videos and explanations on using this screen.\n"
         help_text += "https://www.pippim.com/programs/mserve.html#\n"
 
-        self.main_help_button = tk.Button(
-            self.btn_frame, text="⧉ Help", font=g.FONT,
+        self.main_help_button = ttk.Button(
+            self.btn_frame, text="⧉ Help", style="L.TButton",
             width=g.BTN_WID2 - 4, command=lambda: g.web_help(help_id))
         self.main_help_button.grid(row=14, column=2, padx=10, pady=5, sticky=tk.E)
         # Columns: 0 = Apply, 1 = Test, 2 = Help, 3 = Close
@@ -1703,16 +1711,16 @@ class Locations(LocationsCommonSelf):
 
         self.test_show(text, pattern=self.act_host)
 
-        self.test_box.config(tabs=("10m", "20m", "40m"))
-        self.test_box.tag_configure("margin", lmargin1="2m", lmargin2="40m")
+        self.test_box.config(tabs=("10", "240", "400"))
+        self.test_box.tag_configure("margin", lmargin1="10", lmargin2="20")
         # Fix Control+C  https://stackoverflow.com/a/64938516/6929343
         self.test_box.bind("<Button-1>", lambda event: self.test_box.focus_set())
 
     def make_test_close_button(self):
         """ Can be called for new test_top or to replace existing main_top """
         ''' Close Button - calls test_close_window() to wrap up '''
-        self.test_close_button = tk.Button(
-            self.btn_frame, text="✘ Close Test Results", font=g.FONT,
+        self.test_close_button = ttk.Button(
+            self.btn_frame, text="✘ Close Test Results", style="L.TButton",
             width=g.BTN_WID2 + 6, command=self.test_close_window)
         self.test_close_button.grid(row=0, column=3, padx=(10, 5), pady=5,
                                     sticky=tk.E)
@@ -1744,8 +1752,8 @@ class Locations(LocationsCommonSelf):
         help_text = "Open new window in default web browser for\n"
         help_text += "videos and explanations on using this screen.\n"
         help_text += "https://www.pippim.com/programs/mserve.html#\n"
-        self.test_help_button = tk.Button(
-            self.btn_frame, text="⧉ Help Test", font=g.FONT,
+        self.test_help_button = ttk.Button(
+            self.btn_frame, text="⧉ Help Test", style="L.TButton",
             width=g.BTN_WID2, command=lambda: g.web_help("HelpTestHostStatus"))
         self.test_help_button.grid(row=0, column=2, padx=10, pady=5, sticky=tk.E)
         # Columns: 0 = Apply, 1 = Test, 2 = Help, 3 = Close
@@ -1923,8 +1931,8 @@ class Locations(LocationsCommonSelf):
             if self.test_host_button:
                 return  # Button already created
             # print("self.scr_wakecmd.get():", self.scr_wakecmd.get())
-            self.test_host_button = tk.Button(
-                self.btn_frame, text="🔍 Test Host Wakeup", font=g.FONT,
+            self.test_host_button = ttk.Button(
+                self.btn_frame, text="🔍 Test Host Wakeup", style="L.TButton",
                 width=g.BTN_WID2 + 4, command=lambda: self.test_common(self.main_top))
             self.test_host_button.grid(row=14, column=1, padx=10, pady=5, 
                                        sticky=tk.E)
@@ -2210,8 +2218,8 @@ class Locations(LocationsCommonSelf):
             toolkit.print_trace()
             text = "Missing!"
 
-        self.apply_button = tk.Button(
-            self.btn_frame, text="✔ " + text, font=g.FONT,
+        self.apply_button = ttk.Button(
+            self.btn_frame, text="✔ " + text, style="L.TButton",
             width=g.BTN_WID2 - 2, command=self.apply)
         self.apply_button.grid(row=14, column=0, padx=10, pady=5, sticky=tk.E)
         # Columns: 0 = Apply, 1 = Test, 2 = Help, 3 = Close
@@ -4431,8 +4439,8 @@ filename.
 
 
         help = "HelpSynchronizeActions" if prefix == "cmp" else "HelpAnalyzeVolume"
-        self.cmp_help_button = tk.Button(
-            self.cmp_btn_frm, text="⧉ Help", font=g.FONT,
+        self.cmp_help_button = ttk.Button(
+            self.cmp_btn_frm, text="⧉ Help", style="L.TButton",
             width=g.BTN_WID2 - 4, command=lambda: g.web_help(help))
         self.cmp_help_button.grid(row=0, column=1, padx=10, pady=5, sticky=tk.E)
 
@@ -4443,7 +4451,7 @@ filename.
         ''' ✘ Close Button '''
         self.cmp_top.bind("<Escape>", self.cmp_close)
         self.cmp_top.protocol("WM_DELETE_WINDOW", self.cmp_close)
-        self.cmp_close_btn = tk.Button(self.cmp_btn_frm, text="✘ Close",
+        self.cmp_close_btn = ttk.Button(self.cmp_btn_frm, text="✘ Close", style="L.TButton",
                                        width=g.BTN_WID - 4, command=self.cmp_close)
         self.cmp_close_btn.grid(row=0, column=2, padx=(10, 5), pady=5,
                                 sticky=tk.E)
@@ -4457,8 +4465,8 @@ filename.
 
         if prefix != 'cmp':
             ''' Allow treeview scrolling before showing job summary stats '''
-            job_summary_btn = tk.Button(
-                self.cmp_btn_frm, width=g.BTN_WID + 12,
+            job_summary_btn = ttk.Button(
+                self.cmp_btn_frm, width=g.BTN_WID + 12, style="L.TButton",
                 command=lambda: self.avo_job_summary(start_time, end_time),
                 text="Display " + '{:,}'.format(self.cmp_found) + " summary")
             job_summary_btn.grid(row=0, column=0, padx=10, pady=5, sticky=tk.E)
@@ -4467,9 +4475,10 @@ filename.
         # NOTE: Update buttons visible AFTER tree is built.
         #command = self.cmp_update_files if prefix == "cmp" else self.cmp_update_hist
         ''' 🗘  Update differences Button u1f5d8 🗘 extra wide for count '''
-        self.update_differences_btn = tk.Button(
+        self.update_differences_btn = ttk.Button(
             self.cmp_btn_frm, width=g.BTN_WID + 12, command=self.cmp_update_files,
-            text="🗘  Update " + '{:,}'.format(self.cmp_found) + " differences")
+            text="🗘  Update " + '{:,}'.format(self.cmp_found) + " differences",
+            style="L.TButton")
         self.update_differences_btn.grid(row=0, column=0, padx=10, pady=5,
                                          sticky=tk.E)
 
@@ -5836,12 +5845,12 @@ filename.
 
             retn[0] = True
 
-        cancel_btn = tk.Button(
-            frame, width=g.BTN_WID, command=cancel, text="✘ Cancel")
+        cancel_btn = ttk.Button(
+            frame, width=g.BTN_WID, command=cancel, text="✘ Cancel", style="L.TButton")
         cancel_btn.grid(row=50, column=2, padx=10, pady=5, sticky=tk.E)
 
-        proceed_btn = tk.Button(
-            frame, width=g.BTN_WID, command=proceed, text="✔ Proceed")
+        proceed_btn = ttk.Button(
+            frame, width=g.BTN_WID, command=proceed, text="✔ Proceed", style="L.TButton")
         proceed_btn.grid(row=50, column=0, padx=10, pady=5, sticky=tk.E)
         
         while retn[0] is None:  # Wait until Proceed or Cancel selected.
@@ -6742,7 +6751,7 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
             n_data = sql.PrettyNormalize(music_id, self.act_code)
             win_title = "Normalization Summary - " + Title + " - mserve"
             self.pretty_window(
-                self.cmp_top, n_data, win_title, 1400, 700,
+                self.cmp_top, n_data, win_title, 1300, 750,
                 x, y, new=True)  # new = use right align tab stops and uom
 
         def remove_normalize(prompt=True):
@@ -6947,8 +6956,8 @@ ffmpeg -i "$1" -loglevel panic -af loudnorm=I=-16:TP=-1.5
         frame.grid(column=0, row=0, sticky=tk.NSEW)
         fnt = (None, g.MON_FONTSIZE)  # font variable name can't be used
 
-        close_btn = tk.Button(
-            frame, width=g.BTN_WID, text="✘ Close", command=close)
+        close_btn = ttk.Button(
+            frame, width=g.BTN_WID, text="✘ Close", command=close, style="L.TButton")
         close_btn.grid(row=1, column=0, padx=10, pady=5, sticky=tk.E)
 
         ''' Scrollable textbox to show selections / ripping status '''

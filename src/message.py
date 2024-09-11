@@ -359,6 +359,16 @@ class AskCommonSelf:
         # Shared functions - if None is passed this will exit right away.
         self.wait_window = wait_window_func
 
+        style = ttk.Style()
+        # Credit: https://stackoverflow.com/a/62506279
+
+        style.map("S.TButton",  # Applied to ttk.Button() inside simple_dialog()
+                  foreground=[('!active', 'Black'), ('pressed', 'White'),
+                              ('active', 'Black')],
+                  background=[('!active', 'Grey75'), ('pressed', 'ForestGreen'),
+                              ('active', 'SkyBlue3')]  # lighter than DodgerBlue
+                  )
+
 
 class ShowInfo(simpledialog.Dialog, AskCommonSelf):
     """ Show information message with "OK" button at end
@@ -385,7 +395,7 @@ class ShowInfo(simpledialog.Dialog, AskCommonSelf):
         box = tk.Frame(self)
 
         w = ttk.Button(box, text="OK", width=10, command=self.ok,
-                       default=tk.ACTIVE)
+                       default=tk.ACTIVE, style="S.TButton")
         w.pack(side=tk.LEFT, padx=5, pady=5)
 
         self.bind("<Return>", self.ok)  # 2024-03-17 Not working
@@ -670,10 +680,10 @@ TclError: grab failed: another application has grab
         box = tk.Frame(self)
 
         w = ttk.Button(box, text="Yes", width=10, command=self.ok,
-                       default=tk.ACTIVE)
+                       default=tk.ACTIVE, style="S.TButton")
         w.pack(side=tk.LEFT, padx=5, pady=5)
 
-        w = ttk.Button(box, text="No", width=10, command=self.cancel)
+        w = ttk.Button(box, text="No", width=10, command=self.cancel, style="S.TButton")
         w.pack(side=tk.LEFT, padx=5, pady=5)
 
         self.bind("<Return>", self.ok)  # June 18, 2023 not working for self.ok()
@@ -773,10 +783,10 @@ class AskString(simpledialog.Dialog, AskCommonSelf):
             Override "Yes" and "No" to "Apply" and "Cancel" """
         box = tk.Frame(self)
         w = ttk.Button(box, text="Apply", width=10, command=self.ok,
-                       default=tk.ACTIVE)
+                       default=tk.ACTIVE, style="S.TButton")
         w.pack(side=tk.LEFT, padx=5, pady=5)
 
-        w = ttk.Button(box, text="Cancel", width=10, command=self.cancel)
+        w = ttk.Button(box, text="Cancel", width=10, command=self.cancel, style="S.TButton")
         w.pack(side=tk.LEFT, padx=5, pady=5)
 
         self.bind("<Return>", self.ok)  # June 18, 2023 not working for self.ok()

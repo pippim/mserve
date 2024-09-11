@@ -3317,6 +3317,11 @@ class PrettyMusic:
         # text 'Seconds' appears in 6th group which turns 'seconds' in 2nd & 3rd
         # groups to green for that word only. So make 2nd & 3rd 'green' too.
 
+        self.tabs = [('10', 'left', 'black'),
+                     ('240', 'left', 'black'),
+                     ('300', 'left', 'black'),
+                     ('360', 'left', 'black')]
+
         # Get Music Table row, remove commas
         key = sql_row_id.replace(',', '')
         #print("sql_row_id:", sql_row_id, 'key:', key)
@@ -3345,6 +3350,7 @@ class PrettyMusic:
             self.dict['Year'] = sql_format_value(d['FirstDate'])
         self.dict['Artist'] = sql_format_value(d['Artist'])
         self.dict['Album'] = sql_format_value(d['Album'])
+
         if d['Compilation']:
             self.dict['Compilation'] = 'Yes' if d['Compilation'] == "1" else 'No'
         if d['AlbumArtist']:
@@ -3493,7 +3499,12 @@ class PrettyHistory:
         # text 'Seconds' appears in 6th group which turns 'seconds' in 2nd & 3rd
         # groups to green for that word only. So make 2nd & 3rd 'green' too.
 
-        # Get Music Table row, remove commas
+        self.tabs = [('10', 'left', 'black'),
+                     ('240', 'left', 'black'),
+                     ('300', 'left', 'black'),
+                     ('360', 'left', 'black')]
+
+        # Get History Table row, remove commas
         key = sql_row_id.replace(',', '')
         #print("sql_row_id:", sql_row_id, 'key:', key)
         hist_cursor.execute("SELECT * FROM History WHERE Id = ?", [key])
@@ -3569,6 +3580,11 @@ class PrettyLocation:
         self.part_names = ['Required Information', 'Optional Host Details']
         self.part_color = ['blue', 'green']
 
+        self.tabs = [('10', 'left', 'black'),
+                     ('240', 'left', 'black'),
+                     ('300', 'left', 'black'),
+                     ('360', 'left', 'black')]
+
         # Get Music Table row, remove commas
         key = sql_row_id.replace(',', '')
         #print("sql_row_id:", sql_row_id, 'key:', key)
@@ -3616,6 +3632,12 @@ class PrettyTreeHeading:
         self.part_start = [0]  # Only 1 part
         self.part_names = ['Column Key\t\tValue\n']
         self.part_color = ['red']
+
+        self.tabs = [('10', 'left', 'black'),
+                     ('240', 'left', 'black'),
+                     ('300', 'left', 'black'),
+                     ('360', 'left', 'black')]
+
         for key, value in column_dict.iteritems():
             self.dict[key] = sql_format_value(value)
 
@@ -3669,6 +3691,12 @@ class PrettyMeta:
         self.part_start = [0]
         self.part_names = ['Source', 'Metadata', 'Encoding']
         self.part_color = ['red', 'blue', 'green']
+
+        self.tabs = [('10', 'left', 'black'),
+                     ('320', 'left', 'black'),
+                     ('400', 'left', 'black'),
+                     ('500', 'left', 'black')]
+
         curr_line = 0
         for key, value in meta_dict.iteritems():
             curr_line += 1
@@ -3721,6 +3749,8 @@ class PrettyNormalize:
         self.uom = True  # Units of Measure used
         ''' Was working fine up to 2024-06-06 then doubled in width? 
             2024-06-08 After reboot margins are back to normal.
+            2024-09-09 Problems in Xorg and EDID? Spacing 4x too much as if
+                the 4K monitor is interpreted with wrong resolution?
         '''
         self.tabs = [('2m', 'left', 'black'),  # var name
                      ('108m', 'right', 'black'),  # value
@@ -3736,6 +3766,8 @@ class PrettyNormalize:
 
         ''' 2024-06-06 Try inches for 12 point font. 
             2024-06-08 After reboot margins are too narrow.
+            2024-09-09 Xorg glitch, use inches but still 2 times too large.
+        '''
         self.tabs = [('0.1i', 'left', 'black'),  # var name
                      ('2.8i', 'right', 'black'),  # value
                      ('2.11i', 'left', 'black'),  # UoM
@@ -3747,7 +3779,33 @@ class PrettyNormalize:
                      ('6.8i', 'left', 'red'),  # UoM
                      ('8.0i', 'right', 'black'),  # Threshold
                      ('8.1i', 'left', 'red')]  # UoM
+
+        ''' 2024-09-09 Try c copied from i. Close fit just add extra 10% 
         '''
+        self.tabs = [('0.1c', 'left', 'black'),     # Normalization Step
+                     ('3.8c', 'right', 'black'),    # value
+                     ('3.9c', 'left', 'black'),     # UoM
+                     ('5.2c', 'right', 'black'),    # Integrated value
+                     ('5.3c', 'left', 'red'),       # UoM
+                     ('6.8c', 'right', 'black'),    # True Peak
+                     ('6.9c', 'left', 'red'),       # UoM
+                     ('8.4c', 'right', 'black'),    # LRA
+                     ('8.5c', 'left', 'red'),       # UoM
+                     ('10.0c', 'right', 'black'),   # Threshold
+                     ('10.1c', 'left', 'red')]      # UoM
+
+        ''' 2024-09-10 Abandon m, c & i in favor of pixels. '''
+        self.tabs = [('10', 'left', 'black'),     # var name
+                     ('400', 'right', 'black'),   # value
+                     ('410', 'left', 'black'),    # UoM
+                     ('570', 'right', 'black'),   # integrated value
+                     ('580', 'left', 'red'),      # UoM
+                     ('760', 'right', 'black'),   # True Peak value
+                     ('770', 'left', 'red'),      # UoM
+                     ('940', 'right', 'black'),   # LRA value
+                     ('950', 'left', 'red'),      # UoM
+                     ('1100', 'right', 'black'),  # Threshold value
+                     ('1110', 'left', 'red')]     # UoM
 
         self.heading = "Normaliztion Steps\t\tValue\t\t" + \
                        "Integra\t-ted\tTrue\tPeak\tLRA\t\tThresh\t-old\n"
@@ -3806,10 +3864,10 @@ class PrettyNormalize:
         normalization_type1 = aln_jd['normalization_type'] if aln_jd else "N/A"
         
         '''  10 pt/ 11 pt Font
-                                         Integrated  True Peak   LRA      Threshold 
+                               Value   Integra-ted   True Peak    LRA    Thresh-old 
         Old Mean Volume        -3.4 dB
-        Pass 1 Input                    -24.7 LUFS  -1.6 dBTP   17.9 LU  -37.8 LUFS
-        Pass 1 Output                   -24.7 LUFS  -1.6 dBTP   17.9 LU  -37.8 LUFS
+        Pass 1 Input                    -24.7 LUFS  -1.60 dBTP   17.9 LU  -37.8 LUFS
+        Pass 1 Output                   -24.7 LUFS  -1.60 dBTP   17.9 LU  -37.8 LUFS
         Pass 1 Target          -3.4 dB
         Pass 1 Normalization   dynamic
         '''
@@ -4031,24 +4089,31 @@ def pretty_display(pretty, scrollbox):
     try:
         # Split dictionary values into two fields: 'value' and 'uom'?
         use_uom = True if pretty.uom is True else False
+    except AttributeError:
+        # < 2024-04 pretty dictionaries don't have uom
+        use_uom = False
+    try:
         use_tabs = True if pretty.tabs else False  # Left & Right tab stops
     except AttributeError:
-        # < 2024-04 pretty dictionaries don't have uom & tabs
-        use_uom = False
+        # < 2024-04 pretty dictionaries don't have tabs
         use_tabs = False
 
     # self.tabs is WIP: https://stackoverflow.com/a/46605414/6929343
     if use_tabs:
         tab_list = []; tab_colors = []
         for tab in pretty.tabs:
-            tab_list.append(tab[0])  # Tab stop
+            tab_list.append(tab[0])  # Tab stop ('10', '80', etc.)
             tab_list.append(tab[1])  # Tab alignment ('left' or 'right')
             tab_colors.append(tab[2])
             #tab_anchors.append(tab[2])
         # Override toolkit.py scroll_defaults()
-        #print("\ntab_list:", tab_list, "\ntab_colors:", tab_colors)
+        #print("\nsql.py pretty_display() tab_list:", tab_list,
+        #      "\ntab_colors:", tab_colors)
         pretty.scrollbox.config(tabs=tuple(tab_list))  # tab stops
-        pretty.scrollbox.update()  # Necessary?
+        # 2024-09-09 - Add margins for line wrapping
+        #pretty.scrollbox.tag_configure(
+        #    "margin", lmargin1=tab_list[0], lmargin2=tab_list[2])
+        #pretty.scrollbox.update()  # Necessary?
 
     def reset_tabs(event):
         """ https://stackoverflow.com/a/46605414/6929343 """
@@ -4107,7 +4172,11 @@ def pretty_display(pretty, scrollbox):
 
     if pretty.search is not None:
         # Breakdown string into set of words
-        words = pretty.search.split()
+        try:
+            words = pretty.search.split()
+        except AttributeError:
+            # AttributeError: SearchText instance has no attribute 'split'
+            words = []
         # NOTE: yellow, cyan and magenta are defined to highlight background
         #pretty.scrollbox.highlight_pattern(pretty.search, "yellow")
         for w in words:

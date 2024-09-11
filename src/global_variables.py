@@ -18,8 +18,19 @@ from __future__ import with_statement  # Error handling for file opens
 #       Aug. 04 2023 - Add FONT, NO_ARTIST_STR and NO_ALBUM_STR constants
 #       Sep. 04 2023 - Add MUSIC_FILE_TYPES list, MSERVE_VERSION = u"3.5.0"
 #       Jun. 02 2024 - MSG_WIDTH_ADJUST + .02 for message.py data_w_l() function
+#       Sep. 09 2024 - Define global g.TButton style.
 #
 # ==============================================================================
+
+# 2024-09-09 Breaks splash window
+#try:
+#    import tkinter as tk
+#    import tkinter.ttk as ttk
+#    PYTHON_VER = "3"
+#except ImportError:
+#    import Tkinter as tk
+#    import ttk  # for ttk.Style()
+#    PYTHON_VER = "2"
 
 # Get application & storage directory names
 from appdirs import user_data_dir, user_config_dir
@@ -172,6 +183,16 @@ def init(caller=None):
     systemd = "/run/user/" + USER_ID
     if os.path.isdir(systemd):
         TEMP_DIR = systemd + os.sep
+
+    # global style for ttt.Button: https://stackoverflow.com/a/62506279
+    # 2024-09-09 Destroys splash screen somehow?
+    #style = ttk.Style()
+    #style.map("g.TButton",  # Used by play_button() in build_play_btn_frm()
+    #          foreground=[('!active', 'Black'), ('pressed', 'White'),
+    #                      ('active', 'Black')],
+    #          background=[('!active', 'Grey75'), ('pressed', 'ForestGreen'),
+    #                      ('active', 'LightSkyBlue')]
+    #          )
 
 
 # ==============================================================================
