@@ -3767,7 +3767,10 @@ filename.
                 self.apply_button.grid()
             self.main_top.update()
         else:
-            self.test_top.destroy()  # What about tooltips? - There are none
+            try:
+                self.test_top.destroy()  # What about tooltips? - There are none
+            except AttributeError:
+                pass  # 2024-09-15 - FFTP WiFi not connecting
             self.test_top = None  # Destroying doesn't set to 'None'
 
     def test_nmap(self, toplevel):
@@ -4029,11 +4032,17 @@ filename.
         failure = "\nHost FAILURE. Review and then click 'Close' button."
         self.test_show(failure, pattern="FAILURE")
         self.test_dtb.close()
+        self.out_cast_show_print("FAILURE", failure, 'error')
 
         ''' Long running process - Restore play_top buttons '''
         #self.end_long_running()
 
-        # Leave test window open
+        # Leave test window open (2024-09-15 WRONG!)
+        # 2024-09-15 - test window is dead but doesn't disappear
+        if self.test_top is not None:
+            self.test_top.destroy()
+            self.test_top = None
+
         return False
 
     # ==============================================================================

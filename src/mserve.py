@@ -9883,6 +9883,9 @@ Call search.py when these control keys occur
             return  # Empty list.  May 24, 2023 - should not be making this
             #  test at late stage. Better 'self.play_ctl.pid == 0:'
 
+        if self.ndx > len(self.saved_selections) - 1:
+            self.ndx = len(self.saved_selections)  # 2024-09-15 Fix index out of range
+
         iid = self.saved_selections[self.ndx]  # Get treeview song ID
         album = self.lib_tree.parent(iid)
         artist = self.lib_tree.parent(album)
@@ -17073,6 +17076,11 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilatio
             stat.ST_CTIME - The “ctime” as reported by the operating system.
         :param stat: Either self.stat_start or self.stat_end
         """
+
+        if stat is None:
+            toolkit.print_trace()
+            print(self.who + "cast_stat(stat): Variable 'stat' is None")
+            return
 
         ''' Which stat was passed as parameter?: stat_start or stat_end? 
             https://github.com/Sundar0989/WOE-and-IV/issues/2 '''
