@@ -100,7 +100,7 @@ warnings.simplefilter('default')  # in future Python versions.
 #       Jul. 10 2024 - May 13 fix disabled "Save Favorites" function. Correct.
 #       Aug. 05 2024 - Create separate and shared delete from playlist method.
 #       Aug. 24 2024 - SQL Music Table speed boost using OsFileNameIndex.
-#       Sep. 07 2024 - Begin conversion from tk.Button() to ttk.Button().
+#       Sep. 07 2024 - Convert from tk.Button() to ttk.Button() with style.
 #
 # ==============================================================================
 
@@ -1064,7 +1064,8 @@ class MusicLocTreeCommonSelf:
         self.lyrics_panel_label = None  # tk.Label(self.lyrics_frm,
         self.lyrics_panel_last_line = None  # Rebuild panel_text when changing
         self.lyrics_panel_scroll = None  # Auto / Time / Manual Scroll
-        self.lyrics_panel_text = None  # 0% time, Line: 99 of 99
+        self.lyrics_panel_text = None  # 0% sync, Line: 99 of 99
+        # 2024-09-14 - '999% time' renamed to '999% sync'
         # title_F3 is old stuff being removed this weekend (May 29-30, 2021)
         self.lyrics_scrape_pid = None  # Process ID for web scrape
         self.lyrics_edit_is_active = False  # song lyrics being edited?
@@ -1075,14 +1076,14 @@ class MusicLocTreeCommonSelf:
         # Four tk.Canvas rounded rectangle buttons: Auto to Manual (a_m), 
         # Time to Manual (t_m), Manual to Auto (m_a) and Manual to Time (M_t):
         self.lyrics_panel_scroll_a_m_grid = None
-        self.lyrics_panel_scroll_t_m_grid = None
+        self.lyrics_panel_scroll_s_m_grid = None
         self.lyrics_panel_scroll_m_a_grid = None
-        self.lyrics_panel_scroll_m_t_grid = None
+        self.lyrics_panel_scroll_m_s_grid = None
         # rounded rectangle button widgets
         self.lyrics_panel_scroll_a_m = None  # Automatic to Manual
-        self.lyrics_panel_scroll_t_m = None  # Timed (Synced) to Manual
+        self.lyrics_panel_scroll_s_m = None  # Timed (Synced) to Manual
         self.lyrics_panel_scroll_m_a = None  # Manual to Automatic
-        self.lyrics_panel_scroll_m_t = None  # Manual to Timed (Synced)
+        self.lyrics_panel_scroll_m_s = None  # Manual to Timed (Synced)
         # Associated tooltips to rounded rectangle buttons
         self.lyrics_panel_scroll_widest = 0
         self.lyrics_panel_scroll_highest = 0
@@ -1597,25 +1598,28 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
                               ('active', 'SkyBlue3')]  # lighter than DodgerBlue
                   )
 
-        def lib_tree_button(row, column, text, command, tt_text, tt_anchor):
+        def lib_tree_button(row, column, txt, command, tt_text, tt_anchor):
             """ Function to combine ttk.Button, .grid() and tt.add_tip() """
-            widget = ttk.Button(self.lib_btn_frm, text=text, width=len(text), 
+            widget = ttk.Button(self.lib_btn_frm, text=txt, width=len(txt),
                                 command=command, style="C.TButton")
             widget.grid(row=row, column=column, padx=(10, 0), pady=5, sticky=tk.W)
             if tt_text is not None and tt_anchor is not None:
                 self.tt.add_tip(widget, tt_text, anchor=tt_anchor)
             return widget
 
-        #self.lib_tree_play_btn = tk.Button(
-        #    self.lib_btn_frm, text=self.play_text, width=g.BTN_WID2 + 1,
-        #    font=g.FONT, command=self.play_selected_list)
-        #self.lib_tree_play_btn = ttk.Button(
-        #    self.lib_btn_frm, text=self.play_text, width=len(self.library_text),
-        #    command = self.play_selected_list)
-        #self.lib_tree_play_btn.grid(row=0, column=0, padx=10, pady=5,
-        #                            sticky=tk.W)
-        #self.tt.add_tip(self.lib_tree_play_btn, "Play selected songs.",
-        #                anchor="nw")
+        # noinspection SpellCheckingInspection
+        ''' tk.Button code replaced by ttk.Button() 
+        self.lib_tree_play_btn = tk.Button(
+            self.lib_btn_frm, text=self.play_text, width=g.BTN_WID2 + 1,
+            font=g.FONT, command=self.play_selected_list)
+        self.lib_tree_play_btn = ttk.Button(
+            self.lib_btn_frm, text=self.play_text, width=len(self.library_text),
+            command = self.play_selected_list)
+        self.lib_tree_play_btn.grid(row=0, column=0, padx=10, pady=5,
+                                    sticky=tk.W)
+        self.tt.add_tip(self.lib_tree_play_btn, "Play selected songs.",
+                        anchor="nw")
+        '''
         ''' ▶  Play Button '''
         self.lib_tree_play_btn = lib_tree_button(
             0, 0, self.library_text, self.play_selected_list,
@@ -2023,8 +2027,8 @@ class MusicLocationTree(MusicLocTreeCommonSelf):
             if answer.string.upper() != 'Y':
                 return
 
-            wait_cursor(self.lib_top)
-            wait_cursor(self.play_top)
+            toolkit.wait_cursor(self.lib_top)  # Animated hourglass 16.04 / watch 18.04
+            toolkit.wait_cursor(self.play_top)
             dtb = message.DelayedTextBox(title="Applying loudness normalization",
                                          toplevel=self.play_top, width=600)
             music_id_list = []
@@ -4663,9 +4667,9 @@ Call search.py when these control keys occur
             print("Escape '%' in search string:", search)
 
         try:
-            # Warning LIKE is case insensitve so "Alice" == "aLICE":
+            # Warning: LIKE is not case sensitive so "Alice" == "aLICE":
             #   https://stackoverflow.com/a/8586390/6929343
-            #   ... WHERE word >= 'search_string' AND word < 'search_strinh'
+            #   ... WHERE word >= 'search_string' AND word < 'search_string_h'
             #
             #   by incrementing the last character of the search string. The
             #   greater-than and less-than operators can use an index...
@@ -5796,7 +5800,7 @@ Call search.py when these control keys occur
         toolbar.pack(expand=True)
         for size in (12, 16, 24, 32, 64, 128):
             #button = tk.Button(toolbar, text=str(size), width=size, height=size,
-            #                   compound="center", padx=10, pady=10)
+            #                   compound="center", pad x=10, pad y=10)
             # image required in order to override width= and height=
             button = tk.Button(toolbar, text=str(size), width=size, height=size,
                                image=pixel, compound="center", padx=10, pady=5)
@@ -7073,7 +7077,7 @@ Call search.py when these control keys occur
 
         ''' 🔍 Text Search '''
         button(0, 2, "🔍  Text Search", self.his_text_search,
-              "Filter rows containing search words.", "nw")
+               "Filter rows containing search words.", "nw")
 
         '''  “∑” (U+2211) - Summarize sizes and count rows '''
         button(0, 3, "∑  Summary", lambda: self.show_sql_summary(self.his_view),
@@ -7200,7 +7204,7 @@ Call search.py when these control keys occur
         ''' 🔍 Text Search '''
         #self.lcs_view_btn5 = tk.Button(btn_frm, text="🔍  Text Search",
         #                               width=g.BTN_WID - 2, command=self.lcs_text_search)
-        #self.lcs_view_btn5.grid(row=0, column=4, padx=2)
+        #self.lcs_view_btn5.grid(row=0, column=4, pad x=2)
         #self.tt.add_tip(self.lcs_view_btn5,
         #                "Filter rows containing any words", anchor="nw")
         button(0, 4, "🔍  Text Search", self.lcs_text_search,
@@ -7325,6 +7329,7 @@ Call search.py when these control keys occur
         # Remove row_release feature.
 
         ''' Treeview Right Click - Popup menu on treeview heading or row '''
+        # noinspection PyTypeChecker
         dd_view.tree.bind("<Button-3>", lambda event:
                           self.show_sql_common_click(event, dd_view))
 
@@ -7373,6 +7378,7 @@ Call search.py when these control keys occur
             TODO: Review if 'self.refresh_play_top()' should be called
                   Problem with previous/next song stalling other xxx_top running
         """
+        _who = self.who + "insert_view_lines():"
         first_id = None
         toolkit.wait_cursor(dd_view.toplevel)
 
@@ -8604,7 +8610,7 @@ Call search.py when these control keys occur
 
         text = "Speaker with diagonal line.\n"
         text += "Click to mute volume.\n"
-        text += "Music keeps play with no sound.\n"
+        text += "Music keeps playing with no sound.\n"
         text += "You can also click on album art to\n"
         text += "toggle pausing and playing music."
         self.tt.add_tip(self.ffplay_mute, tool_type='label',
@@ -8726,6 +8732,7 @@ Call search.py when these control keys occur
         self.lyrics_frm.grid_rowconfigure(0, weight=0)
         self.lyrics_frm.grid_columnconfigure(0, weight=1)
 
+        # 2024-09-14 - Rename 'Time Scrolling' to 'Sync Scrolling'
         # Rounded rectangle buttons mapped to same .grid using .remove
         # New Short form with 'config_all_labels()' doesn't need variables
         # Apply color codes to buttons - See set_artwork_colors()
@@ -8733,9 +8740,9 @@ Call search.py when these control keys occur
         # tooltips:
         #   FROM     TO     WIDGET NAME                     Button Text
         #  Auto -> Manual   self.lyrics_panel_scroll_a_m    Auto Scrolling
-        #  Time -> Manual   self.lyrics_panel_scroll_t_m    Time Scrolling
+        #  Sync -> Manual   self.lyrics_panel_scroll_s_m    Sync Scrolling
         #  Manual -> Auto   self.lyrics_panel_scroll_m_a    Manual Scroll
-        #  Manual -> Time   self.lyrics_panel_scroll_m_t    Manual Scroll
+        #  Manual -> Sync   self.lyrics_panel_scroll_m_s    Manual Scroll
 
         tt_text = "Auto Scrolling lyrics is active.\n" + \
                   "Click to scroll lyrics score manually."
@@ -8745,9 +8752,9 @@ Call search.py when these control keys occur
 
         tt_text = "Lyrics line is highlighted using time index.\n" + \
                   "Click to scroll lyrics score manually."
-        self.lyrics_panel_scroll_t_m = \
+        self.lyrics_panel_scroll_s_m = \
             self.create_scroll_button_and_tooltip(
-                "Time Scrolling", tt_text, ms_font=g.FONT)
+                "Sync Scrolling", tt_text, ms_font=g.FONT)
 
         tt_text = "Manual lyrics score scrolling is active.\n" + \
                   "Click to auto scroll lyrics at 1.5x speed."
@@ -8756,8 +8763,8 @@ Call search.py when these control keys occur
                 "Manual Scroll", tt_text, ms_font=g.FONT)
 
         tt_text = "Manual lyrics score scrolling is active.\n" + \
-                  "Click to highlight lyrics using time index."
-        self.lyrics_panel_scroll_m_t = \
+                  "Click to highlight lyrics using synchronization."
+        self.lyrics_panel_scroll_m_s = \
             self.create_scroll_button_and_tooltip(
                 "Manual Scroll", tt_text, ms_font=g.FONT)
 
@@ -9243,180 +9250,113 @@ Call search.py when these control keys occur
         #                      ('active', 'LightSkyBlue')]  # similar to DodgerBlue
         #          )
 
-        def play_button(row, column, text, command, tt_text, tt_anchor):
+        def play_button(row, column, txt, command, tt_txt, tt_anchor):
             """ Save 5 lines - combine ttk.Button, .grid() & tt.add_tip() """
-            widget = ttk.Button(self.play_btn_frm, text=text, width=len(text),
+            widget = ttk.Button(self.play_btn_frm, text=txt, width=len(txt),
                                 command=command, style="C.TButton")
             widget.grid(row=row, column=column, padx=(10, 0), pady=5, sticky=tk.W)
-            if tt_text is not None and tt_anchor is not None:
-                self.tt.add_tip(widget, tt_text, anchor=tt_anchor)
+            if tt_txt is not None and tt_anchor is not None:
+                self.tt.add_tip(widget, tt_txt, anchor=tt_anchor)
             return widget
 
 
         for col, name in enumerate(button_list):
-            if name == "Close":
-                """" Close Button ✘ """
-                #self.close_button = tk.Button(self.play_btn_frm, text="✘ Close",
-                #self.close_button = ttk.Button(self.play_btn_frm, text="✘ Close",
-                #                               width=g.BTN_WID2 - 6,
-                #                               command=self.play_close)
-                #self.close_button.grid(row=0, column=col, padx=2, sticky=tk.W)
-                #self.tt.add_tip(self.close_button, "Close playlist but mserve stays open.",
-                #                anchor="sw")
+
+            if name == "Close":  # Close Button ✘
                 self.play_top.bind("<Escape>", self.play_close)  # DO ONLY ONCE?
                 self.play_top.protocol("WM_DELETE_WINDOW", self.play_close)
                 play_button(0, col, "✘ Close", self.play_close,
-                            "Close playlist but mserve stays open.", "se" )
-            elif name == "Shuffle":
-                ''' Shuffle Button Em space + u 1f500 = 🔀 '''
+                            "Close playlist but mserve stays open.", "se")
+
+            elif name == "Shuffle":  # Shuffle Button Em space + u 1f500 = 🔀
                 # BIG_SPACE = " "         # UTF-8 (2003) aka Em Space
-                #self.shuffle_button = tk.Button(self.play_btn_frm, text=" 🔀 Shuffle",
-                #self.shuffle_button = ttk.Button(self.play_btn_frm, text=" 🔀 Shuffle",
-                #                                 width=g.BTN_WID2 - 3, command=self.play_shuffle)
-                #self.shuffle_button.grid(row=0, column=col, padx=2, sticky=tk.W)
-                #self.tt.add_tip(self.shuffle_button, "Shuffle songs randomly.",
-                #                anchor="sw")
                 play_button(0, col, "🔀 Shuffle", self.play_shuffle,
                             "Shuffle songs randomly or album order.", "se")
-            elif name == "PP":  # TODO: Check current pp_state and dynamically format
-                ''' Pause/Play Button '''
-                #self.pp_button = tk.Button(self.play_btn_frm, text=self.pp_pause_text,
-                #self.pp_button = ttk.Button(self.play_btn_frm, text=self.pp_pause_text,
-                #                            width=g.BTN_WID2 - 5, command=self.pp_toggle)
-                #self.pp_button.grid(row=0, column=col, padx=2)
-                #text = "Pause music, pause artwork and\nallow manual lyrics scrolling."
-                #self.tt.add_tip(self.pp_button, text, anchor="sw")
+
+            elif name == "PP":  # Pause/Play Button
                 text = "Pause music, pause artwork and\n" + \
                        "allow manual lyrics scrolling."
                 self.pp_button = play_button(
                     0, col, self.pp_pause_text, self.pp_toggle, text, "sw")
-            elif name == "Prev":
-                ''' Prev Track Button '''
+
+            elif name == "Prev":  # Prev Track Button
                 # U+1f844 🡄         U+1f846 🡆         U_1f808 🠈         I+1f80a 🠊
                 # June 17, 2023: Change 🠈 to last track button emoji (u+23ee) ⏮
-                #self.prev_button_text = self.previous_text
-                #self.prev_button = \
-                #    ttk.Button(self.play_btn_frm, text=self.prev_button_text, width=g.BTN_WID2 - 2,
-                #               command=lambda s=self: s.song_set_ndx('prev'))
-                #self.prev_button.grid(row=0, column=col, padx=2, sticky=tk.W)
-                #self.tt.add_tip(self.prev_button, "Play previous song.",
-                #                anchor="sw")
                 self.prev_button_text = self.previous_text  # Rewind or Restart
                 self.prev_button = play_button(0, col, self.prev_button_text,
                                                lambda s=self: s.song_set_ndx('prev'),
                                                "Play previous song.", "sw")
-            elif name == "Next":
-                ''' Next Track Button '''
+
+            elif name == "Next":  # Next Track Button
                 # BIG_SPACE = " "         # UTF-8 (2003) aka Em Space
                 # June 17, 2023: Change 🠊 to next track button 23ED ⏭
-                #self.next_button = \
-                #    ttk.Button(self.play_btn_frm, text="Next  ⏭", width=g.BTN_WID2 - 7,
-                #               command=lambda s=self: s.song_set_ndx('next'))
-                #self.next_button.grid(row=0, column=col, padx=2, sticky=tk.W)
-                #self.tt.add_tip(self.next_button, "Play next song in playlist.",
-                #                anchor="se")
                 play_button(0, col, "Next  ⏭", lambda s=self: s.song_set_ndx('next'),
                             "Play next song in playlist.", "se")
-            elif name == "Com":
-                ''' Hockey Commercial Button '''
+
+            elif name == "Com":  # Hockey Commercial Button
                 if self.tt.check(self.com_button) is not None:
                     self.tt.close(self.com_button)  # Remove old tooltip from list
                 # 📺 | television (U+1F4FA)
                 # self.play_hockey_active = False  # U+1f3d2 🏒
-                #self.com_button = tk.Button(self.play_btn_frm, text="📺  Commercial",
-                #self.com_button = ttk.Button(self.play_btn_frm, text="📺  Commercial",
-                #                             anchor=tk.CENTER,
-                #                             width=g.BTN_WID2 + 3, command=lambda
-                #                             s=self: s.start_hockey(TV_BREAK1))
-                #self.com_button.grid(row=0, column=col, padx=2, sticky=tk.W)
-                #self.tt.add_tip(self.com_button, "Play music for " +
-                #                hockey_remain_str(TV_BREAK1) + ".\n" +
-                #                "Turn down TV volume whilst playing.", anchor="sw")
                 tt_text = "Play music for " + hockey_remain_str(TV_BREAK1) + \
                           ".\n" + "Turn down TV volume whilst playing."
                 self.com_button = play_button(0, col, "📺  Commercial",
                                               lambda s=self: s.start_hockey(TV_BREAK1),
                                               tt_text, "sw")
-            elif name == "Int":
-                ''' Hockey Intermission Button '''
-                #self.int_button = tk.Button(self.play_btn_frm, text="🏒  Intermission",
-                #self.int_button = ttk.Button(self.play_btn_frm, text="🏒  Intermission",
-                #                             anchor=tk.CENTER,
-                #                             width=g.BTN_WID2 + 3, command=lambda
-                #                             s=self: s.start_hockey(TV_BREAK2))
-                #self.int_button.grid(row=0, column=col, padx=2, sticky=tk.W)
-                #self.tt.add_tip(self.int_button, "Play music for " +
-                #                hockey_remain_str(TV_BREAK2) + ".\n" +
-                #                "Turn down TV volume whilst playing.", anchor="se")
+
+            elif name == "Int":  # Hockey Intermission Button
                 tt_text = "Play music for " + hockey_remain_str(TV_BREAK2) +\
                           ".\n" + "Turn down TV volume whilst playing."
                 self.int_button = play_button(0, col, "🏒  Intermission",
                                               lambda s=self: s.start_hockey(TV_BREAK2),
                                               tt_text, "se")
-            elif name == "Rew":
-                ''' Rewind Button -10 sec '''
-                #self.rew_button = tk.Button(self.play_btn_frm, text="⏪  -" + REW_FF_SECS + " sec",
-                #self.rew_button = ttk.Button(self.play_btn_frm, text="⏪  -" + REW_FF_SECS + " sec",
-                #                             width=g.BTN_WID2 - 3, command=lambda
-                #                             s=self: s.song_rewind())
-                #self.rew_button.grid(row=0, column=col, padx=2, sticky=tk.W)
-                #self.tt.add_tip(self.rew_button, "Rewind song " + REW_FF_SECS +
-                #                " seconds back.", anchor="sw")
+
+            elif name == "Rew":  # Rewind Button -10 sec
                 play_button(0, col, "⏪  -" + REW_FF_SECS + " sec", self.song_rewind,
                             "Rewind song " + REW_FF_SECS + " seconds back.", "sw")
-            elif name == "FF":
-                ''' Fast Forward Button +10 sec'''
-                #self.ff_button = tk.Button(self.play_btn_frm, text="+" + REW_FF_SECS + " sec  ⏩",
-                #self.ff_button = ttk.Button(self.play_btn_frm, text="+" + REW_FF_SECS + " sec  ⏩",
-                #                            width=g.BTN_WID2 - 3, command=lambda
-                #                            s=self: s.song_ff())
-                #self.ff_button.grid(row=0, column=col, padx=2, sticky=tk.W)
-                #self.tt.add_tip(self.ff_button, "Fast Forward song " + REW_FF_SECS +
-                #                " seconds ahead.", anchor="se")
+
+            elif name == "FF":  # Fast Forward Button +10 sec
                 play_button(0, col, "+" + REW_FF_SECS + " sec  ⏩", self.song_ff,
                             "Fast Forward song "+REW_FF_SECS+" seconds ahead.", "se")
-            elif name == "LoudTog":
-                # Toggle Sound Source Old Loudness/New Loudness Button
+
+                ''' 2024-09-15 - Deleted too much. References from top:
+                        self.prev_button_text = None  # Contains one of above two strings
+                        self.rew_button = None  # tk.Button(text="⏪  -10 sec"
+                        self.com_button = None  # tk.Button(text="🏒  Commercial"
+                        self.loud_tog_button = None  # Toggle old/new loudness
+                        self.pp_button = None  # tk.Button(text="▶  Play"
+                        self.int_button = None  # tk.Button(text="🏒  Intermission"
+                        self.ff_button = None  # tk.Button(text="⏩  +10 sec"
+                        self.loud_menu_button = None  # Loudness Menu - Keep, Reject, View
+                        self.next_button = None  # tk.Button(text=" Next ⏭ "
+    
+                '''
+
+            elif name == "LoudTog":  # Toggle Sound Source Old Loudness/New Loudness Button
                 if self.is_loudnorm_sound:
                     button = "🎵  Old Loudness"
                     tip = "Listen to old song at\nsame spot instantly."
                 else:
                     button = "🎵  New Loudness"  # Music Note chron_line
                     tip = "Listen to new song at\nsame spot instantly."
-                #self.loud_tog_button = tk.Button(self.play_btn_frm, text=button,
-                #self.loud_tog_button = ttk.Button(self.play_btn_frm, text=button,
-                #                                  width=g.BTN_WID2 + 2,
-                #                                  command=self.loudness_toggle)
-                #self.loud_tog_button.grid(row=0, column=col, padx=2)
-                #self.tt.add_tip(self.loud_tog_button, tip, anchor="sw")
-                play_button(0, col, button, self.loudness_toggle, tip, "sw")
-            elif name == "LoudMenu":
-                # Loudness Menu - Keep, Reject, View
+                self.loud_tog_button = play_button(
+                    0, col, button, self.loudness_toggle, tip, "sw")
+
+            elif name == "LoudMenu":  # Loudness Menu - Keep, Reject, View
                 button = "Loudness Menu"
                 tip = "Loudness Normalization\ninquiry and updates."
-                #self.loud_menu_button = tk.Button(self.play_btn_frm, text=button,
-                #self.loud_menu_button = ttk.Button(self.play_btn_frm, text=button,
-                #                                   width=g.BTN_WID2,
-                #                                   command=self.loudness_menu)
-                #self.loud_menu_button.grid(row=0, column=col, padx=2)
-                #self.tt.add_tip(self.loud_menu_button, tip, anchor="sw")
-                play_button(0, col, button, self.loudness_menu, tip, "sw")
-            elif name == "Chron":
-                ''' Show/Hide Chronology (Playlist) toggle button (Frame 4) '''
+                self.loud_menu_button = play_button(
+                    0, col, button, self.loudness_menu, tip, "sw")
+
+            elif name == "Chron":  # Show/Hide Chronology (Playlist) toggle button (Frame 4)
                 if self.chron_is_hidden is None:
                     self.chron_is_hidden = False  # Initialization: start shown
 
-                ''' Code copied from self.set_chron_button_text(). Make DRY '''
+                # Code copied from self.set_chron_button_text(). Make DRY
                 text, text2 = self.get_chron_button_text()
-                #self.chron_button = tk.Button(
-                #self.chron_button = ttk.Button(
-                #    self.play_btn_frm, text=text,
-                #    width=g.BTN_WID2 + 2, command=lambda s=self: s.chron_toggle())
-                #self.chron_button.grid(row=0, column=col, padx=2, sticky=tk.W)
-                #_text = "placeholder"
-                #self.tt.add_tip(self.chron_button, text2, anchor="se")
                 self.chron_button = play_button(
                     0, col, text, self.chron_toggle, text2, "se")
+
             else:
                 print("mserve.py build_play_btn_frm() Bad button name:", name)
 
@@ -9522,19 +9462,19 @@ Call search.py when these control keys occur
         """ Set width and height of rounded rectangles to logged maximums """
         self.lyrics_panel_scroll_a_m.config(width=self.lyrics_panel_scroll_widest,
                                             height=self.lyrics_panel_scroll_highest)
-        self.lyrics_panel_scroll_t_m.config(width=self.lyrics_panel_scroll_widest,
+        self.lyrics_panel_scroll_s_m.config(width=self.lyrics_panel_scroll_widest,
                                             height=self.lyrics_panel_scroll_highest)
         self.lyrics_panel_scroll_m_a.config(width=self.lyrics_panel_scroll_widest,
                                             height=self.lyrics_panel_scroll_highest)
-        self.lyrics_panel_scroll_m_t.config(width=self.lyrics_panel_scroll_widest,
+        self.lyrics_panel_scroll_m_s.config(width=self.lyrics_panel_scroll_widest,
                                             height=self.lyrics_panel_scroll_highest)
 
     def deprecated_set_min_dimensions(self):
         """ Set width and height of rounded rectangles to minimums """
         self.lyrics_panel_scroll_a_m.config(width=1, height=1)
-        self.lyrics_panel_scroll_t_m.config(width=1, height=1)
+        self.lyrics_panel_scroll_s_m.config(width=1, height=1)
         self.lyrics_panel_scroll_m_a.config(width=1, height=1)
-        self.lyrics_panel_scroll_m_t.config(width=1, height=1)
+        self.lyrics_panel_scroll_m_s.config(width=1, height=1)
 
     def play_no_art(self):
         """ Default image for No Artwork """
@@ -10882,6 +10822,7 @@ Call search.py when these control keys occur
         # Initialize numpy arrays
         if self.play_art_fade_count == 0:
             rgb_image = self.play_rotated_art.convert('RGB')
+            # noinspection PyTypeChecker
             self.im = np.array(rgb_image)
             self.fade = np.zeros_like(self.im)
             print(self.play_rotated_art.__dict__)
@@ -11283,9 +11224,9 @@ Call search.py when these control keys occur
             ''' Normal mode - Nothing special going on '''
             # self.deprecated_play_lyrics_grid_restore()  # Bring back hidden frames
             self.lyrics_panel_scroll_a_m.grid()  # Bring back hidden frames
-            self.lyrics_panel_scroll_t_m.grid()
+            self.lyrics_panel_scroll_s_m.grid()
             self.lyrics_panel_scroll_m_a.grid()
-            self.lyrics_panel_scroll_m_t.grid()
+            self.lyrics_panel_scroll_m_s.grid()
             # Restore y scroll bar for lyrics score
             # lift relevant rounded rectangle button to top of stacking order
             # There is a bug in lift() for canvas windows. For fix use:
@@ -11293,11 +11234,11 @@ Call search.py when these control keys occur
             if self.lyrics_auto_scroll:
                 self.lyrics_panel_scroll_a_m.lift()
             elif self.lyrics_time_scroll:
-                self.lyrics_panel_scroll_t_m.lift()
+                self.lyrics_panel_scroll_s_m.lift()
             elif self.lyrics_old_scroll == 'auto':
                 self.lyrics_panel_scroll_m_a.lift()
             elif self.lyrics_old_scroll == 'time':
-                self.lyrics_panel_scroll_m_t.lift()
+                self.lyrics_panel_scroll_m_s.lift()
             else:
                 print('unknown lyrics old scroll type:', self.lyrics_old_scroll)
 
@@ -11305,7 +11246,7 @@ Call search.py when these control keys occur
 
             # panel text label tooltip for normal circumstances
             text = \
-                "x % time:\n" + \
+                "x % sync:\n" + \
                 "  - x is percentage of lyric lines indexed.\n\n" + \
                 "Line: y of z:\n" + \
                 "  - y is current line number highlighted (visible).\n" + \
@@ -11313,7 +11254,7 @@ Call search.py when these control keys occur
 
             self.tt.set_text(self.lyrics_panel_label, text=text)
 
-            self.lyrics_panel_text = "0% time, Line: " + \
+            self.lyrics_panel_text = "0% sync, Line: " + \
                                      str(line_no) + " of: " + line_count
             # Set real percentage complete in lyrics title bar
             # self.lyrics_update_title_line_number(1)  # TODO: This doesn't make sense
@@ -11342,16 +11283,16 @@ Call search.py when these control keys occur
             # Hide four rounded rectangle buttons for auto/time/manual mode
             # self.deprecated_play_lyrics_grid_remove()
             self.lyrics_panel_scroll_a_m.grid_remove()
-            self.lyrics_panel_scroll_t_m.grid_remove()
+            self.lyrics_panel_scroll_s_m.grid_remove()
             self.lyrics_panel_scroll_m_a.grid_remove()
-            self.lyrics_panel_scroll_m_t.grid_remove()
+            self.lyrics_panel_scroll_m_s.grid_remove()
 
             # Shrink size of four rounded rectangles
             # self.deprecated_set_min_dimensions()
             self.lyrics_panel_scroll_a_m.config(width=1, height=1)
-            self.lyrics_panel_scroll_t_m.config(width=1, height=1)
+            self.lyrics_panel_scroll_s_m.config(width=1, height=1)
             self.lyrics_panel_scroll_m_a.config(width=1, height=1)
-            self.lyrics_panel_scroll_m_t.config(width=1, height=1)
+            self.lyrics_panel_scroll_m_s.config(width=1, height=1)
             # place label text further to left
             self.lyrics_panel_label.place(relx=0, rely=.5, anchor="w")
         else:
@@ -11383,16 +11324,16 @@ Call search.py when these control keys occur
     def deprecated_play_lyrics_grid_remove(self):
         """ Remove rounded rectangles. """
         self.lyrics_panel_scroll_a_m.grid_remove()
-        self.lyrics_panel_scroll_t_m.grid_remove()
+        self.lyrics_panel_scroll_s_m.grid_remove()
         self.lyrics_panel_scroll_m_a.grid_remove()
-        self.lyrics_panel_scroll_m_t.grid_remove()
+        self.lyrics_panel_scroll_m_s.grid_remove()
 
     def deprecated_play_lyrics_grid_restore(self):
         """ Display rounded rectangles. """
         self.lyrics_panel_scroll_a_m.grid()
-        self.lyrics_panel_scroll_t_m.grid()
+        self.lyrics_panel_scroll_s_m.grid()
         self.lyrics_panel_scroll_m_a.grid()
-        self.lyrics_panel_scroll_m_t.grid()
+        self.lyrics_panel_scroll_m_s.grid()
 
     def play_clear_lyrics(self):  # Reset all fields
         """ Reset lyrics score scrollbox. """
@@ -12837,9 +12778,9 @@ mark set markName index"
         # Apply color code to canvas rounded button and text
         # self.lyrics_panel_scroll.update_colors(hex_foreground, hex_background)
         self.lyrics_panel_scroll_a_m.update_colors(hex_foreground, hex_background)
-        self.lyrics_panel_scroll_t_m.update_colors(hex_foreground, hex_background)
+        self.lyrics_panel_scroll_s_m.update_colors(hex_foreground, hex_background)
         self.lyrics_panel_scroll_m_a.update_colors(hex_foreground, hex_background)
-        self.lyrics_panel_scroll_m_t.update_colors(hex_foreground, hex_background)
+        self.lyrics_panel_scroll_m_s.update_colors(hex_foreground, hex_background)
         self.lyrics_panel_hamburger.update_colors(hex_foreground, hex_background)
 
         # Apply color code to Lyrics
@@ -14272,7 +14213,7 @@ TV_MOVE_WITH_COMPIZ = False  # Smooth monitor jump but prone to glitches
                 print(self.who + "build_chron_line() No SQL History 'volume', '"
                       + version + "' found for:")
                 print(" ", path)
-                # A crash occured in loop applying filtered normalization
+                # A crash occurred in loop applying filtered normalization
                 print("  To fix, delete the Loudness Normalization Playlist",
                       "and recreate it")
                 return "N/A dB"
@@ -14408,6 +14349,7 @@ TV_MOVE_WITH_COMPIZ = False  # Smooth monitor jump but prone to glitches
             self.tt.toggle_position(self.ff_button)
         self.tt.toggle_position(self.chron_button)
         '''
+
 
 # ==============================================================================
 #
@@ -14964,7 +14906,7 @@ class FineTune:
             last_time = start_time
 
             ''' Pad digit spaces to line up time index and duration evenly '''
-            # time = '%9s' % time    # Regular space doesn't line up evenly
+            # time = '%9s' % sync    # Regular space doesn't line up evenly
             ftime = '%.1f' % start_time
             fduration = '%.1f' % duration
             ftime = play_padded_number(ftime, 8)
@@ -18131,17 +18073,23 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         ''' Save between Playlist Maintenance calls '''
         self.name = None  # Playlist name that is being played right now
 
+        style = ttk.Style()
+        style.map("P.TButton",
+                  foreground=[('!active', 'Black'), ('pressed', 'White'),
+                              ('active', 'Black')],
+                  background=[('!active', 'Grey75'), ('pressed', 'ForestGreen'),
+                              ('active', 'LightSkyBlue')]
+                  )
+
     # Playlists Class Toplevel Methods used by all entry points
 
     def create_window(self, name=None):
         """ Mount window with Playlist Treeview or placeholder text when none.
             :param name: "New Playlist", "Open Playlist", etc.
         """
-        self.pending_counts = self.get_pending()
-        ''' Rebuild playlist changes since last time '''
-        self.build_playlists()
-        ''' create_top() shared with buildYouTubePlaylist '''
-        self.create_top(name)
+        self.pending_counts = self.get_pending()  # Count of playlist additions and deletes
+        self.build_playlists()  # Rebuild playlist changes since last time
+        self.create_top(name)  # create_top() shared with buildYouTubePlaylist
 
         ''' Create master frame '''
         self.frame = tk.Frame(self.top, borderwidth=g.FRM_BRD_WID,
@@ -18226,8 +18174,8 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             self.scr_name.set(lcs.avo_playlist_name)
             self.scr_description.set(lcs.avo_playlist_description)
 
-        self.apply_button = tk.Button(bottom_frm, text="✔ " + action,
-                                      width=g.BTN_WID2 - 2, command=self.apply)
+        self.apply_button = ttk.Button(bottom_frm, text="✔ " + action, style="P.TButton",
+                                       width=g.BTN_WID2 - 2, command=self.apply)
         self.apply_button.grid(row=0, column=0, padx=10, pady=5, sticky=tk.E)
         self.tt.add_tip(self.apply_button, action + " Playlist and return.",
                         anchor="nw")
@@ -18237,17 +18185,16 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         help_text = "Open new window in default web browser for\n"
         help_text += "videos and explanations on using this screen.\n"
         help_text += "https://www.pippim.com/programs/mserve.html#\n"
-        self.help_button = tk.Button(
-            bottom_frm, text="⧉ Help", font=g.FONT, width=g.BTN_WID2 - 4,
-            command=lambda: g.web_help("HelpPlaylists"))
+        self.help_button = ttk.Button(
+            bottom_frm, text="⧉ Help", width=g.BTN_WID2 - 4,
+            style="P.TButton", command=lambda: g.web_help("HelpPlaylists"))
         self.help_button.grid(row=0, column=1, padx=10, pady=5, sticky=tk.E)
         self.tt.add_tip(self.help_button, help_text, anchor="ne")
 
         ''' Close Button - NOTE: This calls reset() function !!! '''
-        self.close_button = tk.Button(bottom_frm, text="✘ Close",
-                                      width=g.BTN_WID2 - 4, command=self.reset)
-        self.close_button.grid(row=0, column=2, padx=(10, 5), pady=5,
-                               sticky=tk.E)
+        self.close_button = ttk.Button(bottom_frm, text="✘ Close", style="P.TButton",
+                                       width=g.BTN_WID2 - 4, command=self.reset)
+        self.close_button.grid(row=0, column=2, padx=(10, 5), pady=5, sticky=tk.E)
         self.tt.add_tip(self.close_button, close_tt_text, anchor="ne")
         self.top.bind("<Escape>", self.reset)
         self.top.protocol("WM_DELETE_WINDOW", self.reset)
@@ -18419,7 +18366,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         self.enable_input()
 
     def create_loudnorm(self):
-        """ Called by lib_top Tools / Volumne Menubar "Create New..."
+        """ Called by lib_top Tools / Volume Menubar "Create New..."
             If new songs are pending, do not allow playlist creation. """
         if self.check_pending():  # lib_top.tree checkboxes not applied?
             return  # We are all done. No window, no processing, nada
@@ -21269,8 +21216,11 @@ Redundant calls after turning down to 25% and up to 100%:
 
         # self.scrollYT.config(tabs=("2m", "40m", "50m"))  # Apr 9, 2023
         #self.scrollYT.config(tabs=("2m", "65m", "80m"))  # Apr 27, 2023
+
+        # 2024-09-12 - TODO: https://stackoverflow.com/a/78976310/6929343
         self.scrollYT.config(tabs=("10", "240", "360"))  # Sep 11, 2024
         self.scrollYT.tag_configure("margin", lmargin1="10", lmargin2="240")
+
         # Fix Control+C  https://stackoverflow.com/a/64938516/6929343
         self.scrollYT.bind("<Button-1>", lambda event: self.scrollYT.focus_set())
 

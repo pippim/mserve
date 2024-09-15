@@ -1245,6 +1245,7 @@ class HistoryTree:
         self.scrollbox.tag_config('cyan', background='Cyan')
         self.scrollbox.tag_config('magenta', background='Magenta')
 
+        # 2024-09-12 - TODO: https://stackoverflow.com/a/78976310/6929343
         self.scrollbox.config(tabs=("10", "240", "300"))
         self.scrollbox.tag_configure("margin", lmargin1="10", lmargin2="20")
         # Fix Control+C  https://stackoverflow.com/a/64938516/6929343

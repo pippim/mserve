@@ -125,7 +125,9 @@ def main(caller=None):
     deleted and the process repeats.
 
     """
-    # print("mserve_config.py startup called from:", caller)
+    if caller is not None:
+        # print("mserve_config.py startup called from:", caller)
+        pass
     make_default_cfg()  # Create default configuration
 
     # HACK to fix:
@@ -205,7 +207,7 @@ def main(caller=None):
     DESC = 39  # Program description
     pippim_report = "## Python Modules used in {{ site.title }} **mserve** "
     if parm1 and parm1 == "line_count":
-        import global_variables as g
+        #import global_variables as g  # 2024-09-15 imported at top
         g.init()
         pippim_report += "Version " + g.MSERVE_VERSION + "\n{:.no_toc}\n\n"
         pippim_report += "| Python Module" + " " * (MOD - 12) + "|   Lines |      Modified       |"

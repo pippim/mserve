@@ -4107,12 +4107,15 @@ def pretty_display(pretty, scrollbox):
             tab_colors.append(tab[2])
             #tab_anchors.append(tab[2])
         # Override toolkit.py scroll_defaults()
-        #print("\nsql.py pretty_display() tab_list:", tab_list,
+        #print("\n sql.py pretty_display() tab_list:", tab_list,
         #      "\ntab_colors:", tab_colors)
+
+        # 2024-09-12 - TODO: https://stackoverflow.com/a/78976310/6929343
         pretty.scrollbox.config(tabs=tuple(tab_list))  # tab stops
+
         # 2024-09-09 - Add margins for line wrapping
         #pretty.scrollbox.tag_configure(
-        #    "margin", lmargin1=tab_list[0], lmargin2=tab_list[2])
+        #    "margin", l margin1=tab_list[0], l margin2=tab_list[2])
         #pretty.scrollbox.update()  # Necessary?
 
     def reset_tabs(event):

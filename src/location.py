@@ -1711,6 +1711,7 @@ class Locations(LocationsCommonSelf):
 
         self.test_show(text, pattern=self.act_host)
 
+        # 2024-09-12 - TODO: https://stackoverflow.com/a/78976310/6929343
         self.test_box.config(tabs=("10", "240", "400"))
         self.test_box.tag_configure("margin", lmargin1="10", lmargin2="20")
         # Fix Control+C  https://stackoverflow.com/a/64938516/6929343
@@ -2350,23 +2351,23 @@ class Locations(LocationsCommonSelf):
             ''' If file ends in .png use that as default extension 
                 DOESN'T WORK. Default always first option JPG/JPEG
             '''
-            ext = os.path.splitext(self.act_image_path)[1]
+            file_ext = os.path.splitext(self.act_image_path)[1]
         except AttributeError:  # 'NoneType' object has no attribute 'rfind'
-            ext = "jpg"  # Assume most popular extension?
+            file_ext = "jpg"  # Assume most popular extension?
 
-        if ext == "jpg":
+        if file_ext == "jpg":
             # askopenfilename will search for first filetypes to display
             filetypes = [("JPG/JPEG", ".jpg .jpeg"), ("PNG", ".png")]
-            ext = "jpg"
+            file_ext = "jpg"
         else:
             # askopenfilename will search for first filetypes to display
             filetypes = [("PNG", ".png"), ("JPG/JPEG", ".jpg .jpeg")]
-            ext = "png"
+            file_ext = "png"
 
         ''' Assume images are stored in mserve.py program directory '''
         new_image_path = filedialog.askopenfilename(  # Blocking function !!!
             parent=self.main_top, title="Image Filename", initialdir=g.PROGRAM_DIR,
-            initialfile=self.act_image_path, defaultextension=ext,
+            initialfile=self.act_image_path, defaultextension=file_ext,
             filetypes=filetypes)
 
         if new_image_path == self.act_image_path:
@@ -4452,7 +4453,7 @@ filename.
         self.cmp_top.bind("<Escape>", self.cmp_close)
         self.cmp_top.protocol("WM_DELETE_WINDOW", self.cmp_close)
         self.cmp_close_btn = ttk.Button(self.cmp_btn_frm, text="✘ Close", style="L.TButton",
-                                       width=g.BTN_WID - 4, command=self.cmp_close)
+                                        width=g.BTN_WID - 4, command=self.cmp_close)
         self.cmp_close_btn.grid(row=0, column=2, padx=(10, 5), pady=5,
                                 sticky=tk.E)
 

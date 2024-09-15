@@ -3154,6 +3154,7 @@ def scroll_defaults(scrollbox, tabs=None):
 
     scrollbox.configure(background="WhiteSmoke")
     if not tabs:
+        # 2024-09-12 - TODO: https://stackoverflow.com/a/78976310/6929343
         tabs = ("10", "240", "300")  # 2024-09-11 Use stable pixel units
     scrollbox.config(tabs=tabs)  # tab stops
     scrollbox.tag_configure("margin", lmargin1="10", lmargin2="20")
