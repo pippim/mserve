@@ -14598,6 +14598,15 @@ class FineTune:
         self.tree.bind('<Motion>', self.tree_highlight_row)
         self.tree.bind("<Leave>", self.tree_leave_row)
 
+        # Define Fine-Tune button style
+        style = ttk.Style()
+        style.map("F.TButton",
+                  foreground=[('!active', 'Black'), ('pressed', 'White'),
+                              ('active', 'Black')],
+                  background=[('!active', 'Grey75'), ('pressed', 'ForestGreen'),
+                              ('active', 'LightSkyBlue')]
+                  )
+
         '''   B U T T O N   B A R   F R A M E   '''
         self.btn_bar_frm = tk.Frame(self.top, relief=tk.GROOVE,
                                     background=self.theme_bg,
@@ -14687,7 +14696,7 @@ class FineTune:
         self.top.unbind("<Escape>")
         # Unbinds for all functions? https://bugs.python.org/issue31485
 
-        ''' Frame for Buttons '''
+        ''' Frame for Buttons - Color changes based on artwork '''
         self.btn_bar_frm = tk.Frame(self.top, bg="LightGrey",
                                     borderwidth=g.FRM_BRD_WID, relief=tk.GROOVE)
         self.btn_bar_frm.grid(row=3, column=0, sticky=tk.NSEW)
@@ -14711,81 +14720,109 @@ class FineTune:
         help_text += "videos and explanations on using this screen.\n"
         help_text += "https://www.pippim.com/programs/mserve.html#\n"
 
+        # fine_button based on def play_button
+        def fine_button(row, column, txt, command, tt_txt, tt_anchor):
+            """ Save 5 lines - combine ttk.Button, .grid() & tt.add_tip() """
+            widget = ttk.Button(self.btn_bar_frm, text=txt, width=len(txt),
+                                command=command, style="F.TButton")
+            widget.grid(row=row, column=column, padx=(10, 0), pady=5, sticky=tk.W)
+            if tt_txt is not None and tt_anchor is not None:
+                self.tt.add_tip(widget, tt_txt, anchor=tt_anchor)
+            return widget
+
         for col, name in enumerate(button_list):
             if name == "Close":
                 '''  FORMERLY: self.top_buttons '''
                 ''' ✘ Close Button - Cancels changes '''
                 # leading space when text begins with utf-8 symbol centers text better?
-                close = tk.Button(self.btn_bar_frm, text=" ✘ Close", font=ms_font,
-                                  width=g.BTN_WID2 - 6, command=self.close)
-                close.grid(row=0, column=col, padx=2, sticky=tk.W)
+                #close = tk.Button(self.btn_bar_frm, text=" ✘ Close", font=ms_font,
+                #                  width=g.BTN_WID2 - 6, command=self.close)
+                #close.grid(row=0, column=col, padx=2, sticky=tk.W)
                 # Disable for now because Child process like "self.sync()" should
                 # be trapping ESCAPE -- How do you unbind <Escape>
                 self.top.bind("<Escape>", self.close)
                 self.top.protocol("WM_DELETE_WINDOW", self.close)
-                self.tt.add_tip(close, "Close Fine-Tune Time Index window.\n" +
-                                "Abandon all changes.", anchor="nw")
+                #self.tt.add_tip(close, "Close Fine-Tune Time Index window.\n" +
+                #                "Abandon all changes.", anchor="nw")
+                text2 = "Close Fine-Tune Time Index window.\nAbandon all changes."
+                fine_button(0, col, "✘ Close", self.close, text2, "nw")
 
             elif name == "Begin":
                 ''' ▶  Begin Button - Synchronize selected lines '''
-                begin = tk.Button(self.btn_bar_frm, text=" ▶ Begin sync", font=ms_font,
-                                  width=g.BTN_WID2 - 2, command=self.sync)
-                begin.grid(row=0, column=col)
-                self.tt.add_tip(
-                    begin, "First check boxes for first and last line.\n" +
-                           "Then click this button to synchronize.", anchor="nw")
+                #begin = tk.Button(self.btn_bar_frm, text=" ▶ Begin sync", font=ms_font,
+                #                  width=g.BTN_WID2 - 2, command=self.sync)
+                #begin.grid(row=0, column=col)
+                #self.tt.add_tip(
+                #    begin, "First check boxes for first and last line.\n" +
+                #           "Then click this button to synchronize.", anchor="nw")
+                text2 = "First check boxes for first and last line.\n" +\
+                        "Then click this button to synchronize."
+                fine_button(0, col, "▶ Begin sync", self.sync, text2, "nw")
 
             elif name == "Delete":
                 ''' 😒 Delete - 😒 (u+1f612) - Delete all '''
-                delete = tk.Button(self.btn_bar_frm, text="😒 Delete all", font=ms_font,
-                                   width=g.BTN_WID2 - 3, command=self.delete_all)
-                delete.grid(row=0, column=col)
-                self.tt.add_tip(
-                    delete, "When time indices are hopelessly wrong,\n" +
-                            "click this button to delete them all.", anchor="nw")
+                #delete = tk.Button(self.btn_bar_frm, text="😒 Delete all", font=ms_font,
+                #                   width=g.BTN_WID2 - 3, command=self.delete_all)
+                #delete.grid(row=0, column=col)
+                #self.tt.add_tip(
+                #    delete, "When time indices are hopelessly wrong,\n" +
+                #            "click this button to delete them all.", anchor="nw")
+                text2 = "When time indices are hopelessly wrong,\n" +\
+                        "click this button to delete them all."
+                fine_button(0, col, "😒 Delete all", self.delete_all, text2, "nw")
 
             elif name == "Sample":
                 ''' 🎵  Sample all - Sample all show library '''
-                sample = tk.Button(self.btn_bar_frm, text=" 🎵 Sample all", font=ms_font,
-                                   width=g.BTN_WID2 - 3, command=self.sample_all)
-                sample.grid(row=0, column=col)
-                self.tt.add_tip(
-                    sample, "Click to sample the first second of every line.",
-                    anchor="nw")
+                #sample = tk.Button(self.btn_bar_frm, text=" 🎵 Sample all", font=ms_font,
+                #                   width=g.BTN_WID2 - 3, command=self.sample_all)
+                #sample.grid(row=0, column=col)
+                #self.tt.add_tip(
+                #    sample, "Click to sample the first second of every line.",
+                #    anchor="nw")
+                text2 = "Click to sample the first second of every line."
+                fine_button(0, col, "🎵 Sample all", self.sample_all, text2, "nw")
 
             elif name == "Merge":
                 ''' - Merge lines - Merge two lines together '''
-                merge = tk.Button(self.btn_bar_frm, text="- Merge lines", font=ms_font,
-                                  width=g.BTN_WID2 - 2, command=self.merge_lines)
-                merge.grid(row=0, column=col)
-                self.tt.add_tip(
-                    merge, "First check two or more lines. Then\n" +
-                           "click this button to merge together.", anchor="nw")
+                #merge = tk.Button(self.btn_bar_frm, text="- Merge lines", font=ms_font,
+                #                  width=g.BTN_WID2 - 2, command=self.merge_lines)
+                #merge.grid(row=0, column=col)
+                #self.tt.add_tip(
+                #    merge, "First check two or more lines. Then\n" +
+                #           "click this button to merge together.", anchor="nw")
+                text2 = "First check two or more lines. Then\n" +\
+                        "click this button to merge together."
+                fine_button(0, col, "- Merge lines", self.merge_lines, text2, "nw")
 
             elif name == "Edit":
                 ''' + Edit line - Change lyrics text '''
-                insert = tk.Button(self.btn_bar_frm, text="+ Edit line", font=ms_font,
-                                   width=g.BTN_WID - 6, command=self.edit_line)
-                insert.grid(row=0, column=col)
-                self.tt.add_tip(
-                    insert, "First check line to edit. Then\n" +
-                            "click this button to edit text.", anchor="ne")
+                #insert = tk.Button(self.btn_bar_frm, text="+ Edit line", font=ms_font,
+                #                   width=g.BTN_WID - 6, command=self.edit_line)
+                #insert.grid(row=0, column=col)
+                #self.tt.add_tip(
+                #    insert, "First check line to edit. Then\n" +
+                #            "click this button to edit text.", anchor="ne")
+                text2 = "First check line to edit. Then\nclick this button to edit text."
+                fine_button(0, col, "+ Edit line", self.edit_line, text2, "ne")
 
             elif name == "Save":
                 ''' 💾 Save - Save lyrics (may be edited) and time indices '''
-                save = tk.Button(self.btn_bar_frm, text="💾 Save", font=ms_font,
-                                 width=g.BTN_WID2 - 5, command=self.save_changes)
-                save.grid(row=0, column=col)
-                self.tt.add_tip(
-                    save, "Save time indices and close\n" +
-                          "this fine-tune index window.", anchor="ne")
+                #save = tk.Button(self.btn_bar_frm, text="💾 Save", font=ms_font,
+                #                 width=g.BTN_WID2 - 5, command=self.save_changes)
+                #save.grid(row=0, column=col)
+                #self.tt.add_tip(
+                #    save, "Save time indices and close\n" +
+                #          "this fine-tune index window.", anchor="ne")
+                text2 = "Save time indices and close\nthis fine-tune index window."
+                fine_button(0, col, "💾 Save", self.save_changes, text2, "ne")
 
             elif name == "HelpT":
                 ''' ⧉ Help - Videos and explanations on pippim.com '''
-                help = tk.Button(self.btn_bar_frm, text="⧉ Help", width=g.BTN_WID2 - 6,
-                                 font=ms_font, command=lambda: g.web_help("HelpT"))
-                help.grid(row=0, column=col)
-                self.tt.add_tip(help, help_text, anchor="ne")
+                #help = tk.Button(self.btn_bar_frm, text="⧉ Help", width=g.BTN_WID2 - 6,
+                #                 font=ms_font, command=lambda: g.web_help("HelpT"))
+                #help.grid(row=0, column=col)
+                #self.tt.add_tip(help, help_text, anchor="ne")
+                fine_button(0, col, "⧉ Help", lambda: g.web_help("HelpT"), help_text, "ne")
 
             elif name == "Sync":
                 ''' "Sync in progress" label FORMERLY: self.sync_buttons '''
@@ -14795,29 +14832,34 @@ class FineTune:
 
             elif name == "DoneB":
                 ''' Done Button - Saves work and returns to parent '''
-                begin_done = tk.Button(self.btn_bar_frm, text="Done", font=ms_font,
-                                       width=g.BTN_WID2 - 6, command=self.sync_done)
-                begin_done.grid(row=0, column=col, padx=2, sticky=tk.W)
-                self.tt.add_tip(
-                    begin_done, "Click this button to skip\n" +
-                                "synchronizing remaining lines.", anchor="nw")
+                #begin_done = tk.Button(self.btn_bar_frm, text="Done", font=ms_font,
+                #                       width=g.BTN_WID2 - 6, command=self.sync_done)
+                #begin_done.grid(row=0, column=col, padx=2, sticky=tk.W)
+                #self.tt.add_tip(
+                #    begin_done, "Click this button to skip\n" +
+                #                "synchronizing remaining lines.", anchor="nw")
+                text2 = "Click this button to skip\nsynchronizing remaining lines."
+                fine_button(0, col, "✔ Done", self.sync_done, text2, "ne")
 
             elif name == "RewindB":
                 ''' "Rewind 5 seconds" Button - Synchronize selected lines '''
-                begin_rewind = tk.Button(self.btn_bar_frm, text="Rewind 5 seconds",
-                                         width=g.BTN_WID2 + 2, font=ms_font,
-                                         command=self.sync_rewind)
-                begin_rewind.grid(row=0, column=col, padx=2)
-                self.tt.add_tip(
-                    begin_rewind, "Click this button to stop play,\n" +
-                                  "go back 5 seconds and resume play.", anchor="nw")
+                #begin_rewind = tk.Button(self.btn_bar_frm, text="Rewind 5 seconds",
+                #                         width=g.BTN_WID2 + 2, font=ms_font,
+                #                         command=self.sync_rewind)
+                #begin_rewind.grid(row=0, column=col, padx=2)
+                #self.tt.add_tip(
+                #    begin_rewind, "Click this button to stop play,\n" +
+                #                  "go back 5 seconds and resume play.", anchor="nw")
+                text2 = "Click this button to stop play,\ngo back 5 seconds and resume play."
+                fine_button(0, col, "Rewind 5 seconds", self.sync_rewind, text2, "ne")
 
             elif name == "HelpB":
                 ''' ⧉ Help - Videos and explanations on pippim.com '''
-                help = tk.Button(self.btn_bar_frm, text="⧉ Help", width=g.BTN_WID2 - 6,
-                                 font=ms_font, command=lambda: g.web_help("HelpB"))
-                help.grid(row=0, column=col)
-                self.tt.add_tip(help, help_text, anchor="nw")
+                #help = tk.Button(self.btn_bar_frm, text="⧉ Help", width=g.BTN_WID2 - 6,
+                #                 font=ms_font, command=lambda: g.web_help("HelpB"))
+                #help.grid(row=0, column=col)
+                #self.tt.add_tip(help, help_text, anchor="nw")
+                fine_button(0, col, "⧉ Help", lambda: g.web_help("HelpB"), help_text, "nw")
 
             elif name == "SampleS":
                 ''' "Sample in progress" label  FORMERLY: self.sync_sample_buttons '''
@@ -14826,44 +14868,52 @@ class FineTune:
                     .grid(row=0, column=col, sticky=tk.W)
 
             elif name == "DoneS":
-                ''' Done Button - Saves work and returns to parent
-                    TODO: Rename to "Apply changes" ? '''
-                sample_done = tk.Button(self.btn_bar_frm, text="Done",
-                                        width=g.BTN_WID2 - 6, font=ms_font,
-                                        command=self.sample_done)
-                sample_done.grid(row=0, column=col, padx=2, sticky=tk.W)
-                self.tt.add_tip(sample_done, "Click this button to skip\n" +
-                                "sampling remaining lines.", anchor="nw")
+                ''' Sample Done Button '''
+                #sample_done = tk.Button(self.btn_bar_frm, text="Done",
+                #                        width=g.BTN_WID2 - 6, font=ms_font,
+                #                        command=self.sample_done)
+                #sample_done.grid(row=0, column=col, padx=2, sticky=tk.W)
+                #self.tt.add_tip(sample_done, "Click this button to skip\n" +
+                #                "sampling remaining lines.", anchor="nw")
+                text2 = "Click this button to skip\nsynchronizing remaining lines."
+                fine_button(0, col, "✔ Done", self.sample_done, text2, "nw")
 
             elif name == "PP":
                 ''' Pause/Play Button - Toggles state '''
                 self.pp_state = 'Playing'
-                self.pp_button = \
-                    tk.Button(self.btn_bar_frm, text=self.pp_pause_text,
-                              width=g.BTN_WID2 - 4, font=ms_font,
-                              command=self.toggle_play)
-                self.pp_button.grid(row=0, column=col, padx=2, sticky=tk.W)
-                self.tt.add_tip(
-                    self.pp_button, "Click this button to toggle\n" +
-                                    "pause / playing of music.", anchor="nw")
+                #self.pp_button = \
+                #    tk.Button(self.btn_bar_frm, text=self.pp_pause_text,
+                #              width=g.BTN_WID2 - 4, font=ms_font,
+                #              command=self.toggle_play)
+                #self.pp_button.grid(row=0, column=col, padx=2, sticky=tk.W)
+                #self.tt.add_tip(
+                #    self.pp_button, "Click this button to toggle\n" +
+                #                    "pause / playing of music.", anchor="nw")
+
+                text2 = "Click this button to toggle\npause / playing of music."
+                self.pp_button = fine_button(
+                    0, col, self.pp_pause_text, self.toggle_play, text2, "nw")
 
             elif name == "RewindS":
-                ''' Rewind 5 seconds Button '''
-                sample_rewind = tk.Button(self.btn_bar_frm, text="Rewind 5 seconds",
-                                          width=g.BTN_WID2 + 2, font=ms_font,
-                                          command=self.sample_rewind)
-                sample_rewind.grid(row=0, column=3, padx=2)
-                self.tt.add_tip(
-                    sample_rewind, "Click this button to stop play,\n" +
-                                   "go back 5 seconds and resume play.", anchor="ne")
+                ''' Rewind Sample 5 seconds Button '''
+                #sample_rewind = tk.Button(self.btn_bar_frm, text="Rewind 5 seconds",
+                #                          width=g.BTN_WID2 + 2, font=ms_font,
+                #                          command=self.sample_rewind)
+                #sample_rewind.grid(row=0, column=3, padx=2)
+                #self.tt.add_tip(
+                #    sample_rewind, "Click this button to stop play,\n" +
+                #                   "go back 5 seconds and resume play.", anchor="ne")
+                text2 = "Click this button to stop play,\ngo back 5 seconds and resume play."
+                fine_button(0, col, "Rewind 5 seconds", self.sample_rewind, text2, "ne")
 
             elif name == "HelpS":
                 ''' ⧉ Help - Videos and explanations on pippim.com '''
-                help = tk.Button(self.btn_bar_frm, text="⧉ Help", width=g.BTN_WID2 - 6,
-                                 font=ms_font,
-                                 command=lambda: g.web_help("HelpS"))
-                help.grid(row=0, column=col)
-                self.tt.add_tip(help, help_text, anchor="ne")
+                #help = tk.Button(self.btn_bar_frm, text="⧉ Help", width=g.BTN_WID2 - 6,
+                #                 font=ms_font,
+                #                 command=lambda: g.web_help("HelpS"))
+                #help.grid(row=0, column=col)
+                #self.tt.add_tip(help, help_text, anchor="ne")
+                fine_button(0, col, "⧉ Help", lambda: g.web_help("HelpS"), help_text, "ne")
 
             else:
                 self.info.cast("Oops unknown button name: " + name)
@@ -15439,8 +15489,7 @@ class FineTune:
         self.sample_restart(self.curr_line_highlight)
 
     def sample_done(self):
-        """ Save changes and quit sample_all() function
-        """
+        """ Quit sample_all() function """
         if self.time_ctl and self.time_ctl.state != 'stop':
             self.time_ctl.stop()  # Don't want to close because path reset
         if not self.ffplay_is_running:
@@ -18081,6 +18130,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
         ''' Save between Playlist Maintenance calls '''
         self.name = None  # Playlist name that is being played right now
 
+        # Define playlist button style
         style = ttk.Style()
         style.map("P.TButton",
                   foreground=[('!active', 'Black'), ('pressed', 'White'),
