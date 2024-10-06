@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Author: pippim.com
-License: GNU GPLv3. (c) 2020 - 2023
+License: GNU GPLv3. (c) 2020 - 2024
 Source: This repository
 Description: mserve - Music Server - Main **mserve** Python Module
 """
@@ -113,18 +113,26 @@ warnings.simplefilter('default')  # in future Python versions.
 BUGS:
 
     Sep. 20 2024 - Previous track button text broken (shows rewind 10 seconds)
-        Click to train lyrics is broken for Icehouse - My Obsession lyrics                
         Pulse Audio sinks go off by 1 and mserve must artifically reset them.
     Sep. 11 2023 - All Bugs have been fixed.
 
 TODO:
 
-    "Playing Music" window start up splash tooltip centered with:
-        "Playing Music from: "  Favorites, Playlist: "xxx", Artist: "xxx",
-                                Album: "xxx", Genre "xxx", Year "9999".
-        "Duration: ", "Position: ", "Current Song: "
-        Repeat splash tooltip on Pause/Play
-        Similar splash tooltip for "Music Location Tree" window.
+    'place' frame when entering spinning artwork:
+    https://stackoverflow.com/a/20200249/6929343 :
+    
+        Progress bar color queries RGB attributes of artwork pixel 3,3:
+            If grey-ish (all 90-160), bar color is red, through color is white
+            If mostly blue/green, bar color is red 50 B/G 0, trough color is black
+            If little blue/green, bar color is red 256 B/G 0, trough color is grey
+            Mostly is defined as > 160, little is defined as <90 
+        Progress bar that can be clicked to change song position:
+            Monitor click, calculate x-offset to progress percentage
+        When music playing, circle at progress bar end that can be dragged:
+            Music pauses while dragging and lyrics scroll accordingly
+            On button release music resumes playing
+        When pausing music, simply freeze the spinning artwork. Do not mount the
+            "Pippim.\nmserve\nClick to\n!> Play" Blue/Green/Red gradient artwork.
 
     Update Metadata over WiFi takes hours. Mutagen check should be skipped
         because the results aren't used. When `curlftpfs` gives error:
@@ -5921,7 +5929,13 @@ Call search.py when these control keys occur
         # def debug_detail - add refresh if last call > 16 ms
 
         lsb_ver = os.popen("lsb_release -a 2>/dev/null").read().strip()
-        self.debug_detail('\n' + lsb_ver)  # lsb_release has 4 lines
+        self.debug_detail()
+        lsb_lines = lsb_ver.split("\n")  # lsb_release has 4 lines
+        for lsb_line in lsb_lines:
+            lsb_line = lsb_line.replace('\t', ' ')
+            self.debug_detail(lsb_line, colon=18)
+        self.debug_detail()
+        # def debug_detail(colon=None)
         if toolkit.X_is_running():
             xr_ver = os.popen("xrandr --version").read().strip()
         else:
@@ -6183,7 +6197,7 @@ Call search.py when these control keys occur
         #print("self.chron_attached[0]:", self.chron_attached[0], " | ndx:",
         #      ndx, " | self.saved_selections[ndx]:", self.saved_selections[ndx])
 
-        self.debug_detail("\nself.fake_paths[0]        :", self.fake_paths[0])
+        self.debug_detail("\nself.fake_paths[0]:", self.fake_paths[0], colon=18)
         self.debug_detail("self.fake_paths[-1]       :", self.fake_paths[-1])
         self.debug_detail("len(self.fake_paths)      :", len(self.fake_paths),
                           " | sys.get size of(self.fake_paths):",
@@ -6499,10 +6513,11 @@ Call search.py when these control keys occur
         if underline:
             self.debug_title.append("=" * 90 + "\n\n")
 
-    def debug_detail(self, *args):
+    def debug_detail(self, *args, **kwargs):
         """ Receive print statement parameters and print to file.
             Read back print file and add to text list. """
-        self.debug_print(*args)  # Write to print_file
+
+        self.debug_print(*args, **kwargs)  # Write to print_file
         result = self.debug_read_print()  # Read print file (or error messages)
         if result:  # Should always be a result
             self.debug_title.append(result)
@@ -6518,8 +6533,23 @@ Call search.py when these control keys occur
             self.debug_detail(line)
         self.debug_output()
 
-    def debug_print(self, *args):
+    def debug_print(self, *args, **kwargs):
         """ Bullet-proof printing to print file """
+
+        ''' Force spacing before colon to align? '''
+        for key, value in kwargs.iteritems():
+            if key == 'colon':
+                force_pos = value
+                las = list(args)
+                for i, arg in enumerate(las):
+                    if isinstance(arg, str):
+                        found_pos = arg.find(":")
+                        if found_pos:
+                            if found_pos < force_pos:
+                                spaces = ' ' * (force_pos-found_pos)
+                                las[i] = arg[:found_pos] + spaces + ":" + arg[found_pos + 1:]
+                args = tuple(las)
+
         with open(self.debug_file, mode='a') as file_object:
             try:
                 print(*args, file=file_object)
@@ -12451,7 +12481,8 @@ mark set markName index"
         pipe = sp.Popen(command_line_list, stdout=sp.PIPE, stderr=sp.PIPE)
         text, err = pipe.communicate()  # This performs .wait() too
 
-        if not pipe.return_code == 0:
+        # 2024-10-06 - pipe.return_code is error? s/b pipe.returncode
+        if not pipe.returncode == 0:
             messagebox.showinfo("Copy from clipboard error.",
                                 "An error occurred trying to grab text from clipboard.",
                                 icon='error', parent=self.play_top)
@@ -22758,12 +22789,14 @@ class InfoCentre:
                                     x=10, y=10)
             visible_span = 1000 * 60 * 2  # Visible for two minutes per line
         else:
+            ''' No close button - very short visible span '''
             visible_span = 1000  # Visible 1 second per tk.Text line
 
         ''' Create custom (highlighting supported) tk.Text widget with scrollbars '''
         self.text = toolkit.CustomScrolledText(
             self.frame, bg="black", height=self.height, width=self.width,
             fg="gold", font=g.FONT, state="normal")
+        # place scrollable text widget below close button widget
         self.text.place(height=self.height - 60, width=self.width - 20, x=10, y=50)
         self.text.config(highlightthickness=0, borderwidth=0)
         self.text.vbar.config(troughcolor='black', bg='gold')

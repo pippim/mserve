@@ -621,7 +621,8 @@ def X_is_running():
 #
 # ==============================================================================
 class CommonBar:
-    """ Variables common to ProgressBars__init__() and new_bar()
+    """ UNDER DEVELOPMENT
+        Variables common to ProgressBars__init__() and new_bar()
         Must appear before first reference (otherwise message.ShowInfo crashes)
     """
     def __init__(self, size=None):
@@ -639,7 +640,8 @@ class CommonBar:
 
 
 class ProgressBars(CommonBar):
-    """ Called from 'Tools' / 'Volume' / 'Analyze Xxx' where 'Analyze Xxx' is
+    """ UNDER DEVELOPMENT
+        Called from 'Tools' / 'Volume' / 'Analyze Xxx' where 'Analyze Xxx' is
         inside locations.py which is imported into mserve.py as instance 'lcs'.
     """
     def __init__(self, toplevel, item_count, item_size):
