@@ -21,6 +21,7 @@ from __future__ import with_statement  # Error handling for file opens
 #       July 12 2023 - Interface to/from mserve_config.py
 #       July 29 2023 - Fix Monitor.get_active_monitor()
 #       May. 11 2024 - mon.get_home_monitor(window) exact or closest monitor
+#       Oct. 09 2024 - check_window_geom(...) to force windows visibility
 #
 # ==============================================================================
 
@@ -929,80 +930,64 @@ def get_window_geom(name):
         return default_geom
 
 
-def check_window_geom(_geom):
-    """ NOT USED YET, under development
-
-        When switching from multi-head system to laptop ony windows may be
+def check_window_geom(window, mon=None, print_panel_error=True):
+    """ When switching from multi-head system to laptop ony windows may be
         off visible desktop. Also if xrandr resets same problem.
 
         Get real estate of all monitors and when window isn't 50% inside a
-        monitor, make it so. If exactly split over two monitors, leave alone.
+        monitor, force it inside
 
-        Build list of monitors bounding boxes (bbox):
-            [(x1, y1, x2, y2), (x1, y1, x2, y2), (x1, y1, x2, y2)]
-            cords = {"x1":[],"y1":[],"x2":[],"y2":[]}
+        2024-10-09 - Code taken from mserve.py in self.debug() line 6025.
 
-        NOTE: Gnome (or X11) already moves new window fully onto monitor.
-
-    SSR offers some unique perspective:
-
-[PageRecord::StartInput] Starting input ...
-[X11Input::Init] Using X11 shared memory.
-[X11Input::Init] Detecting screen configuration ...
-[X11Input::Init] Screen 0: x1 = 3870, y1 = 2160, x2 = 5790, y2 = 3240
-[X11Input::Init] Screen 1: x1 = 0, y1 = 0, x2 = 1920, y2 = 1080
-[X11Input::Init] Screen 2: x1 = 1920, y1 = 0, x2 = 5760, y2 = 2160
-[X11Input::Init] Dead space 0: x1 = 5760, y1 = 0, x2 = 5790, y2 = 1080
-[X11Input::Init] Dead space 1: x1 = 0, y1 = 1080, x2 = 1920, y2 = 2160
-[X11Input::Init] Dead space 2: x1 = 5760, y1 = 1080, x2 = 5790, y2 = 2160
-[X11Input::Init] Dead space 3: x1 = 0, y1 = 2160, x2 = 3870, y2 = 3240
-
-    Where:
-        Screen 0: Laptop HD at Bottom Right
-        Screen 1: Sony HD TV at Top Left
-        Screen 2: TCL 4K TV at Top Right
-
-
-    :param _geom: Geometry (width & height plus coordinates: "WxH+X+Y")
-    :return: Valid geometry to use
+    :param window: namedtuple('Window', 'number, name, x, y, width, height').
+    :param mon: Monitors class instance. If not passed new instance generated.
+    :param print_panel_error: Print error message if system or panel window.
+    :return: True geometry valid. False geometry invalid and window moved.
     """
-    #ms = Monitors()
-    #print("\nDebugging monitor.check_window_geom(" + geom + "):\n")
-    #for m in ms.monitors_list:
-    #print("m:", m)
-    ''' SUMMARY of Monitors() class
-class Monitors:
-    def __init__(self):
-        self.screen_width = SCREEN.width()    # Screen width (all monitors)
-        self.screen_height = SCREEN.height()  # 3240 not equal to desk_height: 5760
-        self.monitors_list = []             # List of dictionaries w/monitor
-            # IMPORTANT - Assign in same order as namedtuple!
-            mon['number'] = index
-            mon['name'] = name
-            mon['x'] = geometry.x
-            mon['y'] = geometry.y
-            mon['width'] = geometry.width
-            mon['height'] = geometry.height
-            if index == primary:
-                mon['primary'] = True  # Usually static but user could change
-    def get_n_monitors(self):
-        return self.monitor_count
-    def get_active_window(self):
-        self.found_window = Window(x_id, window_name, geom.xp, geom.yp,
-                                   geom.width p, geom.height p)
-    def get_all_windows(self):
-        Wnck.shutdown()
-        return self.windows_list
-    def get_active_monitor(self):
-        """ First find the active window. Then find what monitor it is on and
-            then return that monitor. """
-    def tk_center(self, window):
-        """ Centers a tkinter window on monitor in multi-monitor setup """
-        window.update_idletasks()  # Refresh window's current position
-        mon = self.get_active_monitor()
 
-    '''
-    pass
+    x = window.x
+    y = window.y
+    if mon is None:
+        mon = Monitors()
+
+    # The monitor the window is mostly on or closest too
+    home_mon = mon.get_home_monitor(window, force_visible=False)
+
+    # At least 50 pixels should be visible else nothing for mouse grab
+    x_cutoff = home_mon.x + home_mon.width - 50
+    y_cutoff = home_mon.y + home_mon.height - 50
+    if x < 0 or y < 0:
+        # system windows / panels are hidden with negative x and y:
+        if print_panel_error:
+            print("System window / panel passed. Ignoring:", window.name,
+                  "at x:", x, "y:", y)
+        return True  # Never move system or panel window
+    elif x < home_mon.x or y < home_mon.y or x > x_cutoff or y > y_cutoff:
+        ''' When monitor loses power, windows can move off screen '''
+        print("\nhome_mon:", home_mon, "\nwindow:", window)
+        print("ERROR: Window is off screen at x + y:", x, "+",
+              y, "x_cutoff:", x_cutoff, "y_cutoff:", y_cutoff)
+        print("  ", window)
+
+        new_x = x_cutoff - 500 if x > x_cutoff else x
+        new_y = y_cutoff - 500 if y > y_cutoff else y
+        new_x = home_mon.x + 50 if x < home_mon.x else new_x
+        new_y = home_mon.y + 50 if y < home_mon.y else new_y
+
+        print("     Adjust to coordinates:", new_x, "+", new_y, "\n")
+        str_win = str(window.number)  # should remove L in python 2.7.5+
+        int_win = int(str_win)  # https://stackoverflow.com/questions
+        hex_win = hex(int_win)  # /5917203/python-trailing-l-problem
+        # Move window into closest monitor viewable area
+        if ext.check_command('xdotool'):
+            os.popen('xdotool windowmove ' + hex_win + ' ' +
+                     str(new_x) + ' ' + str(new_y))
+        else:
+            print("ext.check_command('xdotool') is not installed!")
+            print("Above window must be moved with another method.")
+        return False
+    else:
+        return True
 
 
 def save_window_geom(name, geom):

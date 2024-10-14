@@ -19,6 +19,7 @@ from __future__ import with_statement  # Error handling for file opens
 #       Sep. 04 2023 - Add MUSIC_FILE_TYPES list, MSERVE_VERSION = u"3.5.0"
 #       Jun. 02 2024 - MSG_WIDTH_ADJUST + .02 for message.py data_w_l() function
 #       Sep. 09 2024 - Define global g.TButton style.
+#       Oct. 13 2024 - Make appname a parameter used by "homa". Create data dir
 #
 # ==============================================================================
 
@@ -98,7 +99,7 @@ CFG_DIVISOR_UOM = "MB"  # Unit of Measure becomes Megabyte
 HELP_URL = "https://www.pippim.com/programs/mserve.html#"
 
 
-def init(caller=None):
+def init(caller=None, appname="mserve"):
     """ This should only be called once by the main module
         Child modules will inherit values. For example if they contain
         
@@ -138,10 +139,16 @@ def init(caller=None):
     USER_ID = str(os.getuid())
     HOME = os.path.expanduser("~")  # Works in Windows too. EG C:\Users\rick
     # print('User:', USER, USER_ID, HOME)
-    appname = "mserve"
+    #appname = "mserve"  # pass as parameter that can be replaced with "homa"
     app_author = "pippim"
     USER_DATA_DIR = MSERVE_DIR = user_data_dir(appname, app_author)
+    if not os.path.exists(USER_DATA_DIR):
+        os.makedirs(USER_DATA_DIR)
+        print("Created directory:", USER_DATA_DIR)
     USER_CONFIG_DIR = user_config_dir(appname, app_author)
+    if not os.path.exists(USER_CONFIG_DIR):
+        os.makedirs(USER_CONFIG_DIR)
+        print("Created directory:", USER_CONFIG_DIR)
     # noinspection Pep8CodingStyleViolationW605
     '''
         What directory should your app use for storing user data? If running on Mac OS X, you
