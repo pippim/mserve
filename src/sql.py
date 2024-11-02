@@ -38,6 +38,7 @@ warnings.simplefilter('default')  # in future Python versions.
 #       Jul. 23 2024 - Rename and Delete files across all locations
 #       Aug. 05 2024 - Music Table 'OsFileSize' was discovered to be <None>
 #       Aug. 24 2024 - SQL Music Table speed boost using OsFileNameIndex
+#       Oct. 20 2024 - Begin adaptation for homa.py - open_homa_db(), etc.
 
 #   TODO:
 
@@ -120,12 +121,6 @@ try:
     filename = inspect.stack()[1][1]  # parent filename s/b "mserve.py"
     #(<frame object>, './m', 50, '<module>', ['import mserve\n'], 0)
     parent = os.path.basename(filename)
-    if parent != "mserve.py":
-        #print("sql.py must be called by 'mserve.py' but is being called " +
-        #      "by: '" + parent + "'.")
-        #exit()
-        # sql.py must be called by 'mserve.py' but is called by: monitor.py
-        pass
 except IndexError:  # list index out of range
     ''' Called from the command line '''
     print("sql.py cannot be called from command line. Aborting...")
@@ -156,11 +151,17 @@ try:
     from location import FNAME_LIBRARY  # SQL database name (SQLite3 format)
     from location import FNAME_LIBRARY_NEW
 except ImportError:
-    # Appears when running mserve.py directly
-    print("'from location import FNAME_LIBRARY' FAILED !!!")
     FNAME_LIBRARY = g.USER_DATA_DIR + os.sep + "library.db"
     FNAME_LIBRARY_NEW = g.USER_DATA_DIR + os.sep + "library_new.db"
-    print("Using hard-coded:", FNAME_LIBRARY)
+    # Appears when running mserve.py directly
+    if g.APPNAME == "homa":  # homa has no locations file
+        pass
+        # FNAME_LIBRARY = MSERVE_DIR + "library.db"  # Opened every session
+        # TODO: Put FNAME_LIBRARY in g.init(). Should not declare in location.py
+    else:
+        print("sql.py called from module:", parent)
+        print("'from location import FNAME_LIBRARY' FAILED !!!")
+        print("Using hard-coded:", FNAME_LIBRARY)
 
 CFG_THOUSAND_SEP = ","              # English "," to for thousands separator
 CFG_DECIMAL_SEP = "."               # English "." for fractional amount
@@ -568,6 +569,8 @@ def open_db(LCS=None):
     """ Version 3 """
     con.execute("CREATE UNIQUE INDEX IF NOT EXISTS TimeIndex ON " +
                 "History(Timestamp)")
+    con.execute("CREATE INDEX IF NOT EXISTS TypeActionIndex ON " +
+                "History(Type, Action)")
 
 
 
@@ -984,6 +987,43 @@ def open_new_db():
     new_loc_cursor = new_con.cursor()
 
 
+def open_homa_db():
+    """ Open SQL History Table for homa.py """
+
+    global con, cursor, hist_cursor, loc_cursor, lcs
+    con = sqlite3.connect(FNAME_LIBRARY)
+
+    # HISTORY TABLE
+    """ Version 3 """
+    con.execute(
+        "create table IF NOT EXISTS History(Id INTEGER PRIMARY KEY, " +
+        "Time FLOAT, MusicId INTEGER, User TEXT, Type TEXT, " +
+        "Action TEXT, SourceMaster TEXT, SourceDetail TEXT, " +
+        "Target TEXT, Size INT, Count INT, Seconds FLOAT, " +
+        "Comments TEXT, Timestamp FLOAT)")
+
+    """ Version 3 """
+    con.execute("CREATE UNIQUE INDEX IF NOT EXISTS TimeIndex ON " +
+                "History(Timestamp)")
+    con.execute("CREATE INDEX IF NOT EXISTS TypeActionIndex ON " +
+                "History(Type, Action)")
+
+    ''' For mserve.py rename_file() function to rename "the" to "The" '''
+    con.execute("PRAGMA case_sensitive_like = ON;")
+
+    user_cursor = con.execute("PRAGMA user_version;")
+    user_version = user_cursor.fetchone()[0]
+    # 2024-10-20 - Only 1 homa version so far
+    #if user_version != int(g.MSERVE_VERSION[:1]):
+    #    print("SQL database incompatible user_version:", user_version)
+    #    print("Contact www.pippim.com for details")
+
+    con.row_factory = sqlite3.Row
+    #cursor = con.cursor()
+    hist_cursor = con.cursor()  # 2024-10-20 - Only cursor in homa.py
+    #loc_cursor = con.cursor()
+
+
 def close_db():
     """ Close 'library.db'. """
     con.commit()
@@ -1001,6 +1041,13 @@ def close_new_db():
     new_hist_cursor.close()     # See: https://stackoverflow.com/a/53182224/6929343
     new_loc_cursor.close()
     new_con.close()
+
+
+def close_homa_db():
+    """ Close 'library.db'. """
+    con.commit()
+    hist_cursor.close()     # See: https://stackoverflow.com/a/53182224/6929343
+    con.close()
 
 
 class OsFileNameBlacklist:

@@ -21,7 +21,8 @@ from __future__ import with_statement  # Error handling for file opens
 #       July 12 2023 - Interface to/from mserve_config.py
 #       Mar. 30 2024 - TCombobox drop down arrow image styling
 #       Apr. 16 2024 - ffmpeg 6.1 artwork now (R, G, B, Alpha). Before RGB only
-#       July 06 2027 - import monitor as mon. Utilize global_variables.py
+#       July 06 2024 - import monitor as mon. Utilize global_variables.py
+#       Oct. 15 2024 - Rename mserve.png to taskbar_icon.png
 #
 #==============================================================================
 
@@ -702,7 +703,7 @@ def m_circle_splash_image(hgt, out_c, fill_c, text_c, char='M'):
     return png_img
 
 
-def taskbar_icon(toplevel, hgt, out_c, fill_c, text_c, char='M'):
+def taskbar_icon(toplevel, hgt, out_c, fill_c, text_c, char='M', font_family=None):
     """
             +-------+
             | _. ._ |
@@ -725,9 +726,11 @@ def taskbar_icon(toplevel, hgt, out_c, fill_c, text_c, char='M'):
     im_open = Image.new('RGBA', (wid, hgt), (0, 0, 0, 0))
     draw = ImageDraw.Draw(im_open)
     draw.ellipse((hgt_off, hgt_off, end_off, end_off), outline=out_c, fill=fill_c)
-    icon_font = ImageFont.truetype("DejaVuSans.ttf", int(float(wid) / 1.8))
+    if font_family is None:
+        font_family = "DejaVuSans.ttf"  # TODO: 2024-10-15  - Upgrade all callers
+    icon_font = ImageFont.truetype(font_family, int(float(wid) / 1.8))
 
-    # Put letter M centered in circle
+    # Put letter 'M' (or passed char) centered in circle
     text = char
     text_width, text_height = icon_font.getsize(text)
     start_x = int(int(wid - text_width) / 2)
@@ -738,11 +741,15 @@ def taskbar_icon(toplevel, hgt, out_c, fill_c, text_c, char='M'):
         start_y = 0
     draw.text((start_x, start_y), text, fill=text_c, font=icon_font)
 
-    im_open.save("mserve.png", "PNG")
-    # Above can be skipped when mserve.png already exists
-    png_img = tk.Image("photo", file="mserve.png")
+    # filename 'taskbar_icon.png' used repeatedly for different icons in mserve.py
+    im_open.save("taskbar_icon.png", "PNG")
+    png_img = tk.Image("photo", file="taskbar_icon.png")
+    # Below doesn't work for homa.py still "?" character with no color
+    #label = tk.Label(image=png_img)
+    #label.image = photo  # keep a reference!
+    #label.pack()
     # noinspection PyProtectedMember
-    toplevel.tk.call('wm', 'iconphoto', toplevel._w, png_img)
+    toplevel.tk.call('wm', 'iconphoto', toplevel._w, png_img)  # root.iconphoto(True,icon)
 
 
 def mmm_taskbar_icon(toplevel, hgt, out_c, fill_c, m1c, m2c, m3c):
@@ -790,8 +797,8 @@ def mmm_taskbar_icon(toplevel, hgt, out_c, fill_c, m1c, m2c, m3c):
     start_y3 = start_y2
     draw.text((start_x3, start_y3), text, fill=m3c, font=sample_font)
 
-    im_open.save("mserve.png", "PNG")
-    png_img = tk.Image("photo", file="mserve.png")
+    im_open.save("taskbar_icon.png", "PNG")
+    png_img = tk.Image("photo", file="taskbar_icon.png")
     # noinspection PyProtectedMember
     toplevel.tk.call('wm', 'iconphoto', toplevel._w, png_img)
 
@@ -1511,13 +1518,13 @@ active-plugins "['core', 'composite', 'opengl', 'regex', 'mousepoll',
         if not toolkit.X_is_running():
             print(_who, "X is not running.")
             good_to_go = False
-        if not os.path.isfile(g.PROGRAM_DIR + self.shark_name):
+        if not os.path.isfile(g.PROGRAM_DIR + os.sep + self.shark_name):
             print(_who, self.shark_name + " image file not found.")
             good_to_go = False
-        if not os.path.isfile(g.PROGRAM_DIR + self.shark_alpha_name):
+        if not os.path.isfile(g.PROGRAM_DIR + os.sep + self.shark_alpha_name):
             print(_who, self.shark_alpha_name + " image file not found.")
             good_to_go = False
-        if not os.path.isfile(g.PROGRAM_DIR + self.man_falling_name):
+        if not os.path.isfile(g.PROGRAM_DIR + os.sep + self.man_falling_name):
             print(_who, self.man_falling_name + " image file not found.")
             good_to_go = False
         if self.trg_monitor is None:  # Monitor #0 will fail 'not' test.

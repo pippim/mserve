@@ -19,7 +19,8 @@ from __future__ import with_statement  # Error handling for file opens
 #       Sep. 04 2023 - Add MUSIC_FILE_TYPES list, MSERVE_VERSION = u"3.5.0"
 #       Jun. 02 2024 - MSG_WIDTH_ADJUST + .02 for message.py data_w_l() function
 #       Sep. 09 2024 - Define global g.TButton style.
-#       Oct. 13 2024 - Make appname a parameter used by "homa". Create data dir
+#       Oct. 13 2024 - Make appname a parameter used by "homa". mkdir DATA_DIR
+#       Nov. 02 2024 - Add PYTHON_VERSION variable. Fix PROGRAM_DIR for homa.py
 #
 # ==============================================================================
 
@@ -37,8 +38,10 @@ from __future__ import with_statement  # Error handling for file opens
 from appdirs import user_data_dir, user_config_dir
 
 import tempfile         # Gets TMP_DIR /tmp, C:\Temp, etc.
+import inspect          # To get parent's name
 import os               # USER_ID = str(os.get uid())
 import pwd              # USER = pwd.get pw uid(os.get uid()).pw_name
+import sys              # PYTHON_VERSION = sys.version  <--  attribute not method()
 import webbrowser       # Display help text on www.pippim.com
 
 ''' Code duplicated in mserve_config.py '''
@@ -47,6 +50,7 @@ OS_PLATFORM = plat.platform()  # 'Linux-4.14.216-0414216-generic-x86_64-with-Ubu
 OS_NAME = plat.system()  # 'Linux'
 OS_VERSION = plat.release()  # '4.14.216-0414216-generic'
 OS_RELEASE = plat.version()  # '#202101171339 SMP Sun Jan 17 13:56:04 UTC 2021'
+PYTHON_VERSION = sys.version  # 2.7.12 (default, Sep 30 2024, 14:00:27)\n [GCC 5.4.0 20160609]
 
 ##import external as ext  # Check if command installed to support features
 # Cannot import external because it imports toolkit which imports global_variables.py
@@ -55,12 +59,14 @@ OS_RELEASE = plat.version()  # '#202101171339 SMP Sun Jan 17 13:56:04 UTC 2021'
 USER = None             # User ID, Name, GUID varies by platform
 USER_ID = None          # Numeric User ID in Linux
 HOME = None             # In Linux = /home/USER
+APPNAME = None          # Originally "mserve" Different behavior for homa.py
 USER_CONFIG_DIR = None  # /home/user/.config/mserve
 USER_DATA_DIR = None    # /home/user/.local/share/mserve
-MSERVE_DIR = None       # /home/user/.config/mserve <- historically wrong
+MSERVE_DIR = None       # /home/user/.config/mserve/ <- historically wrong suffix /
                         # Bad name. It implies where mserve programs are
 PROGRAM_DIR = None      # Directory where mserve.py is stored.
-TEMP_DIR = None         # Directory for temporary files /run/user/1000 preferred
+TEMP_DIR = None         # /tmp/ temporary files OR: /run/user/1000/ preferred
+                        # also with trailing '/' to make concatenating simpler
 MUSIC_FILE_TYPES = [".aiff", ".caf", ".flac", ".mp3", ".mp4", ".m4a",
                     ".oga", ".ogg", ".PCM", ".wav", ".wma"]
 MUSIC_MIN_SIZE = 100000  # Music Files must be > 100 KB. 99999 for debug to print.
@@ -129,7 +135,7 @@ def init(caller=None, appname="mserve"):
         pass
 
     global USER, USER_ID, HOME, USER_DATA_DIR, USER_CONFIG_DIR, MSERVE_DIR
-    global PROGRAM_DIR, TEMP_DIR
+    global PROGRAM_DIR, TEMP_DIR, APPNAME
 
     if USER is not None:
         # print('User already set:', USER, USER_ID, HOME)
@@ -138,17 +144,25 @@ def init(caller=None, appname="mserve"):
     USER = pwd.getpwuid(os.getuid()).pw_name
     USER_ID = str(os.getuid())
     HOME = os.path.expanduser("~")  # Works in Windows too. EG C:\Users\rick
+    APPNAME = appname
     # print('User:', USER, USER_ID, HOME)
     #appname = "mserve"  # pass as parameter that can be replaced with "homa"
     app_author = "pippim"
     USER_DATA_DIR = MSERVE_DIR = user_data_dir(appname, app_author)
+
+    if not MSERVE_DIR.endswith(os.sep):  # 2024-10-20 - Note trailing '/' !!!
+        MSERVE_DIR += os.sep
+
     if not os.path.exists(USER_DATA_DIR):
         os.makedirs(USER_DATA_DIR)
         print("Created directory:", USER_DATA_DIR)
     USER_CONFIG_DIR = user_config_dir(appname, app_author)
+    # print("USER_CONFIG_DIR:", USER_CONFIG_DIR)
+
     if not os.path.exists(USER_CONFIG_DIR):
         os.makedirs(USER_CONFIG_DIR)
         print("Created directory:", USER_CONFIG_DIR)
+
     # noinspection Pep8CodingStyleViolationW605
     '''
         What directory should your app use for storing user data? If running on Mac OS X, you
@@ -173,16 +187,17 @@ def init(caller=None, appname="mserve"):
         
     '''
 
-    if not MSERVE_DIR.endswith(os.sep):
-        MSERVE_DIR += os.sep
-    PROGRAM_DIR = os.path.dirname(os.path.realpath(__file__))
-
-    if not PROGRAM_DIR.endswith(os.sep):
-        PROGRAM_DIR += os.sep
-    # print("USER_CONFIG_DIR:", USER_CONFIG_DIR)
+    # PROGRAM_DIR is directory where parent resides. Parent will change to this
+    # current working directory so any image files opened default to that path.
+    try:
+        filename = inspect.stack()[1][1]  # Caller's PROGRAM_DIR
+        parts = filename.split(os.sep)
+        PROGRAM_DIR = os.sep.join(parts[:-1])  # Strip out basename
+    except IndexError:
+        PROGRAM_DIR = os.path.dirname(os.path.realpath(__file__))
 
     TEMP_DIR = tempfile.gettempdir()
-    if not TEMP_DIR.endswith(os.sep):
+    if not TEMP_DIR.endswith(os.sep):  # 2024-10-20 - Note trailing '/' !!!
         TEMP_DIR += os.sep
     TEMP_DIR += USER_ID + "_"  # /tmp/1000_
 

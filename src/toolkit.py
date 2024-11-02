@@ -162,7 +162,7 @@ def list_widgets(level, scan="All"):
             print('Frame    :', k, v)
             print_it = True
             if not isinstance(v, tk.Frame):
-                print("toolkit.py ToolTips.list_widgets(): Not a tkinter Frame!")
+                print("toolkit.py list_widgets(): Not a tkinter Frame!")
 
         elif (isinstance(v, tk.Label)) and (scan == "All" or scan == "Label"):
             # elif isinstance(v, tk.Label) and (scan=="Label" or scan=="All"):
@@ -175,7 +175,7 @@ def list_widgets(level, scan="All"):
                             instance_hex + '>'
             print('\t Instance :', k, tkinter_label)
             if not isinstance(v, tk.Label):
-                print("toolkit.py ToolTips.list_widgets(): Not a tkinter Label!",
+                print("toolkit.py list_widgets(): Not a tkinter Label!",
                       scan)
             
         elif isinstance(v, tk.Button) and (scan == "All" or scan == "Button"):
@@ -486,8 +486,7 @@ def unique_key(key, dictionary):
     print("toolkit.py - unique_key() has > " + str(i) + " duplicate keys.")
     print("new_key:", new_key)
     
-    # 2024-04-12 Not sure if below is copy & paste error or is checked?
-    return "toolkit.py ToolTips.list_widgets(): Unknown error?"
+    return "toolkit.py unique_key(): Two many keys"
 
 
 def tv_tag_add(tv, iid, new, strict=False):
@@ -2795,7 +2794,7 @@ class DictTreeview:
             #print('values:', values)
             view_order = data_dict['select_order']
             if view_order < 1 or view_order > len(values):
-                print('toolkit.py ToolTips.update_column() search column error:',
+                print('toolkit.py DictTree().update_column() search column error:',
                       search)
                 print('    invalid view_order retrieved:', view_order,
                       'max:', len(values))

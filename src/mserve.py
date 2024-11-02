@@ -700,7 +700,7 @@ PRUNED_COUNT = 0  # sys arg topdir = 0, artist = 1, album = 2
 # for a few seconds & system freezes once. It was compiz 'place' window bug.
 
 # When no artwork for song use this image file
-ARTWORK_SUBSTITUTE = g.PROGRAM_DIR + "Be Creative 2 cropped.jpg"
+ARTWORK_SUBSTITUTE = g.PROGRAM_DIR + os.sep + "Be Creative 2 cropped.jpg"
 # "Be Creative 2 cropped.png" is a 4.4 MB image 3120x3120
 
 # NOTE: Slideshow only works when when ~/.local/share/mserve/SlideShow exists
@@ -6897,7 +6897,7 @@ Call search.py when these control keys occur
             "Missing audio: " + "{:,}". \
             format(self.meta_scan.missing_audio) + "\n" + \
             "Missing artwork: " + "{:,}". \
-            format(self.meta_scan.mus_artwork) + "\n" + \
+            format(self.meta_scan.missing_artwork) + "\n" + \
             "Found artwork: " + "{:,}". \
             format(self.meta_scan.found_artwork) + "\n" + \
             "Metadata updated: " + "{:,}". \
@@ -6927,8 +6927,14 @@ Call search.py when these control keys occur
         :return: True if artwork exists, False if not or if different location
         """
 
-        ''' Reading through filenames in mus_view.tree which also has music ID '''
+        ''' Reading through filenames in mus_view.tree which always has music ID '''
+        #if "os_filename" in values:
         os_filename = self.mus_view.column_value(values, 'os_filename')
+        #else:  # 2024-10-20 - Fix error due to user config views
+        #    # os_filename column not in view so build it.
+        #    music_id = self.mus_view.column_value(values, 'music_id')
+        #    d = sql.music_get_row(music_id)
+        #    os_filename = d['OsFileName']
         # self.lib_top.update_idletasks()  # Give chance to 'X' the window
         if not self.mus_top:
             return  # None=closing. Others are False=detach and True=keep.
@@ -6939,6 +6945,11 @@ Call search.py when these control keys occur
 
         ''' Aug 20/23 - Quick check to see if over-legalizing dir names '''
         parts = os_filename.split(os.sep)
+        if len(parts) != 3:
+            print("too view parts:", parts)
+            ''' Will disappear from treeview to give user feedback '''
+            return False  # Don't keep this one in treeview
+
         legal_part1 = ext.legalize_dir_name(parts[0])
         legal_part2 = ext.legalize_dir_name(parts[1])
         legal_part3 = ext.legalize_dir_name(parts[2])
@@ -10561,7 +10572,7 @@ Call search.py when these control keys occur
         if self.killer.kill_now:
             # SIGTERM to shut down / reboot was received
             print('\nmserve.py refresh_play_top() closed by SIGTERM')
-            self.close()
+            self.close()  # Save files and call exit()
             return False  # Not required because this point never reached.
 
         ''' Host down? (sshfs-fuse cannot be accessed anymore) '''
@@ -19156,7 +19167,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
 
         # Create Treeview
         self.you_tree = ttk.Treeview(self.tree_frame, column=('name',),
-                                     selectmode='none', height=4,
+                                     selectmode='none', height=4, 
                                      style="YouTube.Treeview")
         self.you_tree.grid(row=0, column=0, sticky='nsew')
         v_scroll = tk.Scrollbar(self.tree_frame, orient=tk.VERTICAL,
@@ -19719,7 +19730,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             useChromium = True
         CHROME_DRIVER_VER = CHROME_DRIVER_VER.replace("108", ver)
         CHROME_DRIVER_PATH = \
-            g.PROGRAM_DIR + CHROME_DRIVER_VER + os.sep + "chromedriver"
+            g.PROGRAM_DIR + os.sep + CHROME_DRIVER_VER + os.sep + "chromedriver"
         self.youPrint("CHROME_DRIVER_PATH:", CHROME_DRIVER_PATH, nl=True)
 
         web = webbrowser.get()
@@ -23617,15 +23628,15 @@ def main(toplevel=None, cwd=None, parameters=None):
     cfg = sql.Config()  # Configuration for colors, widths, fonts, etc.
 
     ''' cwd is saved and passed by "m" before calling mserve.py '''
-    prg_path = os.path.dirname(os.path.realpath(__file__))
+    #prg_path = os.path.dirname(os.path.realpath(__file__))
     # prg_path is already available in g.PROGRAM_DIR so deprecate it.
     ''' 'm' splash screen passes the old current working directory (cwd) '''
     if cwd is None:
         ''' Save current working directory - same code in m and mserve.py '''
         cwd = os.getcwd()
-        if cwd != prg_path:
+        if cwd != g.PROGRAM_DIR:
             # print("Changing to dir_path:", dir_path)
-            os.chdir(prg_path)
+            os.chdir(g.PROGRAM_DIR)
     ''' parameters are passed by "m" to mserve.py '''
     if parameters is None:
         parameters = sys.argv
@@ -23725,7 +23736,7 @@ def main(toplevel=None, cwd=None, parameters=None):
     '''   B I G   T I C K E T   E V E N T    
 
           Open Files - If it fails it will exit()  '''
-    open_files(cwd, prg_path, parameters)  # Create application directory
+    open_files(cwd, g.PROGRAM_DIR, parameters)  # Create application directory
 
     ''' Sorted list of songs in the location - Need Delayed Text Box '''
     ext.t_init('make_sorted_list()')

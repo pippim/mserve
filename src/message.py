@@ -20,7 +20,8 @@ from __future__ import with_statement  # Error handling for file opens
 #       Aug. 09 2023 - Add g.MSG_WIDTH_ADJ and self.title2 title width support.
 #       Aug. 17 2023 - threading.RLock() prevent to messages waiting at once.
 #       Mar. 17 2024 - Fix <Return> to <KP_Enter> for OK/Yes dialog buttons.
-#       Sep. 09 2024 - Switch 5 'tk.Button' to 'ttk.Button'
+#       Sep. 09 2024 - Switch 5 instances of 'tk.Button' to 'ttk.Button'
+#       Oct. 26 2024 - Add "font=" and "justify=" to DelayedTextBox
 #
 #==============================================================================
 
@@ -87,7 +88,7 @@ class Open:
         """
 
         self.msg_top, self.textbox = \
-            common_code(title, toplevel, width, height)
+            common_top(title, toplevel, width, height)
         self.textbox.pack()                 # pack must be outside common code
         self.line_cnt = 0                   # Message lines displayed so far
 
@@ -110,9 +111,9 @@ class Open:
         self.msg_top = None
 
 
-def common_code(title, toplevel, width, height):
+def common_top(title, toplevel, width, height):
     """ Mount message textbox window centered in toplevel or at mouse
-        Called by .Open() and .DelayedTextBox() """
+        Only called by .Open() < 2024-10-26 called by .DelayedTextBox() """
     msg_top = tk.Toplevel()
     msg_top.minsize(g.WIN_MIN_WIDTH, g.WIN_MIN_HEIGHT)
     msg_top.title(title)
@@ -129,10 +130,10 @@ def common_code(title, toplevel, width, height):
 
     x = 0 if x < 0 else x  # Can't have negative co-ordinates
     y = 0 if y < 0 else y
-        
+
     msg_top.geometry('%dx%d+%d+%d' % (width, height, x, y))
-    text_box = tk.Text(msg_top, height=height, width=width,
-                       font=(None, g.MED_FONT))
+    text_box = tk.Text(msg_top, height=height, width=width)
+    # https://stackoverflow.com/a/42561077/6929343
     # Note pack is located in caller
     return msg_top, text_box
 
@@ -140,7 +141,9 @@ def common_code(title, toplevel, width, height):
 def get_mouse_coordinates():
     """ Get mouse co-ordinates with xdotool:
             $ xdotool getmouselocation
-            x:4490 y:1920 screen:0 window:65011722 """
+            x:4490 y:1920 screen:0 window:65011722 
+    Called by .common_top() and .DelayedTextBox()            
+    """
     command_line_list = ['xdotool', 'getmouselocation']
 
     pipe = sp.Popen(command_line_list, stdout=sp.PIPE, stderr=sp.PIPE)
@@ -171,7 +174,7 @@ class DelayedTextBox:
     def __init__(self, title="Status", toplevel=None, width=600, height=400,
                  startup_delay=1, frame_rate=30, print_old=False,
                  thread=None, get_thread=None, fast_thread=None,
-                 win_grp=None):
+                 win_grp=None, abort=None, tf=None, ta=None):
 
         self.title = title
         self.toplevel = toplevel
@@ -183,6 +186,10 @@ class DelayedTextBox:
         if get_thread:
             self.refresh_thread = get_thread()  # thread passed is get_refresh_thread
         self.win_grp = win_grp  # Window Grouping Class
+        self.abort = abort  # Show abort button for countdown
+        self.forced_abort = False
+        self.tf = tf  # Text font
+        self.ta = ta  # Text alignment
 
         # Current time + startup delay is when we mount our text box
         self.mount_time = time.time() + float(startup_delay)
@@ -193,7 +200,7 @@ class DelayedTextBox:
         self.old_lines = []  # Lines that were not displayed
         self.line_cnt = 0  # Message lines encountered so far
         self.display_cnt = 0  # Message lines displayed so far
-        self.msg_top = None  # Assigned by common_code()
+        self.msg_top = None  # Assigned by create_top()
         #print("=" * 80)
         #print("\nDelayedTextBox.__init__()")
         #print("Initialize TDB:", ext.t(time.time()), "delay:",
@@ -204,10 +211,10 @@ class DelayedTextBox:
             Window remains unpacked until first line encountered after delay.
             When mounting does happen, include lines suppressed earlier.
             Typically 1 second delay before creating text box window.
-            Use common_code() function shared with message.Open()
+            Use create_top() function shared with message.Open()
         
             If frame passed, text box created within it for message lines.
-            A separate top-level is not used and common_code() is not called.
+            A separate top-level is not used and create_top() is not called.
 
             Not all lines are displayed. Only line at 30 fps interval. Otherwise
             system will lag while textbox updates.
@@ -220,9 +227,14 @@ class DelayedTextBox:
         if now > self.mount_time:           # Current time > mount time target?
             if not self.mounted:            # Do we need to mount?
                 ''' Mount message window centered in toplevel or at mouse'''
-                self.msg_top, self.textbox = common_code(
-                    self.title, self.toplevel, self.width, self.height)
-                self.textbox.pack()         # Make textbox visible now
+                #self.msg_top, self.textbox = common_top(
+                #    self.title, self.toplevel, self.width, self.height,
+                #    tf=self.tf, ta=self.ta)
+                self.create_top()           # Create dtb tk.Toplevel() and tk.Text()
+                self.textbox.tag_configure("left", justify='left')
+                self.textbox.tag_configure("center", justify='center')
+                self.textbox.tag_configure("right", justify='right')
+
                 #print("=" * 80)
                 #print("Mount DTB:", ext.t(time.time()))
                 #print("=" * 80)
@@ -239,10 +251,10 @@ class DelayedTextBox:
                 if self.print_old:
                     for old_line in self.old_lines: 
                         # Loop through suppressed lines and insert all.
-                        self.textbox.insert(tk.END, old_line + '\n')
+                        self.textbox.insert(tk.END, old_line + '\n', self.ta)
                 elif self.old_lines:
                     # Print first line only
-                    self.textbox.insert(tk.END, self.old_lines[0] + '\n')
+                    self.textbox.insert(tk.END, self.old_lines[0] + '\n', self.ta)
 
                 # turn off text box for editing, cannot change text
                 self.textbox.configure(state="disabled")
@@ -254,9 +266,13 @@ class DelayedTextBox:
 
         if now > self.next_update:
             # Displaying every line slows down program. Use frame rate interval.
+            if not self.msg_top.winfo_exists():
+                return False  # abort was selected
             self.textbox.configure(state="normal")
-            self.textbox.insert(tk.END, msg_line + '\n')
+            self.textbox.insert(tk.END, '\n' + msg_line, self.ta)
+            # 2024-10-25 - Switch from msg_line + '\n'
             self.textbox.configure(state="disabled")
+            # https://tkdocs.com/tutorial/text.html
             self.textbox.see(tk.END)
             self.textbox.update()           # Is this necessary? CONFIRMED YES
             self.display_cnt += 1           # Message lines displayed so far
@@ -265,7 +281,9 @@ class DelayedTextBox:
                 self.refresh_thread()
             elif self.fast_thread:
                 self.fast_thread(tk_after=False)
-            return True                     # We updated text box
+            elif self.toplevel:
+                self.toplevel.update_idletasks()
+            return True                     # We updated textbox
 
         # TODO: 100 messages dropped from gmail api because it is
         #       1 second between batches of 100.
@@ -284,6 +302,80 @@ class DelayedTextBox:
             self.msg_top.destroy()
             self.msg_top = None  # Extra insurance
             self.mounted = False
+
+    def create_top(self):
+        """ Mount message textbox window centered in toplevel or at mouse
+
+        # OLD call format
+        #def create_top(self, title, toplevel, width, height, tf=None, ta=None):
+
+
+                self.msg_top = None  # Assigned by common_top()
+                self.msg_top, self.textbox = common_top(
+                    self.title, self.toplevel, self.width, self.height,
+                    tf=self.tf, ta=self.ta)
+        """
+        self.msg_top = tk.Toplevel()
+        self.msg_top.minsize(g.WIN_MIN_WIDTH, g.WIN_MIN_HEIGHT)
+        self.msg_top.title(self.title)
+    
+        ''' If self.toplevel passed use it's co-ordinates, else use mouse's '''
+        if self.toplevel:
+            self.toplevel.update_idletasks()     # Get up-to-date window co-ords
+            # Get Geometry: "%dx%d%+d%+d" % (self.width, self.height, x_offset, y_offset)
+            gw, gh, gx, gy = re.findall('[0-9]+', self.toplevel.winfo_geometry())
+            x = int(gx) + (int(gw)/2) - (self.width/2)       # Center for self.width
+            y = int(gy) + (int(gh)/2) - (self.height/2)      # Center for self.height
+        else:
+            x, y = get_mouse_coordinates()
+    
+        x = 0 if x < 0 else x  # Can't have negative co-ordinates
+        y = 0 if y < 0 else y
+    
+        if self.tf is None:
+            self.tf = (None, g.MED_FONT)  # Use medium font size
+    
+        if self.ta is None:
+            self.ta = 'left'  # Align left
+    
+        self.msg_top.geometry('%dx%d+%d+%d' % (self.width, self.height, x, y))
+        self.textbox = tk.Text(self.msg_top, height=self.height, width=self.width,
+                               font=self.tf)
+
+        # font=self.tf, align=self.ta)
+        # https://stackoverflow.com/a/42561077/6929343
+        # Note pack is located in caller
+
+        def close(*_args):
+            """ Close msg_top window """
+            if not self.msg_top.winfo_exists():
+                return
+            if self.win_grp:
+                self.win_grp.unregister_child(self.msg_top)
+            self.msg_top.destroy()
+            self.forced_abort = True  # Parent responsible for checking
+            #top = None  # Cannot update variable from outer space
+
+        def confirm_close(*_args):
+            """ Close msg_top window """
+            if not self.msg_top.winfo_exists():
+                return
+            if not self.abort:
+                return
+            close()
+
+        ''' Bind <Escape> to close window '''
+        self.msg_top.bind("<Escape>", confirm_close)
+        self.msg_top.protocol("WM_DELETE_WINDOW", confirm_close)
+
+        ''' Show close button to abort / close window '''
+        if self.abort is True:
+            close_btn = tk.Button(
+                self.msg_top, width=g.BTN_WID, text="✘ Close", command=close)
+            close_btn.pack()
+        self.textbox.pack()
+
+        return
 
 
 class FakeEvent:
