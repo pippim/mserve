@@ -101,6 +101,7 @@ warnings.simplefilter('default')  # in future Python versions.
 #       Aug. 05 2024 - Create separate and shared delete from playlist method.
 #       Aug. 24 2024 - SQL Music Table speed boost using OsFileNameIndex.
 #       Sep. 07 2024 - Convert from tk.Button() to ttk.Button() with style.
+#       Nov. 16 2024 - Update virtual file sizes for FTP devices in location.py.
 #
 # ==============================================================================
 

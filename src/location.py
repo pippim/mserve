@@ -21,6 +21,7 @@ from __future__ import with_statement  # Error handling for file opens
 #       Sep. 10 2023 - Retrieve FTP file for diff when curlftpfs chokes on '#'
 #       Mar. 13 2024 - SQL Config for treeview colors
 #       Apr. 28 2024 - Loudness Normalization using ffmpeg 'loudnorm' filter.
+#       Nov. 16 2024 - Update virtual file sizes for FTP devices 
 #
 #==============================================================================
 #import stat
@@ -91,7 +92,7 @@ import image as img  # Taskbar thumbnail image for Locations() window
 import timefmt as tmf  # "date - ago" formatting for Locations()
 import external as ext  # for ext.check_command for Locations()
 
-# Define ~/.../mserve/ directory
+# Define ~/local/share/mserve/ directory
 MSERVE_DIR = g.MSERVE_DIR
 # print("MSERVE_DIR:", MSERVE_DIR)
 
@@ -900,11 +901,11 @@ class ModTime:
             self.allows_mtime = True  # Assume best-case scenario
             return
         self.topdir = d['TopDir']  # SQL Location Table column name
-        self.filename = FNAME_MOD_TIME
+        self.filename = FNAME_MOD_TIME  # ~/local/share/mserve/<open>/modification_times
         #print("Opened Location:", code, self.filename)
         parts = self.filename.split(os.sep)
         parts[-2] = code
-        self.filename = os.sep.join(parts)
+        self.filename = os.sep.join(parts)  # ~/local/share/mserve/<code>/modification_times
         #print("Massaged Location:", code, self.filename)
 
         # Does location support modification timestamping?
@@ -952,84 +953,49 @@ class ModTime:
                 # read the data as binary data stream
                 self.mod_dict = pickle.load(filehandle)
 
-        if True is False:
+        if True is False:  # "True is True" = print debug stuff
             self.print(0, 10)  # Print debug stuff
 
-
-    def get(self, path, mtime):
-        """ Check if modification time has list entry for new time. """
-        if self.allows_mtime:
-            return mtime  # Nothing to do
-
-        mtime = float(mtime)  # Ensure it's a float
-        #print("NO mtime:", tmf.ago(mtime), path)
-        # See if file is in our dictionary
-        dict_old_time, dict_new_time = self.mod_dict.get(path, (0.0, 0.0))
-
-        #print("dict_old_time:", tmf.ago(dict_old_time),
-        #      "dict_new_time:", tmf.ago(dict_new_time))
-
-        if dict_new_time == mtime:
-            return mtime                    # Nothing has changed
-        if dict_old_time == 0:
-            return mtime                    # It's a new filename for our dict
-        elif dict_new_time == mtime:
-            print('The passed mtime matches last dict_new_time already')
-            print('ModTime.get() This SHOULD NOT happen?')
-            return mtime                    # 
-        elif dict_new_time == dict_old_time:
-            print('ModTime.get() dict_new_time == dict_old_time')
-            print('This SHOULD NOT happen?')
-            return mtime                    # 
-        elif dict_old_time == mtime:
-            ''' Expected results '''
-            #print('ModTime.get() Return existing override time')
-            return dict_new_time            # It's existing filename same time
-        elif dict_new_time == mtime:
-            print('The passed mtime matches last dict_new_time already')
-            print('ModTime.get() This SHOULD NOT happen?')
-            return mtime                    # 
-        else:
-            print('ModTime.get() Delete existing dictionary mtime:', t(mtime))
-            print('path:', path)
-            del self.mod_dict[path]
-            self.delete_cnt += 1
-            return mtime                    # It's existing filename diff time
-
     def update(self, path, old_mtime, new_mtime):
-        """ If new modification time record it in list entry. """
+        """ Add or update dictionary.
+        :param path: Full path to song file
+        :param old_mtime: time of older song file
+        :param new_mtime: time of newer song file
+        :returns <None>
+        """
         if self.allows_mtime:
             return        # Nothing to do
+        _who = "location.py ModTime().update():"
 
-        dict_old_time, dict_new_time = self.mod_dict.get(path, (0, 0))
+        dict_old_time, dict_new_time = self.mod_dict.get(path, (0.0, 0.0))
         old_mtime = float(old_mtime)
         new_mtime = float(new_mtime)
         dict_old_time = float(dict_old_time)
         dict_new_time = float(dict_new_time)
         if dict_old_time == old_mtime and dict_new_time == new_mtime:
-            print('ModTime.update() no changes')
+            print(_who, 'no changes')
             return                          # Nothing has changed
 
-        if dict_old_time == 0:
-            # print('ModTime.update() New entry for our dictionary')
+        if dict_old_time == 0.0:
+            # print(_who, 'New entry for our dictionary')
             pass
-        elif not dict_new_time == new_mtime:
-            # print('ModTime.update() Dictionary new time updated with new time.')
+        elif dict_new_time != new_mtime:
+            # print(_who, 'Dictionary new time updated with new time.')
             pass
         elif dict_new_time == new_mtime:
-            print('ModTime.update() Dictionary new time stayed the same')
+            print(_who, 'Dictionary new time stayed the same')
             print('This SHOULD NOT happen?')
             return
         elif dict_old_time == new_mtime:
-            print('dict_old_time same as new mtime to assign to dict_new_time.')
+            print(_who, 'dict_old_time same as new mtime to assign to dict_new_time.')
             print('ModTime.update() This SHOULD NOT happen?')
             return
         else:
-            print('ModTime.update() Something weird happened.')
+            print(_who, 'Something weird happened.')
 
         # Add or update dict_new_time
         self.mod_dict[path] = (old_mtime, new_mtime)
-        #print('ModTime.update() old_mtime:', t(old_mtime), 'new_mtime:', t(new_mtime))
+        #print(_who, 'old_mtime:', t(old_mtime), 'new_mtime:', t(new_mtime))
 
     def print(self, start_i, end_i):
         """ Print dictionary elements.  Print first 11 chars of date string
@@ -1218,13 +1184,23 @@ class LocationsCommonSelf:
         self.cmp_btn_frm = None  # Button frame for update diff / progress bar
         self.cmp_close_btn = None  # Button to close Compare Locations window
         self.update_differences_btn = None  # Click button to synchronize files
-        self.cmp_found = 0  # Number of files goes into differences button
+        self.cmp_songs = 0  # Number of songs in source location
+        self.cmp_missing = 0  # Number of songs missing in target location
+        self.cmp_found = 0  # Number of files to synchronize (for differences button)
         self.cmp_command_list = []  # iid,command_str,src_to_trg,src_time,trg_time
         self.cmp_return_code = 0  # Indicate how update failed
+        # Scan on "self.cmp_return_code = 9"
+        # 1 = if not self.build_command_list(song)
+        # 2 = `touch` command failed
+        # 3 DEPRECATED
+        # 4 = ("wait_for_cmd_output():", wait, "second time-out"
+        # 5 = stdout or stderr have been populated by cp command
+        # 6, 7, 8, 9 UNUSED
+        # 10 = "Error: action should be 'Same' but isn't:", c_action
         self.src_mt = None  # Source modification time using ModTime() class
-        self.src_paths_and_sizes = None  # To avoid os.stat.st_size
+        self.src_paths_and_sizes = {}  # To avoid os.stat.st_size
         self.trg_mt = None  # Target modification time using ModTime() class
-        self.trg_paths_and_sizes = None  # To avoid os.stat.st_size
+        self.trg_paths_and_sizes = {}  # To avoid os.stat.st_size
         self.cmp_trg_missing = []  # Source files not found in target location
         self.cmp_msg_box = None  # message.Open()
         self.last_fast_refresh = 0.0  # Calling refresh many times.
@@ -4618,11 +4594,14 @@ filename.
         """ Add Artist, Album and Title to treeview self.cmp_tree.
             Similar to add_items() in Music Location Tree
 
+            If prefix is NOT "cmp" then Analyze Volume using ffmpeg.
+                self.state == "detect_old": Detect original song volume
+                self.state == "loudnorm_1": Loudness Normalization pass 1
+                self.state == "loudnorm_2": Loudness Normalization pass 2
+                self.state == "detect_new": Detect new song volume
+
         :returns True: When locations are different
         """
-
-        ''' TODO: If avo, remove self.src_mt and self.trg_mt.
-        '''
 
         # How many path separators '/' are there in source?
         start_dir_sep = self.open_topdir.count(os.sep)
@@ -4705,7 +4684,7 @@ filename.
         # Refresh tk_after=False     : Build compare target: 26.8863759041
         # TOTALLY DIFFERENT STORY NOW WITH self.avo_insert_tree_row()
 
-        ''' Prune tree - Albums with no differences, Artists with no Albums '''
+        ''' Prune tree - Albums with no songs, Artists with no Albums '''
         for artist in self.cmp_tree.get_children():
             album_count = 0
             for album in self.cmp_tree.get_children(artist):
@@ -4725,16 +4704,29 @@ filename.
             return True
         else:
             if prefix != "cmp":
-                title = "Files identical"
-                text = "Files common to both locations are identical."
-            else:
-                # For avo, an empty tree means no matching files in target location
+                # For avo, an empty tree means no matching files in target location.
                 # If target location same as source location it means previous step
-                # not run yet.
-                title = "No files found!"
-                text = "There are no files common to both locations.\n\n"
-                text += "Try opening the target location and running."
-            self.out_fact_show(title, text)
+                # not run yet. Normally avo should be run with same source and target. 
+                title = "Analyze Volume nothing to do"
+                text = "Files common to both locations are identical."
+                text += "\n\nOr previous step not run."
+                self.out_fact_show(title, text)
+            else:
+                title = "Locations synchronized"
+                text = "Open Location: " + self.open_name
+                text += "\n\t- " + self.open_topdir
+    
+                text += "\n\nOther Location: " + self.act_name
+                text += "\n\t- " + self.cmp_target_dir
+                if self.cmp_missing:
+                    text += "\nOther location is missing: " + '{:n}'.format(self.cmp_missing)
+                    text += " music files."
+                text += "\n\nFile synchronization count: " + '{:n}'.format(self.cmp_songs)
+                #if speed > 0:
+                #    text += "\n\nCopy speed (MB/s): " + '{:n}'.format(speed)
+                #text += "\n\nTotal time (D.HH:MM:SS): " + tmf.mm_ss(elapsed)
+                self.out_cast_show_print(title, text, align="left")
+
             return False
 
     def cmp_insert_tree_row(self, fake_path, CurrAlbumId, iid, Title):
@@ -4751,7 +4743,10 @@ filename.
         action, src_path, src_size, src_time, trg_path, \
             trg_size, trg_time = self.compare_path_pair(fake_path)
 
+        self.cmp_songs += 1  # Number of songs in source location
+
         if action == "Missing":
+            self.cmp_missing += 1  # Number of songs missing in target location
             self.cmp_trg_missing.append(trg_path)  # Not used yet
             self.cmp_tree.see(CurrAlbumId)  # Files identical
             return True
@@ -4811,14 +4806,14 @@ filename.
                     trg_path, trg_size, trg_time
 
             WHERE:
-                src_path = self.open_topdir + real bottom path
-                trg_path = self.act_topdir + real bottom path
+                src_path = self.open_topdir + base path
+                trg_path = self.cmp_target_dir + base path
                 size = integer file size in bytes
                 mtime = modification time to filesystems' nanosecond precision
 
             Possible return actions (hidden detached from treeview):
                 "Missing" - In target(other) location (hidden from view)
-                "Same" - within 2 seconds so no action required (hidden)
+                "Same" - time within 2 seconds so no action required (hidden)
                 "Error: Size different, time same" - Don't know copy direction
                 "Error: contents different, time same" -    "   "   "   "
                 "Error: Permission denied from 'diff' command"
@@ -4832,47 +4827,55 @@ filename.
 
         action = ""  # to make pycharm happy
 
+        def size_and_mtime(path, sizes_dict, mtime_inst):
+            """ Read dictionaries self.xxx_paths_and_sizes and self.xxx_mt.mod_dict
+                when available for Android, else use os.stat(). If file is missing
+                return None. Else return size (can be zero) and time (float)
+            """
+            size = mtime = None  # Return values
+
+            ''' When using FTP, file sizes are cached. '''
+            if sizes_dict:
+                size = sizes_dict.get(path, None)
+
+            ''' When Android not updating modification time, mod_dict keeps track '''
+            if not mtime_inst.allows_mtime:
+                _old_time, mtime = mtime_inst.mod_dict.get(path, (None, None))
+
+            ''' if size or time is none, check if file exists and use os.stat '''
+            if size is None or mtime is None:
+                #print("os.stat path:", type(path), path)
+                #try:
+                #    ptime = t(mtime)
+                #except TypeError:
+                #    ptime = mtime
+                #print("size:", size, "mtime:", ptime)
+                # 2024-11-17 - Above needed because size_dict = "null" (string) 4 bytes
+
+                if os.path.isfile(path):  # If target missing, then return
+                    fs = os.stat(path)  # os.stat provides file attributes
+                    if size is None:
+                        size = fs.st_size
+                    if mtime is None:
+                        mtime = float(fs.st_mtime)
+
+            return size, mtime
+
         ''' Build real song path from fake_path and stat '''
         src_path = self.real_from_fake_path(fake_path)
-
-        ''' Is os.stat() call necessary? '''
-        src_size = 0
-        src_time = 0.0
-        if self.src_paths_and_sizes:
-            src_size = self.src_paths_and_sizes.get(src_path, 0)
-        if not self.src_mt.allows_mtime:
-            old_time, src_time = self.src_mt.mod_dict.get(src_path, (0.0, 0.0))
-
-        if src_size == 0 or src_time == 0.0:
-            src_stat = os.stat(src_path)  # os.stat provides file attributes
-            src_size = src_stat.st_size
-            src_time = float(src_stat.st_mtime)
+        src_size, src_time = \
+            size_and_mtime(src_path, self.src_paths_and_sizes, self.src_mt)
 
         ''' Build target path, check if exists and use os.stat '''
+        # self.cmp_target_dir =
         trg_path = src_path.replace(self.open_topdir, self.cmp_target_dir)
+        trg_size, trg_time = \
+            size_and_mtime(trg_path, self.trg_paths_and_sizes, self.trg_mt)
 
-        ''' Is os.stat() call necessary? '''
-        trg_size = 0
-        trg_time = 0.0
-        if self.trg_paths_and_sizes:
-            trg_size = self.trg_paths_and_sizes.get(trg_path, 0)
-        if not self.trg_mt.allows_mtime:
-            old_time, trg_time = self.trg_mt.mod_dict.get(trg_path, (0.0, 0.0))
+        if trg_size is None or trg_time is None:
+            action = "Missing"  # Will not appear in treeview
+            return action, src_path, src_size, src_time, trg_path, None, None
 
-        ''' check if exists and use os.stat '''
-        if trg_size == 0 or trg_time == 0.0:
-            if not os.path.isfile(trg_path):  # If target missing, then return
-                action = "Missing"  # Will not appear in treeview
-                return action, src_path, src_size, src_time, \
-                    trg_path, None, None
-
-            trg_stat = os.stat(trg_path)  # os.stat provides file attributes
-            trg_size = trg_stat.st_size
-            trg_time = float(trg_stat.st_mtime)
-
-        ''' When Android not updating modification time, keep track ourselves '''
-        src_time = self.src_mt.get(src_path, src_time)
-        trg_time = self.trg_mt.get(trg_path, trg_time)
         time_diff = abs(src_time - trg_time)  # time diff between src & trg
 
         ''' Size and modify times match? Already synchronized. '''
@@ -4979,6 +4982,8 @@ filename.
     def cmp_update_files(self):
         """ Called via "Update differences" button on cmp_top """
 
+        _who = "Locations().cmp_update_files():"
+
         ''' Replace "update differences" button with progress bar '''
         self.update_differences_btn.grid_remove()  # Button can't click again
         progress_var = tk.DoubleVar()
@@ -4993,9 +4998,11 @@ filename.
         self.cmp_return_code = 0  # Indicate how update failed
         self.cmp_command_list = list()  # List of tuples [(commands, parameters)]
         self.fast_refresh(tk_after=True)  # Update play_top animations
+        song_count = 0
         for artist in self.cmp_tree.get_children():
             for album in self.cmp_tree.get_children(artist):
                 for song in self.cmp_tree.get_children(album):
+                    song_count += 1
                     if not self.build_command_list(song):
                         self.cmp_return_code = 1  # Indicate how update failed
                         break  # Programmer error
@@ -5010,6 +5017,7 @@ filename.
                 all_sizes += float(size)  # Total size of all files copied
 
         last_sel_iid = None  # Last row highlighted in green
+        # All files common to both loca
         run_count = 0  # How many commands have be run so far
         copy_time_so_far = 0.0  # To estimate time remaining
         copy_size_so_far = 0  # To calculate progress bar percent
@@ -5019,6 +5027,7 @@ filename.
         for iid, command, size, src_to_trg, src_time, trg_time in \
                 self.cmp_command_list:
             # Variable src_to_trg: True=source->target. False=target->source
+            # Variable size: 2.811 (NOT 2811058 which could be useful)
 
             ''' Initialization '''
             if self.cmp_return_code != 0:
@@ -5065,7 +5074,7 @@ filename.
             if not self.fast_refresh():  # No sleep after should only take few ms
                 return
 
-            ''' 4. Update modification times for Android cell phones '''
+            ''' 4. Update modification times and sizes for Android cell phones '''
             self.update_mod_times(
                 src_to_trg, src_path, src_time, trg_path, trg_time)
             if not self.fast_refresh():  # No sleep after
@@ -5078,11 +5087,23 @@ filename.
                 print("Error: action should be 'Same' but isn't:", c_action)
                 print("c_src_path:", c_src_path)
                 print("c_src_size:", c_src_size)
+                print("c_src_time:", t(c_src_time))
                 print("c_trg_path:", c_trg_path)
                 print("c_trg_size:", c_trg_size)
-                self.cmp_return_code = 10  # Files not same
+                print("c_trg_time:", t(c_trg_time))
+                # Error: action should be 'Same' but isn't: Error: Size different, time same
+
+                # From: ModTime().get():
+                # print('ModTime.get() Delete existing dictionary mtime:', t(mtime))
+                # print('path:', path)
+                # del self.mod_dict[path]
+                # self.delete_cnt += 1
+                # return mtime                    # It's existing filename diff time
+
+                #self.cmp_return_code = 10  # Files not same
                 # self.cmp_return_code UNUSED 6, 7, 8 and 9
-                break
+                # break
+                # 2024-11-16 - Don't break, continue processing
 
         ''' Shutting down? '''
         if not self.cmp_top_is_active:
@@ -5092,6 +5113,27 @@ filename.
         toolkit.tv_tag_remove(self.cmp_tree, last_sel_iid, 'cmp_sel')
         self.src_mt.close()  # Save modification_time to disk
         self.trg_mt.close()  # If no changes then simply exit
+
+        ''' Save OS file sizes after copies '''
+        def save_paths_and_sizes(size_fname, all_files):
+            """
+            :param size_fname: ~/.local/share/mserve/L006/size_dict
+            :param all_files: {path: size, path: size... path: size}
+            :return: True if no JSON errors, else False
+            """
+            success = ext.write_to_json(size_fname, all_files)
+            if success:
+                print(_who, "FILE SAVED:", size_fname)
+            else:
+                print(_who, "ext.write_to_json(" + size_fname + " ... FAILED")
+
+        if len(self.src_paths_and_sizes) > 1:
+            save_paths_and_sizes(FNAME_SIZE_DICT, self.src_paths_and_sizes)
+
+        if len(self.trg_paths_and_sizes) > 1:
+            ''' Build paths_size filename (FNAME) using act_code replacing open_code '''
+            fname = rnm_one_filename(FNAME_SIZE_DICT, self.act_code, self.open_code)
+            save_paths_and_sizes(fname, self.src_paths_and_sizes)
 
         ''' Error message first '''
         if not self.cmp_return_code == 0:  # An error was found
@@ -5113,9 +5155,11 @@ filename.
               "\tspeed:", '{:n}'.format(round(speed, 3)))
 
         title = "Locations synchronized"
-        text = "Open Location:  " + self.open_name
-        # TODO: Open Location missing: 999 music files.
-        text += "\nOther Location: " + self.act_name
+        text = "Open Location: " + self.open_name
+        text += "\n\t- " + self.open_topdir
+
+        text += "\n\nOther Location: " + self.act_name
+        text += "\n\t- " + self.cmp_target_dir
         if missing_count:
             text += "\nOther location is missing: " + '{:n}'.format(missing_count)
             text += " music files."
@@ -5129,7 +5173,10 @@ filename.
         self.cmp_close()
 
     def run_one_command(self, command, size, wait=60, print_stats=True):
-        """ Run 'touch' or 'cp' command. """
+        """ Run 'touch' command instantly.
+            Run 'diff' or 'cp' command in background.
+            AVO (Loudness Normalization) calls 'ffmpeg'.
+        """
         ''' Remove previous stdout/stderr '''
         self.rm_file(self.TMP_STDOUT)  # Remove Standard Output results file
         self.rm_file(self.TMP_STDERR)  # Remove Standard Error results file
@@ -5140,18 +5187,19 @@ filename.
                 with open(self.TMP_STDERR, "w") as text_file:
                     text_file.write(result)
                 print("run_one_command() touch command returned results (stderr)")
-                self.cmp_return_code = 2  # Indicate how update failed
+                self.cmp_return_code = 2  # Indicate touch command failed
             return self.fast_refresh()  # Give little time slice to other threads
         else:
-            ''' Copy writes to stdout and takes .01 second / MB 
-                'diff' over Wifi FTP Server takes .16 second / MB  '''
+            ''' `cp` over SD Card takes .01 second / MB 
+                'diff' between Android Wifi FTP Server takes .16 second / MB  '''
             return self.wait_for_cmd_output(command, size, wait, print_stats)
 
     def wait_for_cmd_output(self, command, size, wait, print_stats=True):
         """ Wait for cp (copy) command to complete
             Check cmp_top_is_active at top of each loop.
-            Maximum time for STDOUT or STDERR to appear is 10 seconds. """
+            Maximum time for STDOUT or STDERR to appear is 5 to 60 seconds. """
 
+        _who = "location.py wait_for_cmd_output():"
         ''' Build full command with stdout & stderr appended '''
         command += " 1>" + self.TMP_STDOUT  # mserve_stdout_5sh18d
         command += " 2>" + self.TMP_STDERR  # mserve_stderr_5sh18d
@@ -5163,10 +5211,31 @@ filename.
         #    print("wait_for_cmd_output() os.popen() unknown result:", result)
         #    self.cmp_return_code = 3  # Indicate how update failed
         #    return False
-        pid = ext.launch_command(command, self.cmp_top)
+        pid = ext.launch_command(command, self.cmp_top, ms_wait=100)
         if pid == 0:
             print("Warning command finished before PID could be acquired:")
             print(command)
+
+        # 2024-11-17 `cp` command is TOO FAST over nvme SSD
+
+        # launch_ext_command() ERROR:  3000 ms timeout reached.
+        # External command name: cp --preserve=timestamps --verbose  
+        #   "/media/rick/SANDISK128/Music/Fleetwood Mac/Tango In The Night/
+        #   04 Caroline.m4a"  "/home/rick/Music/Fleetwood Mac/Tango In The Night/
+        #   04 Caroline.m4a" 1>/run/user/1000/mserve_stdout_dqy10f 
+        #   2>/run/user/1000/mserve_stderr_dqy10f
+
+        # real	0m0.004s
+        # user	0m0.000s
+        # sys	0m0.004s
+
+        # Warning command finished before PID could be acquired:
+        # cp --preserve=timestamps --verbose  
+        #   "/media/rick/SANDISK128/Music/Fleetwood Mac/Tango In The Night/
+        #   04 Caroline.m4a"  "/home/rick/Music/Fleetwood Mac/Tango In The Night/
+        #   04 Caroline.m4a" 1>/run/user/1000/mserve_stdout_dqy10f 
+        #   2>/run/user/1000/mserve_stderr_dqy10f
+        # Wait: 1 	Size: 3.959 	Elapsed sec: 10.484 	Speed (MB/s): 0
 
         loop_count = 0
         while True:
@@ -5178,12 +5247,18 @@ filename.
                 # 2024-04-09 wait time defaults to 60 but set to 5 for analyze volume
                 # Wait: 270,211  Size: 8,090,133 	Elapsed: 25.513  Speed: 0.317
                 # Wait: 94,729   Size: 4,726,205 	Elapsed: 9.85    Speed: 0.48
-                print("wait_for_cmd_output():", wait, "second time-out")
+                print(_who, wait, "second time-out")
+                print("command:", command)
+                speed = float(size) / elapsed / 1000000.0
+                print("Wait:", '{:n}'.format(loop_count),
+                      "\tSize:", size,  # size is string, not int
+                      "\tElapsed sec:", '{:n}'.format(round(elapsed, 3)),
+                      "\tSpeed (MB/s):", '{:n}'.format(round(speed, 3)))
                 ''' TODO: Test host(s) and set down flags '''
                 self.cmp_return_code = 4  # Indicate how update failed
                 return False
 
-            if pid != 0 and ext.check_pid_running(pid):
+            if pid != 0 and ext.check_pid_running(pid) != 0:
                 # 2024-04-12 initial version was getting ~800,000 loops and
                 # 1/2 second delay updating play_top animations. Call fast_refresh
                 self.fast_refresh(tk_after=True)
@@ -5226,6 +5301,11 @@ filename.
             if len(out) > 0:
                 return True
 
+            # 2024-11-16 - pid is finished. looping now goes until timeout error
+            # Originally used to wait for length of stdout > 0 but now pid checked.
+            print(_who, "stdout and stderr is empty for command:\n   ", command)
+            return True  # For unknown reason there is no output in stdout
+
     @staticmethod
     def get_file_data(f):
         """ Get data from STDOUT or STDERR
@@ -5238,14 +5318,39 @@ filename.
         return data
 
     def update_mod_times(self, src_to_trg, src_path, src_time, trg_path, trg_time):
-        """ Update for Android, does nothing for other OS """
-        ''' Update Modification Times from old time to new time '''
-        if src_to_trg:  # Copy/Touch direction is from Src -> Trg
+        """ Update file Modification Times for Android, does nothing for other OS
+            Update FTP cached file sizes (if they exist).
+        """
+
+        ''' Get cached sizes and modification times. '''
+        trg_size = src_size = None
+        if self.trg_paths_and_sizes:  # Are target size dictionaries being maintained?
+            trg_size = self.trg_paths_and_sizes.get(trg_path, None)  # Can be zero
+        if self.src_paths_and_sizes:  # Are source size dictionaries being maintained?
+            src_size = self.src_paths_and_sizes.get(src_path, None)  # Can be zero
+
+        ''' Update cached sizes and modification times based on direction. '''
+        if src_to_trg:  # Direction is from Src -> Trg
+            # ModTime().update(self, path, old_mtime, new_mtime)
             self.src_mt.update(src_path, trg_time, src_time)
             self.trg_mt.update(trg_path, trg_time, src_time)
-        else:  # Action is from Trg -> Src
+            if trg_size is not None:  # Update target size dictionary with source size
+                if src_size is None:
+                    # There was no source size dictionary, so os.stat
+                    src_size = os.stat(src_path).st_size
+                    #print("src_path:", src_path)
+                    #print("src_size:", src_size)
+                self.trg_paths_and_sizes[trg_path] = src_size
+
+        else:  # Direction is from Trg -> Src
+            # ModTime().update(self, path, old_mtime, new_mtime)
             self.src_mt.update(src_path, src_time, trg_time)
             self.trg_mt.update(trg_path, src_time, trg_time)
+            if src_size is not None:  # Update source size dictionary with target size
+                if trg_size is None:
+                    # There was no target size dictionary, so os.stat
+                    trg_size = os.stat(trg_path).st_size
+                self.src_paths_and_sizes[src_path] = trg_size
 
     def fast_refresh(self, tk_after=False):
         """ Quickly update animations with no sleep after """
