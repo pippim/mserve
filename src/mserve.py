@@ -23358,7 +23358,7 @@ def dprint(*args):
         print(*args)
 
 
-LODICT = {}  # Never change LODICT after startup!
+LODICT = {}  # Never change Location Dictionary (LODICT) after startup!
 NEW_LOCATION = False  # Is directory not saved in location master file?
 OLD_CWD = None  # Directory when 'm' or mserve.py was called
 SORTED_LIST = []
