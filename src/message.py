@@ -22,6 +22,7 @@ from __future__ import with_statement  # Error handling for file opens
 #       Mar. 17 2024 - Fix <Return> to <KP_Enter> for OK/Yes dialog buttons.
 #       Sep. 09 2024 - Switch 5 instances of 'tk.Button' to 'ttk.Button'
 #       Oct. 26 2024 - Add "font=" and "justify=" to DelayedTextBox
+#       Dec. 02 2024 - AskString support password entry with show="*"
 #
 #==============================================================================
 
@@ -408,7 +409,7 @@ class AskCommonSelf:
         Must appear before first reference (ShowInfo) """
     def __init__(self, parent, title=None, text=None, confirm='yes', align='center',
                  thread=None, icon='warning', string=None, string_width=None,
-                 help=None):
+                 show=None, help=None):
 
         self.top_level = parent     # Allows .after() calls
         self.title2 = title         # Added Aug 9/23 for setting window width
@@ -428,6 +429,7 @@ class AskCommonSelf:
         self.text = text            # data (text lines) for text box
         self.textbox = None         # Textbox widget
         self.icon = icon            # Warning, Error, Info, Question icons
+        self.show = show            # Password entry character to show
         self.help = help            # Future help button linking to mserve.md
 
         self.entry = None           # Tkinter Entry widget
@@ -828,13 +830,15 @@ class AskString(simpledialog.Dialog, AskCommonSelf):
 
     def __init__(self, parent, title=None, text=None, confirm='no',
                  align='center', thread=None, icon='question', string=None,
-                 string_width=None, _root=None):
+                 string_width=None, show=None, _root=None):
 
         AskCommonSelf.__init__(self, parent, title=title, text=text, confirm=confirm,
-                               align=align, thread=thread, icon=icon,
+                               align=align, thread=thread, icon=icon, show=show,
                                string=string, string_width=string_width)
 
         simpledialog.Dialog.__init__(self, parent, title=title)
+
+        self.show = show  # E.G. "*" for password entry
         #if root:
         #    ''' When using root window message s/b centered  '''
         #    mon = monitor.Monitors()
@@ -863,8 +867,15 @@ class AskString(simpledialog.Dialog, AskCommonSelf):
         textbox(self.textbox, self.text, self.align, lines)  # Populate textbox
         tk.Label(self, text="Input or Paste below:",  # Append label and entry
                  font=g.FONT).pack(fill="none", padx=5)
-        self.entry = tk.Entry(self, font=g.FONT, insertbackground="white",
-                              bg="#282B2B", fg="white", width=self.string_width)
+
+        if self.show is not None:  # Show password *'s
+            self.entry = tk.Entry(self, font=g.FONT, insertbackground="white",
+                                  show=self.show,  # Password character to display
+                                  bg="#282B2B", fg="white", width=self.string_width)
+        else:
+            self.entry = tk.Entry(self, font=g.FONT, insertbackground="white",
+                                  bg="#282B2B", fg="white", width=self.string_width)
+
         self.entry.insert(tk.END, self.string)  # insert default text
         self.entry.pack(fill="none", padx=5, expand=True)
         self.entry.focus_set()  # Position cursor in tk.Entry field

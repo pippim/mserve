@@ -21,6 +21,7 @@ warnings.simplefilter('default')  # in future Python versions.
 #           Divide by zero error message. Decimal point entered error message.
 #           Support 2 floating point decimal division results converted to UoM. 
 #           Support square and square root UoM not in 2018 version.
+#       Dec. 01 2024 - Add 'font=disp_font' to each button for homa.py
 
 # Majority Credit to: 
 # https://www.techinfected.net/2016/02/make-gui-calculator-in-python-windows-linux.html
@@ -155,91 +156,91 @@ class Calculator:
 
         # Generating Buttons
         tk.Button(master, text="=", width=8, fg=self.btn_fg, bg=self.btn_bg,
-                  command=lambda: self.equals()).\
+                  font=disp_font, command=lambda: self.equals()).\
             grid(row=4, column=4, columnspan=2)
         tk.Button(master, text='AC', width=3, fg=self.btn_fg, bg=self.btn_bg,
-                  command=lambda: self.clear_all()).\
+                  font=disp_font, command=lambda: self.clear_all()).\
             grid(row=1, column=4)
         tk.Button(master, text='C', width=3, fg=self.btn_fg, bg=self.btn_bg,
-                  command=lambda: self.clear1()).\
+                  font=disp_font, command=lambda: self.clear1()).\
             grid(row=1, column=5)
         tk.Button(master, text="+", width=3, fg=self.btn_fg, bg=self.btn_bg,
-                  command=lambda: self.action('+')).\
+                  font=disp_font, command=lambda: self.action('+')).\
             grid(row=4, column=3)
         tk.Button(master, text="x", width=3, fg=self.btn_fg, bg=self.btn_bg,
-                  command=lambda: self.action('x')).\
+                  font=disp_font, command=lambda: self.action('x')).\
             grid(row=2, column=3)
         tk.Button(master, text="-", width=3, fg=self.btn_fg, bg=self.btn_bg,
-                  command=lambda: self.action('-')).\
+                  font=disp_font, command=lambda: self.action('-')).\
             grid(row=3, column=3)
         tk.Button(master, text="÷", width=3, fg=self.btn_fg, bg=self.btn_bg,
-                  command=lambda: self.action('÷')).\
+                  font=disp_font, command=lambda: self.action('÷')).\
             grid(row=1, column=3)
         tk.Button(master, text="%", width=3, fg=self.btn_fg, bg=self.btn_bg,
-                  command=lambda: self.action('%')).\
+                  font=disp_font, command=lambda: self.action('%')).\
             grid(row=4, column=2)
         tk.Button(master, text="7", width=3, fg=self.btn_fg, bg=self.btn_bg,
-                  command=lambda: self.action('7')).\
+                  font=disp_font, command=lambda: self.action('7')).\
             grid(row=1, column=0)
         tk.Button(master, text="8", width=3, fg=self.btn_fg, bg=self.btn_bg,
-                  command=lambda: self.action(8)).\
+                  font=disp_font, command=lambda: self.action(8)).\
             grid(row=1, column=1)
         tk.Button(master, text="9", width=3, fg=self.btn_fg, bg=self.btn_bg,
-                  command=lambda: self.action(9)).\
+                  font=disp_font, command=lambda: self.action(9)).\
             grid(row=1, column=2)
         tk.Button(master, text="4", width=3, fg=self.btn_fg, bg=self.btn_bg,
-                  command=lambda: self.action(4)).\
+                  font=disp_font, command=lambda: self.action(4)).\
             grid(row=2, column=0)
         tk.Button(master, text="5", width=3, fg=self.btn_fg, bg=self.btn_bg,
-                  command=lambda: self.action(5)).\
+                  font=disp_font, command=lambda: self.action(5)).\
             grid(row=2, column=1)
         tk.Button(master, text="6", width=3, fg=self.btn_fg, bg=self.btn_bg,
-                  command=lambda: self.action(6)).\
+                  font=disp_font, command=lambda: self.action(6)).\
             grid(row=2, column=2)
         tk.Button(master, text="1", width=3, fg=self.btn_fg, bg=self.btn_bg,
-                  command=lambda: self.action(1)).\
+                  font=disp_font, command=lambda: self.action(1)).\
             grid(row=3, column=0)
         tk.Button(master, text="2", width=3, fg=self.btn_fg, bg=self.btn_bg,
-                  command=lambda: self.action(2)).\
+                  font=disp_font, command=lambda: self.action(2)).\
             grid(row=3, column=1)
         tk.Button(master, text="3", width=3, fg=self.btn_fg, bg=self.btn_bg,
-                  command=lambda: self.action(3)).\
+                  font=disp_font, command=lambda: self.action(3)).\
             grid(row=3, column=2)
         tk.Button(master, text="0", width=3, fg=self.btn_fg, bg=self.btn_bg,
-                  command=lambda: self.action(0)).\
+                  font=disp_font, command=lambda: self.action(0)).\
             grid(row=4, column=0)
         tk.Button(master, text=".", width=3, fg=self.btn_fg, bg=self.btn_bg,
-                  command=lambda: self.action('.')).\
+                  font=disp_font, command=lambda: self.action('.')).\
             grid(row=4, column=1)
         tk.Button(master, text="(", width=3, fg=self.btn_fg, bg=self.btn_bg,
-                  command=lambda: self.action('(')).\
+                  font=disp_font, command=lambda: self.action('(')).\
             grid(row=2, column=4)
         tk.Button(master, text=")", width=3, fg=self.btn_fg, bg=self.btn_bg,
-                  command=lambda: self.action(')')).\
+                  font=disp_font, command=lambda: self.action(')')).\
             grid(row=2, column=5)
         tk.Button(master, text="√", width=3, fg=self.btn_fg, bg=self.btn_bg,
-                  command=lambda: self.square_root()).\
+                  font=disp_font, command=lambda: self.square_root()).\
             grid(row=3, column=4)
         tk.Button(master, text="x²", width=3, fg=self.btn_fg, bg=self.btn_bg,
-                  command=lambda: self.square()).\
+                  font=disp_font, command=lambda: self.square()).\
             grid(row=3, column=5)
         tk.Button(master, text="K", width=3, fg=self.btn_fg, bg=self.btn_bg,
-                  command=lambda: self.action('K')).\
+                  font=disp_font, command=lambda: self.action('K')).\
             grid(row=5, column=0)
         tk.Button(master, text="M", width=3, fg=self.btn_fg, bg=self.btn_bg,
-                  command=lambda: self.action('M')).\
+                  font=disp_font, command=lambda: self.action('M')).\
             grid(row=5, column=1)
         tk.Button(master, text="G", width=3, fg=self.btn_fg, bg=self.btn_bg,
-                  command=lambda: self.action('G')).\
+                  font=disp_font, command=lambda: self.action('G')).\
             grid(row=5, column=2)
         tk.Button(master, text="T", width=3, fg=self.btn_fg, bg=self.btn_bg,
-                  command=lambda: self.action('T')).\
+                  font=disp_font, command=lambda: self.action('T')).\
             grid(row=5, column=3)
         tk.Button(master, text="P", width=3, fg=self.btn_fg, bg=self.btn_bg,
-                  command=lambda: self.action('P')).\
+                  font=disp_font, command=lambda: self.action('P')).\
             grid(row=5, column=4)
         tk.Button(master, text="E", width=3, fg=self.btn_fg, bg=self.btn_bg,
-                  command=lambda: self.action('E')).\
+                  font=disp_font, command=lambda: self.action('E')).\
             grid(row=5, column=5)
 
 

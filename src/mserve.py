@@ -5767,16 +5767,17 @@ Call search.py when these control keys occur
             return
         geom = monitor.get_window_geom('calculator')
         self.calc_top = tk.Toplevel()
+
         ''' Set program icon in taskbar '''
         sql_key = ['cfg_calculator', 'toplevel', 'taskbar_icon', 'height & colors']
         ti = cfg.get_cfg(sql_key)
         img.taskbar_icon(self.calc_top, ti['height'], ti['outline'],
                          ti['fill'], ti['text'], char=ti['char'])
-        # img.taskbar_icon(self.calc_top, 64, 'white', 'lightskyblue', 'black')
+
         ''' Create calculator class instance '''
-        # TODO setup direct color config for calculator buttons
         self.calculator = Calculator(self.calc_top, g.FONT, geom,
                                      btn_fg=ti['text'], btn_bg=ti['fill'])
+
         ''' Trap <Escape> key and  '✘' Window Close Button '''
         self.calc_top.bind("<Escape>", self.calculator_close)
         self.calc_top.protocol("WM_DELETE_WINDOW", self.calculator_close)
@@ -5792,10 +5793,11 @@ Call search.py when these control keys occur
     def calculator_close(self, *_args):
         """ Save last geometry for next Calculator startup """
         last_geom = monitor.get_window_geom_string(
-            self.calc_top, leave_visible=False)  # Destroy toplevel
+            self.calc_top, leave_visible=False)  # Leave toplevel invisible
         monitor.save_window_geom('calculator', last_geom)
+        self.calc_top.destroy()
+        self.calc_top = None  # Prevent lifting window
         self.calculator = None  # Prevent lifting window
-        self.calc_top = None
 
     def show_debug(self):
         """ Debugging - show machine info, monitors, windows, tooltips 

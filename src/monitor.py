@@ -22,6 +22,7 @@ from __future__ import with_statement  # Error handling for file opens
 #       July 29 2023 - Fix Monitor.get_active_monitor()
 #       May. 11 2024 - mon.get_home_monitor(window) exact or closest monitor
 #       Oct. 09 2024 - check_window_geom(...) to force windows visibility
+#       Dec. 07 2024 - Trap window no longer exists, destroyed by Ubuntu Dock.
 #
 # ==============================================================================
 
@@ -732,7 +733,10 @@ def get_window_geom_raw(window, leave_visible=True):
           move to real, get geometry a third time
           now third time = second time
     """
-    window.attributes('-alpha', 0.0)    # Make window invisible
+    try:
+        window.attributes('-alpha', 0.0)  # Make window invisible
+    except AttributeError:
+        return  # 2024-12-07 Window no longer exists, destroyed by Ubuntu Dock.
     window.update_idletasks()
     x = window.winfo_x()                # Tkinter Window's left coordinate
     y = window.winfo_y()                # Tkinter Window's top coordinate
@@ -770,8 +774,11 @@ def get_window_geom_string(window, leave_visible=True):
     Used in encoding.py(1), location.py(1), mserve.py(6) and webscrape.py(1)
     :returns "WxH+X+Y" string.
     """
-    x, y, w, h = get_window_geom_raw(window, leave_visible)
-    return str(w) + 'x' + str(h) + '+' + str(x) + '+' + str(y)
+    try:
+        x, y, w, h = get_window_geom_raw(window, leave_visible)
+        return str(w) + 'x' + str(h) + '+' + str(x) + '+' + str(y)
+    except TypeError:
+        return None  # Window has disappeared
 
 
 def get_xrandr_monitors():

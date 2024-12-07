@@ -19,10 +19,11 @@ from __future__ import with_statement  # Error handling for file opens
 #       Aug. 22 2023 - remove_group() - remove file groups ending in * (splat)
 #       Sep. 29 2023 - t(short=False) - Set to True for MM:SS printed only
 #       Jun. 02 2024 - Reactivate '?' as illegal filename character
+#       Dec. 04 2024 - if t_init() ends in ":" don't add another when printing.
 #
 #==============================================================================
 
-import signal                           # Trap shutdown to close files
+import signal  # Trap shutdown to close files
 import os
 try:
     import subprocess32 as sp
@@ -59,8 +60,9 @@ def t_end(option):
     name, start_time = TIME_LIST[TIME_NDX]
     elapsed = time.time() - start_time
     # print('Ending TIME_NDX:',TIME_NDX,'name:',name,'elapsed:',elapsed)
+    append = "" if name.endswith(":") else ":"
     if option is "print":
-        leader = ' ' * (TIME_NDX * 2) + name + ":"
+        leader = ' ' * (TIME_NDX * 2) + name + append
         #        print(' ' * (TIME_NDX * 2), name+": ", elapsed)
         print(leader, format(elapsed, '.10f'))
     del TIME_LIST[-1]

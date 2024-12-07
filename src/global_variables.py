@@ -77,8 +77,8 @@ WIN_MIN_WIDTH = 142     # Same values used by gnome-terminal to prevent window
 WIN_MIN_HEIGHT = 63     # resizing to shrink too much
 
 # Older Global variables from mmm (multiple monitors manager), so need renaming.
-BIG_FONT = 18           # Font size not used
-LARGE_FONT = 14         # Font size not used
+BIG_FONT = 18           # Font size
+LARGE_FONT = 14         # Font size
 MON_FONTSIZE = 12       # Size commonly used across most modules
 WIN_FONTSIZE = 11       # Default size set in image.set_font_style()
 MED_FONT = 10           # Medium Font size

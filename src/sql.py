@@ -1002,6 +1002,9 @@ def open_homa_db():
         "Target TEXT, Size INT, Count INT, Seconds FLOAT, " +
         "Comments TEXT, Timestamp FLOAT)")
 
+    con.execute("CREATE INDEX IF NOT EXISTS MusicIdIndex ON " +
+                "History(MusicId)")
+
     """ Version 3 """
     con.execute("CREATE UNIQUE INDEX IF NOT EXISTS TimeIndex ON " +
                 "History(Timestamp)")
