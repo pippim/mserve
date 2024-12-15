@@ -22,7 +22,7 @@ from __future__ import with_statement  # Error handling for file opens
 #       July 29 2023 - Fix Monitor.get_active_monitor()
 #       May. 11 2024 - mon.get_home_monitor(window) exact or closest monitor
 #       Oct. 09 2024 - check_window_geom(...) to force windows visibility
-#       Dec. 07 2024 - Trap window no longer exists, destroyed by Ubuntu Dock.
+#       Dec. 08 2024 - Suppress GObject future warnings originating from sql.py
 #
 # ==============================================================================
 
@@ -31,6 +31,7 @@ from __future__ import with_statement  # Error handling for file opens
 
             Gnome Desktop Toolkit (Gdk)
             python-xlib
+            xdotool - For .get_mouse_location()
 """
 
 try:                        # Python 3
@@ -433,6 +434,52 @@ class Monitors:
             return mon
 
         # If window off of screen use first monitor
+        return primary_monitor
+
+    def get_mouse_monitor(self):
+        """ First find the mouse position. Then find what monitor it is on and
+            then return that monitor. """
+
+        x, y = get_mouse_location()
+        x = int(x)
+        y = int(y)
+        x_center = x + 1  # Width of mouse pointer is insignificant
+        y_center = y + 1  # Height of mouse pointer is insignificant
+        # print("x_center:", x_center, "y_center:", y_center)
+
+        if x < 0 or x > self.screen_width:  # same as self.desk_width
+            x = 0  # Mouse top left was off screen!
+        if y < 0 or y > self.screen_height:  # same as self.desk_height
+            y = 0
+
+        primary_monitor = None
+
+        for mon in self.monitors_list:
+            # print("mon.name:", mon.name, "mon.x:", mon.x, "mon.y:", mon.y,
+            #      "mon.width:", mon.width, "mon.height:", mon.height)
+            # Save primary monitor if needed later
+            if mon.primary is True:
+                primary_monitor = mon
+
+            ''' Test mouse center inside monitor bbox '''
+            if mon.x <= x_center <= (mon.x + mon.width):
+                if mon.y <= y_center <= (mon.y + mon.height):
+                    return mon
+
+            # Most of mouse must be on monitor to qualify
+            if x < mon.x:
+                continue
+            if x >= mon.x + mon.width // 2:
+                continue
+            if y > mon.y:
+                continue
+            if y >= mon.y + mon.height // 2:
+                continue
+
+            # Mouse is mostly on this monitor.
+            return mon
+
+        # If mouse off of screen use first monitor
         return primary_monitor
 
     def tk_center(self, window):
@@ -1031,5 +1078,44 @@ def save_window_geom(name, geom):
         sql_cmd = "UPDATE History SET Timestamp=?, SourceMaster=? WHERE Id = ?"
         sql.hist_cursor.execute(sql_cmd, (time.time(), geom, sql.HISTORY_ID))
     sql.con.commit()
+
+
+def get_mouse_location(coord_only=True):
+    """ Get Mouse Location using xdotool. Called by Monitors().get_mouse_monitor().
+        Also used by homa.py and homa-indicator.py. Ported from homa-common.py.
+    """
+
+    f = os.popen("xdotool getmouselocation")
+    text = f.read().strip()
+    _returncode = f.close()  # https://stackoverflow.com/a/70693068/6929343
+
+    # print("text:", text, "returncode:", _returncode)
+    # text: ['x:5375 y:2229 screen:0 window:56623114'] returncode: None
+
+    def get_value(offset):
+        """ Get value from key: value pair """
+        try:
+            # text: ['x:5375 y:2229 screen:0 window:56623114'] returncode: None
+            key_value = text.split()[offset]
+        except IndexError:
+            return "30"
+
+        try:
+            # key_value[0]: 'x:5375' -OR- key_value[1]: 'y:2229'
+            value = key_value.split(":")[1]
+        except IndexError:
+            value = 30
+        return value
+
+    xPos = get_value(0)
+    yPos = get_value(1)
+
+    if coord_only:
+        return xPos, yPos
+
+    Screen = get_value(2)
+    Window = get_value(3)
+    return xPos, yPos, Screen, Window
+
 
 # End of monitor.py

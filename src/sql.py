@@ -12,7 +12,7 @@ from __future__ import with_statement  # Error handling for file opens
 # from __future__ import unicode_literals  # Not needed.
 import copy
 import warnings  # 'warnings' advises which commands aren't supported
-warnings.simplefilter('default')  # in future Python versions.
+#warnings.simplefilter('default')  # in future Python versions.
 
 #==============================================================================
 #
@@ -39,6 +39,7 @@ warnings.simplefilter('default')  # in future Python versions.
 #       Aug. 05 2024 - Music Table 'OsFileSize' was discovered to be <None>
 #       Aug. 24 2024 - SQL Music Table speed boost using OsFileNameIndex
 #       Oct. 20 2024 - Begin adaptation for homa.py - open_homa_db(), etc.
+#       Dec. 08 2024 - homa-indicator.py via monitor.py suppress GObject warn
 
 #   TODO:
 

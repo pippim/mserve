@@ -321,10 +321,30 @@ class DelayedTextBox:
         self.msg_top.title(self.title)
     
         ''' If self.toplevel passed use it's co-ordinates, else use mouse's '''
-        if self.toplevel:
+        if self.toplevel and self.toplevel.winfo_exists():
             self.toplevel.update_idletasks()     # Get up-to-date window co-ords
             # Get Geometry: "%dx%d%+d%+d" % (self.width, self.height, x_offset, y_offset)
-            gw, gh, gx, gy = re.findall('[0-9]+', self.toplevel.winfo_geometry())
+            try:
+                gw, gh, gx, gy = re.findall('[0-9]+', self.toplevel.winfo_geometry())
+            except tk.TclError:
+                self.msg_top = None
+                return
+            # 2024-12-08 Error in homa.py
+            # Exception in Tkinter callback
+            # Traceback (most recent call last):
+            #   File "/usr/lib/python2.7/lib-tk/Tkinter.py", line 1540, in __call__
+            #     return self.func(*args)
+            #   File "./homa.py", line 2144, in <lambda>
+            #     command=lambda: self.ResumeWait(timer=TIMER_SEC))
+            #   File "./homa.py", line 2768, in ResumeWait
+            #     self.dtb.update(str(int(now + countdown_sec - time.time())))
+            #   File "/home/rick/HomA/message.py", line 234, in update
+            #     self.create_top()           # Create dtb tk.Toplevel() and tk.Text()
+            #   File "/home/rick/HomA/message.py", line 327, in create_top
+            #     gw, gh, gx, gy = re.findall('[0-9]+', self.toplevel.winfo_geometry())
+            #   File "/usr/lib/python2.7/lib-tk/Tkinter.py", line 838, in winfo_geometry
+            #     return self.tk.call('winfo', 'geometry', self._w)
+            # TclError: bad window path name ".140336880149640"
             x = int(gx) + (int(gw)/2) - (self.width/2)       # Center for self.width
             y = int(gy) + (int(gh)/2) - (self.height/2)      # Center for self.height
         else:
@@ -355,6 +375,7 @@ class DelayedTextBox:
                 self.win_grp.unregister_child(self.msg_top)
             self.msg_top.destroy()
             self.forced_abort = True  # Parent responsible for checking
+            self.mounted = False
             #top = None  # Cannot update variable from outer space
 
         def confirm_close(*_args):

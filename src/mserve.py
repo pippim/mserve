@@ -102,6 +102,7 @@ warnings.simplefilter('default')  # in future Python versions.
 #       Aug. 24 2024 - SQL Music Table speed boost using OsFileNameIndex.
 #       Sep. 07 2024 - Convert from tk.Button() to ttk.Button() with style.
 #       Nov. 16 2024 - Update virtual file sizes for FTP devices in location.py.
+#       Dec. 15 2024 - Substitute Hi-Res images in Music/.../ArtworkAlbum.xxx
 #
 # ==============================================================================
 
@@ -12763,7 +12764,7 @@ mark set markName index"
     #
     # ==============================================================================
     def set_artwork_colors(self):
-        """ Get artwork for currently playing song.
+        """ Get artwork for currently playing song. class FileControl().get_artwork()
             Apply artwork colors to panels, buttons and text. """
 
         global ARTWORK_SUBSTITUTE  # Path to substitute artwork when file has none
@@ -17115,11 +17116,36 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilatio
             Use ffmpeg to get artwork for song into self.TMP_FFMPEG filename.
             Messages go to self.TMP_FFPROBE filename which is ignored for now.
 
+            Automatically substitute high-resolution artwork when found in:
+
+                .../ArtworkAlbum.xxx (All songs on album where xxx is png or jpg)
+                .../ArtworkTrack99.xxx (Given track number where xxx is png or jpg)
+
+            E.G.:
+                /media/rick/SANDISK128/Music/Edwin/Another Spin Around the Sun/
+                /media/rick/SANDISK128/Music/Golden Earring/Cut/
+
             Called from:
 
             set_artwork_colors()
             lib_tree_play()
         """
+
+        _who = self.who + "get_artwork():"
+
+        ''' Use substitute album artwork if it exists '''
+        basename = os.path.basename(self.path)
+        for extension in [u"jpg", u"jpeg", u"png"]:
+            # Cannot use "ext" because that is imported module name ("external")
+            substitute = self.path.replace(basename, u"ArtworkAlbum." + extension)
+            if os.path.isfile(substitute):
+                try:
+                    original_art = Image.open(substitute)
+                    resized_art = original_art.resize(
+                        (width, height), Image.ANTIALIAS)
+                    return ImageTk.PhotoImage(resized_art), resized_art, original_art
+                except tk.TclError:
+                    pass
 
         if len(self.artwork) == 0:
             # Song has no artwork that ffmpeg can identify.
@@ -17129,20 +17155,22 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilatio
         if lcs.host_down:
             return None, None, None
 
-        # Don't reuse last artwork
+        # Don't reuse last artwork in temp file
         if os.path.isfile(self.TMP_FFMPEG):
             os.remove(self.TMP_FFMPEG)
 
-        # noinspection SpellCheckingInspection
-        ext.t_init("'ffmpeg -nostdin -y -vn -an -r 1 -i '")
-        # noinspection SpellCheckingInspection
+        # noinspection SpellCheckingInspection  # Below is broken ffmpeg version 2.8
+        # ext.t_init("'ffmpeg -nostdin -y -vn -an -r 1 -i '")  # Init job timings
+        # noinspection SpellCheckingInspection  # Below is broken ffmpeg version 2.8
         # cmd = 'ffmpeg -nostdin -y -vn -an -r 1 -i ' + '"' + \
         #      self.path + '" ' + self.TMP_FFMPEG + ' 2>' + self.TMP_FFPROBE
 
         # 2024-04-16 - Add support for ffmpeg 6.1 that still works in 2.8:
         # https://stackoverflow.com/a/13677225/6929343
         # noinspection SpellCheckingInspection
-        cmd = 'ffmpeg -nostdin -y -an ' + '-i "' + self.path + \
+        ext.t_init("'ffmpeg -nostdin -y -an -i '")  # Init job timings
+        # cmd = 'ffmpeg -nostdin -y -an ' + '-i "' + self.path + \  # 2024-12-15 extra +
+        cmd = 'ffmpeg -nostdin -y -an -i "' + self.path + \
               '" -vcodec copy ' + self.TMP_FFMPEG + ' 2>' + self.TMP_FFPROBE
 
         result = os.popen(cmd).read().strip()

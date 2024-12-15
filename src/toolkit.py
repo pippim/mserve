@@ -1130,7 +1130,7 @@ class ChildWindows:
         window.winfo_xxx see: https://wiki.tcl-lang.org/page/winfo%28%29
 
     """
-    def __init__(self, toplevel):
+    def __init__(self, toplevel, auto_raise=True):
 
         self.toplevel = toplevel  # Parent window
         self.window = {}  # Child Window {key, widget, x, y, w, h
@@ -1144,7 +1144,8 @@ class ChildWindows:
         self.last_geom = [0, 0, 0, 0]  # Geometry when drag_window last called
         self.move_geom = [0, 0, 0, 0]  # Difference between curr and last
         self.toplevel.bind("<Configure>", self.drag_window)
-        self.toplevel.bind("<FocusIn>", self.raise_children)
+        if auto_raise:
+            self.toplevel.bind("<FocusIn>", self.raise_children)
 
         ''' Event log '''
         self.init_time = time.time()
@@ -1326,7 +1327,7 @@ class ChildWindows:
 
     def register_child(self, key, widget):
         """ Called from mserve.py for delayed textbox (dtb) or
-            here for displaying mini-windows E.G. column details.
+            toolkit.py for displaying mini-windows E.G. column details.
 
             Set focus in for self.key to lift the child window
             When self.key is dragged, so is the child window.
@@ -4254,10 +4255,12 @@ class ToolTips(CommonTip):
               If window loses focus, close balloons.
     """
 
-    def __init__(self):
+    def __init__(self, print_error=True):
 
         """ Duplicate entry_init() """
         CommonTip.__init__(self)        # Recycled class to set self. instances
+
+        self.print_error = print_error  # Print errors? Not possible with no stdout
 
         self.log_nt = None              # namedtuple time, action, widget, x, y
         self.log_list = []              # list of log dictionaries
@@ -4413,7 +4416,8 @@ class ToolTips(CommonTip):
                 return  # Don't want to delete the last one
             if nt.widget == search_widget:
                 # Widget matches so flag as deleted
-                print(self.who + 'delete_older_for_widget():', self.log_nt)
+                if self.print_error:
+                    print(self.who + 'delete_older_for_widget():', self.log_nt)
                 # TODO: What if entering canvas is deleted and colors not changed?
                 Event = namedtuple('Event', 'time, action, widget, x, y')
                 # noinspection PyArgumentList
@@ -4429,13 +4433,17 @@ class ToolTips(CommonTip):
             if self.dict['widget'] == search_widget:
                 break
         else:
-            print(self.who + 'set_tip_plan() self.log_nt widget NOT FOUND!:',
-                  self.log_nt)
-            print('search_widget for above:', search_widget)
+            if self.print_error:
+                print(self.who + 'set_tip_plan() self.log_nt widget NOT FOUND!:',
+                      self.log_nt)
+                print('search_widget for above:', search_widget)
             try:
-                print("search_widget['text']:", search_widget['text'])
+                if self.print_error:
+                    print("search_widget['text']:", search_widget['text'])
             except tk.TclError:
-                print("Probably shutting down...")
+                if self.print_error:
+                    print("Probably shutting down...")
+                pass  # Weirdly needed to make pycharm happy
             return
 
         self.dict_to_fields()  # Dictionary to easy names
@@ -4498,7 +4506,7 @@ class ToolTips(CommonTip):
             # Button released after press in widget
             self.release_time = self.log_nt.time
 
-        else:
+        elif self.print_error:
             print(self.who + 'set_tip_plan(): Invalid action:',
                   self.log_nt.action)
 
@@ -4551,7 +4559,8 @@ class ToolTips(CommonTip):
                 return self.dict['widget']
 
         # Widget wasn't found
-        print('renumber_widget(): widget not found:\n', event_widget)
+        if self.print_error:
+            print('renumber_widget(): widget not found:\n', event_widget)
 
     def calc_fade_in_out(self):
         """ Calculate fade in and fade out time.
@@ -4751,8 +4760,9 @@ class ToolTips(CommonTip):
                 self.window_visible = False
                 self.window_fading_in = False
                 self.window_fading_out = False
-                print(self.who + ".process_tip():",
-                      "self.tip.window doesn't exist")
+                if self.print_error:
+                    print(self.who + ".process_tip():",
+                          "self.tip.window doesn't exist")
                 return
 
         ''' Pending event to start displaying tooltip balloon? '''
@@ -4760,7 +4770,8 @@ class ToolTips(CommonTip):
             if self.tip_window:
                 self.tip_window.destroy()
                 # Happens when leaving widget while tip window displayed
-                print(self.who + 'process_tip(): TEMPORARY forced tip window close')
+                if self.print_error:
+                    print(self.who + 'process_tip(): TEMPORARY forced tip window close')
                 self.tip_window = None
                 self.window_visible = False
                 self.window_fading_in = False
@@ -4770,7 +4781,8 @@ class ToolTips(CommonTip):
         fade_in_time, fade_out_time = self.calc_fade_in_out()
         if fade_in_time > self.now + 8:
             # 2024-06-02 - Not sure why here. Perhaps testing delayed fade_in?
-            print(self.who + ".process_tip(): fade_in_time starts in:", fade_in_time - self.now)
+            if self.print_error:
+                print(self.who + ".process_tip(): fade_in_time starts in:", fade_in_time - self.now)
 
         # Tooltip fading out?
         if self.now > fade_out_time:
@@ -4800,11 +4812,13 @@ class ToolTips(CommonTip):
                     return
 
                 if self.tip_window is None:
-                    print(self.who + 'process_tip(): ' +
-                          'self.tip_window does not exist')
-                    print('self.now:', self.now, 'zero_alpha_time:', zero_alpha_time)
+                    if self.print_error:
+                        print(self.who + 'process_tip(): ' +
+                              'self.tip_window does not exist')
+                        print('self.now:', self.now, 'zero_alpha_time:', zero_alpha_time)
                     diff = self.now - zero_alpha_time
-                    print('diff:', diff)
+                    if self.print_error:
+                        print('diff:', diff)
                 else:
                     self.tip_window.destroy()
 
@@ -5042,7 +5056,7 @@ class ToolTips(CommonTip):
             off = off if off > 0 else 0
             x = sw[0] + off  # bottom centered inside parent
             y = sw[1] - h - 20  # 20 px above parent's bottom
-        else:
+        elif self.print_error:
             print_trace()
             print(self.who + 'override_window_geom(): ')
             print('Bad self.anchor value:', self.anchor)
@@ -5074,16 +5088,18 @@ class ToolTips(CommonTip):
                 #       we need to
                 return
   
-        print_trace()          
-        print(self.who + 'set_text(): tip not found')
+        if self.print_error:
+            print_trace()          
+            print(self.who + 'set_text(): tip not found')
 
     def get_dict(self, widget):
         """ Debugging tool for external caller to get a widget's dictionary """
         for s in self.tips_list:
             if s['widget'] == widget:
                 return s
-        print(self.who + 'get_dict(): self.dict for "widget" not found',
-              widget)
+        if self.print_error:
+            print(self.who + 'get_dict(): self.dict for "widget" not found',
+                  widget)
 
     def toggle_position(self, widget):
         """ Flip anchor from North->South or from South->North
@@ -5105,8 +5121,9 @@ class ToolTips(CommonTip):
                 self.tips_list[i] = s
                 return
 
-        print_trace()
-        print(self.who + 'toggle_position(): widget not found', widget)
+        if self.print_error:
+            print_trace()
+            print(self.who + 'toggle_position(): widget not found', widget)
         exit()
 
     def enter(self, event):
@@ -5188,9 +5205,10 @@ class ToolTips(CommonTip):
             pass
         end = len(self.tips_list)
         if start == end:
-            print("\n" + self.who + "close() called with no effect:", start)
-            print_trace()
-            print("Widget:", widget)
+            if self.print_error:
+                print("\n" + self.who + "close() called with no effect:", start)
+                print_trace()
+                print("Widget:", widget)
         if flush_log:
             self.log_list = []  # Flush out log list for new events
 
