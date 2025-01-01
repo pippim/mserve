@@ -14,15 +14,16 @@ from __future__ import with_statement  # Error handling for file opens
 #
 #       message.py - status messages, dialogs, tooltips
 #
-#       July 05 2023 - Optional help button on ShowInfo, AskQuestion, AskString
-#       July 12 2023 - Support to/from mserve_config.py
-#       July 15 2023 - AskString cursor invisible. Use background="white".
+#       July 05 2023 - Help buttons: .ShowInfo(), .AskQuestion(), .AskString().
+#       July 12 2023 - Support to/from mserve_config.py.
+#       July 15 2023 - .AskString() cursor invisible. Use background="white".
 #       Aug. 09 2023 - Add g.MSG_WIDTH_ADJ and self.title2 title width support.
 #       Aug. 17 2023 - threading.RLock() prevent to messages waiting at once.
 #       Mar. 17 2024 - Fix <Return> to <KP_Enter> for OK/Yes dialog buttons.
-#       Sep. 09 2024 - Switch 5 instances of 'tk.Button' to 'ttk.Button'
-#       Oct. 26 2024 - Add "font=" and "justify=" to DelayedTextBox
-#       Dec. 02 2024 - AskString support password entry with show="*"
+#       Sep. 09 2024 - Switch 5 instances of 'tk.Button' to 'ttk.Button'.
+#       Oct. 26 2024 - Add "font=" and "justify=" to DelayedTextBox.
+#       Dec. 02 2024 - AskString support password entry with show="*".
+#       Dec. 24 2024 - .ShowInfo(), etc. enhanced ttk.Button style "S.TButton".
 #
 #==============================================================================
 
@@ -483,6 +484,18 @@ class AskCommonSelf:
                   background=[('!active', 'Grey75'), ('pressed', 'ForestGreen'),
                               ('active', 'SkyBlue3')]  # lighter than DodgerBlue
                   )
+
+        style.map("S.TButton",  # Used by HomA
+                  foreground=[('!active', 'Black'), ('pressed', 'White'),
+                              ('active', 'Black')],
+                  background=[('!active', 'Grey75'), ('pressed', 'ForestGreen'),
+                              ('active', 'SkyBlue3')]  # lighter than DodgerBlue
+                  )
+
+        try:
+            style.configure("S.TButton", font=g.MED_FONT)
+        except NameError:
+            pass  # g class not defined
 
 
 class ShowInfo(simpledialog.Dialog, AskCommonSelf):

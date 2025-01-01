@@ -323,6 +323,9 @@ class Monitors:
         for window in screen.get_windows():
             if window.is_active() is True:
                 geom = window.get_geometry()  # Includes decorations
+                if geom is None:
+                    print("monitor.py - get_active_window(): 'geom' is 'NoneType'.")
+                    continue  # 2024-12-18 Added today when geom is None
                 window_name = window.get_name()
                 x_id = window.get_xid()
                 # A lot more attributes are available see:
