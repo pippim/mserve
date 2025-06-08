@@ -251,19 +251,21 @@ def lighten_rgb(rgb):
 def contrasting_hex_color(hex_str):
     """ Pass string with hash sign of RGB hex digits.
         Returns white or black hex code contrasting color passed.
+        2025-02-02 Don't use r,g,b because g. Global variables.
     """
-    (r, g, b) = (hex_str[1:3], hex_str[3:5], hex_str[5:])
-    return '#000000' if 1 - (int(r, 16) * 0.299 + int(g, 16) * 0.587 +
-                             int(b, 16) * 0.114) / 255 < 0.5 else '#ffffff'
+    (rd, gr, bl) = (hex_str[1:3], hex_str[3:5], hex_str[5:])
+    return '#000000' if 1 - (int(rd, 16) * 0.299 + int(gr, 16) * 0.587 +
+                             int(bl, 16) * 0.114) / 255 < 0.5 else '#ffffff'
 
 
 def contrasting_rgb_color(dec_tuple):
     """ Pass (r,g,b) tuple of background color.
         Returns white or black (r,g,b) tuple contrasting color passed.
+        2025-02-02 Don't use r,g,b because g. Global variables.
     """
-    (r, g, b) = dec_tuple[:3]  # 2024-04-16 ffmpeg 6.1 glitches
-    return (0, 0, 0) if 1 - (r * 0.299 + g * 0.587 +
-                             b * 0.114) / 255 < 0.5 else (255, 255, 255)
+    (rd, gr, bl) = dec_tuple[:3]  # 2024-04-16 ffmpeg 6.1 glitches
+    return (0, 0, 0) if 1 - (rd * 0.299 + gr * 0.587 +
+                             bl * 0.114) / 255 < 0.5 else (255, 255, 255)
 
 
 def shift_image(img_name, direction, width, height, percent):
@@ -803,6 +805,34 @@ def mmm_taskbar_icon(toplevel, hgt, out_c, fill_c, m1c, m2c, m3c):
     toplevel.tk.call('wm', 'iconphoto', toplevel._w, png_img)
 
 
+def tk_image(fname, wid, hgt):
+    """
+    https://github.com/python-pillow/Pillow/issues/477
+    Fixed in 2017: https://github.com/python-pillow/Pillow/pull/551
+
+    Python 3 gives ResourceWarning for PIL image processing for:
+
+    ImageTk.PhotoImage(Image.open("bias.jpg").resize((300, 180), Image.ANTIALIAS))
+    
+    /usr/lib/python3/dist-packages/PIL/Image.py:1528: ResourceWarning: 
+    unclosed file <_io.BufferedReader name='turn_off.png'>
+        self.load()
+
+    :param fname: filename sony.jpg, bias.jpg, etc.
+    :param wid: desired width
+    :param hgt: desired height
+    :return: Pillow photo image suitable for Tkinter treeview, buttons, menus, etc.
+    """
+    # ORIGINAL still gets error even though it shouldn't?
+    with Image.open(fname) as safe:
+        return ImageTk.PhotoImage(safe.resize((wid, hgt), Image.ANTIALIAS))
+    # HAMMER METHOD still gets error even though it shouldn't?
+    #raw = Image.open(fname)
+    #photo = ImageTk.PhotoImage(raw.resize((wid, hgt), Image.ANTIALIAS))
+    #raw.close()  # Still generates Resource Warning :(
+    #return photo
+
+
 class RoundedButton(tk.Canvas):
     """
         Create rounded button.
@@ -1030,6 +1060,159 @@ def canvas_text_bbox_size(text, ms_font):
     sample = scratch.create_text((0, 0), text=text, font=ms_font)
     x0, y0, x1, y1 = scratch.bbox(sample)
     return x1 - x0, y1 - y0   # x1 = width, y1 = height
+
+
+class BreathingCircle:
+    """ Use RGB transition to paint circle with blurred edges. """
+
+    def __init__(self, low, high, steps, full_size):
+
+        self.origLow = low
+        self.origHigh = high
+        self.newLow = low  # After applying boost percentage, increase 1.xx times
+        self.newHigh = high  # After applying boost percentage, increase 1.xx times
+        self.steps = steps  # Number of steps from low to high
+        self.stepValue = (float(high) - float(low)) / float(steps)
+        self.stepNdx = 0  # Passed by update
+        self.fullSize = full_size
+        self.currRed = None
+        self.currGreen = None
+        self.currBlue = None
+        self.image = None  # Image representing current color brightness
+
+        ''' TODO: Put screenshot image into source cover 
+        #self.src_window_id_hex = mon.wm_get_active_window()
+        #print(self.src_cover_top.put_pil_image())
+
+        # create and pack the canvas. Then load image file
+        #canvas = tk.Canvas(self.src_cover_top, width=self.src_w,
+        #                   height=self.src_h, bg='black')
+        #canvas.pack(expand=tk.YES, fill=tk.BOTH)
+        #canvas.create_image(0, 0, image=?, anchor=tk.NW)
+
+        src_frame = tk.Frame(self.src_cover_top, bg="black",
+                             width=self.src_w, height=self.src_h)
+        src_frame.grid(column=0, row=0, sticky=tk.NSEW)
+        src_frame.grid_columnconfigure(0, weight=1)
+        src_frame.grid_rowconfigure(0, weight=1)
+        ms_font = (None, 48)
+        src_label = tk.Label(src_frame, text="Gone Fishing", fg="red",
+                             bg="black", font=ms_font)
+        src_label.grid(column=0, row=0, sticky=tk.NSEW)
+        src_label.grid_columnconfigure(0, weight=1)
+        src_label.grid_rowconfigure(0, weight=1)
+
+        self.src_cover_top.wait_visibility()
+        self.src_cover_top.attributes("-alpha", .75)
+        self.src_cover_top.withdraw()
+        self.src_cover_top.update_idletasks()
+        self.src_cover_top.geometry('{}x{}+{}+{}'.format(
+            self.src_w, self.src_h, self.src_x, self.src_y))
+        self.src_cover_top.deiconify()  # Forces window to appear
+        self.src_cover_top.update()  # This is required for visibility
+
+        # Apply shark silhouette - based on: m_circle_splash_image
+        # TODO: Shark is facing left. If Man to right, flip horizontally.
+        #shark_img = Image.open('shark.png').convert('L').resize(self.src_img.size)
+        shark_img = Image.open(self.shark_name).convert('L').resize(
+            (self.src_geom.width, self.src_geom.height))
+
+        # Invert black & transparent:
+        # https://note.nkmk.me/en/python-pillow-invert/
+        shark_img_invert = ImageOps.invert(shark_img)
+
+        # https://note.nkmk.me/en/python-pillow-putalpha/
+        #shark_blur = shark_img_invert.filter(ImageFilter.GaussianBlur(4))
+        shark_blur = shark_img_invert      # Alternate with clean edges
+
+        # Blend raw image and silhouette
+        self.src_img.put alpha(shark_blur)
+        self.src_img.save(self.shark_alpha_name)
+
+        # At this point make window undecorated, don't do it sooner!
+        # From: https://stackoverflow.com/a/37199655/6929343
+        #self.src_cover_top.overrideredirect(True)  # Remove self.src_cover_top window close button
+
+        # Mount the shark with transparent layer
+        fudge_x = str(src_geom[0] + 14)
+        fudge_y = str(src_geom[1] + 24)
+        # fudge_x = str(src_geom[0])
+        # fudge_y = str(src_geom[1])
+        ext_name = 'pqiv -c -i -P ' + fudge_x + ',' + fudge_y +\
+                   " " + self.shark_alpha_name
+
+        # Place the shark over source window and get it's PID
+        # Need option to wait for GUI window to open!
+        self.shark_pid = ext.launch_command(ext_name, self.src_toplevel)
+
+        #ext.t_init('x11.build_windows_list')
+        #win_list = x11.build_windows_list()     # 10 times faster than "wmctrl -l"
+        #print('win_list:', win_list)
+        #ext.t_end('print')
+
+        self.shark_window_id_dec = \
+            x11.wait_visible_name(
+                'pqiv: ' + self.shark_alpha_name, self.src_toplevel, 33, 100
+            )
+        if self.shark_window_id_dec is None:
+            print('Waited ' + str(33 * 100 / 1000) + ' seconds but no shark appeared')
+            return
+
+        # geometry of target window - Already obtained at top of init using:
+        self.trg_window_id_hex, trg_geom = self.trg_get_window_id()
+        # print('trg_window_id_hex:', self.trg_window_id_hex, 'trg_geom:', trg_geom)
+        self.trg_x = trg_geom[0]  # x
+        self.trg_y = trg_geom[1]  # y
+        self.trg_w = trg_geom[2]  # width
+        self.trg_h = trg_geom[3]  # height
+
+        self.man_window_id = None           # xdotool decimal format
+
+        # self.win_remove_above()  # Changed April 30, 2023
+
+        self.trg_was_above = None
+        self.trg_check_full_screen()
+        """  The target window can stay maximized for undecorated windows only. We need to get
+             "always on top" (above) state, Maximized Vertically and Maximized Horizontally
+              states.
+
+              Sets         self.trg_was_above = True
+        """
+
+        self.src_window_id_hex = hex(self.src_window_id_dec)
+        self.src_was_below = self.win_remove_below(self.src_window_id_hex)
+
+        # Next code Was BELOW about 20 lines
+        # Mount the shark with transparent layer
+        # TODO: Center man on screen 
+        fudge_x = str(trg_geom[0] + 450)
+        fudge_y = str(trg_geom[1] + 200)
+        ext_name = 'pqiv -c -c -i -P ' + fudge_x + ',' + fudge_y +\
+                   ' "' + self.man_falling_name + '"'
+        #print('ext_name:', ext_name)
+
+        # Place the "man falling" over target window and get it's PID
+        self.man_pid = ext.launch_command(ext_name, self.trg_toplevel)
+        '''
+
+    def makeImage(self, red, green, blue, step, sunlight):
+        """ Make a circle representing breathing stage.
+
+            With dimmest brightness starts as a small circle.
+            As color(s) brighten, circle grows larger until brightest.
+            Then color(s) begin to dim and circle shrinks back to small circle.
+
+        """
+        #
+        # Update canvas / draw circle with current color
+        self.image = "#%02x%02x%02x" % (red, green, blue)
+        # https://stackoverflow.com/a/48722664/6929343
+        # circle with faded edges to represent breathing.
+        # Need # of steps and step ndx.
+        if step == sunlight:
+            return None
+
+        return self.image
 
 
 # noinspection SpellCheckingInspection

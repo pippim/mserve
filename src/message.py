@@ -24,6 +24,10 @@ from __future__ import with_statement  # Error handling for file opens
 #       Oct. 26 2024 - Add "font=" and "justify=" to DelayedTextBox.
 #       Dec. 02 2024 - AskString support password entry with show="*".
 #       Dec. 24 2024 - .ShowInfo(), etc. enhanced ttk.Button style "S.TButton".
+#       Jan. 18 2025 - Add 'win_grp=None' to AskQuestion(), ShowInfor(), etc.
+#       Jan. 26 2025 - Delayed Text Box use ttk.Button (style="C.TButton").
+#       Feb. 02 2025 - ShowInfo(), AskQuestion() auto-assign Child Window Key.
+#       Mar. 07 2025 - Simply "string_width=28" usage 
 #
 #==============================================================================
 
@@ -393,8 +397,8 @@ class DelayedTextBox:
 
         ''' Show close button to abort / close window '''
         if self.abort is True:
-            close_btn = tk.Button(
-                self.msg_top, width=g.BTN_WID, text="✘ Close", command=close)
+            close_btn = ttk.Button(self.msg_top, width=g.BTN_WID, text="✘ Close", 
+                                   style="C.TButton", command=close)
             close_btn.pack()
         self.textbox.pack()
 
@@ -430,8 +434,8 @@ class AskCommonSelf:
     """ Variables common to ShowInfo, AskQuestion and AskString
         Must appear before first reference (ShowInfo) """
     def __init__(self, parent, title=None, text=None, confirm='yes', align='center',
-                 thread=None, icon='warning', string=None, string_width=None,
-                 show=None, help=None):
+                 thread=None, icon='warning', string=None, string_width=28,
+                 show=None, help=None, win_grp=None):
 
         self.top_level = parent     # Allows .after() calls
         self.title2 = title         # Added Aug 9/23 for setting window width
@@ -453,16 +457,14 @@ class AskCommonSelf:
         self.icon = icon            # Warning, Error, Info, Question icons
         self.show = show            # Password entry character to show
         self.help = help            # Future help button linking to mserve.md
+        self.win_grp = win_grp      # Child Windows move with parent & stay on top
 
         self.entry = None           # Tkinter Entry widget
         if string:
             self.string = string    # Default value passed for AskString
         else:
             self.string = ""        # Entry field will initially be blank
-        if string_width:
-            self.string_width = string_width
-        else:
-            self.string_width = 28  # Size of string .Entry variable
+        self.string_width = string_width
 
         # self.result defined here for pycharm syntax highlighting
         self.result = None          # Defined in simpledialog() class
@@ -504,15 +506,15 @@ class ShowInfo(simpledialog.Dialog, AskCommonSelf):
         https://docs.python.org/3/library/dialog.html
     """
     def __init__(self, parent=None, title=None, text=None, align='center',
-                 thread=None, confirm='no', icon='info', _root=None):
+                 thread=None, confirm='no', icon='info', win_grp=None, _root=None):
 
         AskCommonSelf.__init__(self, parent, title=title, text=text, confirm=confirm,
-                               align=align, thread=thread, icon=icon)
+                               align=align, thread=thread, icon=icon, win_grp=win_grp)
         simpledialog.Dialog.__init__(self, parent, title=title)
 
     def body(self, parent):
         """ Wrapper to body_func in mainline """
-        return body_func(self)
+        return body_func(self)  # This registers win_grp
 
     def buttonbox(self):
         """ add standard button box for ShowInformation.
@@ -530,6 +532,7 @@ class ShowInfo(simpledialog.Dialog, AskCommonSelf):
         # Below from: https://stackoverflow.com/a/33664214/6929343
         self.bind("<KP_Enter>", self.ok)  # info.cast can still intercept Enter
         self.bind("<Escape>", self.ok)  # ShowInfo has no "Cancel" button
+        self.protocol("WM_DELETE_WINDOW", self.ok)
 
         box.pack()
 
@@ -538,6 +541,9 @@ class ShowInfo(simpledialog.Dialog, AskCommonSelf):
         global WAIT_LOCK
         WAIT_LOCK = False  # Only one message can be waiting at once, else chaos
         self.cancel()  # Resides in SimpleDialog() class. Closes ShowInfo window
+        if self.win_grp:  # unregister in both self.ok() and self.Cancel()
+            self.win_grp.unregister_child(self)
+            self.win_grp = None
 
 
 # data_w_l(), set_icon_image(), wait_window_func(), # body_func()
@@ -685,6 +691,7 @@ def body_func(self):
         If align = 'left' prepend 'Em' space on lines not beginning with '\t'
 
     :param self: ShowInf0(), AskQuestion() or AskString() class parent
+    :param name: Unique name to assign to Child Windows key
     :return: Formatted text box as newly created widget called self.textbox
     """
 
@@ -737,7 +744,20 @@ def body_func(self):
 
     # Populate the textbox with justification and height
     textbox(self.textbox, f_text, self.align, lines)
+
+    # 2025-01-18: every dialog has a body_func() so register win_grp now
+    if self.win_grp:
+        # Auto-assign window key using <None> as window name
+        self.win_grp.register_child(None, self)
+
     return self.textbox
+
+
+def unregister_child(self):
+    """ If child window was registered, unregister it and prevent duplicate """
+    if self.win_grp:  # unregister in both self.ok() and self.Cancel()
+        self.win_grp.unregister_child(self)
+        self.win_grp = None  # prevent closing again from another button
 
 
 class AskQuestion(simpledialog.Dialog, AskCommonSelf):
@@ -758,11 +778,11 @@ class AskQuestion(simpledialog.Dialog, AskCommonSelf):
                 automatically sends messages to user.
     """
 
-    def __init__(self, parent, title=None, text=None, confirm='yes',
-                 align='center', thread=None, icon='warning', _root=None):
+    def __init__(self, parent, title=None, text=None, confirm='yes', align='center',
+                 thread=None, icon='warning', win_grp=None, _root=None):
 
         AskCommonSelf.__init__(self, parent, title=title, text=text, confirm=confirm,
-                               align=align, thread=thread, icon=icon)
+                               align=align, thread=thread, icon=icon, win_grp=win_grp)
         simpledialog.Dialog.__init__(self, parent, title=title)
         #if root:
         #    ''' When using root window message s/b centered  '''
@@ -797,7 +817,7 @@ TclError: grab failed: another application has grab
         '''
 
     def body(self, parent):
-        """ Apply bod to textbox """
+        """ Apply body (message) to textbox """
         self.textbox = body_func(self)
         return self.textbox
 
@@ -818,6 +838,7 @@ TclError: grab failed: another application has grab
         # Below from: https://stackoverflow.com/a/33664214/6929343
         self.bind("<KP_Enter>", self.ok)  # 2024-03-17 Replace broken <Return>
         self.bind("<Escape>", self.cancel)  # June 18, 2023 working properly
+        self.protocol("WM_DELETE_WINDOW", self.cancel)
 
         box.pack()
 
@@ -843,6 +864,7 @@ TclError: grab failed: another application has grab
             # print("self.cancel, self.result", self.result)
         self.result = "yes"  # Aug 27/23 - gets called when "OK" clicked
         #print("self.ok, self.result", self.result)  # "yes"
+        unregister_child(self)  # Remove message window from ChildWindows instance
 
     def cancel(self, _event=None):
         """ Cancel button clicked. """
@@ -852,6 +874,8 @@ TclError: grab failed: another application has grab
         if self.parent is not None:
             self.parent.focus_set()
         self.result = "no"
+        unregister_child(self)  # Remove message window from ChildWindows instance
+
         self.destroy()  # Called by self.OK as well to destroy window
 
 
@@ -864,11 +888,11 @@ class AskString(simpledialog.Dialog, AskCommonSelf):
 
     def __init__(self, parent, title=None, text=None, confirm='no',
                  align='center', thread=None, icon='question', string=None,
-                 string_width=None, show=None, _root=None):
+                 string_width=None, show=None, win_grp=None, _root=None):
 
         AskCommonSelf.__init__(self, parent, title=title, text=text, confirm=confirm,
                                align=align, thread=thread, icon=icon, show=show,
-                               string=string, string_width=string_width)
+                               string=string, string_width=string_width, win_grp=win_grp)
 
         simpledialog.Dialog.__init__(self, parent, title=title)
 
@@ -913,7 +937,13 @@ class AskString(simpledialog.Dialog, AskCommonSelf):
         self.entry.insert(tk.END, self.string)  # insert default text
         self.entry.pack(fill="none", padx=5, expand=True)
         self.entry.focus_set()  # Position cursor in tk.Entry field
-        return self.textbox
+
+        # 2025-01-18: every dialog has a body_func() so register win_grp now
+        if self.win_grp:
+            # Used for Toolkit ChildWindow().register_child
+            self.win_grp.register_child(None, self)
+
+        return self.textbox  # self.win_grp.un
 
     def buttonbox(self):
         """ Add standard button box for AskString
@@ -930,6 +960,7 @@ class AskString(simpledialog.Dialog, AskCommonSelf):
         # Below from: https://stackoverflow.com/a/33664214/6929343
         self.bind("<KP_Enter>", self.ok)  # 2024-03-17 Replace broken <Return>
         self.bind("<Escape>", self.cancel)
+        self.protocol("WM_DELETE_WINDOW", self.cancel)
 
         box.pack()
 
@@ -952,6 +983,7 @@ class AskString(simpledialog.Dialog, AskCommonSelf):
         finally:
             self.cancel()
         self.result = "yes"
+        unregister_child(self)  # Remove message window from ChildWindows instance
 
     def apply(self, _event=None):
         """ Clicked Apply button. E.G. accept string input """
@@ -959,6 +991,7 @@ class AskString(simpledialog.Dialog, AskCommonSelf):
         WAIT_LOCK = False  # Only one message can be waiting at once, else chaos
         self.string = self.entry.get()
         #print('self.string:', self.string)
+        unregister_child(self)  # Remove message window from ChildWindows instance
         return True
 
     def cancel(self, _event=None):
@@ -969,6 +1002,7 @@ class AskString(simpledialog.Dialog, AskCommonSelf):
         if self.parent is not None:
             self.parent.focus_set()
         self.result = "no"
+        unregister_child(self)  # Remove message window from ChildWindows instance
         self.destroy()
 
 
@@ -993,9 +1027,9 @@ class AskDirectory(filedialog.Directory, AskCommonSelf):
     """
 
     def __init__(self, parent=None, title=None, initial=None,
-                 thread=None, _root=None):
+                 thread=None, win_grp=None, _root=None):
 
-        AskCommonSelf.__init__(self, parent, title=title, thread=thread)
+        AskCommonSelf.__init__(self, parent, title=title, thread=thread, win_grp=win_grp)
 
         # filedialog.FileDialog.__init__(self, parent, title=title)
         # filedialog.Directory.__init__(self, parent, title=title,
@@ -1042,6 +1076,7 @@ class AskDirectory(filedialog.Directory, AskCommonSelf):
             self.apply()  # There is no apply() for AskQuestion or ShowInfo
         finally:
             self.cancel()
+        unregister_child(self)  # Remove message window from ChildWindows instance
         return self.directory
 
     def cancel(self, _event=None):
@@ -1051,6 +1086,7 @@ class AskDirectory(filedialog.Directory, AskCommonSelf):
         # put focus back to the parent window
         if self.parent is not None:
             self.parent.focus_set()
+        unregister_child(self)  # Remove message window from ChildWindows instance
         self.destroy()
 
 

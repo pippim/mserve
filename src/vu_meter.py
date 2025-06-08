@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/python
 # -*- coding: utf-8 -*-
 """
 Author: Pippim
@@ -20,6 +20,7 @@ from __future__ import with_statement  # Error handling for file opens
 #       July 12 2023 - Modify import order for mserve_config.py
 #
 #==============================================================================
+# noinspection SpellCheckingInspection
 """
 
 IMPORTANT: Use pavucontrol to create loopback from sound output to microphone:
@@ -101,6 +102,8 @@ class Amplitude(object):
         count = len(block) / 2
         shorts = struct.unpack("%dh" % count, block)
         sum_squares = sum(s**2 * SHORT_NORMALIZE**2 for s in shorts)
+        # Expected int, got float error
+        # noinspection PyTypeChecker
         return Amplitude(math.sqrt(sum_squares / count))
 
     def display(self, mark, scale=50, fn=VU_METER_FNAME):
@@ -129,6 +132,7 @@ def parse_data(data, channel_ndx, channel_cnt, maximal):
 
 
 def main():
+    """ mainline """
 
     # January 24, 2021 separate left and right channels
     parameter = 'mono'

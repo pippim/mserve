@@ -23,6 +23,7 @@ from __future__ import with_statement  # Error handling for file opens
 #       May. 11 2024 - mon.get_home_monitor(window) exact or closest monitor
 #       Oct. 09 2024 - check_window_geom(...) to force windows visibility
 #       Dec. 08 2024 - Suppress GObject future warnings originating from sql.py
+#       Jun. 08 2025 - Deprecate center(), get_monitors() & get_tk_window_mon...
 #
 # ==============================================================================
 
@@ -146,9 +147,6 @@ def get_active_window2():
     return active_window_name
 
 
-''' Future code '''
-
-
 def get_gtk_window():
     """ Not used """
     # From: https://askubuntu.com/a/303754/307523
@@ -168,7 +166,158 @@ def get_gtk_window():
     # This is an example output
     #print("Height: %s, Width: %s, X: %s, Y: %s" %
     #      (monitor.height, monitor.width, monitor.x, monitor.y))
-    
+
+
+''' Deprecated code '''
+
+
+def center(window):
+    """ 2025-06-08 deprecated
+
+    July 28, 2023... centers on monitor 0, not monitor 2?
+    Similar to Monitor.tk_center()
+
+    This is the only function that calls:
+        get_tk_window_monitor_dict(window) - Which is only one calling:
+        monitors = get_monitors()
+        get_monitors() - This function slated for removal
+
+
+    From: https://stackoverflow.com/a/10018670/6929343
+    centers a tkinter window on monitor in multi-monitor setup
+    :param window: the main window or Toplevel window to center
+    """
+
+    window.update_idletasks()  # Refresh window's current position
+    mon_dict = get_tk_window_monitor_dict(window)  # Monitor geometry window is on
+
+    if mon_dict is None:
+        # logging.error("No monitors found!")
+        print("No monitors found!")
+        return None
+
+    # Calculate X, Y of window to center within monitors X, Y, width and height
+    x = mon_dict['width'] // 2 - window.winfo_width() // 2 + mon_dict['x']
+    y = mon_dict['height'] // 2 - window.winfo_height() // 2 + mon_dict['y']
+    x = 30 if x < 0 else x  # Window top left may be off screen!
+    y = 30 if y < 0 else y
+    window.geometry('+{}+{}'.format(x, y))
+
+    return mon_dict
+
+
+def get_tk_window_monitor_dict(window):
+    """ DEPRECATED 2025-06-08
+
+    Returns the mserve monitor dictionary a tkinter window is on.
+    If window is off screen force it into Monitor 1 (index 0).
+
+    Cannot use Gdk_Monitor_At_Window(gdk_window) because it only works on
+    Gdk windows.
+
+    :param window: Tkinter root or Toplevel
+    """
+
+    monitors = get_monitors()                   # List of monitor dictionaries
+
+    x, y, w, h = get_window_geom_raw(window)    # Tkinter style window geometry
+
+    if x < 0 or x > SCREEN.width():
+        x = 30  # Window top left may be off screen!
+    if y < 0 or y > SCREEN.height():
+        y = 30
+
+    first_monitor = None
+    ''' Assumes another function has already set NUMBER_OF_MONITORS '''
+    for index in range(NUMBER_OF_MONITORS):
+        # Save first monitor if needed later
+        monitor = monitors[index]
+        if first_monitor is None:
+            first_monitor = monitor
+
+        # Most of window must be on monitor to qualify
+        if x < monitor['x']:
+            continue
+        if x >= monitor['x'] + monitor['width'] // 2:
+            continue
+        if y < monitor['y']:
+            continue
+        if y >= monitor['y'] + monitor['height'] // 2:
+            continue
+
+        # Window is mostly on this monitor.
+        return monitor
+
+    # If window off of screen use first monitor
+    return first_monitor
+
+
+def get_monitors():
+    """
+        # OLDER CODE: Eventually yanked out.
+
+        Get list of monitors in Gnome Desktop
+
+        TODO: Flush displays / pending events first?
+
+        :returns List of dictionaries
+
+    """
+
+    import gi
+    gi.require_version('Gdk', '3.0')
+    from gi.repository import Gdk
+
+    global DISPLAY, SCREEN, NUMBER_OF_MONITORS, GNOME_VER
+
+    if DISPLAY is None:
+        DISPLAY = Gdk.Display.get_default()
+        SCREEN = DISPLAY.get_default_screen()
+
+    # Gnome version 3.22 developed new monitor object
+    try:
+        # Gnome 3.22
+        NUMBER_OF_MONITORS = DISPLAY.get_n_monitors()
+        primary = False
+        GNOME_VER = 3.22
+    except AttributeError:
+        # Gnome 3.18
+        NUMBER_OF_MONITORS = SCREEN.get_n_monitors()
+        primary = SCREEN.get_primary_monitor()
+        GNOME_VER = 3.18
+
+    # collect data about monitors
+    monitors = []
+    for index in range(NUMBER_OF_MONITORS):
+        mon = {}
+        if GNOME_VER == 3.22:
+            monitor = DISPLAY.get_monitor(index)
+            primary = monitor.is_primary()
+            geometry = monitor.get_geometry()
+            name = monitor.get_monitor_plug_name()
+        else:
+            geometry = SCREEN.get_monitor_geometry(index)
+            name = SCREEN.get_monitor_plug_name(index)
+
+        #print("Monitor {} = {}x{}+{}+{}".format(
+        #    index, geometry.width, geometry.height, geometry.x, geometry.y),
+        #    name)
+
+        mon['number'] = index
+        mon['name'] = name
+        mon['x'] = geometry.x
+        mon['y'] = geometry.y
+        mon['width'] = geometry.width
+        mon['height'] = geometry.height
+        if index == primary:
+            mon['primary'] = True       # Usually static but user could change
+        else:
+            mon['primary'] = False
+
+        monitors.append(mon)
+
+    return monitors
+
 
 """  REAL REAL REAL REAL REAL REAL REAL REAL REAL REAL REAL REAL REAL REAL """
 
@@ -487,7 +636,7 @@ class Monitors:
 
     def tk_center(self, window):
         """
-        Similar to center()
+        Similar to center() deprecate 2025-06-08
 
         From: https://stackoverflow.com/a/10018670/6929343
         centers a tkinter window on monitor in multi-monitor setup
@@ -511,7 +660,11 @@ class Monitors:
             y = 30
 
         window.geometry('+{}+{}'.format(x, y))
-
+        #print("mon:", mon)
+        # Monitor(number=1, name='DP-1-1', x=1920, y=0, width=3840, height=2160, primary=False)
+        #print("x, y:", x, y)
+        # x, y: 3740 980
+        
         return mon  # Should win namedtuple be returned instead?
 
     def get_home_monitor(self, window, force_visible=False):
@@ -624,151 +777,6 @@ class Monitors:
             return closest_x
         else:
             return closest_y
-
-
-# OLDER CODE: Eventually yanked out.
-
-
-def get_monitors():
-    """
-        # OLDER CODE: Eventually yanked out.
-
-        Get list of monitors in Gnome Desktop
-
-        TODO: Flush displays / pending events first?
-
-        :returns List of dictionaries
-
-    """
-
-    import gi
-    gi.require_version('Gdk', '3.0')
-    from gi.repository import Gdk
-
-    global DISPLAY, SCREEN, NUMBER_OF_MONITORS, GNOME_VER
-
-    if DISPLAY is None:
-        DISPLAY = Gdk.Display.get_default()
-        SCREEN = DISPLAY.get_default_screen()
-
-    # Gnome version 3.22 developed new monitor object
-    try:
-        # Gnome 3.22
-        NUMBER_OF_MONITORS = DISPLAY.get_n_monitors()
-        primary = False
-        GNOME_VER = 3.22
-    except AttributeError:
-        # Gnome 3.18
-        NUMBER_OF_MONITORS = SCREEN.get_n_monitors()
-        primary = SCREEN.get_primary_monitor()
-        GNOME_VER = 3.18
-
-    # collect data about monitors
-    monitors = []
-    for index in range(NUMBER_OF_MONITORS):
-        mon = {}
-        if GNOME_VER == 3.22:
-            monitor = DISPLAY.get_monitor(index)
-            primary = monitor.is_primary()
-            geometry = monitor.get_geometry()
-            name = monitor.get_monitor_plug_name()
-        else:
-            geometry = SCREEN.get_monitor_geometry(index)
-            name = SCREEN.get_monitor_plug_name(index)
-
-        #print("Monitor {} = {}x{}+{}+{}".format(
-        #    index, geometry.width, geometry.height, geometry.x, geometry.y),
-        #    name)
-
-        mon['number'] = index
-        mon['name'] = name
-        mon['x'] = geometry.x
-        mon['y'] = geometry.y
-        mon['width'] = geometry.width
-        mon['height'] = geometry.height
-        if index == primary:
-            mon['primary'] = True       # Usually static but user could change
-        else:
-            mon['primary'] = False
-
-        monitors.append(mon)
-
-    return monitors
-
-
-''' Start of REAL code used today (May 2, 2021) '''
-
-
-def center(window):
-    """  July 28, 2023... centers on monitor 0, not monitor 2?
-    Similar to Monitor.tk_center()
-    
-    From: https://stackoverflow.com/a/10018670/6929343
-    centers a tkinter window on monitor in multi-monitor setup
-    :param window: the main window or Toplevel window to center
-    """
-
-    window.update_idletasks()  # Refresh window's current position
-    mon_dict = get_tk_window_monitor_dict(window)  # Monitor geometry window is on
-
-    if mon_dict is None:
-        # logging.error("No monitors found!")
-        print("No monitors found!")
-        return None
-
-    # Calculate X, Y of window to center within monitors X, Y, width and height
-    x = mon_dict['width'] // 2 - window.winfo_width() // 2 + mon_dict['x']
-    y = mon_dict['height'] // 2 - window.winfo_height() // 2 + mon_dict['y']
-    x = 30 if x < 0 else x  # Window top left may be off screen!
-    y = 30 if y < 0 else y
-    window.geometry('+{}+{}'.format(x, y))
-
-    return mon_dict
-
-
-def get_tk_window_monitor_dict(window):
-    """
-    Returns the mserve monitor dictionary a tkinter window is on.
-    If window is off screen force it into Monitor 1 (index 0).
-
-    Cannot use Gdk_Monitor_At_Window(gdk_window) because it only works on
-    Gdk windows.
-
-    :param window: Tkinter root or Toplevel
-    """
-
-    monitors = get_monitors()                   # List of monitor dictionaries
-
-    x, y, w, h = get_window_geom_raw(window)    # Tkinter style window geometry
-
-    if x < 0 or x > SCREEN.width():
-        x = 30  # Window top left may be off screen!
-    if y < 0 or y > SCREEN.height():
-        y = 30
-
-    first_monitor = None
-    ''' Assumes another function has already set NUMBER_OF_MONITORS '''
-    for index in range(NUMBER_OF_MONITORS):
-        # Save first monitor if needed later
-        monitor = monitors[index]
-        if first_monitor is None:
-            first_monitor = monitor
-
-        # Most of window must be on monitor to qualify
-        if x < monitor['x']:
-            continue
-        if x >= monitor['x'] + monitor['width'] // 2:
-            continue
-        if y < monitor['y']:
-            continue
-        if y >= monitor['y'] + monitor['height'] // 2:
-            continue
-
-        # Window is mostly on this monitor.
-        return monitor
-
-    # If window off of screen use first monitor
-    return first_monitor
 
 
 def get_window_geom_raw(window, leave_visible=True):
@@ -1088,7 +1096,7 @@ def get_mouse_location(coord_only=True):
         Also used by homa.py and homa-indicator.py. Ported from homa-common.py.
     """
 
-    f = os.popen("xdotool getmouselocation")
+    f = os.popen("xdotool getmouselocation")  # 0.012 seconds
     text = f.read().strip()
     _returncode = f.close()  # https://stackoverflow.com/a/70693068/6929343
 
@@ -1115,6 +1123,23 @@ def get_mouse_location(coord_only=True):
 
     if coord_only:
         return xPos, yPos
+
+    # noinspection SpellCheckingInspection
+    """
+time xwd -root -silent | convert xwd:- -depth 8 -crop "1x1+20+20" txt:- | grep -om1 '#\w\+'
+    
+    
+#!/usr/bin/python -W ignore::DeprecationWarning
+import sys
+import gtk
+
+def get_pixel_rgb(x, y):
+    pixbuf = gtk.gdk.Pixbuf(gtk.gdk.COLORSPACE_RGB, False, 8, 1, 1)
+    pixbuf.get_from_drawable(gtk.gdk.get_default_root_window(),
+                             gtk.gdk.colormap_get_system(), 
+                             x, y, 0, 0, 1, 1)
+    return pixbuf.get_pixels_array()[0][0]
+    """
 
     Screen = get_value(2)
     Window = get_value(3)

@@ -1,5 +1,7 @@
-#!/usr/bin/env python
+#!/usr/bin/python
 # -*- coding: utf-8 -*-
+# /usr/bin/python3
+# /usr/bin/env python  # puts name "python" into top, not "mserve.py" or "m"
 """
 Author: pippim.com
 License: GNU GPLv3. (c) 2020 - 2024
@@ -103,6 +105,7 @@ warnings.simplefilter('default')  # in future Python versions.
 #       Sep. 07 2024 - Convert from tk.Button() to ttk.Button() with style.
 #       Nov. 16 2024 - Update virtual file sizes for FTP devices in location.py.
 #       Dec. 15 2024 - Substitute Hi-Res images in Music/.../ArtworkAlbum.xxx
+#       Mar. 30 2025 - Delete 200 lines of deprecated functions.
 #
 # ==============================================================================
 
@@ -507,7 +510,7 @@ from selenium.common.exceptions import TimeoutException
 # Dist-packages copied underneath .../mserve/ directory
 import mutagen  # Get easy tags instead of ffprobe - testing stage
 
-# mserve modules
+# Pippim modules
 import global_variables as g
 
 if g.USER is None:
@@ -8577,7 +8580,10 @@ Call search.py when these control keys occur
         #   ALSA lib pcm.c: (snd_pcm_open_no update) Unknown PCM cards.pcm.rear
         #   ALSA lib pcm_route.c: Found no matching channel map
         # If this isn't done real error messages from mserve could be wiped out
-        ext_name = "python vu_meter.py stereo 2>/dev/null"
+        # 2025-06-01 change `python` to `/usr/bin/python` to display script name
+        #ext_name = "python vu_meter.py stereo 2>/dev/null"  # `python` appears in top
+        #ext_name = "/usr/bin/python ./vu_meter.py stereo 2>/dev/null" # `python`
+        ext_name = "./vu_meter.py stereo 2>/dev/null"
         self.vu_meter_pid = \
             ext.launch_command(ext_name, toplevel=self.play_top)
 
@@ -19772,7 +19778,7 @@ You can also tap the playlist, tap the More button, then tap Delete from Library
             end_wins = start_wins = mon.get_all_windows()
         except Exception as err:
             self.youPrint("youOpenSelenium() Exception:", err)
-            return self.driver, window
+            return self.driver, None
 
         if web.name.startswith("xdg-open"):
             xdg_browser = os.popen("xdg-settings get default-web-browser"). \
@@ -23118,234 +23124,6 @@ FADE_OUT_SPAN = 400     # 1/5 second to fade out
 #       Independent (Stand Alone) Functions
 #
 # ==============================================================================
-def deprecated_storage_artwork(width, height):
-    """
-        Use image file stored in mserve directory as substitute
-        artwork for song. Do this when song file has no artwork. EG WAV
-    """
-
-    if not os.path.isfile(ARTWORK_SUBSTITUTE):
-        # Song has no artwork that ffmpeg can identify.
-        print("mserve.py storage_artwork() os.path.isfile(ARTWORK_SUBSTITUTE) " +
-              "failed test")
-        return None, None, None
-
-    original_art = Image.open(ARTWORK_SUBSTITUTE)
-    resized_art = original_art.resize(
-        (width, height), Image.ANTIALIAS)
-    return ImageTk.PhotoImage(resized_art), resized_art, original_art
-
-
-def deprecated_make_ellipsis(text, cutoff):
-    """ Change: 'Long long long long' to: 'Long long...' """
-    if not text:
-        print("mserve.py make_ellipsis() no text passed")
-        return "???..."
-    if len(text) > cutoff:
-        return text[:cutoff - 3] + "..."
-    return text
-
-
-def deprecated_half_split(stg, sep, pos):
-    """ Split string in halves. e.g. position 2 instead of position 1.
-        From: https://stackoverflow.com/a/52008134/6929343
-    """
-    stg = stg.split(sep)
-    return sep.join(stg[:pos]), sep.join(stg[pos:])
-
-
-def deprecated_convert_seconds(s):
-    """ Convert duration d:hh:mm:ss to seconds """
-    # Grab segments between : in hh:mm:ss
-    if PYTHON_VER == "2":
-        seg = map(int, s.split(':'))  # Python 2.x
-    else:
-        seg = list(map(int, s.split(':')))  # Python 3.x +
-    return sum(n * sec for n, sec in zip(seg[::-1], (1, 60, 3600)))
-
-
-def deprecated_ffplay_extra_opt(start=None, fade_in=3.0, fade_out=0.0, duration_secs=0.0):
-    """ Format extra_opt string to start playing song at x seconds
-        :param start: whole number string or int to start playing song
-        :param fade_in: Start volume at 0% and go to 100% over fade_in
-        :param fade_out: Lower volume to 0% during fade_out.
-        :param duration_secs: Optional duration to play, E.G. 10 seconds
-            if fade_out is being used then duration_secs must be provided.
-        :return extra_opt: formatted string passed to ffplay command
-    """
-    if start is None:
-        start = 0
-    extra_opt = ' -ss ' + str(start)  # start position
-
-    if fade_in and float(fade_in) > 0.0:
-        # noinspection SpellCheckingInspection
-        extra_opt += ' -af "afade=type=in:start_time=' + str(start) + \
-                     ':duration=' + str(fade_in) + '"'  # fade-in time
-
-    if fade_out and float(fade_out) > 0.0 and \
-            duration_secs and float(duration_secs) > 0.0:
-        fade_start = float(start) + float(duration_secs) - float(fade_out)
-        if fade_start < 0.0:
-            print("deprecated_ffplay_extra_opt() Programming error. fade_out:",
-                  fade_out, " | duration_secs:", duration_secs)
-        else:
-            # noinspection SpellCheckingInspection
-            extra_opt += ' -af "afade=type=out:start_time=' + str(fade_start) + \
-                         ':duration=' + str(fade_out) + '"'
-
-    if duration_secs and float(duration_secs) > 0.0:
-        extra_opt += ' -t ' + str(duration_secs)  # could be int or float
-
-    return extra_opt
-
-
-def deprecated_start_ffplay(song, tmp_name, extra_opt, toplevel=None):
-    """ Start playing song. Wait short time to return pid and sink.
-
-    :param song: unquoted song name, we'll add the quotes
-    :param tmp_name: = /tmp/filename to send output of song name. E.G.:
-                TMP_CURR_SONG = g.TEMP_DIR + "mserve.currently_playing"
-                TMP_CURR_SAMPLE = g.TEMP_DIR + "mserve.current_sample"
-    :param extra_opt: can be blank or, overrides to start, fade, etc.
-                -ss = start seconds offset within song, normal is 0
-                -t = how long to play song (duration in seconds)
-                -af "a fade=type=in:start_time=99:duration=3"
-    :param toplevel: When passed gets .after(sleep) time.
-    :return pid, sink: Linux Process ID and Pulse Audio Sink Number
-    """
-
-    ''' ffplay start options to redirect output to temporary file '''
-    # noinspection SpellCheckingInspection
-    cmd = 'ffplay -autoexit ' + '"' + song + '" ' + \
-          extra_opt + ' -nodisp 2>' + tmp_name
-
-    ''' launch ffplay external command in background it polls for pid '''
-    found_pid = ext.launch_command(cmd, toplevel=toplevel)
-    found_sink = ""  # May 21, 2023 functions expect "" for no sink
-    if found_pid == 0:
-        print('Waited 10 seconds, aborting start_ffplay() get PID')
-        print(song)
-        return found_pid, found_sink
-
-    found_sink = pav.find(found_pid)
-    if not found_sink:
-        print('Sink not found for pid:', found_pid)
-        print(song)
-        found_sink = ""  # pretty much same thing as 'None' anyway...
-
-    return found_pid, found_sink
-
-
-def deprecated_get_curr_ffplay_secs(tmp_name):
-    """
-        July 5, 2023 - Should no longer call directly.
-        FileControl.get_elapsed() calls get_curr_ffplay_secs(tmp_name).
-
-        Get elapsed play time from ffplay output file in RAM
-        If resuming play, first time is unreliable so return second time.
-        If we've just paused then first time is reliable.
-    """
-    last_time = 0
-    second_last = 0
-    time_count = 0
-    ''' File format (approximately the last 256 bytes positioned to with seek).
-        79.21 M-A:  0.000 fd=   0 aq=   23KB vq=    0KB sq=    0B f=0/0   \r  # 69 bytes  
-        79.24 M-A:  0.000 fd=   0 aq=   23KB vq=    0KB sq=    0B f=0/0   \r  
-        79.27 M-A: -0.000 fd=   0 aq=   23KB vq=    0KB sq=    0B f=0/0   \r  
-        79.30 M-A: -0.000 fd=   0 aq=   22KB vq=    0KB sq=    0B f=0/0   \r'  # 69 bytes    
-    '''
-    with open(tmp_name, "rb") as f:
-        f.seek(-256, os.SEEK_END)  # 256 from end. Note minus sign
-        x = f.read()
-        fields = x.split()
-        for i, val in enumerate(fields):
-            if val == "M-A:" and i > 0:
-                time_count += 1
-                second_last = last_time
-                last_time = fields[i - 1]  # time proceeds "M-A:" tag
-
-        # print('times found:', i, '.  Last:', last_time, \
-        #      'Second last:', second_last)
-        f.close()  # May 16 2023, add close but it should be automatic anyway
-
-    return float(second_last)
-
-
-def deprecated_list_diff(new_lst, old_lst, name):
-    """ Return string variable added to new list not in old list
-        Must be exactly one new item
-    """
-    count_diff = len(new_lst) - len(old_lst)
-    diff_lst = list(set(new_lst) - set(old_lst))
-    if not count_diff == 1 or not len(diff_lst) == 1:
-        toolkit.print_trace()
-        print("new_list_var() for " + name + " difference is not 1.")
-        print("new_lst:", new_lst)
-        print("old_lst:", old_lst)
-        return diff_lst
-    return str(diff_lst[0])
-
-
-def deprecated_pid_list(program):
-    """ Return list of PIDs for program name """
-    PID = os.popen("pgrep " + program).read().strip().splitlines()
-    return PID
-
-
-def deprecated_sink_list(program):
-    """ Return list of Firefox or ffplay input sinks indices
-        Used for both old_lst and new_lst lists. old_lst may be empty.
-    """
-    indices = []
-    all_sinks = sink_master()
-    for entry in all_sinks:
-        sink, vol, name = entry
-        sink = str(sink)  # May 26 2023 - Sink must be string not int
-        if program == name:
-            indices.append(sink)
-    return indices
-
-
-def deprecated_cat3(line, prefix, text):
-    """ Concatenating texts with latin characters has error:
-
-            UnicodeEncodeError: 'ascii' codec can't encode character
-            u'\xc6' in position 0: ordinal not in range(128)
-    """
-    # noinspection PyBroadException
-    try:
-        return line + prefix + text.encode("utf8")
-    except:
-        # noinspection PyProtectedMember
-        print('cat3() called from:', sys._getframe(1).f_code.co_name,
-              '() Latin character error in:', prefix, text)
-        # noinspection SpellCheckingInspection
-        ''' cat3() ... Latin character error in:  🎵  Ænema '''
-        return line + prefix + "????????"
-
-
-def deprecated_get_dir(top, title, start):
-    """ Get directory name same function in location.py """
-    root.directory = filedialog.askdirectory(initialdir=start,
-                                             parent=top,
-                                             title=title)
-    return root.directory
-
-
-def deprecated_custom_paste(event):
-    """ Allow paste to wipe out current selection. Doesn't work yet!
-        From: https://stackoverflow.com/a/46636970/6929343
-        July 23, 2023 - Fix and move to toolkit.py
-    """
-    # noinspection PyBroadException
-    try:
-        event.widget.delete("sel.first", "sel.last")
-    except:
-        pass
-    event.widget.insert("insert", event.widget.clipboard_get())
-    return "break"
-
-
 def play_padded_number(song_number, number_digits, prefix=NUMBER_PREFIX):
     """ Pad song number with spaces to line up song name evenly
         Called from refresh_acc_times() and build_chron_line()
@@ -23678,7 +23456,9 @@ def main(toplevel=None, cwd=None, parameters=None):
     else:
         root = tk.Toplevel()  # `m` splash screen already used tk.Tk()
     root.wm_attributes('-type', 'splash')  # No window decorations
-    monitor.center(root)
+    #monitor.center(root)  # 2025-06-08 deprecate
+    mon = monitor.Monitors()
+    mon.tk_center(root)
     root.withdraw()  # Remove default window because we have own windows
 
     ''' Is another copy of mserve running? '''

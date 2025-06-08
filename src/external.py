@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/python
 # -*- coding: utf-8 -*-
 """
 Author: Pippim
@@ -18,8 +18,9 @@ from __future__ import with_statement  # Error handling for file opens
 #       Aug. 18 2023 - Fix newish function - get_running_apps()
 #       Aug. 22 2023 - remove_group() - remove file groups ending in * (splat)
 #       Sep. 29 2023 - t(short=False) - Set to True for MM:SS printed only
-#       Jun. 02 2024 - Reactivate '?' as illegal filename character
-#       Dec. 04 2024 - if t_init() ends in ":" don't add another when printing.
+#       June 02 2024 - Reactivate '?' as illegal filename character
+#       Dec. 04 2024 - if t_init() ends in ":" don't add another when printing
+#       June 01 2025 - Strip `env` from `#!/usr/bin/env python` for script name
 #
 #==============================================================================
 
@@ -70,9 +71,7 @@ def t_end(option):
 
 
 def t(float_time=None, short=False, hun=False):
-    """ Print date and time with AM/PM
-    .%f
-    """
+    """ Print date and time with AM/PM """
     if not float_time:
         float_time = time.time()
     f_time = datetime.datetime.fromtimestamp(float_time)
@@ -85,10 +84,17 @@ def t(float_time=None, short=False, hun=False):
         return f_time.strftime("%b %d %Y %I:%M:%S %p")
 
 
-def h(float_time):
+def h(float_time=None):
     """ Print 24 hour clock with milliseconds """
+    if not float_time:
+        float_time = time.time()
     f_time = datetime.datetime.fromtimestamp(float_time)
     return f_time.strftime("%H:%M:%S.%f")
+
+
+def ch():
+    """ Print current 24 hour time with milliseconds """
+    return h(time.time())
 
 
 def tail(f, n, offset=0):
@@ -121,7 +127,7 @@ def read_into_list(fname):
 def read_into_string(fname):
     """ Read text file into string with "\n" separating lines """
     if os.path.isfile(fname):
-        with open(fname) as f:
+        with open(fname, "r") as f:
             return f.read()
     return None
 

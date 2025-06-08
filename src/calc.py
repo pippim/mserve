@@ -11,7 +11,9 @@ from __future__ import print_function  # Must be first import
 from __future__ import with_statement  # Error handling for file opens
 from __future__ import division  # eval() returns .3333 for (1/3)
 import warnings  # 'warnings' advises which commands aren't supported
-warnings.simplefilter('default')  # in future Python versions.
+#warnings.simplefilter('default')  # in future Python versions.
+warnings.filterwarnings("ignore", "ResourceWarning")  # PIL python 3 unclosed file
+
 
 # NAME: calc.py
 # DATE: December 8, 2018 - Ported to mserve September 7, 2023
@@ -22,6 +24,7 @@ warnings.simplefilter('default')  # in future Python versions.
 #           Support 2 floating point decimal division results converted to UoM. 
 #           Support square and square root UoM not in 2018 version.
 #       Dec. 01 2024 - Add 'font=disp_font' to each button for homa.py
+#       Feb. 10 2025 - Ignore Resource Warnings file unclosed
 
 # Majority Credit to: 
 # https://www.techinfected.net/2016/02/make-gui-calculator-in-python-windows-linux.html
@@ -251,7 +254,7 @@ def main():
     default_font = font.nametofont("TkDefaultFont")
     default_font.configure(size=11)
     display_font = "Calibri 13"
-    obj = Calculator(root, display_font)  # object instantiated
+    _obj = Calculator(root, display_font)  # object instantiated
     root.mainloop()
 
 

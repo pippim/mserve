@@ -12,7 +12,7 @@ from __future__ import with_statement  # Error handling for file opens
 # from __future__ import unicode_literals  # Not needed.
 import copy
 import warnings  # 'warnings' advises which commands aren't supported
-#warnings.simplefilter('default')  # in future Python versions.
+warnings.filterwarnings("ignore", "ResourceWarning")  # PIL python 3 unclosed file
 
 #==============================================================================
 #

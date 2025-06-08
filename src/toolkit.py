@@ -29,6 +29,8 @@ from __future__ import with_statement       # Error handling for file opens
 #       May. 15 2024 - User configurable Tooltip colors and timings
 #       Sep. 03 2024 - Tooltips - Remove old splash window before new splash
 #       Dec. 29 2024 - Tooltips - ttk.Label, ttk.Frame & ttk.Entry fg/bg colors
+#       Feb. 02 2025 - Child Windows auto-assign key when <None> registered
+#       Feb. 05 2025 - Create Tooltips().zap_tip_window() call before suspend
 #
 #==============================================================================
 
@@ -66,7 +68,7 @@ except ImportError:  # Python 2
 # print ("Python version: ", PYTHON_VER)
 
 from PIL import Image, ImageTk  # For MoveTreeviewColumn
-from ttkwidgets import CheckboxTreeview
+# from ttkwidgets import CheckboxTreeview  # 2025-02-12 - Import not used
 
 # python standard library modules
 import os
@@ -1122,16 +1124,27 @@ class ProgressBars(CommonBar):
 #
 # ==============================================================================
 class ChildWindows:
-    """ Called from mserve.py for delayed textbox (dtb) or DictTreeview class
-        below.
+    """ Called by delayed textbox (dtb) or DictTreeview class below. 
+        Called from message.py ShowInfo() and AskQuestion().
+        
+        When called by message.py a child window key is not provided
+        so assign one with current time string.
 
-        Set focus in for self.toplevel to lift the child window(s)
+        Set <focus_in> for self.toplevel to lift the child window(s)
         When self.toplevel is dragged, so are the child window.
+
+        Abbreviation "it" = initial time
+                     "et" = elapsed time
+                     "st" = start time
+                     "en" = end time
+                     "el" = elapsed time
+                     "mit" = Move window initialization
+                     "rit" = Raise window initialization
 
         window.winfo_xxx see: https://wiki.tcl-lang.org/page/winfo%28%29
 
     """
-    def __init__(self, toplevel, auto_raise=True):
+    def __init__(self, toplevel, auto_raise=True, perform_move=True):
 
         self.toplevel = toplevel  # Parent window
         self.window = {}  # Child Window {key, widget, x, y, w, h
@@ -1144,9 +1157,10 @@ class ChildWindows:
         self.curr_geom = [0, 0, 0, 0]  # Geometry when drag_window called
         self.last_geom = [0, 0, 0, 0]  # Geometry when drag_window last called
         self.move_geom = [0, 0, 0, 0]  # Difference between curr and last
-        self.toplevel.bind("<Configure>", self.drag_window)
         if auto_raise:
             self.toplevel.bind("<FocusIn>", self.raise_children)
+        if perform_move:
+            self.toplevel.bind("<Configure>", self.drag_window)
 
         ''' Event log '''
         self.init_time = time.time()
@@ -1162,8 +1176,6 @@ class ChildWindows:
 
         self.last_mit_st = 0.0
         self.last_rit_st = 0.0
-
-
 
         ''' Event log - one record for start, one record for end. '''
         self.event_log = []
@@ -1239,8 +1251,8 @@ class ChildWindows:
 
     # DOWN TO BUSINESS
     def raise_children(self, *_args):
-        """ Focus in on parent. Focus in and lift the children up in the
-            order they were registered.
+        """ Focus in registered to parent window. Override and focus in and lift the
+            children windows overtop in the order they were registered.
         """
         if not len(self.window_list):
             return
@@ -1256,11 +1268,7 @@ class ChildWindows:
         self.log_el("R", self.rec, self.rit_st, self.rit_en, self.rit_el)
 
     def move_children(self, x_off, y_off):
-        """ Focus in on parent. Focus in and lift the children up in the
-            order they were registered.
-
-            2024-04-02 - As window dragged down to left, child raises up to left.
-        """
+        """ Parent window dragged. Drag child windows along with it. """
         if not len(self.window_list):
             return
         _who = self.who + "move_children():"
@@ -1276,7 +1284,11 @@ class ChildWindows:
                 new_x = x + x_off
                 new_y = y + y_off
                 geom = "+" + str(new_x) + "+" + str(new_y)
-                win_dict['widget'].geometry(geom)
+                try:
+                    win_dict['widget'].geometry(geom)
+                except tk.TclError as err:
+                    print("toolkit.py ChildWindows.move_children(): win_dict['widget'].geometry(geom)")
+                    print(" ", err)
 
         self.mit_en, self.mit_el = self.get_el(self.mit_st)
         self.log_el("M", self.mec, self.mit_st, self.mit_en, self.mit_el)
@@ -1340,6 +1352,8 @@ class ChildWindows:
             :param widget: msg_top, or create_window toplevel, etc.
         """
         _who = self.who + "register_child():"
+        if key is None:
+            key = str(time.time())
         has_key = self.key_for_widget(widget)
         has_widget = self.widget_for_key(key)
         if has_key or has_widget:
@@ -1455,7 +1469,10 @@ class ChildWindows:
         # re search in "<WIDTH> x <HEIGHT> + <X> + <Y>" string (no spaces or <>)
         position_info = re.split('[x+]', geometry_info)
         # https://stackoverflow.com/a/50716478/6929343
-        return map(int, position_info)
+        #return map(int, position_info)
+        # Above worked for Python 2.7.12 but breaks in Python 3.5
+        # https://stackoverflow.com/a/7368801/6929343
+        return list(map(int, position_info))
 
 
 # ==============================================================================
@@ -1548,18 +1565,22 @@ class CustomScrolledText(scrolledtext.ScrolledText):
 # ==============================================================================
 class makeNotebook:
     """ Data Dictionary controlled notebook. """
-    def __init__(self, notebook, listTabs, listFields, dictData,
-                 tStyle=None, fStyle=None, bStyle=None, close=None, tt=None):
+    def __init__(self, notebook, listTabs, listFields, listHelp, dictData,
+                 tStyle=None, fStyle=None, bStyle=None, close=None, tt=None,
+                 help_btn_image=None, close_btn_image=None):
 
-        self.notebook = notebook
-        self.listTabs = listTabs  # Tuples List: (Tab Name, Tool Tip)
-        self.listFields = listFields
-        self.dictData = dictData
-        self.tStyle = tStyle  # Notebook Tab style "TNotebook.Tab
+        self.notebook = notebook  # tkk.Notebook instance created in caller
+        self.listTabs = listTabs  # Tuples List: [(Tab Name, Tool Tip), (ditto)]
+        self.listFields = listFields  # Dictionary List: [{many}, {many}]
+        self.listHelp = listHelp  # Help List: [help_id, help_tag, help_text]
+        self.dictData = dictData  # Variables in Preferences Name/Value pairs
+        self.tStyle = tStyle  # Notebook Tab style "TNotebook.Tab"
         self.fStyle = fStyle  # Frame style "N.TFrame"
         self.bStyle = bStyle  # Button style "C.TButton"
-        self.close = close  # Close callback
-        self.tt = tt
+        self.close = close  # Callback for Close button on every frame (tab)
+        self.tt = tt  # Tooltips instance
+        self.help_btn_image = help_btn_image
+        self.close_btn_image = close_btn_image
 
         self.who = "toolkit.py DictNotebook()."  # For debug messages
 
@@ -1567,30 +1588,65 @@ class makeNotebook:
         self.oldData = copy.deepcopy(self.dictData)
         self.newData = copy.deepcopy(self.dictData)
 
-        self.original_value = None  # before anything was input into field
-        self.value_error = False
+        self.original_value = None  # save before input into field
 
-        self.add_tabs()
+        self.bad_value_key = ""  # atts[0] (key) with bad value
+        self.bad_value_entry = None  # entry widget matching key in error
+        self.bad_title = None  # ShowInfo title
+        self.bad_text = None  # ShowInfo text
+
+        self.add_tabs()  # Add notebook tabs with frames and rows
 
     def add_tabs(self):
-        """ Populate Notebook. """
+        """ Populate Notebook Tabs. Each tab has it's own button frame containing
+            Help and Close buttons. Call self.add_rows() to add fields for the tab.
+        """
 
         tab_no = 1  # 1's based tab number matching dictionary
         for name, tip in self.listTabs:
 
             ''' frame for Notebook tab '''
             frame = ttk.Frame(self.notebook, width=200, height=200, padding=[20, 20])
-            # 2024-12-29 - tooltip spams screen moving between fields
+            # 2024-12-29 - tooltip gets focus moving mouse between fields
             #self.tt_add(frame, tip, "ne")
+            button_frm = None  # TODO: Define this properly
+
+            def help():
+                """ help method opens new browser window with HomA webpage. """
+                # g.HELP_URL =  "https://www.pippim.com/programs/homa.html#"
+                # g.listHelp[1] = "EditPreferences"
+                # tb_name = "Sony TV"
+                ndx = self.notebook.index(self.notebook.select())
+                tb_name = self.listTabs[ndx][0]
+                help_base = self.listHelp[1] + tb_name
+                help_base = help_base.replace(" ", "_")
+                # help_base = "EditPreferencesSony_TV"
+                #help_url = "https://www.pippim.com/programs/homa.html#EditPreferencesSony_TV"
+                g.web_help(help_base)
+
+            def button_func(column, txt, command, tt_text, tt_anchor, pic=None):
+                """ Function to combine ttk.Button, .grid() and tt.add_tip() """
+                txt = normalize_tcl(txt)  # Python 3 lose 🌡 (U+1F321)
+                # above was python 3 short term fix, use an image for permanent fix
+                widget = ttk.Button(frame, text=txt, width=len(txt), compound="left",
+                                    image=pic, command=command, style=self.bStyle)
+                #widget = ttk.Button(frame, text=txt, width=len(txt),
+                #                    command=command, style=self.bStyle)
+                widget.grid(row=100, column=column, padx=10, pady=5, sticky=tk.E)
+                if self.tt is not None and \
+                        tt_text is not None and tt_anchor is not None:
+                    self.tt.add_tip(widget, tt_text, anchor=tt_anchor)
+                return widget
 
             self.add_rows(frame, tab_no)  # Add label: Entry fields to frame
 
-            close_btn = ttk.Button(frame, width=7, text="✘ Close",
-                                   style=self.bStyle, command=self.close)
-            close_btn.grid(row=100, column=1, columnspan=2, padx=10, pady=5,
-                           sticky=tk.E)
-            tt_text = "Close Preferences.\nAny changes made will be lost."
-            self.tt_add(close_btn, tt_text, "ne", tool_type='button')
+            if len(self.listHelp) == 3:  # Optional help button passed?
+                btn_txt = "Help" if self.help_btn_image else "⧉ Help"
+                button_func(0, btn_txt, help, self.listHelp[2], "sw", self.help_btn_image)
+
+            msg = "Close notebook."
+            btn_txt = "Close" if self.close_btn_image else "✘ Close"
+            button_func(1, btn_txt, self.close, msg, "sw", self.close_btn_image)
 
             self.notebook.add(frame, text=name, compound=tk.TOP)
             #     notebook.add(frame, style=tStyle, text=name, compound=tk.TOP)
@@ -1599,9 +1655,9 @@ class makeNotebook:
 
         self.notebook.grid(row=0, column=0, padx=3, pady=3, sticky=tk.NSEW)
         self.notebook.update()
-        self.notebook.enable_traversal()
+        self.notebook.enable_traversal()  # <Tab> moves forward, <Shift>+<Tab> moves back
 
-    def add_rows(self, frm, tab):
+    def add_rows(self, frm, tab_no):
         """ Add rows to Notebook frame """
         '''
         # (name, tab#, hide/ro/rw, input as, stored as, width, decimals, 
@@ -1610,7 +1666,7 @@ class makeNotebook:
         _who = self.who + "add_rows():"
         row = 0
         for atts in self.listFields:
-            if atts[1] != tab:
+            if atts[1] != tab_no:
                 continue  # tab number doesn't match search
 
             data = self.oldData.get(atts[0], None)
@@ -1628,34 +1684,48 @@ class makeNotebook:
                 print("atts[0] value:", atts[0])
                 exit(0)
 
-            self.add_var(tab, frm, row, atts, data)
+            self.add_var(tab_no, frm, row, atts, data)
 
             row += 1
 
-    def add_var(self, tab_id, frm, row, atts, value):
-        """ Add tk Variable to Notebook Tab's frame.
-            Called from add_rows().
+    def add_var(self, tab_no, frm, row, atts, value):
+        """ Add tk Variable (var) to Notebook Tab's frame's row.
+            Called from add_rows() where one 'var' for each 'entry'.
             Define 'entry' (tkk.Entry) an important widget in the Notebook.
+            tab_no is 1's based. tab_id is 0's based.
+
         """
         _who = self.who + "add_rows(): add_var():"
         '''
-        # (name, tab#, hide/ro/rw, input as, stored as, width, decimals, 
-                 min, max, edit callback, tooltip text)
-        # name: value
+        DATA DICTIONARY atts() tuple from listFields[]: 
+            (name, tab#, hidden/read-only/read-write, input as, stored as, width, 
+               decimals, min, max, edit callback, tooltip text)
+            name: value
+
+        LOCAL SHARED between add_var attributes for inter process communication:
+            self.bad_value_key = atts[0]
+            self.bad_value_entry = entry
+            self.bad_title = \
+                "Edit Preferences Error - HomA"  # Reused focusOut()
+            self.bad_text = "Invalid value for: " + atts[0] + "\n\n" +\
+                str(e) + "\n"  # Reused focusOut()
+            self.original_value
         '''
 
+        name_key = atts[0]  # E.G. GLO['RESUME_TEST_SECONDS']
         entry_type = atts[2]  # 'hidden', 'read-only', 'read-write'
-        input_type = atts[3]  # "string", "integer", "float", "time", "list"
-        _store_type = atts[4]  # "string", "integer", "float", "time", "list"
+        input_type = atts[3]  # "string", "integer", "float", "time", "list", "filename"
+        store_type = atts[4]  # "string", "integer", "float", "time", "list"
         width = atts[5]
         _decimal = atts[6]
         _minimum = atts[7]
         _maximum = atts[8]
         _edit_cb = atts[9]
-        tip_text = atts[10]
+        _tip_text = atts[10]  # Tooltip on entry variable too busy only on label
 
         sticky = tk.W
-        if input_type == "string":
+        if input_type == "string" or input_type == "filename" or\
+                input_type == "MAC-address":
             var = tk.StringVar(value=value)
         elif input_type == "integer":
             var = tk.IntVar(value=value)
@@ -1671,86 +1741,150 @@ class makeNotebook:
             print(_who, "invalid input_type:", input_type)
             exit()
 
-        def validate():
-            """ Validate var - Called when receiving focus and after changes """
-            _who2 = _who + " validate():"
-            _what = "'validate command' for: " + atts[0]
-            #message.ShowInfo(frm, _who2, _what)
-            #print(_what)
+        var.trace('w', self.trace_cb)  # capture changes to tk.XxxVar variable
 
-        def check_value():
-            """ e is entry widget. Check within bounds and data type.
+        def error(msg_e):
+            """ Display error message """
+            self.bad_value_key = atts[0]
+            self.bad_value_entry = entry
+            self.focus_on_bad_value()
+            self.bad_title = \
+                "Edit Preferences Error - HomA"  # Reused focusOut()
+            self.bad_text = "Invalid value for: " + atts[0] + "\n\n" + \
+                            str(msg_e) + "\n"  # Reused focusOut()
+            message.ShowInfo(frm, self.bad_title, self.bad_text, icon="error")
+
+        def getValue():
+            """ Get tk.XxxVar value. Check within bounds and data type.
                 Called from focusOut() inner function.
             """
-            _who2 = _who + " check_value():"
-            self.value_error = False
+            _who2 = _who + " getValue():"
+            #print("\ngetValue() for:", atts[0])
+
             try:
                 new_value = var.get()
-            except ValueError as e:
-                title = \
-                    "Edit Preferences Error - HomA"
-                text = "Invalid value for: " + atts[0] + "\n\n" +\
-                    str(e) + "\n"
-                message.ShowInfo(frm, title, text, icon="error")
+                self.bad_value_key = ""
+            except (ValueError, tk.TclError) as e:
+                # TclError: expected boolean value but got "00"
+                error(e)
                 return None
 
-            if new_value == self.original_value:
+            if store_type == "list":  # Enclosed with []?
+                if not new_value.startswith("[") or \
+                        not new_value.endswith("]") or \
+                        new_value.count("[") != 1 or \
+                        new_value.count("]") != 1:
+                    error("List must start with '[' and end with ']' only once.")
+                    return None
+
+            if True is True:  # 2025-01-26 override
+                entry.configure(font="-weight normal")  # Turn off bold font
                 return new_value
 
-            if input_type == "float":
-                test = float(new_value)
+            if new_value == self.original_value:
+                entry.configure(font="-weight normal")  # Turn off bold font
+                return new_value
 
             return None  # Error. Get variable again
 
-        def focusIn(event):
+        def saveValue(val):
+            """ Save tk.XxxVar value.
+                Called from focusOut() inner function.
+            """
+            _who2 = _who + "saveValue():"
+
+            if store_type == "string" or store_type == "filename" or \
+                    store_type == "MAC-address" or store_type == "list":
+                #if str(type(self.newData[name_key])) == "<type 'unicode'>":
+                # Converting unicode to string avoided unless int, float, etc.
+                if input_type != store_type:
+                    self.newData[name_key] = str(val)
+                else:
+                    self.newData[name_key] = val
+            elif store_type == "integer":
+                self.newData[name_key] = int(val)
+            elif store_type == "float" or store_type == "time":
+                self.newData[name_key] = float(val)
+            elif store_type == "boolean":
+                #print("val:", val, type(val))
+                self.newData[name_key] = val
+            #elif store_type == "list":
+            #    self.newData[name_key] = list(val)
+            else:
+                print(_who2, "invalid store_type:", store_type)
+                exit()
+
+        def focusIn(_event):
             """ variable received focus """
             _who2 = _who + " focusIn():"
             _what = "<FocusIn> for: " + atts[0]
-            #e = event.widget  # entry widget
+            #print(_what)
+
             # Prevent entire text turning blue when painted and with tab key
             entry.selection_range(0, 0)
-            entry.configure(font="-weight bold")
-            try:
-                self.original_value = var.get()
-            except ValueError:
-                pass  # Redoing after check_value
+            was_bad_value = True if self.bad_value_entry else False
 
-        def focusOut(event):
+            # trace will reset error condition. While error condition exists
+            # focus In/Out will spam many times and .getValue() keeps repeating error
+            if self.bad_value_key != "":
+                if atts[0] != self.bad_value_key:
+                    #print("<FocusIn> Refocus from:", atts[0], "to:", self.bad_value_key)
+                    self.focus_on_bad_value()
+                    self.notebook.update_idletasks()
+                    #message.ShowInfo(frm, self.bad_title, self.bad_text, icon="error")
+                    # Getting double errors?
+                return
+            elif self.bad_value_entry:
+                # residual bold from last error, has now been fixed
+                self.bad_value_entry.configure(font="-weight normal")
+                self.bad_value_entry = None
+
+            if not was_bad_value:
+                try:
+                    # Save validated value to compare future changes
+                    self.original_value = var.get()
+                except ValueError:
+                    pass  # Redoing after getValue() in focusOut()
+
+            entry.configure(font="-weight bold")
+            #self.notebook.update_idletasks()
+
+        def focusOut(_event):
             """ variable lost focus """
             _who2 = _who + " focusOut():"
             _what = "<FocusOut> for: " + atts[0]
-            #e = event.widget  # entry widget
+            #print(_what)
             # Remove blue selection when leaving field
             entry.selection_range(0, 0)
 
-            # 2024-12-30 - Getting double message
-            if self.value_error:
-                self.value_error = False
-                # This fixes double message but after field is fixed,
-                # an extra enter is required to leave the field.
+            # trace will reset error condition. While error condition exists
+            # focus In/Out will spam many times and .getValue() keeps repeating error
+            if self.bad_value_key != "":
+                if atts[0] != self.bad_value_key:
+                    #print("<FocusOut> Refocus from:", atts[0], "to:", self.bad_value_key)
+                    self.focus_on_bad_value()  # Tabbed away from bad value
+                    #self.notebook.update_idletasks()
                 return
 
             # Check value within min, max and correct data type
-            stored_value = check_value()
-            if stored_value is None:
-                self.notebook.select(tab_id - 1)  # if focus out by tab click
-                entry.focus_set()  # If error, None is returned
-                self.value_error = True
-                return  # Don't repeat focusOut
-            entry.configure(font="-weight normal")
+            stored_value = getValue()
+            if stored_value is None:  # If error, None is returned
+                return
 
-        def trace_cb(*_args):
-            """ variable received focus - Called with each keystroke ('w')"""
-            _who2 = _who + " trace_cb():"
-            _what = "'var.trace()' for: " + atts[0]
+            entry.configure(font="-weight normal")  # Turn off bold font
+            
+            # Save newData value
+            saveValue(stored_value)
 
+        # ======================= add_var(): Mainline =======================
         state = tk.NORMAL if entry_type == "read-write" else tk.DISABLED
         entry = ttk.Entry(frm, textvariable=var, width=width, font=g.FONT,
-                          #state=state, validate='all', validate command=validate)
                           state=state)
         entry.grid(row=row, column=1, sticky=sticky, padx=15, pady=10)
-        self.tt_add(entry, tip_text, "nw")
-        if row == 0:
+
+        #self.tt_add(entry, _tip_text, "nw")
+        # Tooltip on entry fields causing input interference
+        if row == 0 and tab_no == 1:
             entry.focus_set()  # Required for first time load
 
         # Enter key goes to next field like the tab key would.
@@ -1760,9 +1894,24 @@ class makeNotebook:
         entry.bind("<FocusIn>", focusIn)  # set input field bold text
         entry.bind("<FocusOut>", focusOut)  # sanity check data entered
 
-        if True is False:  # useless experimental functions kept around
-            var.trace('w', trace_cb)  # Fake call to make pyCharm happy
-            validate()  # Fake call to make pyCharm happy
+    def trace_cb(self, *_args):
+        """ Called with each keystroke ('w')"""
+        self.bad_value_key = ""
+
+    def focus_on_bad_value(self):
+        """ Force focus back onto the bad value. """
+        for atts in self.listFields:
+            if atts[0] == self.bad_value_key:
+                self.notebook.select(atts[1] - 1)  # tab_id is 0's based.
+                self.bad_value_entry.focus_set()
+                self.bad_value_entry.configure(font="-weight bold")
+                self.notebook.update_idletasks()  # 2024-01-02 - added not sure if needed
+                #print(atts[0], "load entry:", self.bad_value_entry)
+                return
+
+        # noinspection PyUnboundLocalVariable
+        print(self.who, "Could not find key:", atts[0])
+        exit()
 
     def tt_add(self, widget, tt_text, tt_anchor="nw", tool_type="label"):
         """ Add tooltip. Parent responsible for closing all tooltips
@@ -1903,9 +2052,7 @@ class DictTreeview:
         self.frame.grid(sticky=tk.NSEW)
 
 
-        ''' CheckboxTreeview List Box, Columns and Headings '''
-        #self.tree = CheckboxTreeview(  # NOT USED - SAVE MEMORY AND LAG
-        #    self.frame, select mode='none', columns=self.columns)
+        ''' Define Tkinter Treeview and Columns '''
         self.tree = ttk.Treeview(
             self.frame, selectmode='none', columns=self.columns)
         self.tree['displaycolumns'] = displaycolumns
@@ -4345,6 +4492,168 @@ def gnome_screenshot(geom):
     return raw_img
 
 
+class VolumeSlider:
+    """ Volume Slider for Pulse Audio 'ffplay' Sink in mserve.
+        Volume Slider for Sony TV Audio controlled via REST API.
+    """
+
+    # noinspection SpellCheckingInspection
+    def __init__(self, master_frm, borderwidth=0, row=0, column=1, columnspan=2,
+                 sticky=tk.EW, padx=5, pady=(8, 4), tt=None):
+        """ Define slider frame object and objects within. """
+
+        ''' Volume Slider Frame '''
+        self.slider_frm = ttk.Frame(master_frm, borderwidth=borderwidth)
+        self.slider_frm.grid(row=row, column=column, columnspan=columnspan,
+                             sticky=sticky, padx=padx, pady=pady)
+        self.slider_frm.columnconfigure(0, weight=0)  # low or off speaker symbol
+        self.slider_frm.columnconfigure(1, weight=5)  # Volume Slider
+        self.slider_frm.columnconfigure(2, weight=0)  # high or full speaker symbol
+        self.slider_frm.rowconfigure(0, weight=0)
+
+        self.tt = tt  # Tooltips
+
+        self.ffplay_mute = None  # Lowest volume icon
+        self.ffplay_slider = None  # Slider control
+        self.ffplay_full = None  # Highest volume icon
+
+    def createLowVolume(self, *_args):
+        """ Low volume / mute icon """
+
+        ''' self.ffplay_mute  LEFT: 🔉 U+F1509  RIGHT: 🔊 U+1F50A 
+            🔇 (1f507) 🔈 (1f508) 🔉 (1f509) 🔊 (1f50a)
+        '''
+        self.ffplay_mute = tk.Label(
+            self.slider_frm, borderwidth=0, highlightthickness=0,
+            text="    🔇", justify=tk.CENTER, font=g.FONT)  # justify not working
+        self.ffplay_mute.grid(row=0, column=0, sticky=tk.W)
+
+        def volume_mute():
+            """ Click on volume mute icon (speaker with diagonal line on left) """
+            self.check_sinks()
+            self.pav_ctl.sink = self.force_sink(
+                self.pav_ctl.sink, self.pav_ctl.pid, trace="ffplay_mute button")
+            pav.fade(self.pav_ctl.sink,
+                     float(pav.get_volume(self.pav_ctl.sink)),
+                     0, .5, step_cb=self.init_ffplay_slider)
+            self.init_ffplay_slider(0)  # Final step to 0 display
+
+        self.ffplay_mute.bind("<Button-1>", lambda _: volume_mute())
+
+        # self.ffplay_mute.bind("<Button-1>", lambda _: pav.fade(
+        #    # 2024-04-29 change play_ctl to pav_ctl
+        #    self.pav_ctl.sink, float(pav.get_volume(self.pav_ctl.sink)),
+        #    25, .5, step_cb=self.init_ffplay_slider))
+
+        text = "Speaker with diagonal line.\n"
+        text += "Click to mute volume.\n"
+        text += "Music keeps playing with no sound.\n"
+        text += "You can also click on album art to\n"
+        text += "toggle pausing and playing music."
+        self.tt.add_tip(self.ffplay_mute, tool_type='label',
+                        text=text, anchor="sw")
+
+        ''' self.ffplay_full  RIGHT: 🔊 U+1F50A 
+            🔇 (1f507) 🔈 (1f508) 🔉 (1f509) 🔊 (1f50a)
+        '''
+        self.ffplay_full = tk.Label(
+            self.slider_frm, borderwidth=0, highlightthickness=0,
+            text="    🔊", font=g.FONT)  # justify not working
+        self.ffplay_full.grid(row=0, column=2)
+
+        def volume_full():
+            """ Click on full volume icon (speaker with three waves on right) """
+            self.check_sinks()
+            self.pav_ctl.sink = self.force_sink(
+                self.pav_ctl.sink, self.pav_ctl.pid, trace="ffplay_full button")
+            max_vol = self.get_max_volume()
+            pav.fade(self.pav_ctl.sink,
+                     float(pav.get_volume(self.pav_ctl.sink)),
+                     max_vol, .5, step_cb=self.init_ffplay_slider)
+            self.init_ffplay_slider(max_vol)  # Final step to 100 display
+
+        self.ffplay_full.bind("<Button-1>", lambda _: volume_full())
+
+        # self.ffplay_full.bind("<Button-1>", lambda _: pav.fade(
+        # 2024-04-29 change play_ctl to pav_ctl
+        # self.pav_ctl.sink, float(pav.get_volume(self.pav_ctl.sink)),
+        # 100, .5, step_cb=self.init_ffplay_slider))
+
+        text = "Speaker with three waves.\n"
+        text += "Click to restore the volume to 100%."
+        self.tt.add_tip(self.ffplay_full, tool_type='label',
+                        text=text, anchor="se")
+
+        ''' Volume Slider https://www.tutorialspoint.com/python/tk_scale.htm '''
+        self.ffplay_slider = tk.Scale(  # highlight color doesn't seem to work?
+            self.slider_frm, orient=tk.HORIZONTAL, tickinterval=0, showvalue=0,
+            highlightcolor="Blue", activebackgroun="Gold", troughcolor="Black",
+            command=self.set_ffplay_sink, borderwidth=0, cursor='boat red red')
+        self.ffplay_slider.grid(row=0, column=1, padx=4, ipady=1, sticky=tk.EW)
+
+        text = "Volume slider active when music plays:\n\n"
+        text += "Click and drag slider to change volume.\n"
+        text += "Click space left of slider to reduce volume.\n"
+        text += "Click space right of slider to increase volume.\n"
+        text += "Click small speaker on left to mute.\n"
+        text += "Click large speaker on right for full volume."
+        self.tt.add_tip(self.ffplay_slider, tool_type='label',
+                        text=text, anchor="sc")
+
+    def createSlider(self, *_args):
+        """ Volume Slider - second object in Slider Form """
+
+        ''' Volume Slider https://www.tutorialspoint.com/python/tk_scale.htm '''
+        self.ffplay_slider = tk.Scale(  # highlight color doesn't seem to work?
+            self.slider_frm, orient=tk.HORIZONTAL, tickinterval=0, showvalue=0,
+            highlightcolor="Blue", activebackgroun="Gold", troughcolor="Black",
+            command=self.set_ffplay_sink, borderwidth=0, cursor='boat red red')
+        self.ffplay_slider.grid(row=0, column=1, padx=4, ipady=1, sticky=tk.EW)
+
+        text = "Volume slider active when music plays:\n\n"
+        text += "Click and drag slider to change volume.\n"
+        text += "Click space left of slider to reduce volume.\n"
+        text += "Click space right of slider to increase volume.\n"
+        text += "Click small speaker on left to mute.\n"
+        text += "Click large speaker on right for full volume."
+        self.tt.add_tip(self.ffplay_slider, tool_type='label',
+                        text=text, anchor="sc")
+
+    def createLoudVolume(self, *_args):
+        """ Loud volume / Full volume """
+
+        ''' self.ffplay_full  RIGHT: 🔊 U+1F50A 
+            🔇 (1f507) 🔈 (1f508) 🔉 (1f509) 🔊 (1f50a)
+        '''
+        self.ffplay_full = tk.Label(
+            self.slider_frm, borderwidth=0, highlightthickness=0,
+            text="    🔊", font=g.FONT)  # justify not working
+        self.ffplay_full.grid(row=0, column=2)
+
+        def volume_full():
+            """ Click on full volume icon (speaker with three waves on right) """
+            self.check_sinks()
+            self.pav_ctl.sink = self.force_sink(
+                self.pav_ctl.sink, self.pav_ctl.pid, trace="ffplay_full button")
+            max_vol = self.get_max_volume()
+            pav.fade(self.pav_ctl.sink,
+                     float(pav.get_volume(self.pav_ctl.sink)),
+                     max_vol, .5, step_cb=self.init_ffplay_slider)
+            self.init_ffplay_slider(max_vol)  # Final step to 100 display
+
+        self.ffplay_full.bind("<Button-1>", lambda _: volume_full())
+
+        # self.ffplay_full.bind("<Button-1>", lambda _: pav.fade(
+        # 2024-04-29 change play_ctl to pav_ctl
+        # self.pav_ctl.sink, float(pav.get_volume(self.pav_ctl.sink)),
+        # 100, .5, step_cb=self.init_ffplay_slider))
+
+        text = "Speaker with three waves.\n"
+        text += "Click to restore the volume to 100%."
+        self.tt.add_tip(self.ffplay_full, tool_type='label',
+                        text=text, anchor="se")
+
+
 # ==============================================================================
 #
 #   toolkit.py - ToolTips(), .add_tip(), .set_text(), .toggle_position(),
@@ -4896,8 +5205,7 @@ class ToolTips(CommonTip):
             self.release_time = self.current_alpha = 0.0
 
         self.tip_window = self.window_geom = None
-        self.window_visible = self.window_fading_in = False
-        self.window_fading_out = False
+        self.window_visible = self.window_fading_in = self.window_fading_out = False
 
     def set_widget_colors(self):
         """ Set the colors for canvas object focus """
@@ -4997,6 +5305,10 @@ class ToolTips(CommonTip):
                 if self.print_error:
                     print(self.who + ".process_tip():",
                           "self.tip.window doesn't exist")
+                    try:
+                        print(ext.ch(), "widget['text']:", self.widget['text'])
+                    except KeyError:
+                        pass  # Some parents don't have text attribute
                 return
 
         ''' Pending event to start displaying tooltip balloon? '''
@@ -5027,6 +5339,8 @@ class ToolTips(CommonTip):
             #                  self.now: 1697681387.58
             #             fade_out_time: 1697681387.37   Tenth
             if self.window_fading_out is False:
+                # 2025-02-19 for HomA suspend button fading out forced on but
+                # window doesn't exist
                 self.window_fading_out = True
                 self.window_fading_in = False
 
@@ -5049,10 +5363,17 @@ class ToolTips(CommonTip):
                     if self.print_error:
                         print(self.who + 'process_tip(): ' +
                               'self.tip_window does not exist')
-                        print('self.now:', self.now, 'zero_alpha_time:', zero_alpha_time)
-                    diff = self.now - zero_alpha_time
-                    if self.print_error:
-                        print('diff:', diff)
+                        print('self.now:', self.now, 'zero_alpha_time:', zero_alpha_time,
+                              "diff:", self.now - zero_alpha_time)
+                        print('self.enter_time:', self.enter_time,
+                              "self.window_visible:", self.window_visible,
+                              "self.window_fading_in:", self.window_fading_in,
+                              "self.window_fading_out:", self.window_fading_out)
+                        try:
+                            print(ext.ch(), "widget['text']:", self.widget['text'])
+                            # E.G. "Suspend" for HomA's suspend button
+                        except KeyError:
+                            pass  # Some widget's don't have text
                 else:
                     self.tip_window.destroy()
 
@@ -5128,7 +5449,10 @@ class ToolTips(CommonTip):
                 self.pb_alpha(alpha)
             else:
                 ''' Adjust tip window alpha (transparency) during fade-in/out '''
-                self.tip_window.attributes("-alpha", alpha)
+                try:
+                    self.tip_window.attributes("-alpha", alpha)
+                except AttributeError:
+                    alpha = 1.0  # 2025-01-16 - 'NoneType' error occurred in HomA.
             self.current_alpha = alpha  # Save to prevent spamming same alpha
 
     def create_tip_window(self):
@@ -5492,6 +5816,28 @@ class ToolTips(CommonTip):
             elif prefix_only and str(s['widget']).startswith(str(widget)):
                 return i  # Test prefix and it matches
         return None
+
+    def zap_tip_window(self, widget, flush_log=True):
+        """ When suspending system.  Caller needs top.update() afterwards.
+
+        :param widget: either button or parent / grandparent of button. 
+        :param flush_log: empty self.log_list for all events.
+        """
+
+        for self.tips_index, self.dict in enumerate(self.tips_list):
+            self.dict_to_fields()  # Dictionary to easy names
+            if not str(self.widget).startswith(str(widget)):
+                continue  # Exact widget nor widget group match....
+            if self.tip_window is None:
+                continue  # Widget hasn't painted tooltip window
+            d_print("Destroying widget's tip_window:", str(widget)[-4:])
+            self.tip_window.destroy()
+            self.reset_tip()
+            self.fields_to_dict()
+            self.tips_list[self.tips_index] = self.dict
+
+        if flush_log:
+            self.log_list = []  # Flush out log list for new events
 
     def line_dump(self):
         """ Dump out selected data from tooltips list in printed format.

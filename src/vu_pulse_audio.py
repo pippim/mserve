@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/python
 # -*- coding: utf-8 -*-
 """
 Author: Pippim
@@ -20,6 +20,7 @@ from __future__ import with_statement  # Error handling for file opens
 #       Sep. 04 2023 - Fix crash when sink has no 'application.name' key
 #       Dec. 03 2023 - YouTube Playlists was breaking get_volume() info.cast()
 #       Apr. 29 2024 - self.poll_callback(self.dict) - parameter was missing.
+#       May. 20 2025 - Make Pulse Audio optional to support Sony TV REST API.
 #
 # ==============================================================================
 """
@@ -63,33 +64,39 @@ FADE_NO = 0  # Aids in debugging
 class PulseAudio:
     """ Manage list of sinks created from Pulse Audio information.
         Fade in/out sound volumes polled every 33ms. """
-    def __init__(self, Info=None):
+    def __init__(self, server="pa", Info=None):
+        self.who = "vu_pulse_audio.py PulseAudio()."
+        _who = self.who + "__init__():"
+        self.server = server  # "pa" = Pulse Audio
         self.info = Info  # Can also use: self.registerInfoCentre() to set
-        self.pulse_is_working = True
-        try:
+        self.pulse_is_working = False
+        if self.server == "pa":  # Using Pulse Audio server?
             ext.t_init("pulse = pulsectl.Pulse()")
-            self.pulse = pulsectl.Pulse()
-            # print("pulse:", dir(pulse))
-            ext.t_end('no_print')  # 0.0037407875
-        except Exception as err:  # CallError, socket.error, IOError (pidfile), OSError (os.kill)
-            ext.t_end('no_print')  # Just to reset level
-            self.pulse_is_working = False
-            raise pulsectl.PulseError('mserve.py get_pulse_control() Failed to ' +
-                                      'connect to pulse {} {}'.format(type(err),
-                                                                      err))
+            try:
+                self.pulse = pulsectl.Pulse()
+                # print("pulse:", dir(pulse))
+                ext.t_end('no_print')  # 0.0037407875
+                self.pulse_is_working = True
+            except Exception as err:  # CallError, socket.error, IOError (pidfile), OSError (os.kill)
+                ext.t_end('no_print')  # Just to reset level
+                raise pulsectl.PulseError('mserve.py get_pulse_control() Failed to ' +
+                                          'connect to pulse {} {}'.format(type(err),
+                                                                          err))
 
         self.last_pid_sink = None  # Used for stability to ensure same sink
         self.curr_pid_sink = None  # number isn't classified as a new sink.
         self.aliens = None  # To turn down all apps except 'ffplay'
         self.last_sink_input_list = None  # = self.pulse.sink_input_list()
         self.sinks_now = None  # mserve formatted list of tuple sinks
-        self.get_all_sinks()  # auto saves to self.sinks_now
+        if self.server == "pa":  # Using Pulse Audio server?
+            self.get_all_sinks()  # auto saves to self.sinks_now
         self.sinks_at_init = self.sinks_now
         self.spam_count = 0  # Prevent error message flooding
         self.poll_count = 0  # To print first 10 job times to fade
         self.err_count = 0  # Errors across session life-span
         self.fade_list = []
         self.dict = {}
+        self.sony_dict = {}  # Used by sony when self.dict not populated
 
         # FUTURE Piggy-back processing - WIP
         self.is_piggy = False  # Is piggy-back processing running
@@ -98,15 +105,14 @@ class PulseAudio:
         self.piggy_file = None  # Filename storing ffmpeg output
         self.piggy_call = None  # Callback function when done
         self.piggy_start = None  # Process start time
-        self.who = "vu_pulse_audio.py PulseAudio()."
 
     def fade(self, sink_no_str, begin, end, duration,
-             finish_cb=None, arg_cb=None, step_cb=None):
+             finish_cb=None, arg_cb=None, step_cb=None, get_cb=None, set_cb=None):
         """ Add new self.dict to fade_list
             'finish_cb': is an optional callback when fade cycle is completed
             'arg_cb': is an optional parameter to the optional callback function
         """
-        if sink_no_str is None:
+        if self.server == "pa" and sink_no_str is None:
             toolkit.print_trace()
             print('pav.fade() passed empty sink_no_str')
             return  # Could use error message and trace...
@@ -121,6 +127,8 @@ class PulseAudio:
         new_dict['end_perc'] = float(end)  # Ending volume percent
         new_dict['start_time'] = now  # Time entered queue + duration = leave
         new_dict['duration'] = float(duration)  # Seconds fade will last.
+        new_dict['get_cb'] = get_cb  # callback to get volume when self.server != "pa"
+        new_dict['set_cb'] = set_cb  # callback to set volume when self.server != "pa"
         new_dict['step_cb'] = step_cb  # callback to set slider for each fade step
         new_dict['finish_cb'] = finish_cb  # callback when fade is ALL done
         new_dict['arg_cb'] = arg_cb  # optional argument to callback
@@ -177,6 +185,8 @@ class PulseAudio:
         now = time.time()
         for i, fade_dict in enumerate(self.fade_list):
 
+            self.sony_dict = fade_dict  # 2025-05-20 for get/set volume callbacks
+
             ''' If all done set final volume and grab next fade in queue '''
             if now >= fade_dict['start_time'] + fade_dict['duration']:
                 self.set_volume(fade_dict['sink_no_str'], fade_dict['end_perc'])
@@ -208,9 +218,23 @@ class PulseAudio:
 
     @staticmethod
     def step_callback(fade_dict):
-        """ If step callback, call function and pass current percent """
+        """ If step callback to update slider, call function with current percent """
         if fade_dict['step_cb'] and fade_dict['curr_perc']:
             fade_dict['step_cb'](fade_dict['curr_perc'])
+
+    def get_callback(self, sink_no_str):
+        """ If get callback for sony volume, call and return current percent. """
+        #if self.fade_dict['get_cb']:
+        #    return self.fade_dict['get_cb']
+        if sink_no_str == sink_no_str:
+            pass
+        return 24.2424
+
+    def set_callback(self, sink_no_str, percent):
+        """ If set callback for sony volume, call with current percent """
+        #if self.fade_dict['set_cb'] and percent:
+        #    self.fade_dict['set_cb'](percent)
+        return
 
     def poll_fades_debug(self):
         """ Every 33ms (in theory) process next step of fade job
@@ -340,6 +364,9 @@ AttributeError: 'module' object has no attribute 'pulsectl'
         :returns float: volume found or 24.2424 for invalid sink no.
         """
         who = who_am_i + "get_volume():"
+        vol = self.get_callback(sink_no_str)
+        if self.server != "pa":
+            return vol
         if refresh:
             self.get_all_sinks()  # Populates self.sinks_now[]
         for Sink in self.sinks_now:
@@ -379,6 +406,9 @@ AttributeError: 'module' object has no attribute 'pulsectl'
                           adjustment percentage.
         """
         who = who_am_i + "set_volume(): "
+        self.set_callback(target_sink, percent)
+        if self.server != "pa":
+            return
         if self.pulse_is_working:
             ''' Fast method using pulse audio direct interface '''
             ext.t_init(who + '-- pulse.volume_change')

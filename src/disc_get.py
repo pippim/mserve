@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/python
 # -*- coding: utf-8 -*-
 """
 Author: Pippim
@@ -17,6 +17,7 @@ from __future__ import with_statement  # Error handling for file opens
 #       Documentation https://pythonhosted.org/python-libdiscid/api.html
 #
 #       July 12 2023 - Interface to/from mserve_config.py
+#       June 01 2025 - Remove "env" from shebang to for script name in top
 #
 # ==============================================================================
 import libdiscid

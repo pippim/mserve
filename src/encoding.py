@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/python
 # -*- coding: utf-8 -*-
 """
 Author: pippim.com
@@ -40,8 +40,9 @@ warnings.simplefilter('default')  # in future Python versions.
 #       Aug. 22 2023 - Don't download images over 4 mb.
 #       Dec. 10 2023 - Code review and typo corrections.
 #       May. 31 2024 - Make "No Audio Disc" error message appear correctly.
-#       Jun. 02 2024 - User configurable colors, bug fixes and debug printing.
+#       June 02 2024 - User configurable colors, bug fixes and debug printing.
 #       Aug. 24 2024 - SQL Music Table speed boost using OsFileNameIndex.
+#       June 01 2025 - Remove "python" from launch for script name in top. 
 #
 # ==============================================================================
 # noinspection SpellCheckingInspection
@@ -1105,7 +1106,7 @@ class RipCD:
                     ''' Give next step what it expects to see in IPC file '''
                     pickle.dump(self.disc, f)  # Save dictionary as pickle file
             else:
-                ext_name = "python disc_get.py " + IPC_PICKLE_FNAME + NO_STDOUT
+                ext_name = "disc_get.py " + IPC_PICKLE_FNAME + NO_STDOUT
                 self.active_pid = ext.launch_command(ext_name, toplevel=self.cd_top)
 
         elif self.mbz_get1_active:
@@ -1186,7 +1187,7 @@ class RipCD:
                 # When limit is 3 or less artwork may be limited (or non-existent)
                 # TODO: When limit is 1, treeview closes
                 NO_STDOUT = " > " + g.TEMP_DIR + "mserve_mbz_get1_stdout"
-                ext_name = "python mbz_get1.py " + IPC_PICKLE_FNAME + " 10 " + \
+                ext_name = "mbz_get1.py " + IPC_PICKLE_FNAME + " 10 " + \
                            EMAIL_ADDRESS + NO_STDOUT
                 self.active_pid = ext.launch_command(ext_name, toplevel=self.cd_top)
                 # TODO: Status is getting MusicBrainz Release List with mbz_get1.py.
@@ -1290,7 +1291,7 @@ class RipCD:
     
                 # Download images with 500x500 pixel (gets all parm. 500 ignored now)
                 NO_STDOUT = " > " + g.TEMP_DIR + "mserve_mbz_get2_stdout"
-                ext_name = "python mbz_get2.py " + IPC_PICKLE_FNAME + " 500" + \
+                ext_name = "mbz_get2.py " + IPC_PICKLE_FNAME + " 500" + \
                            NO_STDOUT
                 self.active_pid = ext.launch_command(ext_name, toplevel=self.cd_top)
                 # TODO: Status update: getting MusicBrainz Album Artwork with mbz_get2.py.
