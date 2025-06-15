@@ -1,0 +1,5 @@
+# Python temp files - https://gist.github.com/bendog/25f13cf83ef0db283dc656cc58a5c7d7
+__pycache__/
+*.py[cod]  # *.pyc compiled byte files
+*$py.class
+*~  # gedit backup source files
