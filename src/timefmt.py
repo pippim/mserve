@@ -98,7 +98,7 @@ def add_months(d, months):
 
 
 def get_sec(time_str):
-    """ Get Seconds from time: https://stackoverflow.com/a/6402859/6929343
+    """ Get Seconds from time string: https://stackoverflow.com/a/6402859/6929343
         If string contains ".99" return float, else return int
     """
     sections = time_str.count(':')

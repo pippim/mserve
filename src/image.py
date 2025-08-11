@@ -1063,7 +1063,9 @@ def canvas_text_bbox_size(text, ms_font):
 
 
 class BreathingCircle:
-    """ Use RGB transition to paint circle with blurred edges. """
+    """ Use RGB transition to paint circle with blurred edges.
+        Unused experiment started in spring of 2025.
+    """
 
     def __init__(self, low, high, steps, full_size):
 
@@ -2024,6 +2026,140 @@ def gtk_screenshot(x, y, width, height):
                               'raw', 'RGB', pb.get_rowstride(), 1)
 
     return src_img
+
+
+class Zoom:
+    """ 2025-06-08 Capture screen region and zoom pixels 20 fold.
+        Created to capture 10x10 pixels at current mouse pointer -5,-5.
+        Paint zoomed pixels in grid 220x220 tkinter canvas with 2 pixel grid lines.
+
+    """
+
+    def __init__(self, parent=None, geom=None, tt=None, zoom=20, grid_width=2):
+        self.parent = parent
+        self.geom = geom
+        self.tt = tt
+        self.zoom = zoom
+        self.grid_width = grid_width
+
+        self.who = "image.py.Zoom()."
+        self.currRed = None
+        self.currGreen = None
+        self.currBlue = None
+        self.image = None  # Image representing current color brightness
+
+        self.dtb = None  # message.dtb (Delayed Text Box)
+
+    def Countdown(self, seconds=5, alarm=None, title=None, abort=True):
+        """ Wait x seconds.
+
+            credit: https://pixabay.com/sound-effects/search/camera-shutter/
+            For the filename: camera-shutter-314056.mp3
+            Usage: cvlc --play-and-exit camera-shutter-314056.mp3
+            Will not play with ffplay or aplay. Converting to .oga doesn't fix.
+
+            :param seconds: When time passed it's a countdown timer
+            :param alarm: When passed, the sound file to play, EG shutter sound
+            :param title: Title override hard-coded string
+            :param abort: Allow countdown timer to be ended early (closed)
+        """
+
+        _who = self.who + "Countdown():"
+
+        ''' Is countdown already running? '''
+        if self.dtb:
+            if self.dtb.mounted:  # Is textbox mounted yet?
+                print(_who, "Countdown already running.")
+                self.dtb.msg_top.focus_force()
+                self.dtb.msg_top.lift()
+            return
+
+        countdown_sec = seconds + 1  # 2024-12-01 - Losing 1 second on startup???
+        if title is None:  # E.G. title="Scanning Bluetooth devices"
+            title = "Countdown timer for color grab"
+
+        if countdown_sec <= 1:
+            return  # No delay
+
+        tf = (None, 96)  # default font family with 96 point size for countdown
+        # 2 digits needs 300px width, 3 digits needs 450px width
+        width = len(str(countdown_sec)) * 150
+        self.dtb = message.DelayedTextBox(title=title, toplevel=self, width=width,
+                                          height=250, startup_delay=0, abort=abort,
+                                          tf=tf, ta="center", win_grp=self.win_grp)
+        # Loop until delay resume countdown finished or menu countdown finishes
+        start = time.time()
+        while time.time() < start + countdown_sec:
+            if self.dtb.forced_abort:
+                break
+            if not self.winfo_exists():
+                break  # self.exitApp() has destroyed window
+
+            self.dtb.update(str(int(start + countdown_sec - time.time())))
+            self.after(100)  # Suspend uses: 'self.after(100)'
+            if timer or not self.CheckInstalled("nmcli"):
+                continue
+
+            # Leave as soon as network is connected
+            command_line_list = ["nmcli", "-f", "STATE", "-t", "g"]
+            self.runCommand(command_line_list, _who)
+            if self.cmdOutput.lower() == "connected":
+                break  # 2025-04-21 - Took 12 seconds
+
+        if alarm is not None:  # Play sound when timer ends
+            command_line_list = ["cvlc", "--play-and-exit", "camera-shutter-314056.mp3",
+                                 "&"]
+            os.popen(' '.join(command_line_list))
+
+        self.dtb.close()
+        self.dtb = None
+
+    def getFullScreen(self):
+        """
+import gi
+gi.require_version('Gtk', '3.0')
+from gi.repository import Gtk, Gdk
+
+# Create a window
+window = Gtk.Window()
+window.set_title("Fullscreen Example")
+window.set_default_size(600, 400)
+
+# Get the Gdk.Window object
+gdk_window = window.get_window()
+
+# Make the window fullscreen
+gdk_window.fullscreen()
+
+# Show the window
+window.show_all()
+
+# Connect the destroy signal to quit the application
+window.connect("destroy", Gtk.main_quit)
+
+# Run the main loop
+Gtk.main()
+
+
+To toggle fullscreen mode, you can use gdk_window.unfullscreen()
+to revert back to the windowed state. You can also use the
+window-state-event signal on GtkWidget to track the fullscreen state.
+
+
+Wnck (Linux/GNOME):
+
+    Use the Wnck library to get a list of windows and check if they are maximized.
+        """
+        #
+        # Update canvas / draw circle with current color
+        self.image = "#%02x%02x%02x" % (red, green, blue)
+        # https://stackoverflow.com/a/48722664/6929343
+        # circle with faded edges to represent breathing.
+        # Need # of steps and step ndx.
+        if step == sunlight:
+            return None
+
+        return self.image
 
 
 def create_text(x1, y1, **kwargs):

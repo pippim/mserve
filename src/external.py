@@ -581,9 +581,11 @@ def get_running_apps(version):
         parts = line.split()  # No need to compress whitespace above - rework all
         # Sample: 'rick', '3458', '2829', '0', 'Aug08', '?', '00:19:53',
         #         '/usr/bin/python3', '/usr/bin/indicator-sysmonitor'
-
+        # rick     25253  2437  0 14:21 pts/22   00:00:03 
+        # /usr/bin/python ./vu_meter.py stereo mserve
         ''' Split out the program: 'python' or 'python3' '''
         prg_path = parts[7]
+
         base_parts = prg_path.split(os.sep)  # last will be python or python3
         python_name = base_parts[-1]
         if python_name == search:
@@ -602,7 +604,11 @@ def get_running_apps(version):
 
         pid = int(parts[1])  # give it name of 'pid' for clarity
         app = base_parts[-1]
-        apps_running.append((pid, app))
+        try:  # Get parameters if they exist
+            parameters = parts[9:]
+        except IndexError:
+            parameters = []
+        apps_running.append((pid, app, parameters))
     return apps_running
 
 

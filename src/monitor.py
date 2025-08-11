@@ -54,6 +54,7 @@ from collections import OrderedDict, namedtuple
 import global_variables as g
 import image as img         # Routines for tk & photo images
 import sql                  # SQLite3 functions
+import external as ext
 
 ''' Imported below in functions 
     import wnck
@@ -323,13 +324,40 @@ def get_monitors():
 
 ''' Start of REAL code used today (July 2, 2021) '''
 
-DISPLAY = None
-SCREEN = None
+DISPLAY = None  # GDK interface to X11 display server
+SCREEN = None  # GDL screen interface for placing windows
 NUMBER_OF_MONITORS = 0  # pycharm doesn't like to see 'None'
-GNOME_VER = None
+GNOME_VER = None  # GNOME versions supported are 3.18 and 3.22
 
 
-class Monitors:
+class CommonWindow:
+    """ Variables common to Monitors().__init__() and Monitors().get_window()
+        Prefix wn_ short for Wnck.
+    """
+    def __init__(self):
+
+        self.wn_dict = {}  # Dict of keys (without wn_ prefix) / values below
+
+        self.wn_xid_long = None  # X11 window ID long integer (ends in L)
+        self.wn_xid_str = None  # X11 window ID str(wn_xid_long)
+        self.wn_xid_int = None  # X11 window ID int(wn_xid_str)
+        self.wn_xid_hex = None  # X11 window ID hex(wn_xid_int)
+        # str_wn = str(window.number)  # should remove L in python 2.7.5+
+        # int_wn = int(str_wn)  # https://stackoverflow.com/questions
+        # hex_wn = hex(int_wn)  # /5917203/python-trailing-l-problem
+
+        self.wn_pid = None  # Linux PID shared by PulseAudio for match 1
+        self.wn_name = None  # Full Window Name shared by PulseAudio match 2
+        self.wn_app = None  # Window Name's suffix = Application
+        self.wn_video = None  # Window Name's prefix = Media name (song / video)
+        self.wn_geom = None  # geom.xp, geom.yp, geom.widthp, geom.heightp
+        self.wn_x = self.wn_y = self.wn_width = self.wn_height = None
+        self.wn_is_active = None  # active window for keystrokes
+        self.wn_is_maximized = None  # maximized horizontally and vertically
+        self.wn_is_fullscreen = None  # Full screen required for PimTube ad skip
+
+
+class Monitors(CommonWindow):
     """ Build list of all monitors connected to computer
 
         Monitor SQL Configuration: 15-char ShortName, Manufacturer, Model,
@@ -344,6 +372,10 @@ class Monitors:
     """
     def __init__(self):
         """ Build list of monitors forming desktop (aka X11 screen) """
+
+        """ Duplicate get_window() """
+        CommonWindow.__init__(self)  # Recycled class like Toolkit.py CommonTip()
+
         self.who = "monitors.py Monitors()."
         self.desk_width = 0
         self.desk_height = 0
@@ -435,8 +467,9 @@ class Monitors:
             if y2 > self.desk_height:
                 self.desk_height = y2
 
-        ''' Variables needed for get_all_windows '''
-        self.windows_list = []             # List of named tuples
+        ''' list of named tuples: Window(xid_long, name, x, y, wid, hgt) '''
+        self.windows_list = []  # List populated by self.get_all_windows()
+        self.wn_list = []  # 2025-06-12 List populated by self.make_wn_list()
 
         # Wrap up
         if self.screen_width != self.desk_width:
@@ -493,18 +526,24 @@ class Monitors:
 
     # noinspection PyUnusedLocal
     def get_all_windows(self):
-        """ Jun. 14, 2023 - Build list of all windows. To find those off-screen """
+        """ Jun. 14, 2023 - Build list of all windows in self.windows_list[].
+            Initially designed to find windows off-monitors
+            View results with mserve.py - Dropdown Menu - Tools, Debug information
+        """
         import gi
         gi.require_version('Wnck', '3.0')
         from gi.repository import Wnck
         screen = Wnck.Screen.get_default()
+        # Different than __init__():
+        #       DISPLAY = Gdk.Display.get_default()
+        #       SCREEN = DISPLAY.get_default_screen()
         screen.force_update()  # recommended per Wnck documentation
         self.windows_list = []  # empty existing list
         # loop all windows
         for window in screen.get_windows():
             geom = window.get_geometry()  # Includes decorations
             window_name = window.get_name()
-            x_id = window.get_xid()
+            x_id = window.get_xid()  # Long integer. E.G. 111149063L
             Window = namedtuple('Window', 'number, name, x, y, width, height')
             # noinspection PyArgumentList
             self.found_window = Window(x_id, window_name, geom.xp, geom.yp,
@@ -512,6 +551,7 @@ class Monitors:
             self.windows_list.append(self.found_window)
             # A lot more attributes are available see:
             # https://lazka.github.io/pgi-docs/Wnck-3.0/classes/Window.html#Wnck.Window.get_screen
+
 
         # clean up Wnck (saves resources, see the documentation)
         window = None  # Although pycharm flags as error,
@@ -592,7 +632,7 @@ class Monitors:
         """ First find the mouse position. Then find what monitor it is on and
             then return that monitor. """
 
-        x, y = get_mouse_location()
+        x, y = get_mouse_location()  # Uses xdotool
         x = int(x)
         y = int(y)
         x_center = x + 1  # Width of mouse pointer is insignificant
@@ -634,9 +674,86 @@ class Monitors:
         # If mouse off of screen use first monitor
         return primary_monitor
 
+    def get_mouse_pointer(self):
+        """ Uses Gdk to get mouse location using old gnome 3.18 standards.
+            Similar to get_mouse_location() which uses xdotool
+            Returns (x, y). If x is None, y contains error message
+        """
+        _who = self.who + "get_mouse_pointer():"
+        import gi
+        gi.require_version('Gdk', '3.0')
+        from gi.repository import Gdk
+
+        _screen = _x = _y = None
+
+        display = Gdk.Display.get_default()
+        if display:
+            device_manager = display.get_device_manager()
+            if device_manager:
+                device = device_manager.get_client_pointer()
+                if device:
+                    # Get the position relative to the root window
+                    _screen, _x, _y = device.get_position()
+                    #print(_who, "Device position (x, y): ({}, {}) on screen: {}"
+                    #      .format(x, y, screen))
+                else:
+                    _y = "Could not get client pointer device."
+            else:
+                _y = "Could not get device manager."
+        else:
+            _y = "Could not get default display."
+
+        if _x is None:
+            print(_who, _y)
+        return _x, _y  # If _x is None, _y contains error message
+
+    def get_colors_at_geom(self, geom):
+        """ Screenshot using old gnome 3.18 standards
+            Based on toolkit.py -> gnome_screenshot()
+            geom = namedtuple('Geom', ['x', 'y', 'w', 'h'])
+        """
+        _who = self.who + "get_color_at_mouse():"
+        import gi
+        # When replacing 3.0 with 4.0 below
+        gi.require_version('Gdk', '3.0')  # Namespace Gdk is already loaded with version 3.0
+        gi.require_version('Gtk', '3.0')  # Namespace Gtk not available for version 4.0
+        gi.require_version('Wnck', '3.0')  # Namespace Wnck not available for version 4.0
+        # gi.require_versions({"Gtk": "3.0", "Gdk": "3.0", "Wnck": "3.0"})  # Python 3
+
+        from gi.repository import Gdk, GdkPixbuf, Gtk, Wnck
+
+        # gi.require_version('GObject', '4.0')  # Namespace GObject is already loaded with version 2.0
+        # from gi.repository import Gdk, Gdk Pix buf, Gtk, Wnck, GObject
+        # 2024-03-19 add GObject to imports because Gdk.threads_init() is deprecated
+        # (https://gnome.pages.gitlab.gnome.org/pygobject/guide/threading.html)
+        # When above Gobject is imported:
+        # toolkit.py/motion() self.canvas_original_x is none
+        # Exception in Tkinter callback
+        # Traceback (most recent call last):
+        #   File "/usr/lib/python2.7/lib-tk/Tkinter.py", line 1540, in __call__
+        #     return self.func(*args)
+        #   File "/home/rick/python/toolkit.py", line 1806, in motion
+        #     new_x = int(self.canvas_original_x + change)  # Sometimes we get float?
+        # TypeError: unsupported operand type(s) for +: 'NoneType' and 'int'
+
+        Gdk.threads_init()  # From: https://stackoverflow.com/questions/15728170/
+        while Gtk.events_pending():
+            Gtk.main_iteration()
+
+        screen = Wnck.Screen.get_default()
+        screen.force_update()
+        window = Gdk.get_default_root_window()
+        pb = Gdk.pixbuf_get_from_window(window, *geom)
+        desk_pixels = pb.read_pixel_bytes().get_data()
+        _row_stride = pb.get_rowstride()
+        # https://docs.gtk.org/gdk-pixbuf/method.Pixbuf.get_rowstride.html
+        #raw_img = Image.from bytes('RGB', (geom.w, geom.h), desk_pixels,
+        #                          'raw', 'RGB', _row_stride, 1)
+        return desk_pixels, _row_stride
+
     def tk_center(self, window):
         """
-        Similar to center() deprecate 2025-06-08
+        Based on .center() which was deprecated 2025-06-08
 
         From: https://stackoverflow.com/a/10018670/6929343
         centers a tkinter window on monitor in multi-monitor setup
@@ -777,6 +894,476 @@ class Monitors:
             return closest_x
         else:
             return closest_y
+
+    # noinspection PyUnusedLocal
+    def make_wn_list(self):
+        """ Use Wnck to read all windows and build self.wn_list comprised of
+            self.wn_dict dictionaries.
+
+            Created 2025-06-12 based on self.get_all_windows()
+
+https://stackoverflow.com/questions/63660821/detect-when-a-window-opens-in-wnck-python
+
+import gi
+
+gi.require_version('Wnck', '3.0')
+gi.require_version('Gtk', '3.0')
+
+from gi.repository import Wnck
+from gi.repository import Gtk
+
+
+def test_do_when_window_opened_simple():
+    Gtk.init([])
+    screen: Wnck.Screen = Wnck.Screen.get_default()
+    screen.force_update()
+
+    def do_window_opened(this_screen: Wnck.Screen, opened_window: Wnck.Window):
+        print('hello')
+        app: Wnck.Application = opened_window.get_application()
+        app_name = app.get_name()
+        print('app name -> ' + app_name)
+        print('window name -> ' + opened_window.get_name())
+
+    screen.connect('window-opened', do_window_opened)
+
+    Gtk.main()
+
+
+if __name__ == '__main__':
+    test_do_when_window_opened_simple()
+        """
+        _who = self.who + "make_wn_list():"
+        ext.t_init(_who)
+        import gi
+        gi.require_version('Wnck', '3.0')
+        from gi.repository import Wnck
+        screen = Wnck.Screen.get_default()
+        # Different than __init__():
+        #       DISPLAY = Gdk.Display.get_default()
+        #       SCREEN = DISPLAY.get_default_screen()
+        ext.t_init(_who + "W/O import")
+        screen.force_update()  # recommended per Wnck documentation
+
+        self.wn_list = []  # empty existing list
+        # loop all windows
+        for window in screen.get_windows():
+            """ Duplicate get_window() """
+            CommonWindow.__init__(self)  # Set wn_dict = {} and vars to None
+
+            self.wn_xid_long = window.get_xid()  # Long integer. E.G. 111149063L
+            self.wn_xid_str = str(self.wn_xid_long)
+            self.wn_xid_int = int(self.wn_xid_str)
+            self.wn_xid_hex = hex(self.wn_xid_int)
+
+            self.wn_pid = window.get_pid()  # Process ID or 0 if none
+            self.wn_name = window.get_name()  # Full window name from title bar
+            if " - YouTube" in self.wn_name:
+                # Granular matching of " - YouTube \xe2\x80\x94 Mozilla Firefox"
+                self.wn_app = self.wn_name.split()[-1]  # 'Firefox'
+                self.wn_video = self.wn_name.split(" - YouTube")[0]  # Video name
+            self.wn_geom = window.get_geometry()  # Includes decorations
+            self.wn_x = self.wn_geom.xp
+            self.wn_y = self.wn_geom.yp
+            self.wn_width = self.wn_geom.widthp
+            self.wn_height = self.wn_geom.heightp
+            self.wn_is_active = window.is_active()
+            self.wn_is_maximized = window.is_maximized()
+            self.wn_is_fullscreen = window.is_fullscreen()
+
+            self.make_wn_dict()  # Builds wn_xid_str, _int and _hex
+            self.wn_list.append(self.wn_dict)
+
+        ext.t_end('no_print')  # Time for 24 windows: 0.03 to 0.06
+
+        # clean up Wnck (saves resources, see the documentation)
+        window = None  # Although pycharm flags as error,
+        screen = None  # these are important else crash!!
+        Wnck.shutdown()
+        #print("len(self.wn_list):", len(self.wn_list))
+        ext.t_end('no_print')  # Time for 24 windows: 0.03 to 0.06
+        # For comparison, `wmctrl -lG` takes 0.132s
+
+    def get_wn_by_name(self, wn_name, pid=None):
+        """ Search window list for matching name.
+            Destroys current self.wn_dict contents !
+            Parent must call self.make_wn_list() first !
+        """
+        _who = self.who + "get_wn_by_name():"
+
+        # loop all windows
+        #print(self.wn_list)
+        for self.wn_dict in self.wn_list:
+            if pid and pid != self.wn_dict['pid']:
+                continue
+            #print(self.wn_dict)
+            self.unmake_wn_dict()
+            if self.wn_name.startswith(wn_name):
+                return True
+
+        """ Duplicate get_window() """
+        CommonWindow.__init__(self)  # Set wn_dict = {} and vars to None
+        return False
+
+    def set_fullscreen(self, xid_long):
+        """ Search wnck.screen.list for matching windows xid long.
+            Preserves self.wn_list and self.wn_dict contents.
+            DOES NOT WORK IN GNOME 3.18 test in 3.22
+        """
+        _who = self.who + "set_fullscreen():"
+        import gi
+        gi.require_version('Wnck', '3.0')
+        from gi.repository import Wnck
+        _screen = Wnck.Screen.get_default()
+        # Different than __init__():
+        #       DISPLAY = Gdk.Display.get_default()
+        #       SCREEN = DISPLAY.get_default_screen()
+        _screen.force_update()  # recommended per Wnck documentation
+
+        window_found = False
+        forced_fullscreen = False
+        for _window in _screen.get_windows():
+            if not xid_long == _window.get_xid():  # Long integer. E.G. 111149063L
+                continue  # Not our window
+
+            window_found = True
+            if _window.is_fullscreen():
+                break  # Already fullscreen
+
+            _window.fullscreen()  # force fullscreen
+            forced_fullscreen = True
+            break
+
+        ext.t_end('no_print')  # Time for 24 windows: 0.03 to 0.06
+
+        # clean up Wnck (saves resources, see the documentation)
+        _window = None  # Although pycharm flags as error,
+        _screen = None  # these are important else crash!!
+        Wnck.shutdown()
+        return window_found and forced_fullscreen
+
+    def make_wn_dict(self):
+        """ Build self.wn_dict using self.variable names """
+
+        _who = self.who + "make_wn_dict():"
+        if self.wn_xid_long is None:
+            print(_who, "self.wn_xid_long is None")
+            self.wn_dict = {}
+            return
+
+        self.wn_xid_str = str(self.wn_xid_long)
+        self.wn_xid_int = int(self.wn_xid_str)
+        self.wn_xid_hex = hex(self.wn_xid_int)
+
+        self.wn_dict = {
+            "xid_long": self.wn_xid_long,
+            "xid_hex": self.wn_xid_hex,
+            "xid_int": self.wn_xid_int,
+            "xid_str": self.wn_xid_str,
+            "pid": self.wn_pid,
+            "name": self.wn_name,
+            "app": self.wn_app,
+            "video": self.wn_video,
+            "geom": self.wn_geom,
+            "x": self.wn_x,
+            "y": self.wn_y,
+            "width": self.wn_width,
+            "height": self.wn_height,
+            "is_active": self.wn_is_active,
+            "is_maximized": self.wn_is_maximized,
+            "is_fullscreen": self.wn_is_fullscreen
+        }
+
+    def unmake_wn_dict(self, wn_dict=None):
+        """ Deconstruct self.wn_dict into self.variable names.
+            If wn_dict isn't passed, use self.wn_dict. When passed it is a working
+            dictionary named old_dict, hold_dict, new_dict, etc.
+        """
+
+        _who = self.who + "unmake_wn_dict():"
+        wn_dict = self.wn_dict if wn_dict is None else wn_dict  # old_, hold_, new_dict, etc.
+
+        try:
+            self.wn_xid_long = wn_dict["xid_long"]  # X11 window ID with L integer type
+        except TypeError:
+            print(_who, 'ERROR: self.wn_xid_long = wn_dict["xid_long"]')
+            print(wn_dict)
+            return
+
+        self.wn_xid_str = wn_dict["xid_str"]
+        self.wn_xid_int = wn_dict["xid_int"]
+        self.wn_xid_hex = wn_dict["xid_hex"]
+        self.wn_pid = wn_dict["pid"]
+        self.wn_name = wn_dict["name"] 
+        self.wn_app = wn_dict["app"] 
+        self.wn_video = wn_dict["video"]
+        self.wn_geom = wn_dict["geom"] 
+        self.wn_x = wn_dict["x"] 
+        self.wn_y = wn_dict["y"] 
+        self.wn_width = wn_dict["width"] 
+        self.wn_height = wn_dict["height"] 
+        self.wn_is_active = wn_dict["is_active"] 
+        self.wn_is_maximized = wn_dict["is_maximized"] 
+        self.wn_is_fullscreen = wn_dict["is_fullscreen"] 
+
+        """
+
+====================================================================================
+https://lazka.github.io/pgi-docs/Wnck-3.0/classes/Window.html#Wnck.Window.get_screen
+====================================================================================
+
+get_geometry()¶
+get_window_type()¶
+is_above()¶
+is_below()¶
+is_fullscreen()¶
+is_maximized()¶
+is_maximized_horizontally()¶
+is_maximized_vertically()¶
+is_minimized()¶
+make_above()¶
+make_below()¶
+maximize()¶
+maximize_horizontally()¶
+maximize_vertically()¶
+minimize()¶
+set_fullscreen(fullscreen)¶
+set_geometry(gravity, geometry_mask, x, y, width, height)¶
+set_icon_geometry(x, y, width, height)¶
+
+get_geometry()¶
+
+    Returns:
+
+        xp:
+
+            return location for X coordinate in pixels of self.
+        yp:
+
+            return location for Y coordinate in pixels of self.
+        widthp:
+
+            return location for width in pixels of self.
+        heightp:
+
+            return location for height in pixels of self.
+
+    Return type:
+
+        (xp: int, yp: int, widthp: int, heightp: int)
+
+    Gets the size and position of self, including decorations. This function 
+    uses the information last received in a ConfigureNotify event and adjusts 
+    it according to the size of the frame that is added by the window manager 
+    (this call does not round-trip to the server, it just gets the last sizes 
+    that were notified). The X and Y coordinates are relative to the root 
+    window.
+
+    If you need to know the actual size of self ignoring the frame added by 
+    the window manager, use Wnck.Window.get_client_window_geometry().
+
+
+get_window_type()¶
+
+    Returns:
+
+        the semantic type of self.
+    Return type:
+
+        Wnck.WindowType
+
+    Gets the semantic type of self.
+
+
+is_above()¶
+
+    Returns:
+
+        True if self is above other windows, False otherwise.
+    Return type:
+
+        bool
+
+    Gets whether self is above other windows. This state may change anytime a 
+    Wnck.Window ::state-changed signal gets emitted.
+
+    See Wnck.Window.make_above() for more details on this state.
+
+    New in version 2.14.
+
+
+is_below()¶
+
+    Returns:
+
+        True if self is below other windows, False otherwise.
+    Return type:
+
+        bool
+
+    Gets whether self is below other windows. This state may change anytime a 
+    Wnck.Window ::state-changed signal gets emitted.
+
+    See Wnck.Window.make_below() for more details on this state.
+
+    New in version 2.20.
+
+is_fullscreen()¶
+
+    Returns:
+
+        True if self is fullscreen, False otherwise.
+    Return type:
+
+        bool
+
+    Gets whether self is fullscreen. Fullscreen state may change anytime a 
+    Wnck.Window ::state-changed signal gets emitted.
+
+    New in version 2.8.
+
+
+is_maximized()¶
+
+    Returns:
+
+        True if self is maximized in both directions, False otherwise.
+    Return type:
+
+        bool
+
+    Gets whether self is maximized. Maximization state may change anytime a 
+    Wnck.Window ::state-changed signal gets emitted.
+
+    As for GDK, “maximized” means both vertically and horizontally. If self 
+    is maximized in only one direction, then self is not considered maximized.
+
+is_maximized_horizontally()¶
+
+    Returns:
+
+        True if self is maximized horizontally, False otherwise.
+    Return type:
+
+        bool
+
+    Gets whether self is maximized horizontally. Horizontal maximization state 
+    may change anytime a Wnck.Window ::state-changed signal gets emitted.
+
+is_maximized_vertically()¶
+
+    Returns:
+
+        True if self is maximized vertically, False otherwise.
+    Return type:
+
+        bool
+
+    Gets whether self is maximized vertically. vertical maximization state 
+    may change anytime a Wnck.Window ::state-changed signal gets emitted.
+
+is_minimized()¶
+
+    Returns:
+
+        True if self is minimized, False otherwise.
+    Return type:
+
+        bool
+
+    Gets whether self is minimized. Minimization state may change anytime a 
+    Wnck.Window ::state-changed signal gets emitted.
+
+
+make_above()¶
+
+    Asks the window manager to put self on top of most windows (self will not 
+    be on top of focused fullscreen windows, of other windows with this setting
+    and of dock windows).
+
+    New in version 2.14.
+
+make_below()¶
+
+    Asks the window manager to put self below most windows.
+
+    New in version 2.20.
+
+maximize()¶
+
+    Asks the window manager to maximize self.
+
+maximize_horizontally()¶
+
+    Asks the window manager to maximize horizontally self.
+
+maximize_vertically()¶
+
+    Asks the window manager to maximize vertically self.
+
+minimize()¶
+
+    Minimizes self.
+
+
+set_fullscreen(fullscreen)¶
+
+    Parameters:
+
+        fullscreen (bool) – whether to make self fullscreen.
+
+    Asks the window manager to set the fullscreen state of self according 
+    to fullscreen.
+
+    New in version 2.8.
+
+set_geometry(gravity, geometry_mask, x, y, width, height)¶
+
+    Parameters:
+
+            gravity (Wnck.WindowGravity) – the gravity point to use as a 
+            reference for the new position.
+
+            geometry_mask (Wnck.WindowMoveResizeMask) – a bitmask containing 
+            flags for what should be set.
+
+            x (int) – new X coordinate in pixels of self.
+
+            y (int) – new Y coordinate in pixels of self.
+
+            width (int) – new width in pixels of self.
+
+            height (int) – new height in pixels of self.
+
+    Sets the size and position of self. The X and Y coordinates should be 
+    relative to the root window.
+
+    Note that the new size and position apply to self with its frame added by 
+    the window manager. Therefore, using Wnck.Window.set_geometry() with the 
+    values returned by Wnck.Window.get_geometry() should be a no-op, while 
+    using Wnck.Window.set_geometry() with the values returned by 
+    Wnck.Window.get_client_window_geometry() should reduce the size of self 
+    and move it.
+
+    New in version 2.16.
+
+set_icon_geometry(x, y, width, height)¶
+
+    Parameters:
+
+            x (int) – X coordinate in pixels.
+
+            y (int) – Y coordinate in pixels.
+
+            width (int) – width in pixels.
+
+            height (int) – height in pixels.
+
+    Sets the icon geometry for self. A typical use case for this is the 
+    destination of the minimization animation of self.
+
+
+        """
 
 
 def get_window_geom_raw(window, leave_visible=True):

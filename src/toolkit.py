@@ -16,11 +16,11 @@ from __future__ import with_statement       # Error handling for file opens
 #
 #       Jan. 18 2022 - Set tooltip location SW, SE, NW or NE of parent widget.
 #       Feb. 26 2022 - Add border to tooltip, don't vary y-axis mouse movement.
-#       Jul. 17 2022 - Error in bserve when bup_view close button clicked.
-#       Jul. 25 2022 - Begin systray development - GNOME cross platform.
-#       Jul. 30 2022 - Expand find_column() with:  elif self.find_op == '>=':
+#       July 17 2022 - Error in bserve when bup_view close button clicked.
+#       July 25 2022 - Begin systray development - GNOME cross platform.
+#       July 30 2022 - Expand find_column() with:  elif self.find_op == '>=':
 #       Apr. 15 2023 - Move in normalize_tcl() from bserve.py for mserve.py.
-#       Jun. 15 2023 - New Tooltip anchor "sc" South Centered for banner_btn
+#       June 15 2023 - New Tooltip anchor "sc" South Centered for banner_btn
 #       July 11 2023 - Delete unused methods to simplify mserve_config.py
 #       Aug. 15 2023 - Fix 'menu' tooltips on left monitor with self.menu_tuple
 #       Jan. 01 2024 - computer_bytes(size_str) converts '4.0K blah' to 4000
@@ -31,6 +31,7 @@ from __future__ import with_statement       # Error handling for file opens
 #       Dec. 29 2024 - Tooltips - ttk.Label, ttk.Frame & ttk.Entry fg/bg colors
 #       Feb. 02 2025 - Child Windows auto-assign key when <None> registered
 #       Feb. 05 2025 - Create Tooltips().zap_tip_window() call before suspend
+#       June 14 2025 - Create VolumeMeters() ported from mserve for use in HomA
 #
 #==============================================================================
 
@@ -72,6 +73,7 @@ from PIL import Image, ImageTk  # For MoveTreeviewColumn
 
 # python standard library modules
 import os
+import signal  # For os.kill(pid, signal.SIG___) used in VolumeMeters() class
 import time
 import datetime
 from collections import OrderedDict, namedtuple
@@ -131,8 +133,8 @@ def list_widgets(level, scan="All"):
     """
     List all widgets of a certain type (or "All") for object.
 
-    Scan options are: "All", "Toplevel", "Frame", "Label",  
-    "Button", "Treeview", "Scrollbar", "Menu", "Canvas" & "Other" 
+    Scan options are: "All", "Toplevel", "Frame", "Label",
+    "Button", "Treeview", "Scrollbar", "Menu", "Canvas" & "Other"
 
     widget_list: [<Tkinter.Label instance at 0x7f16387b63f8>]
                                instance_hex: 0x7f16387b63f8
@@ -180,7 +182,7 @@ def list_widgets(level, scan="All"):
             if not isinstance(v, tk.Label):
                 print("toolkit.py list_widgets(): Not a tkinter Label!",
                       scan)
-            
+
         elif isinstance(v, tk.Button) and (scan == "All" or scan == "Button"):
             print('Button   :', k, v)
             print_it = True
@@ -218,7 +220,7 @@ def list_widgets(level, scan="All"):
 
         if error_found is True:
             pass
-        
+
         print('\t Geometry  :', v.winfo_geometry(),
               "x-offset:", v.winfo_x(), "y-offset:", v.winfo_y())
 
@@ -381,16 +383,18 @@ def normalize_tcl(s):
         Fixes error:
           File "/usr/lib/python2.7/lib-tk/ttk.py", line 1339, in insert
             res = self.tk.call(self._w, "insert", parent, index, *opts)
-        _tkinter.TclError: character U+1f3d2 is above the 
+        _tkinter.TclError: character U+1f3d2 is above the
             range (U+0000-U+FF FF) allowed by Tcl
         From: https://bugs.python.org/issue21084
     """
     astral = re.compile(r'([^\x00-\uffff])')
     new_s = ""
+    if s is None:  # 2025-07-03 Handle string is <None>
+        return new_s
     for i, ss in enumerate(re.split(astral, s)):
         if not i % 2:
             new_s += ss
-        # Patch June 17, 2023 for test results published below
+        # Patch June 17, 2023 for bserve results published below
         elif ss == "v":
             new_s += u"v"
         elif ss == "w":
@@ -488,7 +492,7 @@ def unique_key(key, dictionary):
     print_trace()
     print("toolkit.py - unique_key() has > " + str(i) + " duplicate keys.")
     print("new_key:", new_key)
-    
+
     return "toolkit.py unique_key(): Two many keys"
 
 
@@ -1075,7 +1079,7 @@ class ProgressBars(CommonBar):
         return True
 
     def key_for_widget(self, widget):
-        """ When caller doesn't know the 'key' get it with window widget 
+        """ When caller doesn't know the 'key' get it with window widget
 
             ONLY USED FOR A FEW MINUTES THEN OBSOLETE. Leave for now.
 
@@ -1124,9 +1128,9 @@ class ProgressBars(CommonBar):
 #
 # ==============================================================================
 class ChildWindows:
-    """ Called by delayed textbox (dtb) or DictTreeview class below. 
+    """ Called by delayed textbox (dtb) or DictTreeview class below.
         Called from message.py ShowInfo() and AskQuestion().
-        
+
         When called by message.py a child window key is not provided
         so assign one with current time string.
 
@@ -1490,11 +1494,11 @@ class CustomScrolledText(scrolledtext.ScrolledText):
 
 
         EXAMPLE:
-    
+
             text = CustomScrolledText()
             text.tag_config("red", foreground="#ff0000")
             text.highlight_pattern("this should be red", "red")
-        
+
             The highlight_pattern method is a simplified python
             version of the tcl code at http://wiki.tcl.tk/3246
     """
@@ -1609,7 +1613,7 @@ class makeNotebook:
             frame = ttk.Frame(self.notebook, width=200, height=200, padding=[20, 20])
             # 2024-12-29 - tooltip gets focus moving mouse between fields
             #self.tt_add(frame, tip, "ne")
-            button_frm = None  # TODO: Define this properly
+            #button_frm = None  # TODO: Define this properly
 
             def help():
                 """ help method opens new browser window with HomA webpage. """
@@ -1872,7 +1876,7 @@ class makeNotebook:
                 return
 
             entry.configure(font="-weight normal")  # Turn off bold font
-            
+
             # Save newData value
             saveValue(stored_value)
 
@@ -1938,12 +1942,12 @@ class DictTreeview:
 
         2024-03-28 - ChildWindows() class to keep children on top and move when
         parent window dragged.
-        
+
         Interim version:
             When 'columns=()' the displaycolumns will be autogenerated based on
             'tree_dict' parameter
     """
-    def __init__(self, tree_dict, toplevel, master_frame, show='headings', 
+    def __init__(self, tree_dict, toplevel, master_frame, show='headings',
                  columns=(), sbar_width=12, highlight_callback=None, colors=None,
                  sql_type="", name="", use_h_scroll=False, force_close=None,
                  tt=None, sql_config=True):
@@ -2096,7 +2100,7 @@ class DictTreeview:
         # TODO: If triangles created already, they are not remade so lost here!
         img.make_triangles(self.triangles, width, 'black', 'grey')
         """
-        
+
         ''' Configure tag for row highlight '''
         self.tree.tag_configure('highlight', background='lightblue')
         self.tree.bind('<Motion>', self.highlight_row)
@@ -2126,8 +2130,8 @@ class DictTreeview:
             2024-04-03 - Review tags "unchecked" if they were gone that would
                 imply the row item was not checked anyway.
         """
-        who = self.who + 'insert():'  
-        
+        who = self.who + 'insert():'
+
         if row is None:
             print(who, "- SQL Dictionary row is required parameter")
             return
@@ -2386,7 +2390,7 @@ class DictTreeview:
         close_btn = tk.Button(
             frame, width=g.BTN_WID, text="✘ Close", command=close)
         close_btn.grid(row=1, column=0, padx=10, pady=5, sticky=tk.E)
-        
+
         ''' custom scrolled text box with pattern highlighting '''
         scrollbox = CustomScrolledText(
             frame, state="normal", font=ms_font, borderwidth=15, relief=tk.FLAT)
@@ -2485,7 +2489,7 @@ class DictTreeview:
 
             Prompt for column to rename (defaults to current column) from view.
             Prompt for new name.
-            
+
             After apply, close all child windows of dd_view.
 
             :param column_name: tkinter column name from displaycolumns.
@@ -2583,7 +2587,7 @@ class DictTreeview:
 
             Call self.force_close(restart=True) to close all windows
             and restart parent.
-            
+
             :param column_name: tkinter column name from displaycolumns.
             :param x: x position 24 pixels left of mouse pointer.
             :param y: y position 24 pixels below mouse pointer.
@@ -2785,7 +2789,7 @@ class DictTreeview:
             Dynamically show column order with each spinbox action.
 
             Apply changes to self.tree['displaycolumns'] and set tree_dict
-            
+
             After apply, close all child windows of dd_view.
 
             :param column_name: tkinter column name from displaycolumns.
@@ -2967,7 +2971,7 @@ class DictTreeview:
         """ Make bottom for insert/remove/move/rename columns """
         # scrollbox = make_common_bottom(
         #    top, frame, combo_col, combo_func, apply_func, close_func)
-        
+
         # Rows: 10 Combobox, 20 Spinbox, 30/50 separators, 40 displaycolumns
         # Row 60 Buttons - Apply & Cancel (plus callback for combobox update)
 
@@ -3235,7 +3239,7 @@ class DictTreeview:
     def change_column_format(self, new_format, search):
         """ For example history size is usually regular integer. Playlists
             repurposes for MB's.
-            
+
             :param new_format: New format. E.G. "MB"
             :param search: column name, E.G. "size"
             :returns None
@@ -3313,7 +3317,7 @@ def select_dict_columns(columns, dict_list):
     """ Select columns in order.
         Returns nothing because dict_list is changed in place.
 
-        :param  columns list in order of display. 
+        :param  columns list in order of display.
                 It may be a tuple of column names for gmail message header.
         :param  dict_list is mutable list of dictionary fields. The
                 "("select_order", 0)" field is changed from 0 to number 1 to last.
@@ -3443,7 +3447,7 @@ def human_bytes(size, decimals=1, space=True):
     while size > 999:
         off += 1
         size = size / 1000.0
-        
+
     rounded = round(size, decimals)
     rounded = '{:n}'.format(rounded)
     rounded = rounded.rstrip("0")  # Remove trailing 0's
@@ -3534,6 +3538,7 @@ def scroll_defaults(scrollbox, tabs=None):
     scrollbox.tag_config('yellow', background='yellow')
     scrollbox.tag_config('cyan', background='cyan')
     scrollbox.tag_config('magenta', background='magenta')
+    scrollbox.tag_config('white', foreground='white', background='black')
 
     scrollbox.configure(background="WhiteSmoke")
     if not tabs:
@@ -3907,7 +3912,7 @@ class SearchText:
         """ debugging when view.tree is corrupted when playing next song.
             Also delayed text box gets corrupted:
             self.missing_artwork_dtb.close()  # Close delayed text box
-            AttributeError: 'NoneType' object has no attribute 'close' 
+            AttributeError: 'NoneType' object has no attribute 'close'
         """
         print("\nself.view:", self.view,
               "\nself.toplevel:", self.toplevel,
@@ -4069,7 +4074,7 @@ class MoveTreeviewColumn:
 
     def start(self, event):
         """
-            Button 1 was just pressed for library treeview or backups treeview in 
+            Button 1 was just pressed for library treeview or backups treeview in
                 bserve.py (gmail API backup server). Or button 1 pressed for
                 mserve.py (Music Server) SQL Music treeview or SQL History Treeview
 
@@ -4415,7 +4420,7 @@ class MoveTreeviewColumn:
 
 
 def wait_cursor(toplevel):
-    """ Turn mouse pointer (cursor) into hour glass 
+    """ Turn mouse pointer (cursor) into hour glass
         Caller reverses with toplevel.config(cursor="")
     """
     try:
@@ -4435,23 +4440,18 @@ def move_mouse_to(x, y):
         Visit link for other options under Windows and Mac.
         For Linux use xdotool for .007 response time and no flicker.
     """
-    # Create a new temporary root
-    temp_root = tk.Tk()
-    # Move it to +0+0 and remove the title bar
-    temp_root.overrideredirect(True)
-    # Make sure the window appears on the screen and handles the `overrideredirect`
-    temp_root.update()
-    # Generate the event as @a bar nert did
+    temp_root = tk.Tk()  # Create a new temporary root
+    temp_root.overrideredirect(True)  # Move it to +0+0 and remove the title bar
+    temp_root.update()  # Make sure window appears and handles the `overrideredirect`
     temp_root.event_generate("<Motion>", warp=True, x=x, y=y)
-    # Make sure that tcl handles the event
-    temp_root.update()
-    # Destroy the root
-    temp_root.destroy()
+    temp_root.update()  # Make sure that tcl handles the event
+    temp_root.destroy()  # Destroy the root
 
 
 def gnome_screenshot(geom):
     """ Screenshot using old gnome 3.18 standards
         Required to move column in tk.Treeview
+        geom = namedtuple('Geom', ['x', 'y', 'w', 'h'])
     """
 
     import gi
@@ -4487,171 +4487,420 @@ def gnome_screenshot(geom):
     pb = Gdk.pixbuf_get_from_window(w, *geom)
     desk_pixels = pb.read_pixel_bytes().get_data()
     # June 19, 2023 - Error 'Image' was never imported. Add above.
+    bytes_per_row = pb.get_rowstride()
+    # https://docs.gtk.org/gdk-pixbuf/method.Pixbuf.get_rowstride.html
     raw_img = Image.frombytes('RGB', (geom.w, geom.h), desk_pixels,
-                              'raw', 'RGB', pb.get_rowstride(), 1)
+                              'raw', 'RGB', bytes_per_row, 1)
     return raw_img
 
 
-class VolumeSlider:
-    """ Volume Slider for Pulse Audio 'ffplay' Sink in mserve.
-        Volume Slider for Sony TV Audio controlled via REST API.
+class PointerInspector:
+    # noinspection SpellCheckingInspection
+    """ Follow pointer position and display colors on hover. Can be called
+        without tkinter frame simply to get color at coordinates.
     """
 
     # noinspection SpellCheckingInspection
-    def __init__(self, master_frm, borderwidth=0, row=0, column=1, columnspan=2,
-                 sticky=tk.EW, padx=5, pady=(8, 4), tt=None):
-        """ Define slider frame object and objects within. """
+    def __init__(self, master_frm, width=30, height=100, row=0, rowspan=1,
+                 column=0, padx=8, pady=12, theme_bg='Black', tt=None, mon=None):
 
-        ''' Volume Slider Frame '''
-        self.slider_frm = ttk.Frame(master_frm, borderwidth=borderwidth)
-        self.slider_frm.grid(row=row, column=column, columnspan=columnspan,
-                             sticky=sticky, padx=padx, pady=pady)
-        self.slider_frm.columnconfigure(0, weight=0)  # low or off speaker symbol
-        self.slider_frm.columnconfigure(1, weight=5)  # Volume Slider
-        self.slider_frm.columnconfigure(2, weight=0)  # high or full speaker symbol
-        self.slider_frm.rowconfigure(0, weight=0)
+        """ Parameters """
+        self.master_frm = master_frm  # Shared tk frame for vu meters
+        self.width = width  # Width of one VU Meter, never resized
+        self.height = height  # Will be resized on master_frm expand/shrink
+        self.row = row  # Top row in master_frm
+        self.rowspan = rowspan  # 18 rows in mserve
+        self.column = column
+        self.padx = padx
+        self.pady = pady
+        self.theme_bg = theme_bg  # Background color can be reset by media color
+
+        self.who = "toolkit.py PointerInspector()."
+        ''' Define LED VU Meters left and right canvas objects and objects within. '''
+        self.canvas_first_time = True  # mserve chronology repaints canvas first time
+        if self.master_frm is not None:
+            self.master_frm.bind("<Configure>", self.set_height)
+            self._canvas, self._canvas_rectangle = self._create_canvas(column)
+            self.set_height()  # Set height of self._canvas
 
         self.tt = tt  # Tooltips
+        self.mon = mon  # monitor.py Monitors() instance
 
-        self.ffplay_mute = None  # Lowest volume icon
-        self.ffplay_slider = None  # Slider control
-        self.ffplay_full = None  # Highest volume icon
+        # Color at mouse pointer
+        self.clr_r = None  # Red
+        self.clr_g = None  # Green
+        self.clr_b = None  # Blue
+        self.clr_tk_hex = None  # Tkinter hex color format "#a1b2c3"
 
-    def createLowVolume(self, *_args):
-        """ Low volume / mute icon """
+    def _create_canvas(self, col):
+        """ Create VU Meter. self.height irrelevant. """
+        _who = self.who + "_create_canvas():"
+        canvas = tk.Canvas(self.master_frm, width=self.width, relief=tk.FLAT,
+                           height=self.height, bg='black')
+        canvas.grid(row=self.row, rowspan=self.rowspan, column=col, padx=self.padx)
+        canvas_rectangle = canvas.create_rectangle(0, self.height, 0, self.height)
+        return canvas, canvas_rectangle
 
-        ''' self.ffplay_mute  LEFT: 🔉 U+F1509  RIGHT: 🔊 U+1F50A 
-            🔇 (1f507) 🔈 (1f508) 🔉 (1f509) 🔊 (1f50a)
+    def set_height(self, *_args):
+        """ Set height of VU canvas when parent frame resized. """
+        _x, _y, _width, height = self.master_frm.grid_bbox()
+
+        ''' New height of resized grid holding x rows of LED VU Meter '''
+        self.height = height - self.pady  # Padding for top & bottom vu canvas
+        self.height = 1 if self.height < 1 else self.height
+        self._canvas.config(height=self.height)
+        #self._canvas_right.config(height=self.height)
+        self.blank_canvas()  # Fill with self.theme_bg
+
+    def blank_canvas(self):
+        """ Display blank VU Meters (Left and Right), when music paused.
+            Previous dynamic display rectangles have already been removed. """
+        x0, y0, x1, y1 = 0, 0, self.width, self.height
+        self._canvas.coords(self._canvas_rectangle, x0, y0, x1, y1)
+        self._canvas.create_rectangle(x0, y0, self.width, y1, fill=self.theme_bg,
+                                      width=1, outline='black', tag="rect")
+
+    # PyCharm Python 2 Error using Python 3 command: _RGBA.append(chr(_r))
+    # noinspection PyTypeChecker
+    def get_colors(self, x, y):
+        """ Get colors at mouse position
+            Average time is 0.0651 seconds
+        """
+        _who = self.who + "get_colors():"
+        Geom = namedtuple('Geom', ['x', 'y', 'w', 'h'])  # named tuple x, y, w, h
+        # noinspection PyArgumentList
+        _geom = Geom(x, y, 1, 1)
+        ext.t_init(_who)  # Start timer
+        _colors, _row_stride = self.mon.get_colors_at_geom(_geom)
+        ext.t_end('no_print')  # average 0.0651 seconds
+
+        _RGBA = bytearray()  # First color's RGBA
+        if len(_colors) > 3:
+            _a = _colors[3]  # Color has an alpha channel
+        else:
+            _a = b"?"  # Color has NO alpha channel assign chr 63
+        try:  # Python 3
+            _RGBA.append(chr(_colors[0]))  # Red
+            _RGBA.append(chr(_colors[1]))  # Green
+            _RGBA.append(chr(_colors[2]))  # Blue
+            _RGBA.append(chr(_a))  # Alpha channel
+        except TypeError:  # Python 2
+            # Expected type 'int' (matched generic type '_T'), got 'str' instead
+            # Python 3 error: TypeError: an integer is required
+            _RGBA.append(_colors[0])  # Red
+            _RGBA.append(_colors[1])  # Green
+            _RGBA.append(_colors[2])  # Blue
+            _RGBA.append(_a)  # Alpha channel
+
+        self.clr_r = _RGBA[0]  # Red
+        self.clr_g = _RGBA[1]  # Green
+        self.clr_b = _RGBA[2]  # Blue
+
+        hex_strings = []  # hex codes list of [R, G, B]
+        integer_values = list(_RGBA)  # Convert byte array to list of integers
+        for i in integer_values[:3]:  # Limit 3 to skip alpha channel
+            hex_string = hex(i)[2:]  # Advance past "0x" prefix
+            hex_string = "0" + hex_string if len(hex_string) == 1 else hex_string
+            hex_strings.append(hex_string)  # Append Red, Green and finally Blue
+
+        self.clr_tk_hex = "#" + "".join(hex_strings)  # Build tkinter hex color
+        return self.clr_tk_hex
+
+    def refresh_canvas(self, _color):
+        """ Update canvas with specified color """
+        self._canvas.delete("rect")  # Remove rectangle from last time
+        self._canvas.create_rectangle(3, 3, self.width - 2, self.height - 2,
+                                      fill=_color, width=1, outline='black', tag="rect")
+
+        return True
+
+
+class VolumeMeters:
+    """ LED Volume Meters (stereo, left & right channels).
+        Spawns `/usr/bin/python vu_meter.py stereo XXX` daemon.
+        Where 'XXX' is 'mserve', 'homa' or, 'yt-skip'
+
+        USAGE:
+
+        vum = toolkit.VolumeMeters('homa', display_frame, left_col=2, right_col=3...)
+
+        spawn     - runs vu_meter.py in background and sets self.pid
+        terminate - kill vu_meter.py and delete files - os.kill(pid, signal.SIGTERM)
+        stop      - stops (pauses) vu_meter.py - os.kill(pid, signal.SIGSTOP)
+        cont      - continue stopped vu_meter.py - os.kill(pid, signal.SIGCONT)
+
+        2025-06-15 - Lifted from mserve.py. First adapt for HomA and then port
+            back to mserve.py for less cluttered instance usage.
+    """
+
+    # noinspection SpellCheckingInspection
+    def __init__(self, appname, master_frm, width=30, height=100, row=0, rowspan=1,
+                 left_col=0, right_col=1, padx=8, pady=12, theme_bg='Black', tt=None):
+
+        """ Parameters """
+        self.appname = appname  # 'mserve' or 'homa' or 'yt-skip'
+        self.master_frm = master_frm  # Shared tk frame for vu meters
+        self.width = width  # Width of one VU Meter, never resized
+        self.height = height  # Will be resized on master_frm expand/shrink
+        self.row = row  # Top row in master_frm
+        self.rowspan = rowspan  # 18 rows in mserve
+        self.padx = padx
+        self.pady = pady
+        self.theme_bg = theme_bg  # Background color can be reset by media color
+
+        self.who = "toolkit.py VolumeMeters()."
+        ''' Define LED VU Meters left and right canvas objects and objects within. '''
+        self.meter_first_time = True  # mserve chronology repaints canvas first time
+        self._meter_left, self._meter_left_rect = self._create_meter(left_col)
+        self._meter_right, self._meter_right_rect = self._create_meter(right_col)
+        # Sep 7/23 below was 6 bump to 12 and loose short decays drop to 4 then 2
+        self.HISTORY_SIZE = 2  # Larger number gives slower decay
+        self._meter_left_hist = self._meter_right_hist = None
+        self.reset_history_size(self.HISTORY_SIZE)
+
+        ''' You can change the LED percentage colors after __init__() '''
+        self.style = 'led'  # Use LED rectangles, other option is 'one' for bar
+        self.lt10_color = 'Purple'  # Less than 10 %
+        self.lt20_color = 'RoyalBlue'
+        self.lt80_color = 'SpringGreen3'
+        self.lt90_color = 'Orange'
+        self.ge90_color = 'Red'  # Greater than or equal to 90 %
+
+        ''' Volume Meter IPC. Repeat changes in mserve.py, homa.py & vu_meter.py '''
+        self.AMPLITUDE_MONO_FNAME = g.TEMP_DIR + appname + "_vu-meter-mono.txt"
+        self.AMPLITUDE_LEFT_FNAME = g.TEMP_DIR + appname + "_vu-meter-left.txt"
+        self.AMPLITUDE_RIGHT_FNAME = g.TEMP_DIR + appname + "_vu-meter-right.txt"
+        self.pid = 0  # Process ID of vu_meter.py daemon. 0 = not running.
+        self.tt = tt  # Tooltips
+
+        self.master_frm.bind("<Configure>", self.set_height)
+
+    def reset_history_size(self, size):
+        """ Larger history provides better level hold during attack/decays. """
+        _who = self.who + "reset_history_size():"
+        self.HISTORY_SIZE = size  # Larger number = slower attack/decay
+        # A better method is to paint line where peak used to be 1/3 second ago
+        self._meter_left_hist = [0.0] * self.HISTORY_SIZE
+        self._meter_right_hist = [0.0] * self.HISTORY_SIZE
+
+    def _create_meter(self, col):
+        """ Create VU Meter. self.height irrelevant. """
+        _who = self.who + "_create_meter():"
+        meter = tk.Canvas(self.master_frm, width=self.width, relief=tk.FLAT,
+                          height=self.height, bg='black')
+        meter.grid(row=self.row, rowspan=self.rowspan, column=col, padx=self.padx)
+        meter_rectangle = meter.create_rectangle(0, self.height, 0, self.height)
+        return meter, meter_rectangle
+
+    def set_height(self, *_args):
+        """ Set height of VU meter when parent frame resized. """
+        _x, _y, _width, height = self.master_frm.grid_bbox()
+
+        ''' New height of resized grid holding x rows of LED VU Meter '''
+        self.height = height - self.pady  # Padding for top & bottom vu meters
+        self.height = 1 if self.height < 1 else self.height
+        self._meter_left.config(height=self.height)
+        self._meter_right.config(height=self.height)
+        self.blank_meters()  # Fill with self.theme_bg
+
+    def blank_meters(self):
+        """ Display blank VU Meters (Left and Right), when music paused.
+            Previous dynamic display rectangles have already been removed. """
+        self._blank_side(self._meter_left, self._meter_left_rect)
+        self._blank_side(self._meter_right, self._meter_right_rect)
+
+    def _blank_side(self, canvas, rectangle):
+        """ Display one blank VU Meter (Left or Right), when music paused. """
+        x0, y0, x1, y1 = 0, 0, self.width, self.height
+        canvas.coords(rectangle, x0, y0, x1, y1)
+        canvas.create_rectangle(x0, y0, self.width, y1, fill=self.theme_bg,
+                                width=1, outline='black', tag="rect")
+
+    def update_display(self, stop='no'):
+        """ Update VU Meter display, either 'mono' or 'left' and 'right' """
+        if stop == 'yes':
+            # Stop display
+            self._update_one_side('stop', self._meter_left,
+                                  self._meter_left_rect, self._meter_left_hist)
+
+            self._update_one_side('stop', self._meter_right,
+                                  self._meter_right_rect, self._meter_right_hist)
+            return
+
+        # Regular display
+        self._update_one_side(self.AMPLITUDE_LEFT_FNAME, self._meter_left,
+                              self._meter_left_rect, self._meter_left_hist)
+
+        self._update_one_side(self.AMPLITUDE_RIGHT_FNAME, self._meter_right,
+                              self._meter_right_rect, self._meter_right_hist)
+
+    def _update_one_side(self, fname, canvas, rectangle, history):
+        """ Update one VU Meter display
+            One time bug: Aug 12/23 - 40 LED's were treated as two LED's of
+                20 blocks each.
+        """
+        if fname == 'stop':
+            # Pausing music but meter.py will wait for sounds and
+            # not update the files with zero values. So manually do it here.
+            v_max, v_amp = 0.0, 0.0
+        else:
+            with open(fname, "r") as f:
+                line = f.readline()
+                if len(line) > 2:
+                    # noinspection PyBroadException
+                    try:
+                        s_max, s_amp = line.split()
+                    except:
+                        # Error on Feb 6, 2021 @ 5:35 pm - Not sure what causes.
+                        # Not repeated when adding except & replaying same song.
+                        print("side(): too many values \
+                              to unpack:", line)
+                        return False
+                    v_max, v_amp = float(s_max), float(s_amp)
+                else:
+                    # Every 30 seconds getting a null line. So skip over it
+                    return False
+
+        # Calculate average_amp for last n samples stored in list
+        average_amp = sum(history) / self.HISTORY_SIZE
+        max_amp = max(history)
+        average_amp = (average_amp + max_amp * 1.5) / 2.5
+
+        # Use smoothed_amp to slowly paint volume decay
+        smoothed_amp = v_amp
+        if smoothed_amp < average_amp:
+            smoothed_amp = average_amp
+
+        if v_max == 0.0:
+            # No sound (can't divide by zero) set y0 for no rectangle displayed
+            percent_height = self.height
+        else:
+            # Have max. set y0 to percentage of volume, 0 = 100% volume
+            percent_height = self.height - (self.height * smoothed_amp / v_max)
+
+        # What style of bar?
+        if self.style == 'one':
+            # Function to display single large rectangle
+            x0, y0, x1, y1 = 0, int(percent_height), self.width, self.height
+            canvas.coords(rectangle, x0, y0, x1, y1)
+            # 2025-06-19 TODO: Test if this works and what the color is?
+            # print("canvas.co ords(self._meter_rectangle", x0, y0, x1, y1)
+        else:
+            # Function to display multiple smaller rectangles simulating LEDs
+            bar_hgt = self.height - int(percent_height)
+            self._paint(canvas, bar_hgt, self.height)
+
+        # Save current amplitude in sample history list
+        history.pop(0)
+        history.append(int(v_amp))
+        # print(t(time.time()),history)
+        return True
+
+    def _paint(self, canvas, bar_height, height):
+        """ Number of rectangles depends on height:
+                A rectangle must be at least 2 pixels high
+                Space between rectangles must be at least 1 pixel
+
+            Assuming 30 rectangles and height = 400:
+
+                400/30 = 13 pixels per rectangle and padding
+                10 pixels for rectangle, 3 pixels for padding
+                 """
+        num_rect = height / 13  # How many rectangles will fit in height?
+        if num_rect < 1:
+            num_rect = 1  # Not enough height for rectangles
+        r_hgt_pad = int(height / num_rect)
+        r_hgt = r_hgt_pad - 2  # Experimental overrides
+        if r_hgt < 1:
+            r_hgt = 1  # Not enough height for rectangles
+
+        canvas.delete("rect")  # Remove rectangles from last time
+
         '''
-        self.ffplay_mute = tk.Label(
-            self.slider_frm, borderwidth=0, highlightthickness=0,
-            text="    🔇", justify=tk.CENTER, font=g.FONT)  # justify not working
-        self.ffplay_mute.grid(row=0, column=0, sticky=tk.W)
+            Create list of rectangle coordinate tuples (y0, y1). x0 and
+            x1 will be constant for left side and right side to form a box
+            of (x0, y0, x1, y1). The padding for x0 and x1 defaults to 2 from
+            canvas border line.
 
-        def volume_mute():
-            """ Click on volume mute icon (speaker with diagonal line on left) """
-            self.check_sinks()
-            self.pav_ctl.sink = self.force_sink(
-                self.pav_ctl.sink, self.pav_ctl.pid, trace="ffplay_mute button")
-            pav.fade(self.pav_ctl.sink,
-                     float(pav.get_volume(self.pav_ctl.sink)),
-                     0, .5, step_cb=self.init_ffplay_slider)
-            self.init_ffplay_slider(0)  # Final step to 0 display
+            Future modification will be to have peek hold 1 second.
 
-        self.ffplay_mute.bind("<Button-1>", lambda _: volume_mute())
-
-        # self.ffplay_mute.bind("<Button-1>", lambda _: pav.fade(
-        #    # 2024-04-29 change play_ctl to pav_ctl
-        #    self.pav_ctl.sink, float(pav.get_volume(self.pav_ctl.sink)),
-        #    25, .5, step_cb=self.init_ffplay_slider))
-
-        text = "Speaker with diagonal line.\n"
-        text += "Click to mute volume.\n"
-        text += "Music keeps playing with no sound.\n"
-        text += "You can also click on album art to\n"
-        text += "toggle pausing and playing music."
-        self.tt.add_tip(self.ffplay_mute, tool_type='label',
-                        text=text, anchor="sw")
-
-        ''' self.ffplay_full  RIGHT: 🔊 U+1F50A 
-            🔇 (1f507) 🔈 (1f508) 🔉 (1f509) 🔊 (1f50a)
+            Version after peek hold will have opaque colors between peek hold
+            and current color.
         '''
-        self.ffplay_full = tk.Label(
-            self.slider_frm, borderwidth=0, highlightthickness=0,
-            text="    🔊", font=g.FONT)  # justify not working
-        self.ffplay_full.grid(row=0, column=2)
 
-        def volume_full():
-            """ Click on full volume icon (speaker with three waves on right) """
-            self.check_sinks()
-            self.pav_ctl.sink = self.force_sink(
-                self.pav_ctl.sink, self.pav_ctl.pid, trace="ffplay_full button")
-            max_vol = self.get_max_volume()
-            pav.fade(self.pav_ctl.sink,
-                     float(pav.get_volume(self.pav_ctl.sink)),
-                     max_vol, .5, step_cb=self.init_ffplay_slider)
-            self.init_ffplay_slider(max_vol)  # Final step to 100 display
+        ''' Generate list of all possible rectangles '''
+        y_list = []
+        negative_r_hgt_pad = r_hgt_pad * -1
+        for y0 in range(height - 2, 0, negative_r_hgt_pad):
+            y1 = y0 - r_hgt
+            if y1 < 0:
+                y1 = 0
+            y_list.append((y0, y1))
 
-        self.ffplay_full.bind("<Button-1>", lambda _: volume_full())
+        num_rect = len(y_list)  # May end up with fewer rectangles
 
-        # self.ffplay_full.bind("<Button-1>", lambda _: pav.fade(
-        # 2024-04-29 change play_ctl to pav_ctl
-        # self.pav_ctl.sink, float(pav.get_volume(self.pav_ctl.sink)),
-        # 100, .5, step_cb=self.init_ffplay_slider))
+        # print('height:', height, 'number:', num_rect, 'r_hgt_pad:', r_hgt_pad, \
+        #       'r_hgt:', r_hgt, 'pad:', pad, 'y_list', y_list)
 
-        text = "Speaker with three waves.\n"
-        text += "Click to restore the volume to 100%."
-        self.tt.add_tip(self.ffplay_full, tool_type='label',
-                        text=text, anchor="se")
+        # TODO: Analyze why there is rect_count and num_rect
+        rect_count = int(round(float(bar_height) / height * num_rect))
+        if rect_count > num_rect:
+            rect_count = num_rect  # Fix rounding errors
+        # print('bar_height:', bar_height, 'rect_count:', rect_count)
 
-        ''' Volume Slider https://www.tutorialspoint.com/python/tk_scale.htm '''
-        self.ffplay_slider = tk.Scale(  # highlight color doesn't seem to work?
-            self.slider_frm, orient=tk.HORIZONTAL, tickinterval=0, showvalue=0,
-            highlightcolor="Blue", activebackgroun="Gold", troughcolor="Black",
-            command=self.set_ffplay_sink, borderwidth=0, cursor='boat red red')
-        self.ffplay_slider.grid(row=0, column=1, padx=4, ipady=1, sticky=tk.EW)
+        ''' Paint the rectangles '''
+        for rect_no in range(1, rect_count):
 
-        text = "Volume slider active when music plays:\n\n"
-        text += "Click and drag slider to change volume.\n"
-        text += "Click space left of slider to reduce volume.\n"
-        text += "Click space right of slider to increase volume.\n"
-        text += "Click small speaker on left to mute.\n"
-        text += "Click large speaker on right for full volume."
-        self.tt.add_tip(self.ffplay_slider, tool_type='label',
-                        text=text, anchor="sc")
+            y0, y1 = y_list[rect_no - 1]
+            percent = rect_no * 100 / num_rect
+            if percent < 10:
+                color = self.lt10_color
+            elif percent < 20:
+                color = self.lt20_color
+            elif percent < 80:
+                color = self.lt80_color
+            elif percent < 90:
+                color = self.lt90_color
+            else:
+                color = self.ge90_color
+            canvas.create_rectangle(3, y0, self.width - 2, y1, fill=color,
+                                    width=1, outline='black', tag="rect")
 
-    def createSlider(self, *_args):
-        """ Volume Slider - second object in Slider Form """
+    def spawn(self):
+        """ Run vu_meter.py in the background. """
+        _who = self.who + "spawn():"
+        ext_name = "./vu_meter.py stereo " + self.appname + " 2>/dev/null"
+        self.pid = ext.launch_command(ext_name, toplevel=self.master_frm)
 
-        ''' Volume Slider https://www.tutorialspoint.com/python/tk_scale.htm '''
-        self.ffplay_slider = tk.Scale(  # highlight color doesn't seem to work?
-            self.slider_frm, orient=tk.HORIZONTAL, tickinterval=0, showvalue=0,
-            highlightcolor="Blue", activebackgroun="Gold", troughcolor="Black",
-            command=self.set_ffplay_sink, borderwidth=0, cursor='boat red red')
-        self.ffplay_slider.grid(row=0, column=1, padx=4, ipady=1, sticky=tk.EW)
+    def terminate(self):
+        """ Terminate vu_meter.py running in the background. """
+        _who = self.who + "terminate():"
+        if ext.check_pid_running(self.pid):  # paused is considered "running" too
+            #print(_who, "Killing:", self.pid)
+            os.kill(self.pid, signal.SIGTERM)
+        else:
+            print(_who, "Already dead:", self.pid)
 
-        text = "Volume slider active when music plays:\n\n"
-        text += "Click and drag slider to change volume.\n"
-        text += "Click space left of slider to reduce volume.\n"
-        text += "Click space right of slider to increase volume.\n"
-        text += "Click small speaker on left to mute.\n"
-        text += "Click large speaker on right for full volume."
-        self.tt.add_tip(self.ffplay_slider, tool_type='label',
-                        text=text, anchor="sc")
+        # Delete amplitude work files if they exist
+        self.remove_if_exists(self.AMPLITUDE_MONO_FNAME)
+        self.remove_if_exists(self.AMPLITUDE_LEFT_FNAME)
+        self.remove_if_exists(self.AMPLITUDE_RIGHT_FNAME)
 
-    def createLoudVolume(self, *_args):
-        """ Loud volume / Full volume """
+    def remove_if_exists(self, fn):
+        """ Remove file only if was created """
+        _who = self.who + "remove_if_exists():"
+        if os.path.isfile(fn):
+            os.remove(fn)
 
-        ''' self.ffplay_full  RIGHT: 🔊 U+1F50A 
-            🔇 (1f507) 🔈 (1f508) 🔉 (1f509) 🔊 (1f50a)
-        '''
-        self.ffplay_full = tk.Label(
-            self.slider_frm, borderwidth=0, highlightthickness=0,
-            text="    🔊", font=g.FONT)  # justify not working
-        self.ffplay_full.grid(row=0, column=2)
+    def stop(self):
+        """ Stop (pause) vu_meter.py running in the background. """
+        os.kill(self.pid, signal.SIGSTOP)
 
-        def volume_full():
-            """ Click on full volume icon (speaker with three waves on right) """
-            self.check_sinks()
-            self.pav_ctl.sink = self.force_sink(
-                self.pav_ctl.sink, self.pav_ctl.pid, trace="ffplay_full button")
-            max_vol = self.get_max_volume()
-            pav.fade(self.pav_ctl.sink,
-                     float(pav.get_volume(self.pav_ctl.sink)),
-                     max_vol, .5, step_cb=self.init_ffplay_slider)
-            self.init_ffplay_slider(max_vol)  # Final step to 100 display
-
-        self.ffplay_full.bind("<Button-1>", lambda _: volume_full())
-
-        # self.ffplay_full.bind("<Button-1>", lambda _: pav.fade(
-        # 2024-04-29 change play_ctl to pav_ctl
-        # self.pav_ctl.sink, float(pav.get_volume(self.pav_ctl.sink)),
-        # 100, .5, step_cb=self.init_ffplay_slider))
-
-        text = "Speaker with three waves.\n"
-        text += "Click to restore the volume to 100%."
-        self.tt.add_tip(self.ffplay_full, tool_type='label',
-                        text=text, anchor="se")
+    def cont(self):
+        """ Continue (resume) vu_meter.py running in the background.
+            Cannot name this method "continue" because that's a Python builtin.
+        """
+        os.kill(self.pid, signal.SIGCONT)
 
 
 # ==============================================================================
@@ -4664,18 +4913,7 @@ class VolumeSlider:
 #
 # ==============================================================================
 
-""" TODO:
-    Border around tooltip using foreground color to contrast background color:
-    https://www.geeksforgeeks.org/how-to-change-border-color-in-tkinter-widget/
-"""
-
 D_PRINT = False         # Print debug events
-
-#VISIBLE_DELAY = 750     # ms pause before balloon tip appears (3/4 sec)
-#VISIBLE_SPAN = 5000     # ms balloon tip remains on screen (5 sec/line)
-#EXTRA_WORD_SPAN = 500   # 1/2 second per word if > VISIBLE_SPAN
-#FADE_IN_SPAN = 500      # 1/4 second to fade in
-#FADE_OUT_SPAN = 400     # 1/5 second to fade out
 
 # Five timing variables are user configurable and stored in SQL History Table
 # Type, Action, Master, Detail = ['cfg_tooltips', 'default', 'time', 'ms']
@@ -4943,7 +5181,7 @@ class ToolTips(CommonTip):
 
     def delete_older_for_widget(self, stop_index):
         """ Process log list forwards from 0 deleting matching widget
-            Requires specialized testing using manual calls to 
+            Requires specialized testing using manual calls to
             log_event(action, widget, x, y) followed by process_log_list()
 
             Intention is to delete <enter> event if there is a <leave> event
@@ -5117,12 +5355,12 @@ class ToolTips(CommonTip):
         extra_time = float(word_count) * self.extra_word_span
         # If minimal visible time is larger use that
         if extra_time < self.visible_span:
-            extra_time = self.visible_span 
+            extra_time = self.visible_span
         fade_out_time = fade_in_time + float(extra_time) / 1000
         return fade_in_time, fade_out_time
 
     def add_tip(self, widget, text='Pass text here', tool_type='button',
-                visible_delay=None, visible_span=None, extra_word_span=None, 
+                visible_delay=None, visible_span=None, extra_word_span=None,
                 fade_in_span=None, fade_out_span=None, anchor="sw", menu_tuple=None,
                 pb_alpha=None, pb_leave=None, pb_ready=None, pb_close=None):
         """ Declare Tooltip """
@@ -5363,12 +5601,12 @@ class ToolTips(CommonTip):
                     if self.print_error:
                         print(self.who + 'process_tip(): ' +
                               'self.tip_window does not exist')
-                        print('self.now:', self.now, 'zero_alpha_time:', zero_alpha_time,
-                              "diff:", self.now - zero_alpha_time)
+                        print('self.now:', self.now, ' | zero_alpha_time:', zero_alpha_time,
+                              " | diff:", self.now - zero_alpha_time)
                         print('self.enter_time:', self.enter_time,
-                              "self.window_visible:", self.window_visible,
-                              "self.window_fading_in:", self.window_fading_in,
-                              "self.window_fading_out:", self.window_fading_out)
+                              " | self.window_visible:", self.window_visible)
+                        print("self.window_fading_in:", self.window_fading_in,
+                              " | self.window_fading_out:", self.window_fading_out)
                         try:
                             print(ext.ch(), "widget['text']:", self.widget['text'])
                             # E.G. "Suspend" for HomA's suspend button
@@ -5625,7 +5863,7 @@ class ToolTips(CommonTip):
         if self.anchor == "nw":
             x = nw[0]  # Northwest of parent x, y
             y = nw[1] - h - 20  # 20 px above parent's top
-        elif self.anchor == "ne": 
+        elif self.anchor == "ne":
             x = ne[0] - w  # Northeast of parent x2, y
             y = nw[1] - h - 20  # 20 px below parent's top
         elif self.anchor == "se":
@@ -5657,7 +5895,7 @@ class ToolTips(CommonTip):
         self.tip_window.wm_geometry("+%d+%d" % (x, y))
         self.window_geom = self.tip_window.wm_geometry()
 
-    def set_text(self, widget, text, visible_delay=None, visible_span=None, 
+    def set_text(self, widget, text, visible_delay=None, visible_span=None,
                  extra_word_span=None, fade_in_span=None, fade_out_span=None):
         """ Change Tooltip text and duration timings """
 
@@ -5680,9 +5918,9 @@ class ToolTips(CommonTip):
                 # TODO: When text expands/shrinks line count
                 #       we need to
                 return
-  
+
         if self.print_error:
-            print_trace()          
+            print_trace()
             print(self.who + 'set_text(): tip not found')
 
     def get_dict(self, widget):
@@ -5696,7 +5934,7 @@ class ToolTips(CommonTip):
 
     def toggle_position(self, widget):
         """ Flip anchor from North->South or from South->North
-            If tip window's position is below widget, set above. 
+            If tip window's position is below widget, set above.
             If above, then set below. Used when button bar moves to middle
             of window to bottom and vice versa. E.G. mserve chronology.
         """
@@ -5764,7 +6002,7 @@ class ToolTips(CommonTip):
             Can be called externally.  Extra steps required to ensure
             window isn't visible.  Caller needs top.update() afterwards.
 
-        :param widget: either button or parent / grandparent of button. 
+        :param widget: either button or parent / grandparent of button.
         :param flush_log: empty self.log_list for all events.
         """
         new_list = []
@@ -5820,7 +6058,7 @@ class ToolTips(CommonTip):
     def zap_tip_window(self, widget, flush_log=True):
         """ When suspending system.  Caller needs top.update() afterwards.
 
-        :param widget: either button or parent / grandparent of button. 
+        :param widget: either button or parent / grandparent of button.
         :param flush_log: empty self.log_list for all events.
         """
 

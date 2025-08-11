@@ -96,16 +96,17 @@ warnings.simplefilter('default')  # in future Python versions.
 #       Apr. 28 2024 - Loudness Normalization using ffmpeg 'loudnorm' filter.
 #       May. 12 2024 - New shuffle - Artist/Album/Song (order of appearance).
 #       May. 13 2024 - Major bug fix, delete playlist replaces favorites.
-#       Jun. 09 2024 - Fine-tune time index new Edit line feature. Bug fixes.
-#       Jun. 16 2024 - Move mainline ffplay functions to FileControl() class.
-#       Jun. 22 2024 - TV_MOVE_WINDOW, TV_WINDOW_ANCHOR & TV_MOVE_WITH_COMPIZ.
-#       Jul. 10 2024 - May 13 fix disabled "Save Favorites" function. Correct.
+#       June 09 2024 - Fine-tune time index new Edit line feature. Bug fixes.
+#       June 16 2024 - Move mainline ffplay functions to FileControl() class.
+#       June 22 2024 - TV_MOVE_WINDOW, TV_WINDOW_ANCHOR & TV_MOVE_WITH_COMPIZ.
+#       July 10 2024 - May 13 fix disabled "Save Favorites" function. Correct.
 #       Aug. 05 2024 - Create separate and shared delete from playlist method.
 #       Aug. 24 2024 - SQL Music Table speed boost using OsFileNameIndex.
 #       Sep. 07 2024 - Convert from tk.Button() to ttk.Button() with style.
 #       Nov. 16 2024 - Update virtual file sizes for FTP devices in location.py.
 #       Dec. 15 2024 - Substitute Hi-Res images in Music/.../ArtworkAlbum.xxx
 #       Mar. 30 2025 - Delete 200 lines of deprecated functions.
+#       June 14 2025 - get_running_apps() supports parameters from ps -ef
 #
 # ==============================================================================
 
@@ -575,10 +576,10 @@ TMP_MBZ_GET1 = g.TEMP_DIR + "mserve_mbz_get1"
 TMP_MBZ_GET2 = g.TEMP_DIR + "mserve_mbz_get2"
 TMP_PRINT_FILE = g.TEMP_DIR + "mserve_print_file"  # _a5sd87 appended
 
-''' Volume Meter IPC filenames. Change in vu_meter.py too '''
-VU_METER_FNAME = g.TEMP_DIR + "mserve_vu-meter-mono.txt"  # Mono output
-VU_METER_LEFT_FNAME = g.TEMP_DIR + "mserve_vu-meter-left.txt"  # Stereo Left
-VU_METER_RIGHT_FNAME = g.TEMP_DIR + "mserve_vu-meter-right.txt"  # Stereo Right
+''' Volume Meter IPC filenames. Repeat change in vu_meter.py, homa.py & toolkit.py '''
+AMPLITUDE_MONO_FNAME = g.TEMP_DIR + "mserve_vu-meter-mono.txt"  # Mono output
+AMPLITUDE_LEFT_FNAME = g.TEMP_DIR + "mserve_vu-meter-left.txt"  # Stereo Left
+AMPLITUDE_RIGHT_FNAME = g.TEMP_DIR + "mserve_vu-meter-right.txt"  # Stereo Right
 
 ''' Webscraping lyrics - three files '''
 LYRICS_SCRAPE = g.TEMP_DIR + "mserve_scrape_*"
@@ -586,8 +587,8 @@ LYRICS_SCRAPE = g.TEMP_DIR + "mserve_scrape_*"
 ''' Mostly all the names. TMP_FFPROBE & TMP_FFMPEG have unique suffixes '''
 ''' VU_METER...FNAME are pipes that can't be removed. '''
 TMP_ALL_NAMES = [TMP_CURR_SONG, TMP_CURR_SAMPLE, TMP_CURR_SYNC, TMP_FFPROBE + "*",
-                 TMP_FFMPEG + "*", TMP_PRINT_FILE + "*", VU_METER_FNAME,
-                 VU_METER_LEFT_FNAME, VU_METER_RIGHT_FNAME, LYRICS_SCRAPE,
+                 TMP_FFMPEG + "*", TMP_PRINT_FILE + "*", AMPLITUDE_MONO_FNAME,
+                 AMPLITUDE_LEFT_FNAME, AMPLITUDE_RIGHT_FNAME, LYRICS_SCRAPE,
                  lc.FNAME_TEST, lc.TMP_STDOUT + "*", lc.TMP_STDERR + "*",
                  lc.TMP_FTP_RETRIEVE + "*", TMP_CURR_SONG_LOUD]
 
@@ -7980,6 +7981,7 @@ Call search.py when these control keys occur
                 last_disc_contents = pickle.load(f)
         except Exception as err:
             print("Exception err:", err)  # If reboot [errno 2] file not found
+            pass
 
         last_disc = None  # For testing save 63 seconds reading discid
         if last_disc_contents:
@@ -7988,7 +7990,7 @@ Call search.py when these control keys occur
                 _error = last_disc_contents.get('error')
                 print("There was an error getting disc ID")
                 last_disc_contents = None  # There was an error getting disc ID
-            except (KeyError, AttributeError):
+            except KeyError:
                 pass  # have a valid last disc
             except AttributeError:
                 last_disc_contents = None  # The "DiscId" object is not a dictionary
@@ -8583,7 +8585,7 @@ Call search.py when these control keys occur
         # 2025-06-01 change `python` to `/usr/bin/python` to display script name
         #ext_name = "python vu_meter.py stereo 2>/dev/null"  # `python` appears in top
         #ext_name = "/usr/bin/python ./vu_meter.py stereo 2>/dev/null" # `python`
-        ext_name = "./vu_meter.py stereo 2>/dev/null"
+        ext_name = "./vu_meter.py stereo mserve 2>/dev/null"
         self.vu_meter_pid = \
             ext.launch_command(ext_name, toplevel=self.play_top)
 
@@ -11012,11 +11014,11 @@ Call search.py when these control keys occur
 
         # Regular display
         self.play_vu_meter_side(
-            VU_METER_LEFT_FNAME, self.vu_meter_left,
+            AMPLITUDE_LEFT_FNAME, self.vu_meter_left,
             self.vu_meter_left_rect, self.vu_meter_left_hist)
 
         self.play_vu_meter_side(
-            VU_METER_RIGHT_FNAME, self.vu_meter_right,
+            AMPLITUDE_RIGHT_FNAME, self.vu_meter_right,
             self.vu_meter_right_rect, self.vu_meter_right_hist)
 
     def play_vu_meter_side(self, fname, canvas, rectangle, history):
@@ -23272,7 +23274,7 @@ def open_files(old_cwd, prg_path, parameters, toplevel=None):
                    of .../mserve/L999
     '''
 
-    # print(who + "Contents of music_dir:", music_dir)
+    #print(who + "Contents of music_dir:", music_dir)
     # if music_dir is not None and lc.get_dict_by_dirname(music_dir):
     if parm1 and "L001" <= parm1 < "M":
         if lcs.read_location(parm1):
@@ -23283,7 +23285,7 @@ def open_files(old_cwd, prg_path, parameters, toplevel=None):
             ''' below read lcs.act_code, lcs.act_name & lcs.act_topdir, etc. '''
             lcs.save_mserve_location(lcs.act_code)
             music_dir = lcs.act_topdir  # Init by above command
-            # print(who + 'Using Top Directory:', music_dir)
+            print(who + 'Using Top Directory:', music_dir)
         else:
             print(who + 'New location not found in SQL Location Table:', parm1)
             print(who + "Continuing will cause endless loop. Exiting...")
@@ -23470,13 +23472,14 @@ def main(toplevel=None, cwd=None, parameters=None):
     ffplay_pid = 0 if len(ffplay_pid) == 0 else ffplay_pid[0]
 
     ''' Loop through all running apps with 'python' in name '''
-    for pid, app in apps_running:
+    for pid, app, parameters in apps_running:
         if app == "m" and pid != this_pid:
             m_pid = pid  # 'm' splash screen found
         if app == "mserve.py" and pid != this_pid:
             mserve_pid = pid  # 'mserve.py' found
-        if app == "vu_meter.py":  # VU meter isn't launched by this_pid yet
-            vu_meter_pid = pid  # 'vu_meter.py' found
+        if app == "vu_meter.py" and parameters[1] == "mserve":
+            # VU meter instance from mserve and not HomA or PimTube
+            vu_meter_pid = pid  # 'vu_meter.py stereo mserve' found
 
     ''' One or more fingerprints indicating another copy running? '''
     if m_pid or mserve_pid or vu_meter_pid:

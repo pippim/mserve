@@ -18,6 +18,7 @@ from __future__ import with_statement  # Error handling for file opens
 #
 #       July 02 2023 - Temporary filenames suitable for Windows and Mac.
 #       July 12 2023 - Modify import order for mserve_config.py
+#       June 14 2025 - Support HomA appname. Create BASELINE_RESET untested 100
 #
 #==============================================================================
 # noinspection SpellCheckingInspection
@@ -60,22 +61,28 @@ import struct
 import pyaudio
 import numpy as np  # January 24, 2021 support Left & Right channels
 
-# Pippim modules
-import global_variables as g  # Needed for IPC filenames
-g.init()  # Always have to run because this is a spawned job
+appname = 'mserve'
+if (len(sys.argv)) >= 3:  # 2025-06-14 Can be 2 parameters now
+    appname = sys.argv[2]  # Null = 'mserve'. Alternatively 'homa'.
 
-#from amplitude import Amplitude  # No longer imported. Coded included below.
+# Pippim modules
+import global_variables as g  # Needed for IPC filenames directory
+g.init(appname=appname)  # Always have to run because this is a spawned job
+
 RATE = 44100
 INPUT_BLOCK_TIME = 0.05
 INPUT_FRAMES_PER_BLOCK = int(RATE*INPUT_BLOCK_TIME)
 SHORT_NORMALIZE = 1.0 / 32768.0
+BASELINE_RESET = 10  # How much silence to reset peek
+# 2025-06-21 BASELINE_RESET was 10 set 100. Have no idea if this if 5 seconds or not?
+# 2025-06-22 Change BASELINE_RESET back to 10 for now...
 
-''' Volume Meter IPC filenames. Duplicate any changes in mserve.py too '''
+''' Volume Meter IPC filenames. Repeat changes in mserve.py, homa.py & toolkit.py '''
 # Mono output
-VU_METER_FNAME = g.TEMP_DIR + "mserve_vu-meter-mono.txt"
+AMPLITUDE_MONO_FNAME = g.TEMP_DIR + appname + "_vu-meter-mono.txt"
 # Stereo output (Left and Right)
-VU_METER_LEFT_FNAME = g.TEMP_DIR + "mserve_vu-meter-left.txt"
-VU_METER_RIGHT_FNAME = g.TEMP_DIR + "mserve_vu-meter-right.txt"
+AMPLITUDE_LEFT_FNAME = g.TEMP_DIR + appname + "_vu-meter-left.txt"
+AMPLITUDE_RIGHT_FNAME = g.TEMP_DIR + appname + "_vu-meter-right.txt"
 
 
 class Amplitude(object):
@@ -106,7 +113,7 @@ class Amplitude(object):
         # noinspection PyTypeChecker
         return Amplitude(math.sqrt(sum_squares / count))
 
-    def display(self, mark, scale=50, fn=VU_METER_FNAME):
+    def display(self, mark, scale=50, fn=AMPLITUDE_MONO_FNAME):
         """ display an amplitude and another (marked) maximal Amplitude
         graphically """
         int_val = self.to_int(scale)
@@ -136,7 +143,7 @@ def main():
 
     # January 24, 2021 separate left and right channels
     parameter = 'mono'
-    if (len(sys.argv)) == 2:
+    if (len(sys.argv)) >= 2:  # 2025-06-14 Can be 2 parameters now
         parameter = sys.argv[1]     # Null = 'mono', 'stereo' = Left & Right
 
     audio = pyaudio.PyAudio()
@@ -167,6 +174,7 @@ def main():
                 if maximal_l < maximal_r:
                     # A momentary spike to right channel inherited by left
                     maximal_l = maximal_r
+                # 2025-06-20 - gap isn't set for stereo?
             else:
                 # Mono - processing all data
                 amp_l = None
@@ -179,7 +187,7 @@ def main():
             # New code January 23, to reset next song's maximal during gap
             if gap == 0.0:
                 reset_baseline_count += 1
-                if reset_baseline_count == 10:
+                if reset_baseline_count == BASELINE_RESET:
                     maximal = Amplitude()
                     maximal_l = maximal_r = maximal
                     # print('maximal reset', maximal.value)
@@ -188,11 +196,11 @@ def main():
 
             # January 24, 2021 separate left and right channels
             if parameter == 'stereo':
-                amp_l.display(scale=200, mark=maximal_l, fn=VU_METER_LEFT_FNAME)
-                amp_r.display(scale=200, mark=maximal_r, fn=VU_METER_RIGHT_FNAME)
+                amp_l.display(scale=200, mark=maximal_l, fn=AMPLITUDE_LEFT_FNAME)
+                amp_r.display(scale=200, mark=maximal_r, fn=AMPLITUDE_RIGHT_FNAME)
             else:
                 # Mono processing one channel combined sound
-                amp.display(scale=200, mark=maximal, fn=VU_METER_FNAME)
+                amp.display(scale=200, mark=maximal, fn=AMPLITUDE_MONO_FNAME)
 
     finally:
         stream.stop_stream()

@@ -21,17 +21,19 @@ from __future__ import with_statement  # Error handling for file opens
 #       Dec. 03 2023 - YouTube Playlists was breaking get_volume() info.cast()
 #       Apr. 29 2024 - self.poll_callback(self.dict) - parameter was missing.
 #       May. 20 2025 - Make Pulse Audio optional to support Sony TV REST API.
+#       June 26 2025 - HomA create .get_all_inputs().
+#       July 08 2025 - Create _print_or_cast() for HomA.
 #
 # ==============================================================================
 """
 
 NOTE: Use pavucontrol to create loopback from sound output to microphone:
       https://wiki.ubuntu.com/record_system_sound - Required by vu_meter.py
-      Keep an eye open if vu_meter.py can be made more robust.
+      Keep an eye open to see if vu_meter.py can be made more robust.
 
 NOTE: Problems if you plug your phone headphones into your computer microphone
       jack to play music from your phone through your computer attached
-      sound system (perhaps via TV soundbar and HDMI computer output).
+      sound system (E.G. via TV soundbar indirectly connected via HDMI).
       See: https://devicetests.com/disable-audio-loopback-ubuntu
 
 NOTE: Unstable if 'pulseaudio -k' run from command line.
@@ -63,7 +65,9 @@ FADE_NO = 0  # Aids in debugging
 
 class PulseAudio:
     """ Manage list of sinks created from Pulse Audio information.
-        Fade in/out sound volumes polled every 33ms. """
+        Fade in/out sound volumes polled every 16ms to 33ms.
+        TODO: Deprecate self.sinks_now, self.get_all_sinks(), etc. in mserve.
+    """
     def __init__(self, server="pa", Info=None):
         self.who = "vu_pulse_audio.py PulseAudio()."
         _who = self.who + "__init__():"
@@ -80,17 +84,28 @@ class PulseAudio:
             except Exception as err:  # CallError, socket.error, IOError (pidfile), OSError (os.kill)
                 ext.t_end('no_print')  # Just to reset level
                 raise pulsectl.PulseError('mserve.py get_pulse_control() Failed to ' +
-                                          'connect to pulse {} {}'.format(type(err),
-                                                                          err))
+                                          'connect: {} {}'.format(type(err), err))
 
         self.last_pid_sink = None  # Used for stability to ensure same sink
         self.curr_pid_sink = None  # number isn't classified as a new sink.
-        self.aliens = None  # To turn down all apps except 'ffplay'
+        self.aliens = None  # To turn down all apps except 'ffplay' used by mserve.
         self.last_sink_input_list = None  # = self.pulse.sink_input_list()
-        self.sinks_now = None  # mserve formatted list of tuple sinks
+        self.sinks_now = None  # mserve formatted list of tuple sink inputs
+        self.inputs_now = None  # HomA formatted list of sink_input named tuples
+
         if self.server == "pa":  # Using Pulse Audio server?
             self.get_all_sinks()  # auto saves to self.sinks_now
+            self.get_all_inputs()  # auto saves to self.inputs_now
         self.sinks_at_init = self.sinks_now
+        self.last_sinks = self.sinks_at_init  # 2025-06-14 HomA new sink callback
+
+        # 2025-06-26 Four new attributes for HomA
+        self.last_input_index = 0  # the last sink input index = len(self.inputs_now)?
+        self.last_input_tuple = ()
+        self.active_input_index = 0  # the last sink input where corked = False
+        self.active_input_tuple = ()
+        self.active_input_tuples = []  # All sink inputs where corked = False
+
         self.spam_count = 0  # Prevent error message flooding
         self.poll_count = 0  # To print first 10 job times to fade
         self.err_count = 0  # Errors across session life-span
@@ -224,6 +239,7 @@ class PulseAudio:
 
     def get_callback(self, sink_no_str):
         """ If get callback for sony volume, call and return current percent. """
+        _who = self.who + "get_callback():"
         #if self.fade_dict['get_cb']:
         #    return self.fade_dict['get_cb']
         if sink_no_str == sink_no_str:
@@ -343,7 +359,7 @@ AttributeError: 'module' object has no attribute 'pulsectl'
             # self.info should be declared by now but test just to be sure
             if self.info and self.spam_count < 10:
                 self.spam_count += 1  # Don't flood with broadcasts
-                self.info.cast(text, 'error')
+                self.print_or_cast(text, 'error')
 
     @staticmethod
     def poll_callback(scan_dict):
@@ -356,12 +372,13 @@ AttributeError: 'module' object has no attribute 'pulsectl'
             else:
                 scan_dict['finish_cb']()  # Call function name without arg.
 
-    def get_volume(self, sink_no_str, refresh=True, is_first=True):
+    def get_volume(self, sink_no_str, refresh=True, is_first=True, print_error=True):
         """ Get current volume of sink.
         :param sink_no_str: Pulse Audio sink number converted to string
         :param refresh: When False, reuse self.sinks_now from last time
         :param is_first: First time perform recursive second attempt
-        :returns float: volume found or 24.2424 for invalid sink no.
+        :param print_error: Print error messages if sink not found
+        :returns float: volume found or 24.2424 for invalid sink-input index
         """
         who = who_am_i + "get_volume():"
         vol = self.get_callback(sink_no_str)
@@ -382,7 +399,7 @@ AttributeError: 'module' object has no attribute 'pulsectl'
             if result != 24.2424:
                 return result  # Found a valid sink. Return it's volume
 
-        #self.info.cast(who, "unable to find sink#: " + sink_no_str)
+        #self.print_or_cast(who + " unable to find sink#: " + sink_no_str)
         # 2023-12-03 - Above breaks from YouTube Playlists
         # 06:51:23.5 Ad visible. Player status: -1
         # _close_cb(): Probably closed wrong widget
@@ -390,6 +407,8 @@ AttributeError: 'module' object has no attribute 'pulsectl'
         # .140205735977040.140205735977256.140205735977472.140205516979664.140205517321136
         # 51:24.3509 _close_cb() - tt_dict not found for: 1136
         # 06:51:24.8 Reversing self.youAssumeAd
+        if print_error is False:
+            return 24.2424
         print(who, "\n\tUnable to find 'sink_no_str': " + sink_no_str,
               "Type:", type(sink_no_str), "'refresh':", refresh)
         print("AVAILABLE SINKS:")
@@ -443,8 +462,7 @@ pulsectl._pulsectl.CallError: ('pa_context_get_sink_input_info_list',
                 '''
                 try:
                     self.pulse = pulsectl.Pulse()
-                    self.info.cast("PulseAudio reloaded. Restart mserve",
-                                   "error")
+                    self._print_or_cast("PulseAudio reloaded. Restart mserve", "error")
                     return  # User can try again or poll_fades will do next step
                 except pulsectl.PulseOperationFailed as err:
                     print(who + "pulsectl.PulseOperationFailed:", err)
@@ -491,8 +509,8 @@ AttributeError: 'module' object has no attribute 'pulsectl'
                         '''
                         try:
                             self.pulse = pulsectl.Pulse()
-                            self.info.cast("PulseAudio reloaded. Restart mserve",
-                                           "error")
+                            self._print_or_cast("PulseAudio reloaded. Restart mserve",
+                                                "error")
                             return  # User can try again or poll_fades will do next step
                         except pulsectl.PulseOperationFailed as err:  # ???
                             print(who + "pulsectl.PulseOperationFailed:", err)
@@ -518,8 +536,7 @@ AttributeError: 'module' object has no attribute 'pulsectl'
             if self.spam_count < 10:
                 text = who + "pulsectl missing sink: " + target_sink
                 print(text)
-                if self.info:
-                    self.info.cast(text)
+                self._print_or_cast(text, "error")
                 err_sinks = list()  # err_sinks is just for error message
                 for sink in self.pulse.sink_input_list():
                     err_sinks.append(sink)
@@ -579,8 +596,8 @@ AttributeError: 'module' object has no attribute 'pulsectl'
                 if Sink.pid == pid:
                     self.curr_pid_sink = str(Sink.sink_no_str)
                     if str(self.last_pid_sink) == self.curr_pid_sink:
-                        self.info.cast("Same sink used twice in row: " +
-                                       self.curr_pid_sink)
+                        self._print_or_cast("Same sink used twice in row: " +
+                                            self.curr_pid_sink, "error")
                     ''' If too quick the volume is 'None' so drop down to wait.
                         Also the sink# is 1 less than the real sink# later after
                         the Volume is no longer 'None'.
@@ -606,6 +623,13 @@ AttributeError: 'module' object has no attribute 'pulsectl'
     def registerInfoCentre(self, Info):
         """ Module imported in main() before InfoCentre() class defined. """
         self.info = Info
+
+    def _print_or_cast(self, _msg, _msg_type):
+        """ self.info.cast() may not be available so print instead. """
+        if self.info:
+            self.info.cast(_msg, _msg_type)
+        else:
+            print(_msg)
 
     def fade_out_aliens(self, fade_time):
         """ Turn down volume for all applications except 'ffplay'.
@@ -652,8 +676,66 @@ AttributeError: 'module' object has no attribute 'pulsectl'
         '''
 
     # noinspection SpellCheckingInspection
+    def get_all_inputs(self):
+        """ Get PulseAudio list of all sink inputs into self.inputs_now[(), (),...()]
+
+            Returns list of named tuples (Input.Xxx) containing:
+                ('Input', 'index corked mute volume name application pid user')
+
+        """
+
+        _who = self.who + "get_all_inputs():"
+
+        # Repeat __init__() section should make CommonSelf() class
+        self.inputs_now = []  # List of all sink_input tuples
+        self.last_input_index = 0  # the last sink input index = len(self.inputs_now)?
+        self.last_input_tuple = ()
+        self.active_input_index = 0  # the last sink input where corked = False
+        self.active_input_tuple = ()
+        self.active_input_tuples = []  # All sink inputs where corked = False
+
+        # If Python pulseaudio is working, use the fast method
+        if not self.pulse_is_working:
+            print(_who, "ERROR: PulseAudio is not working!!")
+            return []
+
+        for sink in self.pulse.sink_input_list():
+            this_volume = str(sink.volume)
+            this_volume = this_volume.split('[')[1]
+            this_volume = this_volume.split('%')[0]
+            # create 'Input' named tuple class instance
+            Input = namedtuple(
+                'Input', 'index corked mute volume name application pid user')
+            try:
+                # noinspection PyArgumentList
+                this_sink = Input(int(str(sink.index)),  # convert from 999L to 999
+                                  bool(sink.corked),  # Added 2025-06-26
+                                  int(sink.mute),  # Added 2025-06-26
+                                  int(this_volume),
+                                  str(sink.name),  # Added 2025-06-23
+                                  str(sink.proplist['application.name']),
+                                  int(sink.proplist['application.process.id']),
+                                  str(sink.proplist['application.process.user']))
+
+                self.inputs_now.append(this_sink)
+                self.last_input_index = this_sink.index  # self.last_input_tuple.index
+                self.last_input_tuple = this_sink
+                if this_sink.corked is False:  # Record last active (uncorked) input
+                    self.active_input_index = this_sink.index
+                    self.active_input_tuple = this_sink
+                    self.active_input_tuples.append(this_sink)
+
+            except Exception as err:
+                print(_who, " Exception (KeyError):\n", err, sep='')
+                self.err_count += 1
+                print("vu_pulse_audio.py get_all_inputs() error count:",
+                      self.err_count)
+                print(sink)
+        return self.inputs_now
+
+    # noinspection SpellCheckingInspection
     def get_all_sinks(self):
-        """ Get PulseAudio list of all sinks
+        """ Get PulseAudio list of all sink inputs (not sinks)
             Return list of tuples with:
                 sink #
                 flat volume
@@ -703,10 +785,12 @@ AttributeError: 'module' object has no attribute 'pulsectl'
                 this_volume = this_volume.split('[')[1]
                 this_volume = this_volume.split('%')[0]
                 # create 'Sink' named tuple class
-                Sink = namedtuple('Sink', 'sink_no_str volume name pid user')
+                Sink = namedtuple('Sink', 'sink_no_str volume name application pid user')
+                # 2025-06-23 was: ('Sink', 'sink_no_str volume application pid user')
                 try:
                     # noinspection PyArgumentList
                     this_sink = Sink(str(sink.index), int(this_volume),
+                                     str(sink.name),  # Added 2025-06-23
                                      str(sink.proplist['application.name']),
                                      int(sink.proplist['application.process.id']),
                                      str(sink.proplist['application.process.user']))
@@ -781,7 +865,9 @@ AttributeError: 'module' object has no attribute 'pulsectl'
 
     # noinspection SpellCheckingInspection
     def analyze_file_volume(self, fname, output, _callback_func):
-        """ Analyze mean volume and max volume of file using ffmpeg
+        """  EXPERIMENTAL - Not used as of 2025-06-26.
+
+        Analyze mean volume and max volume of file using ffmpeg
 
         $ ffmpeg -i "09 The Storm.m4a" -af "volumedetect"
             -f null /dev/null 2>&1 | grep "_volume:"
@@ -839,7 +925,6 @@ AttributeError: 'module' object has no attribute 'pulsectl'
             return "N/A", "N/A"
 
         return volumes[0].split("_volume: ")[1], volumes[1].split("_volume: ")[1]
-
 
     def get_pulse_control(self):
         """ Seemed like a good idea at the time but, it crashes after being

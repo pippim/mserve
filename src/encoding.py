@@ -42,7 +42,8 @@ warnings.simplefilter('default')  # in future Python versions.
 #       May. 31 2024 - Make "No Audio Disc" error message appear correctly.
 #       June 02 2024 - User configurable colors, bug fixes and debug printing.
 #       Aug. 24 2024 - SQL Music Table speed boost using OsFileNameIndex.
-#       June 01 2025 - Remove "python" from launch for script name in top. 
+#       June 01 2025 - Remove "python" from launch for script name in `top`.
+#       Aug. 03 2025 - Broken. Use `chmod x` on disc_get.py, mbz_get1(/2).py.
 #
 # ==============================================================================
 # noinspection SpellCheckingInspection
