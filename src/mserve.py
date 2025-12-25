@@ -106,7 +106,8 @@ warnings.simplefilter('default')  # in future Python versions.
 #       Nov. 16 2024 - Update virtual file sizes for FTP devices in location.py.
 #       Dec. 15 2024 - Substitute Hi-Res images in Music/.../ArtworkAlbum.xxx
 #       Mar. 30 2025 - Delete 200 lines of deprecated functions.
-#       June 14 2025 - get_running_apps() supports parameters from ps -ef
+#       June 14 2025 - get_running_apps() supports parameters from ps -ef.
+#       Dec. 25 2025 - Bug where "parameters" variable reused. Make "app_parm".
 #
 # ==============================================================================
 
@@ -5530,6 +5531,10 @@ Call search.py when these control keys occur
         if self.playlists.open_name:
             ''' Not a problem because lcs.open() checks pending counts '''
             pass
+        elif lcs.open_code == "new":
+            # 2025-12-24 Cannot save new location
+            print('mserve.py open_and_play_callback() - Cannot',
+                  'save location:', lcs.open_code)
         else:
             self.save_last_selections()
 
@@ -5548,15 +5553,18 @@ Call search.py when these control keys occur
             return False  # Pops back into lcs.apply() which calls lcs.reset()
 
         ''' Save last opened location code '''
-        lcs.save_mserve_location(code)
+        if lcs.open_code != "new":
+            # 2025-12-24 Cannot save new location
+            lcs.save_mserve_location(code)
 
         ''' Next top directory to startup '''
         # self.parm = topdir  # Can no longer use matching on topdir
         self.parm = code  # Sep 5/23 - topdir appears twice, L001 and L005
         self.restart_new_parameters(self)
+        return True  # 2025-12-24 Added for predictability give return False above.
 
     def restart_new_parameters(self, *_args):
-        """ Called by open_and_play() function """
+        """ Called by open_and_play_callback() function """
         self.close_sleepers()  # Shut down running functions
         root.destroy()
 
@@ -8112,7 +8120,8 @@ Call search.py when these control keys occur
         if not lcs.host_down:
             # TEMPORARY patch. When host_down below crashes because SQL closed
             # ProgrammingError: Cannot operate on a closed database.
-            if lcs.open_code:  # Is there a location open?
+            if lcs.open_code and lcs.open_code != "new":
+                # Is there a location open and it isn't "new"?
                 lcs.save_mserve_location(lcs.open_code)  # TODO: ditch parameter
 
         ''' Two songs needed to save, next startup uses previous save '''
@@ -23262,21 +23271,12 @@ def open_files(old_cwd, prg_path, parameters, toplevel=None):
         os.chdir(hold_dir)  # Change back to mserve.py directory
         use_location = False
     except IndexError:  # list index out of range
-        # Music directory not passed as parameter
+        # Directory name not passed as a parameter, assume location code
         music_dir = None
-        use_location = True
+        use_location = True  # < "M"
 
-    ''' Is passed music_dir in our known locations? 
-        Sep 5/23 - Cannot lookup by topdir name because two locations
-                   can exist, e.g. L001 for ssh phone, L005 for ftp phone
-                   Related: Need prompt for user to save new location before
-                   exiting. Currently files are stored in .../mserve instead
-                   of .../mserve/L999
-    '''
 
-    #print(who + "Contents of music_dir:", music_dir)
-    # if music_dir is not None and lc.get_dict_by_dirname(music_dir):
-    if parm1 and "L001" <= parm1 < "M":
+    if parm1 and "L001" <= parm1 <= "L999":  # 2025-12-24 was < "M"
         if lcs.read_location(parm1):
             use_location = True  # Override to use location found by dir name
             # print(who + 'Using location:', lc.DICT['iid'])
@@ -23438,9 +23438,6 @@ def main(toplevel=None, cwd=None, parameters=None):
     global cfg  # March 11, 2024 - Placed here due to precedent
     cfg = sql.Config()  # Configuration for colors, widths, fonts, etc.
 
-    ''' cwd is saved and passed by "m" before calling mserve.py '''
-    #prg_path = os.path.dirname(os.path.realpath(__file__))
-    # prg_path is already available in g.PROGRAM_DIR so deprecate it.
     ''' 'm' splash screen passes the old current working directory (cwd) '''
     if cwd is None:
         ''' Save current working directory - same code in m and mserve.py '''
@@ -23448,9 +23445,11 @@ def main(toplevel=None, cwd=None, parameters=None):
         if cwd != g.PROGRAM_DIR:
             # print("Changing to dir_path:", dir_path)
             os.chdir(g.PROGRAM_DIR)
+
     ''' parameters are passed by "m" to mserve.py '''
     if parameters is None:
         parameters = sys.argv
+        #print("sys.argv:", sys.argv)
 
     ''' Create Tkinter "very top" Top Level window '''
     if toplevel is None:
@@ -23472,12 +23471,12 @@ def main(toplevel=None, cwd=None, parameters=None):
     ffplay_pid = 0 if len(ffplay_pid) == 0 else ffplay_pid[0]
 
     ''' Loop through all running apps with 'python' in name '''
-    for pid, app, parameters in apps_running:
+    for pid, app, app_parms in apps_running:
         if app == "m" and pid != this_pid:
             m_pid = pid  # 'm' splash screen found
         if app == "mserve.py" and pid != this_pid:
             mserve_pid = pid  # 'mserve.py' found
-        if app == "vu_meter.py" and parameters[1] == "mserve":
+        if app == "vu_meter.py" and app_parms[1] == "mserve":
             # VU meter instance from mserve and not HomA or PimTube
             vu_meter_pid = pid  # 'vu_meter.py stereo mserve' found
 

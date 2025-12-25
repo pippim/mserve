@@ -1209,6 +1209,9 @@ class OsFileNameBlacklist:
         self.__init__()  # Clear any existing data
         _who = self.who + "CreateInitialLists():"
         lcs.build_locations()  # Build location master lists
+        if lcs.open_code == "new":
+            # 2025-12-24 A new location has no blacklist yet
+            return
         _this_topdir = lcs.all_topdirs[lcs.all_codes.index(lcs.open_code)]
         old_loc_missing = False
 
@@ -1249,6 +1252,7 @@ class OsFileNameBlacklist:
 
     def SetFileRename(self, black_key, white_key, this_loc, music_id):
         """ Add substitute for files that were renamed. """
+
         if self.CheckBlacklist(black_key):
             return  # Already blacklisted due to history for another location
         # Not blacklisted yet. Is this history record for opened location?
@@ -1270,6 +1274,10 @@ class OsFileNameBlacklist:
         """ Process all blacks & whites for this location not renamed yet.
             Called by mserve.py make_sorted_list() before OS walk starts.
         """
+        if lcs.open_code == "new":
+            # 2025-12-24 A new location has no blacklist yet
+            return
+
         this_topdir = lcs.all_topdirs[lcs.all_codes.index(lcs.open_code)]
 
         for i, black_key in enumerate(self.blacks):

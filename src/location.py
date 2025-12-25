@@ -71,6 +71,7 @@ import netrc  # network resource password file ~/.netrc - FUTURE NOT USED YET
 import ftplib  # Communicate with FTP server
 import random  # For Locations() make_temp
 import string  # For Locations() make_temp
+import traceback
 from collections import OrderedDict
 
 import global_variables as g
@@ -2786,6 +2787,7 @@ class Locations(LocationsCommonSelf):
             text = "location.py Locations.save_mserve_location() -" + \
                    "Error reading location: " + Code
             self.out_cast_show_print(title, text, 'error')
+            traceback.print_stack()
             return
         
         sql.save_config('location', 'last', self.act_code, self.act_name,
@@ -3052,6 +3054,9 @@ class Locations(LocationsCommonSelf):
         global DICT  # Be glad when this old code is gone !!!
         DICT = self.make_ver1_dict_from_sql_dict(d)
         set_location_filenames(self.act_code)  # Call global function at top
+
+        # 2025-12-25 Debugging 
+        #print("The last location used for mserve.py:", d)
 
         # Display keep awake values
         #if self.open_touchcmd:

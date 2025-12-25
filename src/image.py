@@ -23,6 +23,7 @@ from __future__ import with_statement  # Error handling for file opens
 #       Apr. 16 2024 - ffmpeg 6.1 artwork now (R, G, B, Alpha). Before RGB only
 #       July 06 2024 - import monitor as mon. Utilize global_variables.py
 #       Oct. 15 2024 - Rename mserve.png to taskbar_icon.png
+#       Oct. 05 2025 - Prepend application character + "_" to taskbar_icon.png
 #
 #==============================================================================
 
@@ -744,8 +745,8 @@ def taskbar_icon(toplevel, hgt, out_c, fill_c, text_c, char='M', font_family=Non
     draw.text((start_x, start_y), text, fill=text_c, font=icon_font)
 
     # filename 'taskbar_icon.png' used repeatedly for different icons in mserve.py
-    im_open.save("taskbar_icon.png", "PNG")
-    png_img = tk.Image("photo", file="taskbar_icon.png")
+    im_open.save(text + "_taskbar_icon.png", "PNG")
+    png_img = tk.Image("photo", file=text + "_taskbar_icon.png")  # 2025-10-05
     # Below doesn't work for homa.py still "?" character with no color
     #label = tk.Label(image=png_img)
     #label.image = photo  # keep a reference!
@@ -799,8 +800,8 @@ def mmm_taskbar_icon(toplevel, hgt, out_c, fill_c, m1c, m2c, m3c):
     start_y3 = start_y2
     draw.text((start_x3, start_y3), text, fill=m3c, font=sample_font)
 
-    im_open.save("taskbar_icon.png", "PNG")
-    png_img = tk.Image("photo", file="taskbar_icon.png")
+    im_open.save("mmm_taskbar_icon.png", "PNG")
+    png_img = tk.Image("photo", file="mmm_taskbar_icon.png")
     # noinspection PyProtectedMember
     toplevel.tk.call('wm', 'iconphoto', toplevel._w, png_img)
 
