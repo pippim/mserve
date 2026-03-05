@@ -1684,8 +1684,8 @@ class makeNotebook:
             self.tt_add(label, atts[10])
 
             if len(atts) != 11:
-                print(_who, "Invalid number of atts[] list variables:", len(atts))
-                print("atts[0] value:", atts[0])
+                print(_who, "atts[] list length != 11:", len(atts))
+                print("atts value:", atts)
                 exit(0)
 
             self.add_var(tab_no, frm, row, atts, data)

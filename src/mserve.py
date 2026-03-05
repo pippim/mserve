@@ -17239,8 +17239,13 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/media/rick/SANDISK128/Music/Compilatio
             return None, None, None
 
         original_art = Image.open(self.TMP_FFMPEG)
-        resized_art = original_art.resize(
-            (width, height), Image.ANTIALIAS)
+
+        try:  # 2026-03-04 raise IOError(message + " when reading image file")
+            resized_art = original_art.resize((width, height), Image.ANTIALIAS)
+        except IOError as _e:
+            print("Error loading image:", _e)
+            return None, None, None
+
         return ImageTk.PhotoImage(resized_art), resized_art, original_art
 
     def test_middle(self):
@@ -23426,9 +23431,10 @@ def dummy_thread():
 
 def main(toplevel=None, cwd=None, parameters=None):
     """ Establish music location from sys.argv or last used location
-    :param toplevel: Splash screen mounted by m for startup
-    :param cwd: Current Working Directory when program started
-    :param parameters: sys.argv used to call program """
+    :param toplevel: Splash screen mounted by 'm' for startup or create here
+    :param cwd: Current Working Directory when 'mserve.py' started or 'm' started
+    :param parameters: Set to 'mserve.py' sys.argv OR sys.argv passed by 'm' 
+    """
     global root  # named when main() called
     global SORTED_LIST  # os.walk() results: artist/album/songs
     global START_DIR  # Music directory. E.G. "/home/USER/Music
@@ -23464,21 +23470,21 @@ def main(toplevel=None, cwd=None, parameters=None):
 
     ''' Is another copy of mserve running? '''
     # result = os.popen("ps aux | grep -v grep | grep python").read().splitlines()
-    apps_running = ext.get_running_apps(PYTHON_VER)
+    _apps = ext.get_running_apps(PYTHON_VER)
     this_pid = os.getpid()  # Don't commit suicide!
     m_pid = mserve_pid = vu_meter_pid = 0  # Running PIDs found later
     ffplay_pid = ext.pid_list("ffplay")  # If more than one, kill the first seen
     ffplay_pid = 0 if len(ffplay_pid) == 0 else ffplay_pid[0]
 
     ''' Loop through all running apps with 'python' in name '''
-    for pid, app, app_parms in apps_running:
-        if app == "m" and pid != this_pid:
-            m_pid = pid  # 'm' splash screen found
-        if app == "mserve.py" and pid != this_pid:
-            mserve_pid = pid  # 'mserve.py' found
-        if app == "vu_meter.py" and app_parms[1] == "mserve":
+    for _pid, _name, _prm in _apps:
+        if _name == "m" and _pid != this_pid:
+            m_pid = _pid  # 'm' splash screen found
+        if _name == "mserve.py" and _pid != this_pid:
+            mserve_pid = _pid  # 'mserve.py' found
+        if _name == "vu_meter.py" and _prm[1] == "mserve":
             # VU meter instance from mserve and not HomA or PimTube
-            vu_meter_pid = pid  # 'vu_meter.py stereo mserve' found
+            vu_meter_pid = _pid  # 'vu_meter.py stereo mserve' found
 
     ''' One or more fingerprints indicating another copy running? '''
     if m_pid or mserve_pid or vu_meter_pid:
@@ -23487,7 +23493,7 @@ def main(toplevel=None, cwd=None, parameters=None):
         text += "\n\nIf the other version crashed, the process(es) still running"
         text += " can be killed:\n\n"
         if m_pid:
-            text += "\t'm' (" + str(m_pid) + ") - mserve splash screen\n"
+            text += "\t'm' (" + str(m_pid) + ") - mserve using splash screen\n"
         if mserve_pid:
             text += "\t'mserve.py' (" + str(mserve_pid) + \
                     ") - mserve without splash screen\n"

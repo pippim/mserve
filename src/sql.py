@@ -1225,7 +1225,7 @@ class OsFileNameBlacklist:
             this_loc = True if old_loc == lcs.open_code else False
             try:
                 old_topdir = lcs.all_topdirs[lcs.all_codes.index(old_loc)]
-            except IndexError:
+            except (IndexError, ValueError):
                 if not old_loc_missing:
                     print(_who, "'CreateInitialLists' -",
                           "Old location doesn't exist:", old_loc)
