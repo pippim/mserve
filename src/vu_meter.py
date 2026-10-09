@@ -54,6 +54,7 @@ ENHANCEMENTS:
 
 # Standard Python Library
 import sys
+import time
 import math
 import struct
 
@@ -76,6 +77,7 @@ SHORT_NORMALIZE = 1.0 / 32768.0
 BASELINE_RESET = 10  # How much silence to reset peek
 # 2025-06-21 BASELINE_RESET was 10 set 100. Have no idea if this if 5 seconds or not?
 # 2025-06-22 Change BASELINE_RESET back to 10 for now...
+TIME_SLEEP = 0.008  # Max Pippim refresh is 16 ms, so sleep 8 ms
 
 ''' Volume Meter IPC filenames. Repeat changes in mserve.py, homa.py & toolkit.py '''
 # Mono output
@@ -139,32 +141,36 @@ def parse_data(data, channel_ndx, channel_cnt, maximal):
 
 
 def main():
-    """ mainline """
+    """ mainline
+
+        The stream.read() method in PyAudio is a blocking call by default.
+        It will automatically pause execution and wait for the hardware to
+        capture the exact number of audio frames requested before proceeding
+        to the next line in your while loop.
+    """
 
     # January 24, 2021 separate left and right channels
-    parameter = 'mono'
-    if (len(sys.argv)) >= 2:  # 2025-06-14 Can be 2 parameters now
-        parameter = sys.argv[1]     # Null = 'mono', 'stereo' = Left & Right
+    audio_channels = 'stereo'
+    if (len(sys.argv)) >= 2:  # 2025-06-14 Was "== 2" now more parameters
+        audio_channels = sys.argv[1]  # Null = 'stereo' = (2.0), 'mono' = (1.0)
 
     audio = pyaudio.PyAudio()
     reset_baseline_count = 0
     stream = None
 
     try:
-        stream = audio.open(format=pyaudio.paInt16,
-                            channels=2,
-                            rate=RATE,
-                            input=True,
-                            frames_per_buffer=INPUT_FRAMES_PER_BLOCK)
+        stream = audio.open(format=pyaudio.paInt16, channels=2, rate=RATE,
+                            input=True, frames_per_buffer=INPUT_FRAMES_PER_BLOCK)
 
         maximal = Amplitude()
         maximal_l = maximal_r = maximal
 
         while True:
+            time.sleep(TIME_SLEEP)  # Max Pippim refresh is 16 ms, so sleep 8 ms
             data = stream.read(INPUT_FRAMES_PER_BLOCK)
 
             # January 24, 2021 separate left and right channels
-            if parameter == 'stereo':
+            if audio_channels == 'stereo':
                 amp = None
                 amp_l, maximal_l, gap = parse_data(data, 0, 2, maximal_l)
                 amp_r, maximal_r, gap = parse_data(data, 1, 2, maximal_r)
@@ -195,7 +201,7 @@ def main():
                 reset_baseline_count = 0
 
             # January 24, 2021 separate left and right channels
-            if parameter == 'stereo':
+            if audio_channels == 'stereo':
                 amp_l.display(scale=200, mark=maximal_l, fn=AMPLITUDE_LEFT_FNAME)
                 amp_r.display(scale=200, mark=maximal_r, fn=AMPLITUDE_RIGHT_FNAME)
             else:

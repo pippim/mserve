@@ -21,6 +21,7 @@ from __future__ import with_statement  # Error handling for file opens
 #       June 02 2024 - Reactivate '?' as illegal filename character
 #       Dec. 04 2024 - if t_init() ends in ":" don't add another when printing
 #       June 01 2025 - Strip `env` from `#!/usr/bin/env python` for script name
+#       Sep. 19 2026 - t(hun=True) - Change hh:mm:ss.d to hh:mm:ss.dd for HomA
 #
 #==============================================================================
 
@@ -77,7 +78,7 @@ def t(float_time=None, short=False, hun=False):
     f_time = datetime.datetime.fromtimestamp(float_time)
     if short:
         if hun:
-            return f_time.strftime("%H:%M:%S.%f")[:-5]  # chop off 5 of 6 decs
+            return f_time.strftime("%H:%M:%S.%f")[:-4]  # chop off 4 of 6 decs
         else:
             return f_time.strftime("%H:%M:%S")
     else:

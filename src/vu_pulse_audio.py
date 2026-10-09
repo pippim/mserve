@@ -23,6 +23,7 @@ from __future__ import with_statement  # Error handling for file opens
 #       May. 20 2025 - Make Pulse Audio optional to support Sony TV REST API.
 #       June 26 2025 - HomA create .get_all_inputs().
 #       July 08 2025 - Create _print_or_cast() for HomA.
+#       Oct. 09 2026 - get_volume() don't try sink_input_str == "0" for ytads.
 #
 # ==============================================================================
 """
@@ -381,6 +382,12 @@ AttributeError: 'module' object has no attribute 'pulsectl'
         :returns float: volume found or 24.2424 for invalid sink-input index
         """
         who = who_am_i + "get_volume():"
+
+        if sink_no_str == "0":  # 2026-10-09
+            if print_error:
+                print("\n" + who, "\n\t'sink_no_str' is '0'")
+            return 24.2424
+
         vol = self.get_callback(sink_no_str)
         if self.server != "pa":
             return vol
@@ -409,7 +416,7 @@ AttributeError: 'module' object has no attribute 'pulsectl'
         # 06:51:24.8 Reversing self.youAssumeAd
         if print_error is False:
             return 24.2424
-        print(who, "\n\tUnable to find 'sink_no_str': " + sink_no_str,
+        print("\n" + who, "\n\tUnable to find 'sink_no_str': " + sink_no_str,
               "Type:", type(sink_no_str), "'refresh':", refresh)
         print("AVAILABLE SINKS:")
         for Sink in self.sinks_now:

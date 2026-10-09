@@ -612,6 +612,22 @@ def set_font_style():
     dialog.configure(size=g.WIN_FONTSIZE)
 
 
+def is_valid_image(filepath):
+    """ Verify file is a valid image """
+    # 1. Check if the file even exists on disk
+    if not os.path.exists(filepath):
+        return False
+
+    try:
+        # 2. Attempt to open and verify the file content
+        with Image.open(filepath) as img:
+            img.verify()  # Verifies the file header and integrity
+        return True
+    except (IOError, SyntaxError):
+        # 3. If it's not a valid image format or is corrupted, catch the error
+        return False
+
+
 def m_splash_image(hgt, out_c, fill_c, text_c, char="M"):
     """
             +-------+
@@ -810,6 +826,8 @@ def tk_image(fname, wid, hgt):
     """
     https://github.com/python-pillow/Pillow/issues/477
     Fixed in 2017: https://github.com/python-pillow/Pillow/pull/551
+
+    NOTE: Cannot return raw image, it is unusable later
 
     Python 3 gives ResourceWarning for PIL image processing for:
 
@@ -2025,6 +2043,12 @@ def gtk_screenshot(x, y, width, height):
     #src_img = Image.from bytes('RGB', (src_geom[2], src_geom[3]), win_pixels,
     src_img = Image.frombytes('RGB', (width, height), win_pixels,
                               'raw', 'RGB', pb.get_rowstride(), 1)
+    # 2026-06-10 Explicitly drop the resource to prevent a Gdk-pix buf leak
+    if pb:
+        # In Python PyGObject bindings, GObjects use unref() or garbage collection
+        # Manual explicit drop:
+        del pb
+        # https://docs.gtk.org/gdk-pixbuf/method.Pixbuf.get_rowstride.html
 
     return src_img
 

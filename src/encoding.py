@@ -1645,6 +1645,7 @@ class RipCD:
         gp = tk.Entry(self.confirm_frm, textvariable=self.gapless_playback_var,
                       font=g.FONT)
         gp.grid(row=8, column=1, padx=5, sticky=tk.EW)
+
         ''' Clicking on gapless_playback is treated like button click '''
         gp.bind("<Button>", self.get_gapless_playback)
         gp.bind("<FocusIn>", self.get_gapless_playback)
@@ -1668,6 +1669,7 @@ class RipCD:
         ''' button frame '''
         bottom_frm = tk.Frame(self.confirm_frm)
         bottom_frm.grid(row=10, columnspan=2, sticky=tk.E)
+
         ''' Go Back Button '''
         self.confirm_cancel_btn = tk.Button(bottom_frm, text="✘ Go Back",
                                             width=g.BTN_WID2 - 6, font=g.FONT,
@@ -2079,51 +2081,51 @@ class RipCD:
         ext_name += ' ! filesink location="{}"'.format(self.os_full_path)
         ext_name += NO_STDOUT
 
-        ''' 2024-06-04 crash disc # 1 song # 12 of 12
+        ''' 
+        Musicolet cannot play your GStreamer-recorded .m4a file because GStreamer 
+        often uses raw or non-standard AAC-in-MP4 packet configurations or missing 
+        atom headers that Android's built-in decoder and Musicolet Music Player 
+        rely on.        
 
-        CONTENTS OF g.TEMP_DIR + "mserve_gst_launch":
+        Why This Happens:
         
-Setting pipeline to PAUSED ...
-Pipeline is PREROLLING ...
-Pipeline is PREROLLED ...
-Setting pipeline to PLAYING ...
-New clock: GstSystemClock
-Execution ended after 0:00:21.280865230
-Setting pipeline to PAUSED ...
-Setting pipeline to READY ...
-Setting pipeline to NULL ...
-Freeing pipeline ...
+            - Codec Wrapper Mismatch: GStreamer's qtmux or avenc_aac might write 
+              raw AAC streams or specific profile headers into the .m4a container 
+              that mobile decoders reject.
+            
+            - Missing Metadata Atoms: The file may lack specific moov or ftyp 
+              atoms required by Android's media framework during local file 
+              scanning.
+            
+        How to Fix It: 
+        
+            - Remux the File: Re-encode or copy the stream safely using FFmpeg 
+              on a computer without losing quality:
+              
+                ffmpeg -i input.m4a -c:a copy output.m4a
+                
+            - Convert to Standard AAC/MP3: Transcode the file to a universally 
+              compatible format if remuxing fails:
 
-        CONTENTS OF stdout:
-ERROR: from element /GstPipeline:pipeline0/GstCdioCddaSrc:cdiocddasrc0: Could not read from CD.
-Additional debug info:
-gstcdiocddasrc.c(201): gst_cdio_cdda_src_read_sector (): /GstPipeline:pipeline0/GstCdioCddaSrc:cdiocddasrc0:
-cdio_read_audio_sector at 202317 failed: Input/output error
-gstreamer failed to generate music file. Try again.
-Mutagen error on: /media/rick/SANDISK128/Music/Compilations/Guardians of the Galaxy, Awesome Mix, Vol. 1/1-12 Ain’t No Mountain High Enough.m4a
-Exception: not a MP4 file
-Exception in Tkinter callback
-Traceback (most recent call last):
-  File "/usr/lib/python2.7/lib-tk/Tkinter.py", line 1540, in __call__
-    return self.func(*args)
-  File "/usr/lib/python2.7/lib-tk/Tkinter.py", line 590, in callit
-    func(*args)
-  File "/home/rick/python/encoding.py", line 1368, in cd_run_to_close
-    self.rip_next_track()
-  File "/home/rick/python/encoding.py", line 2027, in rip_next_track
-    self.add_image_to_m4a()
-  File "/home/rick/python/encoding.py", line 2465, in add_image_to_m4a
-    video = MP4(self.os_full_path)
-  File "/usr/lib/python2.7/dist-packages/mutagen/_file.py", line 42, in __init__
-    self.load(filename, *args, **kwargs)
-  File "/usr/lib/python2.7/dist-packages/mutagen/mp4/__init__.py", line 974, in load
-    self.info = MP4Info(atoms, fileobj)
-  File "/usr/lib/python2.7/dist-packages/mutagen/mp4/__init__.py", line 854, in __init__
-    raise MP4StreamInfoError("not a MP4 file")
-MP4StreamInfoError: not a MP4 file
+                ffmpeg -i input.m4a -c:a libmp3lame output.mp3
+                
+            - Test in VLC: Open the file in VLC for Android, which uses its own 
+              independent software decoders and bypasses system limitations.
 
+        =========================================================================
+        Find m4a files in all subfolders encoded by gstreamer 1.0 that might
+        not play on android. Most songs encoded by mserve play but some do not.
+        
+        Below is one-liner command indented for reading:
+
+find . -type f -name "*.m4a" -exec sh -c '
+    for f; do 
+        val=$(ffprobe -v quiet -print_format json -show_format "$f" | 
+        jq -r ".format.tags[\"encoder\"] // .format.tags[\"ENCODER\"] // empty"); 
+        case "$val" in mserve*) echo "$f : $val" ;; esac; 
+    done
+' _ {} +
         '''
-
 
         text = "Launching 'gstreamer' to encode music file. Parameters:\n\n"
         self.info.cast(text + ext_name)

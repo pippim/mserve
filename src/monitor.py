@@ -24,6 +24,7 @@ from __future__ import with_statement  # Error handling for file opens
 #       Oct. 09 2024 - check_window_geom(...) to force windows visibility
 #       Dec. 08 2024 - Suppress GObject future warnings originating from sql.py
 #       Jun. 08 2025 - Deprecate center(), get_monitors() & get_tk_window_mon...
+#       Jun. 10 2026 - Delete instance after Gdk.pix buf_get_from_window.
 #
 # ==============================================================================
 
@@ -746,9 +747,13 @@ class Monitors(CommonWindow):
         pb = Gdk.pixbuf_get_from_window(window, *geom)
         desk_pixels = pb.read_pixel_bytes().get_data()
         _row_stride = pb.get_rowstride()
-        # https://docs.gtk.org/gdk-pixbuf/method.Pixbuf.get_rowstride.html
-        #raw_img = Image.from bytes('RGB', (geom.w, geom.h), desk_pixels,
-        #                          'raw', 'RGB', _row_stride, 1)
+        # 2026-06-10 Explicitly drop the resource to prevent a Gdk-pix buf leak
+        if pb:
+            # In Python PyGObject bindings, GObjects use unref() or garbage collection
+            # Manual explicit drop:
+            del pb
+            # https://docs.gtk.org/gdk-pixbuf/method.Pixbuf.get_rowstride.html
+
         return desk_pixels, _row_stride
 
     def tk_center(self, window):

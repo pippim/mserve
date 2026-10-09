@@ -455,7 +455,7 @@ class AskCommonSelf:
         self.text = text            # data (text lines) for text box
         self.textbox = None         # Textbox widget
         self.icon = icon            # Warning, Error, Info, Question icons
-        self.show = show            # Password entry character to show
+        self.pwd_char = show          # Password entry character to show
         self.help = help            # Future help button linking to mserve.md
         self.win_grp = win_grp      # Child Windows move with parent & stay on top
 
@@ -691,7 +691,6 @@ def body_func(self):
         If align = 'left' prepend 'Em' space on lines not beginning with '\t'
 
     :param self: ShowInf0(), AskQuestion() or AskString() class parent
-    :param name: Unique name to assign to Child Windows key
     :return: Formatted text box as newly created widget called self.textbox
     """
 
@@ -896,7 +895,7 @@ class AskString(simpledialog.Dialog, AskCommonSelf):
 
         simpledialog.Dialog.__init__(self, parent, title=title)
 
-        self.show = show  # E.G. "*" for password entry
+        self.pwd_char = show  # E.G. "*" for password entry
         #if root:
         #    ''' When using root window message s/b centered  '''
         #    mon = monitor.Monitors()
@@ -926,9 +925,9 @@ class AskString(simpledialog.Dialog, AskCommonSelf):
         tk.Label(self, text="Input or Paste below:",  # Append label and entry
                  font=g.FONT).pack(fill="none", padx=5)
 
-        if self.show is not None:  # Show password *'s
+        if self.pwd_char is not None:  # Show password *'s
             self.entry = tk.Entry(self, font=g.FONT, insertbackground="white",
-                                  show=self.show,  # Password character to display
+                                  show=self.pwd_char,  # Password character to display
                                   bg="#282B2B", fg="white", width=self.string_width)
         else:
             self.entry = tk.Entry(self, font=g.FONT, insertbackground="white",
@@ -1012,6 +1011,8 @@ class AskString(simpledialog.Dialog, AskCommonSelf):
 
 class AskDirectory(filedialog.Directory, AskCommonSelf):
     """
+        parameter "self" can contain the tkinter top level window.
+        
         documentation:
             https://docs.python.org/3/library/dialog.html
 
@@ -1026,37 +1027,48 @@ class AskDirectory(filedialog.Directory, AskCommonSelf):
             initial dir=start, parent=parent, title=title)
     """
 
-    def __init__(self, parent=None, title=None, initial=None,
+    def __init__(self, parent, title=None, initial=None, exist=True,
                  thread=None, win_grp=None, _root=None):
 
-        AskCommonSelf.__init__(self, parent, title=title, thread=thread, win_grp=win_grp)
+        AskCommonSelf.__init__(
+            self, parent, title=title, thread=thread, win_grp=win_grp)
 
-        # filedialog.FileDialog.__init__(self, parent, title=title)
-        # filedialog.Directory.__init__(self, parent, title=title,
-        # filedialog.askdirectory.__init__(self, parent, title=title,
-        #  Above: return Directory(**options).show()
-        filedialog.Directory.__init__(self, parent, title=title,
-                                      initialdir=initial).show()
-        # common dialog.Dialog.__init__(self, parent, title=title)
-        # if root:
-        #    ''' When using root window message s/b centered  '''
-        #    mon = monitor.Monitors()
-        #    mon.tk_center(self)
-        # Error Aug 8/23:
-        #     mserve.main(toplevel=splash, cwd=cwd, parameters=sys.argv)
-        #   File "/home/rick/python/mserve.py", line 15288, in main
-        #     icon='error', thread=dummy_thread, root=True)
-        #   File "/home/rick/python/message.py", line 404, in __init__
-        #     mon.tk_center(self)
-        #   File "/home/rick/python/monitor.py", line 429, in tk_center
-        #     x = mon.width // 2 - window.winfo_width() // 2 + mon.x
-        #   File "/usr/lib/python2.7/lib-tk/Tkinter.py", line 1009, in winfo_width
-        #     self.tk.call('winfo', 'width', self._w))
-        # _tkinter.TclError: bad window path name ".139679084671920.139679084672064"
+        self.dir_dialog = filedialog.Directory.__init__(  # Is parent needed?
+            self, parent, title=title, initialdir=initial, mustexist=exist)
 
-        #if thread is None:  Aug 17/23 thread forced to None for WAIT_LOCK
-        #    toolkit.print_trace()
-        #    print("message.py, ShowInfo() thread is none, 'OK' won't work")
+        #print("message.py AskDirectory filedialog.Directory class:")
+        #print(self.get_all_subclasses(self.dir_dialog))
+        #print(dir(self.dir_dialog), "\n")
+
+        #self.attributes('-topmost', True)  # was opening in cli window not gui window
+        #self.body(parent)
+        #   File "/home/rick/HomA/message.py", line 699, in body_func
+        #     self.wm_attributes("-topmost", 1)
+        # AttributeError: AskDirectory instance has no attribute 'wm_attributes'
+
+        # Not a tkinter window so it will not work. Must build non-os toplevel
+        if self.win_grp:
+            # Used for Toolkit ChildWindow().register_child
+            self.win_grp.register_child(None, self)
+
+        # Show the dialog whenever needed
+        _selected_path = self.show()
+        #print("selected_path:", _selected_path)
+        #print("directory:", self.directory)
+
+    #
+    # standard body semantics
+    def body(self, _parent):  # 2026-05-19 "parent" not used, is it passed?
+        """ 2026-05-02 test to get window to open overtop of GUI app window """
+        self.textbox = body_func(self)
+        self.wm_attributes("-topmost", 1)  # Force window to stay on top
+
+        # 2025-01-18: every dialog has a body_func() so register win_grp now
+        if self.win_grp:
+            # Used for Toolkit ChildWindow().register_child
+            self.win_grp.register_child(None, self)
+
+        return self.textbox  # 2026-05-02 how to test return though???
 
     #
     # standard button semantics

@@ -108,6 +108,7 @@ warnings.simplefilter('default')  # in future Python versions.
 #       Mar. 30 2025 - Delete 200 lines of deprecated functions.
 #       June 14 2025 - get_running_apps() supports parameters from ps -ef.
 #       Dec. 25 2025 - Bug where "parameters" variable reused. Make "app_parm".
+#       Sep. 15 2026 - "speech-dispatcher" moved sink.name -> sink.application.
 #
 # ==============================================================================
 
@@ -5816,6 +5817,7 @@ Call search.py when these control keys occur
         """ Debugging - show machine info, monitors, windows, tooltips 
             locations, sql, metadata, global variables """
 
+        '''
         print(font.Font(font="TkDefaultFont").configure())
         buttons = tk.Toplevel()
         buttons.geometry("500x250")
@@ -5845,6 +5847,7 @@ Call search.py when these control keys occur
         print("\n1 inch:", self.lib_top.winfo_fpixels("1i"))  # 1 inch in pixels
         # 2024-09-10 5:46 - 1 inch: 288.0
         print("1 mm:", self.lib_top.winfo_fpixels("1m"))  # 1 inch in pixels
+        '''
         # 2024-09-10 5:46 - 1 mm: 11.3385826772
 
         # https://linux.die.net/man/3/tk_getpixels
@@ -6396,7 +6399,8 @@ Call search.py when these control keys occur
             self.debug_detail("-" * 51, "\n")
             try:
                 for sink in pav.pulse.sink_input_list():
-                    self.debug_detail("sink:", sink, sink.proplist['application.name'])
+                    self.debug_detail("sink:", sink, " | ",
+                                      sink.proplist['application.name'])
 
                 self.debug_detail("\nPulse Audio - sink_list (sound cards)")
                 self.debug_detail("-" * 51, "\n")
@@ -6420,6 +6424,13 @@ Call search.py when these control keys occur
                 self.debug_detail("\nPulse Audio - Exception")
                 self.debug_detail(err)
             self.debug_output()
+
+        ''' 2026-09-15 Pulse Audio self.sinks_now are freshly updated.
+            Check if speech-dispatcher is spamming sound input sinks. '''
+        global DELETE_SPEECH
+        DELETE_SPEECH = True  # Force check
+
+        self.check_speech_dispatcher()
 
         # Wrapup ------------------------------------------
         title = "show_debug() - mserve"
@@ -10423,17 +10434,15 @@ Call search.py when these control keys occur
             self.current_song_path = self.playlist_paths[self.ndx]
 
     def check_speech_dispatcher(self):
-        """ Four annoying speech dispatchers appear in Ubuntu
-            TODO: clone to new function that resets Firefox volume from 89%
-                  to 100%
-        """
+        """ Four annoying speech dispatchers appear in Ubuntu """
         global DELETE_SPEECH
         if not DELETE_SPEECH:
             return  # Already done or don't want to kill pids
 
         found_pids = list()
-        for Sink in pav.sinks_now:
-            if Sink.name == "speech-dispatcher":
+        for Sink in pav.get_all_sinks():
+            if "speech-dispatcher" in Sink.name or \
+                    "speech-dispatcher" in Sink.application:  # 2026-09-15
                 found_pids.append(Sink.pid)  # Found a gremlin :)
 
         if len(found_pids) == 0:
